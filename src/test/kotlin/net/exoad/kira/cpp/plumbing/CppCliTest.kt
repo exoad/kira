@@ -37,9 +37,7 @@ class CppCliTest {
         File(dir, "src/app").mkdirs()
         File(dir, "src/app/main.kira").writeText(
             """
-            module "app:main"
-
-            fx main: () Void {
+            main: () Void {
                 trace("cpp-cli")
             }
             """.trimIndent()
@@ -137,16 +135,14 @@ class CppCliTest {
         val dir = tempProject("decl-only", target = "cpp")
         File(dir, "src/app/main.kira").writeText(
             """
-            module "app:main"
-
             pub LIMIT: Int32 = 5
-            pub enum Mode: Int32 { MODE_A = 0, MODE_B = 1 }
-            pub struct Cfg {
-                pub mode: Mode = Mode.MODE_A
+            pub MODE_A: Int32 = 0
+            pub Cfg: Struct {
+                pub mode: Int32 = MODE_A
                 pub limit: Int32 = LIMIT
                 pub hint: Maybe<Int32> = null
             }
-            pub fx apply: (c: Cfg, by: Int32 = LIMIT) Int32;
+            pub apply: (c: Cfg, by: Int32 = LIMIT) Int32;
             """.trimIndent()
         )
         val first = runCli(dir, "--target", "cpp")

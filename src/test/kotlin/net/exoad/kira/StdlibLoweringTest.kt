@@ -46,7 +46,7 @@ class StdlibLoweringTest {
     fun strMethodsLowerToPreludeHelpers() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 s: Str = "  Kira  "
                 t: Str = s.trim()
                 trace(t.length())
@@ -70,7 +70,7 @@ class StdlibLoweringTest {
     fun setDeduplicatesThroughSlotCasts() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 seen: Set<Int32> = Set<Int32> { }
                 seen.add(1)
                 seen.add(2)
@@ -92,7 +92,7 @@ class StdlibLoweringTest {
     fun mapGetReturnsMaybeAndUnwrapsToElementType() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 ages: Map<Str, Int32> = Map<Str, Int32> { }
                 ages.put("ada", 36)
                 found: Maybe<Int32> = ages.get("ada")
@@ -118,7 +118,7 @@ class StdlibLoweringTest {
     fun stackAndQueueReturnMaybeOnEmpty() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 undo: Stack<Int32> = Stack<Int32> { }
                 undo.push(10)
                 top: Maybe<Int32> = undo.pop()
@@ -147,7 +147,7 @@ class StdlibLoweringTest {
     fun numConversionsLowerToCastsAndPrintWidened() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 n: Int32 = 7
                 trace(n.toInt64())
             }
@@ -166,7 +166,7 @@ class StdlibLoweringTest {
     fun assertUsesTwoArgumentHelperNotCMacro() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 assert(true, "fine")
                 trace("ok")
             }
@@ -186,7 +186,7 @@ class StdlibLoweringTest {
     fun listHoldsStrElementsThroughPointerSlots() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 names: List<Str> = List<Str> { }
                 names.add("ada")
                 names.add("grace")

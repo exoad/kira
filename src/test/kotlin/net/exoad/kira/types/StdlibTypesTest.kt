@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class StdlibTypesTest {
     @Test
     fun stdlibTypesWithoutDiagnostics() {
-        val program = TyperTestSupport.snippet("fx main: () Void { }")
+        val program = TyperTestSupport.snippet("main: () Void { }")
         val stdlib = program.modules.filter { it.isStdlib }
         assertTrue(stdlib.map { it.uri }.containsAll(listOf("kira:core", "kira:collections", "kira:result", "kira:tuples")), stdlib.map { it.uri }.toString())
         val dump = TypedModelDumper.dumpSymbols(program) { it.isStdlib }

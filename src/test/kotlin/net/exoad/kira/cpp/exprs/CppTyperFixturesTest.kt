@@ -24,9 +24,8 @@ class CppTyperFixturesTest {
 
     private val modules: List<Module> by lazy {
         names.map { n ->
-            val text = File(dir, "$n.kira").readText()
-            val uri = Regex("""^module "([^"]+)"""", RegexOption.MULTILINE).find(text)!!.groupValues[1]
-            Module(uri, text.substringAfter("module \"$uri\"").trimStart('\n', '\r'))
+            // A fixture outside any project is named by its folder and file: positive:calls.
+            Module("positive:$n", File(dir, "$n.kira").readText())
         }
     }
 

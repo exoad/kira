@@ -27,7 +27,7 @@ class IntrinsicSlotTest {
     private class Parsed(val context: SourceContext, val decls: List<ASTNode>)
 
     private fun parse(body: String): Parsed {
-        val result = TestCompileSupport.compileSnippet("module \"test:slot\"\n" + body.trimIndent(), "tests/slot.kira")
+        val result = TestCompileSupport.compileSnippet("" + body.trimIndent(), "tests/slot.kira")
         val decls = result.sourceContext.ast.statements.map { (it as Statement).expr }.filter { it !is ModuleDecl }
         return Parsed(result.sourceContext, decls)
     }
@@ -41,15 +41,15 @@ class IntrinsicSlotTest {
     fun topLevelDeclarationsTakeTheSlot() {
         val p = parse(
             """
-            pub @_opaque class Tag {
+            pub @_opaque Tag: Any {
             }
-            @_extern fx monotonic: () Float64
-            pub @_extern(raises = "OSError ValueError") fx readText: (path: Str) Str
-            pub @_const fx square: (x: Int32) Int32 { return x * x }
-            pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan { }
+            @_extern monotonic: () Float64
+            pub @_extern(raises = "OSError ValueError") readText: (path: Str) Str
+            pub @_const square: (x: Int32) Int32 { return x * x }
+            pub @_extern(cpp = "bibo::Scan", header = "car.hxx") Scan: Struct { }
             pub @_extern(c = "LIMIT", header = "limits.h") LIMIT: Int32
             pub @_magic @_global true: Bool = Bool { }
-            pub final @_magic class Fixed { }
+            pub final @_magic Fixed: Any { }
             """
         )
         val d = p.decls
@@ -71,23 +71,23 @@ class IntrinsicSlotTest {
     fun membersTakeTheSlotAfterEveryModifier() {
         val p = parse(
             """
-            pub @_magic class Pair<A, B> {
-                require pub @_magic first: A
-                pub mut @_extern(cpp = "AddLine") fx addLine: (color: UInt32) Void;
-                override pub @_const fx size: () Int32 { return 2 }
+            pub @_magic Pair<A, B>: Any {
+                pub @_magic first: A
+                pub mut @_extern(cpp = "AddLine") addLine: (color: UInt32) Void;
+                override pub @_const size: () Int32 { return 2 }
             }
-            pub struct Hall {
-                pub mut @_const fx feed: (next: UInt8) Void { }
+            pub Hall: Struct {
+                pub mut @_const feed: (next: UInt8) Void { }
             }
-            pub trait Sized {
-                pub @_magic fx size: () Int32;
+            pub Sized: Any {
+                pub @_magic size: () Int32;
             }
             """
         )
         val pair = assertIs<ClassDecl>(p.decls[0])
         val (first, addLine, size) = pair.members
         assertEquals(listOf("_magic"), p.marks(assertIs<VariableDecl>(first)))
-        assertEquals(listOf(Modifier.REQUIRE, Modifier.PUBLIC), (first as VariableDecl).modifiers)
+        assertEquals(listOf(Modifier.PUBLIC), (first as VariableDecl).modifiers)
         assertEquals(listOf("_extern"), p.marks(assertIs<FunctionDecl>(addLine)))
         assertEquals(listOf(Modifier.PUBLIC, Modifier.MUTABLE), (addLine as FunctionDecl).modifiers)
         assertEquals(listOf("_const"), p.marks(assertIs<FunctionDecl>(size)))
@@ -100,9 +100,9 @@ class IntrinsicSlotTest {
     fun severalIntrinsicsKeepTheirOrderAndArguments() {
         val p = parse(
             """
-            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") class DrawList { }
-            pub @_magic @_infer fx sqrt<T: FloatNum>: (value: T) T;
-            pub @_extern("c_cos", c = "cos") fx cosine: (x: Float64) Float64;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Any { }
+            pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T;
+            pub @_extern("c_cos", c = "cos") cosine: (x: Float64) Float64;
             """
         )
         assertEquals(listOf("_opaque", "_extern"), p.marks(p.decls[0]))
@@ -114,49 +114,49 @@ class IntrinsicSlotTest {
 
     @Test
     fun anIntrinsicOnALineOfItsOwnIsRefused() {
-        val e = refused("@_opaque\npub class Tag {\n}")
+        val e = refused("@_opaque\npub Tag: Any {\n}")
         assertEquals("parse.intrinsic.line", e.tag)
-        assertEquals(SourcePosition(2, 1), e.location)
-        assertTrue(e.message.endsWith("Help: write it as 'pub @_opaque class Tag {'."), e.message)
-        val two = refused("@_opaque @_extern(cpp = \"X\", header = \"x.hxx\")\npub class X { }")
+        assertEquals(SourcePosition(1, 1), e.location)
+        assertTrue(e.message.endsWith("Help: write it as 'pub @_opaque Tag: Any {'."), e.message)
+        val two = refused("@_opaque @_extern(cpp = \"X\", header = \"x.hxx\")\npub X: Any { }")
         assertEquals("parse.intrinsic.line", two.tag)
-        assertTrue(two.message.endsWith("Help: write it as 'pub @_opaque @_extern(cpp = \"X\", header = \"x.hxx\") class X { }'."), two.message)
-        val bare = refused("@_extern\nfx f: () Int32")
+        assertTrue(two.message.endsWith("Help: write it as 'pub @_opaque @_extern(cpp = \"X\", header = \"x.hxx\") X: Any { }'."), two.message)
+        val bare = refused("@_extern\nf: () Int32")
         assertEquals("parse.intrinsic.line", bare.tag)
-        assertTrue(bare.message.endsWith("Help: write it as '@_extern fx f: () Int32'."), bare.message)
-        val member = refused("pub class Car {\n    @_extern(cpp = \"Drive\")\n    pub mut fx drive: () Void;\n}")
+        assertTrue(bare.message.endsWith("Help: write it as '@_extern f: () Int32'."), bare.message)
+        val member = refused("pub Car: Any {\n    @_extern(cpp = \"Drive\")\n    pub mut drive: () Void;\n}")
         assertEquals("parse.intrinsic.line", member.tag)
-        assertEquals(SourcePosition(3, 5), member.location)
-        assertTrue(member.message.endsWith("Help: write it as 'pub mut @_extern(cpp = \"Drive\") fx drive: () Void;'."), member.message)
+        assertEquals(SourcePosition(2, 5), member.location)
+        assertTrue(member.message.endsWith("Help: write it as 'pub mut @_extern(cpp = \"Drive\") drive: () Void;'."), member.message)
     }
 
     @Test
     fun anIntrinsicBeforeAModifierIsRefused() {
-        val e = refused("@_extern(raises = \"OSError\") pub fx readText: (path: Str) Str")
+        val e = refused("@_extern(raises = \"OSError\") pub readText: (path: Str) Str")
         assertEquals("parse.intrinsic.order", e.tag)
-        assertEquals(SourcePosition(2, 1), e.location)
-        assertTrue(e.message.endsWith("Help: write it as 'pub @_extern(raises = \"OSError\") fx readText: (path: Str) Str'."), e.message)
-        val between = refused("pub struct Hall {\n    pub @_const mut fx feed: () Void { }\n}")
+        assertEquals(SourcePosition(1, 1), e.location)
+        assertTrue(e.message.endsWith("Help: write it as 'pub @_extern(raises = \"OSError\") readText: (path: Str) Str'."), e.message)
+        val between = refused("pub Hall: Struct {\n    pub @_const mut feed: () Void { }\n}")
         assertEquals("parse.intrinsic.order", between.tag)
-        assertEquals(SourcePosition(3, 9), between.location)
-        assertTrue(between.message.endsWith("Help: write it as 'pub mut @_const fx feed: () Void { }'."), between.message)
-        val field = refused("pub class Pair {\n    @_magic require pub first: Int32\n}")
+        assertEquals(SourcePosition(2, 9), between.location)
+        assertTrue(between.message.endsWith("Help: write it as 'pub mut @_const feed: () Void { }'."), between.message)
+        val field = refused("pub Pair: Any {\n    @_magic pub first: Int32\n}")
         assertEquals("parse.intrinsic.order", field.tag)
-        assertTrue(field.message.endsWith("Help: write it as 'require pub @_magic first: Int32'."), field.message)
+        assertTrue(field.message.endsWith("Help: write it as 'pub @_magic first: Int32'."), field.message)
     }
 
     @Test
     fun aNewlineBeforeTheDeclarationIsRefused() {
-        val e = refused("pub @_opaque\nclass Tag { }")
+        val e = refused("pub @_opaque\nTag: Any { }")
         assertEquals("parse.intrinsic.newline", e.tag)
-        assertEquals(SourcePosition(2, 5), e.location)
-        assertTrue(e.message.endsWith("Help: write it as 'pub @_opaque class Tag { }'."), e.message)
+        assertEquals(SourcePosition(1, 5), e.location)
+        assertTrue(e.message.endsWith("Help: write it as 'pub @_opaque Tag: Any { }'."), e.message)
         val field = refused("pub @_extern(cpp = \"bibo::LIMIT\", header = \"car.hxx\")\nLIMIT: Int32")
         assertEquals("parse.intrinsic.newline", field.tag)
         assertTrue(field.message.endsWith("Help: write it as 'pub @_extern(cpp = \"bibo::LIMIT\", header = \"car.hxx\") LIMIT: Int32'."), field.message)
-        val args = refused("pub @_extern(\n    raises = \"OSError\") fx readText: (path: Str) Str")
+        val args = refused("pub @_extern(\n    raises = \"OSError\") readText: (path: Str) Str")
         assertEquals("parse.intrinsic.newline", args.tag)
-        assertTrue(args.message.endsWith("Help: write it as 'pub @_extern(raises = \"OSError\") fx readText: (path: Str) Str'."), args.message)
+        assertTrue(args.message.endsWith("Help: write it as 'pub @_extern(raises = \"OSError\") readText: (path: Str) Str'."), args.message)
     }
 
     @Test
@@ -164,20 +164,20 @@ class IntrinsicSlotTest {
         val p = parse(
             """
             @_static_assert(1 == 1, "ok")
-            fx f: () Void {
+            f: () Void {
                 @_static_assert(2 == 2, "in a body")
                 n: Int32 = @_infer
             }
-            pub class V2 {
+            pub V2: Any {
                 pub x: Float32 = 0.0
-                pub fx @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
             }
             """
         )
         assertEquals("_static_assert", assertIs<IntrinsicExpr>(p.decls[0]).intrinsicKey.name)
         assertIs<FunctionDecl>(p.decls[1])
         assertIs<ClassDecl>(p.decls[2])
-        val stray = refused("fx f: () Int32 {\n    @_extern(\"fopen\")\n    return 0\n}")
+        val stray = refused("f: () Int32 {\n    @_extern(\"fopen\")\n    return 0\n}")
         assertEquals("KiraParser::parseStatement", stray.tag)
     }
 }

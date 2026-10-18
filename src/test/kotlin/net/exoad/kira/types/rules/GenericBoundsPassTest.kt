@@ -8,25 +8,25 @@ import kotlin.test.assertTrue
 
 class GenericBoundsPassTest {
     private val decls = """
-        pub trait Shape {
-            pub fx area: () Int32;
+        pub Shape: Any {
+            pub area: () Int32;
         }
-        pub struct Sq: Shape {
+        pub Sq: Struct, Shape {
             pub s: Int32 = 1
-            override pub fx area: () Int32 {
+            override pub area: () Int32 {
                 return s * s
             }
         }
-        pub struct Pt {
+        pub Pt: Struct {
             pub x: Int32 = 0
         }
-        pub class Box<T: Shape> {
-            require pub v: T
+        pub Box<T: Shape>: Any {
+            pub v: T
         }
-        pub fx bigger<T: Shape>: (a: T, b: T) Int32 {
+        pub bigger<T: Shape>: (a: T, b: T) Int32 {
             return a.area() + b.area()
         }
-        pub fx half<T: FloatNum>: (v: T) T {
+        pub half<T: FloatNum>: (v: T) T {
             return v
         }
     """
@@ -38,11 +38,11 @@ class GenericBoundsPassTest {
         expectClean(
             snippet(
                 decls + """
-                pub fx f: () Int32 {
+                pub f: () Int32 {
                     b: Box<Sq> = Box<Sq> { v = Sq {} }
                     return bigger<Sq>(b.v, Sq {})
                 }
-                pub fx g: (v: Float32) Float32 {
+                pub g: (v: Float32) Float32 {
                     return half<Float32>(v) + half<Float32>(v)
                 }
                 """,
@@ -55,12 +55,12 @@ class GenericBoundsPassTest {
         expectClean(
             snippet(
                 decls + """
-                pub fx wrap<U: Shape>: (u: U) Box<U> {
+                pub wrap<U: Shape>: (u: U) Box<U> {
                     return Box<U> { v = u }
                 }
-                pub class Pair<A: Shape, B: Shape> {
-                    require pub a: Box<A>
-                    require pub b: Box<B>
+                pub Pair<A: Shape, B: Shape>: Any {
+                    pub a: Box<A>
+                    pub b: Box<B>
                 }
                 """,
             ),
@@ -72,10 +72,10 @@ class GenericBoundsPassTest {
         expectClean(
             snippet(
                 """
-                pub class Any<T> {
-                    require pub v: T
+                pub Any<T>: Any {
+                    pub v: T
                 }
-                pub fx f: () Int32 {
+                pub f: () Int32 {
                     a: Any<Str> = Any<Str> { v = "x" }
                     b: Any<List<Int32>> = Any<List<Int32>> { v = List<Int32> {} }
                     return 1
@@ -91,7 +91,7 @@ class GenericBoundsPassTest {
     fun aSpelledTypeArgumentOutsideItsBound() {
         val p = snippet(
             decls + """
-            pub fx f: (b: Box<Str>) Box<Pt> {
+            pub f: (b: Box<Str>) Box<Pt> {
                 return Box<Pt> { v = Pt {} }
             }
             """,
@@ -104,10 +104,10 @@ class GenericBoundsPassTest {
     fun anExplicitCallTypeArgumentOutsideItsBound() {
         val p = snippet(
             decls + """
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 return bigger<Pt>(Pt {}, Pt {})
             }
-            pub fx g: (v: Int32) Int32 {
+            pub g: (v: Int32) Int32 {
                 return half<Int32>(v)
             }
             """,
@@ -119,7 +119,7 @@ class GenericBoundsPassTest {
     fun aNestedArgumentIsCheckedWhereItIsSpelled() {
         val p = snippet(
             decls + """
-            pub fx f: (xs: List<Box<Pt>>) Int32 {
+            pub f: (xs: List<Box<Pt>>) Int32 {
                 return 1
             }
             """,

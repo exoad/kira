@@ -35,14 +35,9 @@ object TestCompileSupport {
         return "${parts[0]}/${parts[1].replace('.', '/')}.kira"
     }
 
-    fun wrapModule(moduleUri: String, body: String): String {
-        return buildString {
-            append("module \"")
-            append(moduleUri)
-            appendLine("\"")
-            appendLine()
-            appendLine(body.trimIndent())
-        }
+    /** [body] as the text of module [moduleUri]: the file is the module, named by the path [logicalPathForModule] gives it. */
+    fun wrapModule(@Suppress("UNUSED_PARAMETER") moduleUri: String, body: String): String {
+        return body.trimIndent() + "\n"
     }
 
     fun compileSnippet(
@@ -58,6 +53,8 @@ object TestCompileSupport {
         val srcWithTokens = cu.addSource(logicalPath, src.content, tokens)
 
         KiraSourceParsers.from(srcWithTokens).parse()
+        // Each import's module and each type's role, as every reader of a parsed unit sees them.
+        net.exoad.kira.compiler.DialectLink.link(cu)
 
         val semantics = if (runSemantic) {
             KiraSemanticAnalyzer(cu).validateAST()

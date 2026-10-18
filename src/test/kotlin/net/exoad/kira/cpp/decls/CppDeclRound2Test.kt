@@ -39,10 +39,10 @@ class CppDeclRound2Test {
             DeclTestSupport.module(
                 "test:hold",
                 """
-                use "kira:sync"
-                use "kira:os"
+                kira.sync as sync
+                kira.os as os
 
-                pub struct Holder {
+                pub Holder: Struct {
                     pub q: BlockingQueue<Str> = BlockingQueue<Str> {}
                     pub xs: List<Str> = List<Str> {}
                     pub poll: Poller = Poller {}
@@ -51,7 +51,7 @@ class CppDeclRound2Test {
                 pub mut inbox: BlockingQueue<Str> = BlockingQueue<Str> {}
                 pub OUTBOX: BlockingQueue<Int32> = BlockingQueue<Int32> {}
                 mut backlog: BlockingQueue<Int32> = BlockingQueue<Int32> {}
-                pub fx go: () Void;
+                pub go: () Void;
                 """,
             ),
         )
@@ -79,15 +79,15 @@ class CppDeclRound2Test {
         val net = DeclTestSupport.module(
             "test:net",
             """
-            use "kira:os"
+            kira.os as os
 
-            pub struct Link {
+            pub Link: Struct {
                 pub last: Datagram
                 pub sock: Maybe<UdpSocket> = null
                 pub events: Int32 = POLL_READ
             }
-            pub fx send: (s: UdpSocket, d: Datagram) Bool;
-            pub fx ready: (r: Ready) Bool;
+            pub send: (s: UdpSocket, d: Datagram) Bool;
+            pub ready: (r: Ready) Bool;
             """,
         )
         val emitted = DeclTestSupport.emit(net)
@@ -128,19 +128,19 @@ class CppDeclRound2Test {
             "test:util",
             """
             pub LIMIT: Int32 = 1
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Pt: Struct { pub x: Int32 = 0 }
             hidden: Int32 = 4
             """,
         )
         val other = DeclTestSupport.module(
             "test:other",
             """
-            use "test:util"
+            test.util as util
 
             LIMIT: Int32 = 2
             mut counter: Int32 = LIMIT
             hidden: Int32 = 5
-            pub fx get: (p: Pt) Int32;
+            pub get: (p: Pt) Int32;
             """,
         )
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:util" to "shared", "test:other" to "shared"))

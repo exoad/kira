@@ -74,17 +74,17 @@ class RulesCorpusTest {
     @Test
     fun hallAndTextAreTypedFreestanding() {
         // The corpus test reads each case's kira.yaml; these two declare freestanding modules, so ProfilePass runs on them.
-        assertEquals(listOf("pico:hall"), options(File(corpus, "hall")).freestanding)
-        assertEquals(listOf("lib:text"), options(File(corpus, "text")).freestanding)
+        assertEquals(listOf("golden.hall.pico.hall"), options(File(corpus, "hall")).freestanding)
+        assertEquals(listOf("golden.text.lib.text"), options(File(corpus, "text")).freestanding)
     }
 
     @Test
     fun closuresCounterSharesThisAndApplyToIsATemplate() {
         val p = TyperTestSupport.project(File(corpus, "closures"), TyperMode.STRICT)
-        assertTrue(RulesTestSupport.cls(p, "Counter", "lang:closures").thisEscapes, "Counter.multiplier returns a lambda over this (kira::Shared<Counter>)")
-        assertFalse(RulesTestSupport.cls(p, "Gain", "lang:closures").thisEscapes)
-        assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "applyTo", "lang:closures").params[0]))
-        assertFalse(p.model.fxEscapes(RulesTestSupport.method(p, "Counter", "apply", "lang:closures").params[0]))
+        assertTrue(RulesTestSupport.cls(p, "Counter", "golden.closures:lang.closures").thisEscapes, "Counter.multiplier returns a lambda over this (kira::Shared<Counter>)")
+        assertFalse(RulesTestSupport.cls(p, "Gain", "golden.closures:lang.closures").thisEscapes)
+        assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "applyTo", "golden.closures:lang.closures").params[0]))
+        assertFalse(p.model.fxEscapes(RulesTestSupport.method(p, "Counter", "apply", "golden.closures:lang.closures").params[0]))
     }
 
     @Test
@@ -95,7 +95,7 @@ class RulesCorpusTest {
         // writeU32 and readHeader write through a MutView or to a mut parameter, command and the frames built
         // on it call writeU32, and eachPacket calls through an Fx value: IMPURE.
         val p = TyperTestSupport.project(File(corpus, "unilidar"), TyperMode.STRICT)
-        val m = p.module("pilot:unilidar")!!
+        val m = p.module("golden.unilidar:pilot.unilidar")!!
         val fns = m.declarations.filterIsInstance<FnSymbol>().associateBy { it.name }
         assertTrue(fns.size >= 12, fns.keys.toString())
         val reads = setOf("crc32", "readU32", "tailClosed", "packetAt")
@@ -103,9 +103,9 @@ class RulesCorpusTest {
             assertEquals(if (name in reads) Effect.READS else Effect.IMPURE, p.model.effect(fn), name)
         }
         val model = p.model
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | p[1] as UInt32 << 8", "pilot:unilidar")))
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "out.size as Size == buf.size()", "pilot:unilidar")))
-        assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "pilot:unilidar").params[1]))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | p[1] as UInt32 << 8", "golden.unilidar:pilot.unilidar")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "out.size as Size == buf.size()", "golden.unilidar:pilot.unilidar")))
+        assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "golden.unilidar:pilot.unilidar").params[1]))
     }
 
     @TestFactory
@@ -185,11 +185,11 @@ class RulesCorpusTest {
     @Test
     fun chainAndSenderKeepThisInside() {
         val chain = TyperTestSupport.project(File(corpus, "chain"), TyperMode.STRICT)
-        assertFalse(RulesTestSupport.cls(chain, "Chain", "pilot:chain").thisEscapes)
+        assertFalse(RulesTestSupport.cls(chain, "Chain", "golden.chain:pilot.chain").thisEscapes)
         val sender = TyperTestSupport.project(File(corpus, "sender"), TyperMode.STRICT)
-        assertFalse(RulesTestSupport.cls(sender, "Sender", "pilot:carrules").thisEscapes)
-        assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "send", "pilot:carrules")))
+        assertFalse(RulesTestSupport.cls(sender, "Sender", "golden.sender:pilot.carrules").thisEscapes)
+        assertEquals(Effect.IMPURE, sender.model.effect(RulesTestSupport.method(sender, "Sender", "send", "golden.sender:pilot.carrules")))
         // A class method reads its fields through a reference a sibling operand could write (D33): READS.
-        assertEquals(Effect.READS, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "pilot:carrules")))
+        assertEquals(Effect.READS, sender.model.effect(RulesTestSupport.method(sender, "Sender", "sentMs", "golden.sender:pilot.carrules")))
     }
 }

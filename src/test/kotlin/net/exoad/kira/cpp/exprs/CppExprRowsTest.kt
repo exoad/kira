@@ -30,16 +30,14 @@ class CppExprRowsTest {
     private val shapes = Module(
         "rows:shapes",
         """
-        pub struct Pt {
+        pub Pt: Struct {
             pub x: Int32 = 0
             pub y: Int32 = 0
         }
 
-        pub enum Dir: Int32 { DIR_N = 0, DIR_S = 1 }
-
         pub SCALE: Int32 = 3
 
-        pub fx origin: () Pt {
+        pub origin: () Pt {
             return Pt { }
         }
         """,
@@ -49,26 +47,26 @@ class CppExprRowsTest {
         row(
             "r1",
             """
-            pub fx wrapAdd: (a: UInt8, b: UInt8) UInt8 {
+            pub wrapAdd: (a: UInt8, b: UInt8) UInt8 {
                 return a + b
             }
 
-            pub fx low3: (next: UInt8) UInt8 {
+            pub low3: (next: UInt8) UInt8 {
                 bits: UInt8 = next & 7
                 return bits
             }
 
-            pub fx bump: (x: UInt8) UInt8 {
+            pub bump: (x: UInt8) UInt8 {
                 mut y: UInt8 = x
                 y += 1
                 return y
             }
 
-            pub fx negate: (a: Int8) Int8 {
+            pub negate: (a: Int8) Int8 {
                 return -a
             }
 
-            pub fx flip: (a: UInt16) UInt16 {
+            pub flip: (a: UInt16) UInt16 {
                 return ~a
             }
             """,
@@ -91,29 +89,29 @@ class CppExprRowsTest {
         row(
             "r2",
             """
-            pub fx crcInit: () UInt32 {
+            pub crcInit: () UInt32 {
                 mut crc: UInt32 = 0xFFFFFFFF
                 crc = crc ^ 1
                 return crc
             }
 
-            pub fx trillion: () Int64 {
+            pub trillion: () Int64 {
                 return 1000000 * 1000000
             }
 
-            pub fx pick: (c: Bool) Int8 {
+            pub pick: (c: Bool) Int8 {
                 return if c { 1 } else { -1 }
             }
 
-            pub fx lowest: () Int32 {
+            pub lowest: () Int32 {
                 return -2147483648
             }
 
-            pub fx perMs: (d: UInt32) UInt32 {
+            pub perMs: (d: UInt32) UInt32 {
                 return 1000000 / d
             }
 
-            pub fx wide: (n: Int64) Int64 {
+            pub wide: (n: Int64) Int64 {
                 return n * 3 + 1
             }
             """,
@@ -138,15 +136,15 @@ class CppExprRowsTest {
         row(
             "r3",
             """
-            pub fx scaled: (v: Float32) Float32 {
+            pub scaled: (v: Float32) Float32 {
                 return v * 1000.0 + 0.5
             }
 
-            pub fx positive: (x: Float64) Bool {
+            pub positive: (x: Float64) Bool {
                 return x > 0
             }
 
-            pub fx half: () Float32 {
+            pub half: () Float32 {
                 return 0.5
             }
             """,
@@ -162,21 +160,17 @@ class CppExprRowsTest {
             Module(
                 "rows:r4",
                 """
-                use "rows:shapes"
+                rows.shapes as shapes
 
-                pub fx sumOf: (p: Pt) Int32 {
+                pub sumOf: (p: Pt) Int32 {
                     return p.x + p.y
                 }
 
-                pub fx south: () Dir {
-                    return Dir.DIR_S
-                }
-
-                pub fx scale: (v: Int32) Int32 {
+                pub scale: (v: Int32) Int32 {
                     return v * SCALE
                 }
 
-                pub fx fromOrigin: () Int32 {
+                pub fromOrigin: () Int32 {
                     return origin().x
                 }
                 """,
@@ -184,13 +178,11 @@ class CppExprRowsTest {
             listOf(
                 "[[nodiscard]] std::int32_t sumOf(const ::shapes::Pt& p);",
                 "return p.x + p.y;",
-                "return ::shapes::Dir::DIR_S;",
                 "return v * ::shapes::SCALE;",
                 "return ::shapes::origin().x;",
             ),
             listOf(
                 """check(r4::sumOf(shapes::Pt{.x = 2, .y = 3}) == 5, "R4: a struct's field is s.f");""",
-                """check(r4::south() == shapes::Dir::DIR_S, "R4: an enum entry is E::F, from another module ::ns::E::F");""",
                 """check(r4::scale(2) == 6, "R4: another module's constant is ::ns::NAME");""",
                 """check(r4::fromOrigin() == 0, "R4: another module's function is ::ns::f");""",
             ),
@@ -200,26 +192,26 @@ class CppExprRowsTest {
             """
             pub LIDAR_IP: Str = "192.168.1.62"
 
-            pub fx len: (s: Str) Size {
+            pub len: (s: Str) Size {
                 return s.length()
             }
 
-            pub fx ipLen: () Size {
+            pub ipLen: () Size {
                 return LIDAR_IP.length()
             }
 
-            pub fx grow: (n: Int32) List<Int32> {
+            pub grow: (n: Int32) List<Int32> {
                 mut xs: List<Int32> = List<Int32> { }
                 xs.add(n)
                 xs.add(n + 1)
                 return xs
             }
 
-            pub fx count: (v: View<UInt8>) Size {
+            pub count: (v: View<UInt8>) Size {
                 return v.size()
             }
 
-            pub fx absOf: (x: Int32) Int32 {
+            pub absOf: (x: Int32) Int32 {
                 return x.abs()
             }
             """,
@@ -243,23 +235,23 @@ class CppExprRowsTest {
         row(
             "r6",
             """
-            pub fx sub: (a: Int32, b: Int32) Int32 {
+            pub sub: (a: Int32, b: Int32) Int32 {
                 return a - b
             }
 
-            pub fx three: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 {
+            pub three: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 {
                 return a * 100 + b * 10 + c
             }
 
-            pub fx named: () Int32 {
+            pub named: () Int32 {
                 return sub(b = 3, a = 10)
             }
 
-            pub fx skipMiddle: () Int32 {
+            pub skipMiddle: () Int32 {
                 return three(1, c = 9)
             }
 
-            pub fx trailing: () Int32 {
+            pub trailing: () Int32 {
                 return three(1)
             }
             """,
@@ -278,7 +270,7 @@ class CppExprRowsTest {
         row(
             "r7",
             """
-            pub @_const fx sq: (x: Int32) Int32 {
+            pub @_const sq: (x: Int32) Int32 {
                 return x * x
             }
 
@@ -295,12 +287,12 @@ class CppExprRowsTest {
             """
             pub mut calls: Int32 = 0
 
-            pub fx tick: () Int32 {
+            pub tick: () Int32 {
                 calls += 1
                 return calls
             }
 
-            pub fx twice: () Int32 {
+            pub twice: () Int32 {
                 tick()
                 tick()
                 return calls
@@ -312,21 +304,21 @@ class CppExprRowsTest {
         row(
             "r9",
             """
-            pub struct Reply {
+            pub Reply: Struct {
                 pub kind: Int32 = 0
                 pub line: Str = ""
                 pub rest: Str = ""
             }
 
-            pub fx make: (s: Str) Reply {
+            pub make: (s: Str) Reply {
                 return Reply { rest = "r", line = s }
             }
 
-            pub fx positional: () Reply {
+            pub positional: () Reply {
                 return Reply { 1, "a", "b" }
             }
 
-            pub fx cell: () Int32 {
+            pub cell: () Int32 {
                 c: Ref<Int32> = Ref<Int32> { value = 7 }
                 return c.value
             }
@@ -346,56 +338,56 @@ class CppExprRowsTest {
         row(
             "r10",
             """
-            pub fx scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
-                return fx(x: Int32) Int32 {
+            pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+                return (x: Int32) Int32 {
                     return x * k
                 }
             }
 
-            pub fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                 return f(x)
             }
 
-            pub fx addAll: (xs: List<Int32>, k: Int32) Int32 {
+            pub addAll: (xs: List<Int32>, k: Int32) Int32 {
                 mut total: Int32 = 0
                 for x: Int32 in xs {
-                    total += applyTo(fx(v: Int32) Int32 {
+                    total += applyTo((v: Int32) Int32 {
                         return v + k
                     }, x)
                 }
                 return total
             }
 
-            pub struct Gain {
+            pub Gain: Struct {
                 pub k: Int32 = 3
 
-                pub fx scaler: () Fx<Tuple1<Int32>, Int32> {
-                    return fx(x: Int32) Int32 {
+                pub scaler: () Fx<Tuple1<Int32>, Int32> {
+                    return (x: Int32) Int32 {
                         return x * k
                     }
                 }
 
-                pub fx twice: (x: Int32) Int32 {
+                pub twice: (x: Int32) Int32 {
                     return x * k * 2
                 }
 
-                pub fx twicer: () Fx<Tuple1<Int32>, Int32> {
-                    return fx(x: Int32) Int32 {
+                pub twicer: () Fx<Tuple1<Int32>, Int32> {
+                    return (x: Int32) Int32 {
                         return twice(x)
                     }
                 }
             }
 
-            pub fx tally: () Fx<Tuple0, Int32> {
+            pub tally: () Fx<Tuple0, Int32> {
                 counter: Ref<Int32> = Ref<Int32> { value = 0 }
-                return fx() Int32 {
+                return () Int32 {
                     counter.value = counter.value + 1
                     return counter.value
                 }
             }
 
-            pub fx constant: () Fx<Tuple1<Int32>, Int32> {
-                return fx(x: Int32) Int32 {
+            pub constant: () Fx<Tuple1<Int32>, Int32> {
+                return (x: Int32) Int32 {
                     return 5
                 }
             }
@@ -424,23 +416,23 @@ class CppExprRowsTest {
         row(
             "r11",
             """
-            pub fx ratio: (a: Int32, b: Int32) Int32 {
+            pub ratio: (a: Int32, b: Int32) Int32 {
                 return a / b
             }
 
-            pub fx rem: (a: Int32, b: Int32) Int32 {
+            pub rem: (a: Int32, b: Int32) Int32 {
                 return a % b
             }
 
-            pub fx tenth: (a: Int32) Int32 {
+            pub tenth: (a: Int32) Int32 {
                 return a / 10
             }
 
-            pub fx byMinusOne: (a: Int32) Int32 {
+            pub byMinusOne: (a: Int32) Int32 {
                 return a / -1
             }
 
-            pub fx halve: (mut a: Int32, b: Int32) Void {
+            pub halve: (mut a: Int32, b: Int32) Void {
                 a /= b
             }
             """,
@@ -462,19 +454,19 @@ class CppExprRowsTest {
         row(
             "r12",
             """
-            pub fx shift: (v: UInt32, n: UInt32) UInt32 {
+            pub shift: (v: UInt32, n: UInt32) UInt32 {
                 return v << n
             }
 
-            pub fx eighth: (v: UInt32) UInt32 {
+            pub eighth: (v: UInt32) UInt32 {
                 return v >> 3
             }
 
-            pub fx doubled: (v: UInt8) UInt8 {
+            pub doubled: (v: UInt8) UInt8 {
                 return v << 1
             }
 
-            pub fx top: (v: Int32) Int32 {
+            pub top: (v: Int32) Int32 {
                 return v >>> 28
             }
             """,
@@ -494,37 +486,31 @@ class CppExprRowsTest {
         row(
             "r13",
             """
-            pub enum Mood: Int32 { MOOD_CALM = 0, MOOD_BUSY = 1 }
-
-            pub fx toInt: (v: Float64) Int32 {
+            pub toInt: (v: Float64) Int32 {
                 return v as Int32
             }
 
-            pub fx narrow: (v: Int64) Int32 {
+            pub narrow: (v: Int64) Int32 {
                 return v as Int32
             }
 
-            pub fx widen: (v: Int32) Float64 {
+            pub widen: (v: Int32) Float64 {
                 return v as Float64
             }
 
-            pub fx half: (v: Float64) Float32 {
+            pub half: (v: Float64) Float32 {
                 return v as Float32
             }
 
-            pub fx code: (c: Char) UInt8 {
+            pub code: (c: Char) UInt8 {
                 return c as UInt8
             }
 
-            pub fx letter: (n: UInt8) Char {
+            pub letter: (n: UInt8) Char {
                 return n as Char
             }
 
-            pub fx raw: (m: Mood) Int32 {
-                return m as Int32
-            }
-
-            pub fx shown: (n: Int32) Str {
+            pub shown: (n: Int32) Str {
                 return n as Str
             }
             """,
@@ -535,7 +521,6 @@ class CppExprRowsTest {
                 "return static_cast<float>(v);",
                 "return static_cast<std::uint8_t>(static_cast<unsigned char>(c));",
                 "return static_cast<char>(n);",
-                "return static_cast<std::int32_t>(m);",
                 "return kira::text(n);",
             ),
             listOf(
@@ -546,7 +531,6 @@ class CppExprRowsTest {
                 """check(r13::half(0.5) == 0.5f, "R13: float to float");""",
                 """check(r13::code(static_cast<char>(-1)) == 255, "R13: Char to int is the unsigned code unit");""",
                 """check(r13::letter(65) == 'A', "R13: int to Char");""",
-                """check(r13::raw(r13::Mood::MOOD_BUSY) == 1, "R13: an enum to its base");""",
                 """check(r13::shown(-42) == "-42", "R13: as Str is kira::text");""",
             ),
         ),
@@ -555,19 +539,19 @@ class CppExprRowsTest {
             """
             pub TAG: Str = "tag"
 
-            pub fx greet: (name: Str, n: Int32) Str {
+            pub greet: (name: Str, n: Int32) Str {
                 return "hello ${'$'}{name}, you are ${'$'}{n}"
             }
 
-            pub fx joined: (a: Str, b: Str) Str {
+            pub joined: (a: Str, b: Str) Str {
                 return a + " " + b
             }
 
-            pub fx bracketed: (s: Str) Str {
+            pub bracketed: (s: Str) Str {
                 return "<" + s + ">"
             }
 
-            pub fx tagged: (s: Str) Str {
+            pub tagged: (s: Str) Str {
                 return TAG + ":" + s
             }
             """,
@@ -587,23 +571,23 @@ class CppExprRowsTest {
         row(
             "r15",
             """
-            pub fx initial: (s: Str) Char {
+            pub initial: (s: Str) Char {
                 return s[0]
             }
 
-            pub fx second: (xs: List<Int32>) Int32 {
+            pub second: (xs: List<Int32>) Int32 {
                 return xs[1]
             }
 
-            pub fx third: (a: Arr<UInt8, 4>) UInt8 {
+            pub third: (a: Arr<UInt8, 4>) UInt8 {
                 return a[2]
             }
 
-            pub fx fourth: (v: View<UInt8>) UInt8 {
+            pub fourth: (v: View<UInt8>) UInt8 {
                 return v[3]
             }
 
-            pub fx setFirst: (mut a: Arr<Int32, 2>, v: Int32) Void {
+            pub setFirst: (mut a: Arr<Int32, 2>, v: Int32) Void {
                 a[0] = v
             }
             """,
@@ -624,28 +608,22 @@ class CppExprRowsTest {
         row(
             "r16",
             """
-            pub struct P2 {
+            pub P2: Struct {
                 pub x: Int32 = 0
                 pub y: Int32 = 0
             }
 
-            pub enum Light: Int32 { LIGHT_RED = 0, LIGHT_GREEN = 1 }
-
             pub A: Str = "abc"
 
-            pub fx samePoint: (a: P2, b: P2) Bool {
+            pub samePoint: (a: P2, b: P2) Bool {
                 return a == b
             }
 
-            pub fx sameText: (a: Str, b: Str) Bool {
+            pub sameText: (a: Str, b: Str) Bool {
                 return a == b
             }
 
-            pub fx isGreen: (l: Light) Bool {
-                return l == Light.LIGHT_GREEN
-            }
-
-            pub fx constEq: () Bool {
+            pub constEq: () Bool {
                 return A == "abc"
             }
 
@@ -654,25 +632,23 @@ class CppExprRowsTest {
             listOf(
                 "bool operator==(const P2&) const = default;",
                 "return a == b;",
-                "return l == Light::LIGHT_GREEN;",
                 "return std::string_view(A) == \"abc\";",
                 "static_assert(std::string_view(A) == \"abc\", \"A is abc\");",
             ),
             listOf(
                 """check(r16::samePoint(r16::P2{.x = 1, .y = 2}, r16::P2{.x = 1, .y = 2}) && !r16::samePoint(r16::P2{.x = 1, .y = 2}, r16::P2{}), "R16: struct == is memberwise");""",
                 """check(r16::sameText("q", std::string("q")) && !r16::sameText("q", "r"), "R16: Str == compares the text");""",
-                """check(r16::isGreen(r16::Light::LIGHT_GREEN) && !r16::isGreen(r16::Light::LIGHT_RED), "R16: enum ==");""",
                 """check(r16::constEq(), "R16: two const char* compare their text, not their addresses");""",
             ),
         ),
         row(
             "r17",
             """
-            pub fx before: (a: Char, b: Char) Bool {
+            pub before: (a: Char, b: Char) Bool {
                 return a < b
             }
 
-            pub fx same: (a: Char, b: Char) Bool {
+            pub same: (a: Char, b: Char) Bool {
                 return a == b
             }
             """,
@@ -686,19 +662,19 @@ class CppExprRowsTest {
         row(
             "r18",
             """
-            pub fx pick: (neg: Bool, v: Float32) Float32 {
+            pub pick: (neg: Bool, v: Float32) Float32 {
                 return if neg { -v } else { v }
             }
 
-            pub fx label: (a: Int32) Str {
+            pub label: (a: Int32) Str {
                 return if a == 0 { "zero" } else if a > 0 { "pos" } else { "neg" }
             }
 
-            pub fx positive: (a: Int32) Maybe<Int32> {
+            pub positive: (a: Int32) Maybe<Int32> {
                 return if a > 0 { a } else { null }
             }
 
-            pub fx longer: (a: Int32, neg: Bool) Int32 {
+            pub longer: (a: Int32, neg: Bool) Int32 {
                 return if neg {
                     t: Int32 = a * 2
                     t + 1
@@ -727,20 +703,20 @@ class CppExprRowsTest {
             """
             mut ticks: Int32 = 0
 
-            fx next: () Int32 {
+            next: () Int32 {
                 ticks += 1
                 return ticks
             }
 
-            fx sub: (a: Int32, b: Int32) Int32 {
+            sub: (a: Int32, b: Int32) Int32 {
                 return a - b
             }
 
-            pub fx ordered: () Int32 {
+            pub ordered: () Int32 {
                 return sub(next(), next())
             }
 
-            pub fx pureArgs: (a: Int32, b: Int32) Int32 {
+            pub pureArgs: (a: Int32, b: Int32) Int32 {
                 return sub(a + 1, b * 2)
             }
             """,
@@ -758,7 +734,7 @@ class CppExprRowsTest {
         row(
             "r20",
             """
-            pub fx bits: (f: Float32) UInt32 {
+            pub bits: (f: Float32) UInt32 {
                 return bitCast<UInt32>(f)
             }
             """,
@@ -768,7 +744,7 @@ class CppExprRowsTest {
         row(
             "r21",
             """
-            pub fx show: (x: Int32, b: Bool, f: Float64) Void {
+            pub show: (x: Int32, b: Bool, f: Float64) Void {
                 trace(x)
                 trace(b)
                 trace(f)
@@ -780,11 +756,11 @@ class CppExprRowsTest {
         row(
             "s1",
             """
-            pub struct Holder {
+            pub Holder: Struct {
                 pub n: Int32 = 0
             }
 
-            pub fx locals: (v: Int32) Int32 {
+            pub locals: (v: Int32) Int32 {
                 x: Int32 = v
                 mut y: Int32 = x
                 r: Holder = Holder { n = y }
@@ -800,7 +776,7 @@ class CppExprRowsTest {
             """
             pub LIMIT: Int32 = 4
 
-            pub fx sumTo: (n: Size) Size {
+            pub sumTo: (n: Size) Size {
                 mut t: Size = 0
                 for i: Size in 0..n {
                     t += i
@@ -808,7 +784,7 @@ class CppExprRowsTest {
                 return t
             }
 
-            pub fx constBound: () Int32 {
+            pub constBound: () Int32 {
                 mut t: Int32 = 0
                 for i: Int32 in 0..LIMIT {
                     t += i
@@ -819,7 +795,7 @@ class CppExprRowsTest {
                 return t
             }
 
-            pub fx each: (xs: List<Int32>, names: List<Str>) Int32 {
+            pub each: (xs: List<Int32>, names: List<Str>) Int32 {
                 mut t: Int32 = 0
                 for x: Int32 in xs {
                     t += x
@@ -830,7 +806,7 @@ class CppExprRowsTest {
                 return t
             }
 
-            pub fx legacy: (n: Int32) Int32 {
+            pub legacy: (n: Int32) Int32 {
                 mut t: Int32 = 0
                 for mut i: 0..n {
                     t += i
@@ -856,23 +832,24 @@ class CppExprRowsTest {
         row(
             "s3",
             """
-            pub enum K2: Int32 { K2_OK = 0, K2_ERR = 1 }
+            pub K2_OK: Int32 = 0
+            pub K2_ERR: Int32 = 1
 
-            pub struct Out {
-                pub kind: K2 = K2.K2_OK
+            pub Out: Struct {
+                pub kind: Int32 = K2_OK
             }
 
             pub TAIL: Arr<UInt8, 2> = [0x00, 0xFF]
 
-            pub fx places: () Int32 {
+            pub places: () Int32 {
                 mut o: Out = Out { }
-                o.kind = K2.K2_ERR
+                o.kind = K2_ERR
                 mut p: Arr<UInt8, 4> = [1, 2, 3, 4]
                 p[3] = TAIL[1]
-                return (p[3] as Int32) + (o.kind as Int32)
+                return (p[3] as Int32) + o.kind
             }
 
-            pub fx mapped: () Size {
+            pub mapped: () Size {
                 mut m: Map<Str, Int32> = Map<Str, Int32> { }
                 m["k"] = 30
                 m["k"] = 31
@@ -880,7 +857,7 @@ class CppExprRowsTest {
             }
             """,
             listOf(
-                "o.kind = K2::K2_ERR;",
+                "o.kind = K2_ERR;",
                 "std::array<std::uint8_t, 4> p = {1, 2, 3, 4};",
                 "kira::at(p, 3) = kira::at(TAIL, 1);",
                 "m[\"k\"] = 30;",
@@ -893,7 +870,7 @@ class CppExprRowsTest {
         row(
             "s4",
             """
-            pub fx control: (n: Int32) Int32 {
+            pub control: (n: Int32) Int32 {
                 mut i: Int32 = 0
                 mut t: Int32 = 0
                 while i < n {
@@ -906,36 +883,33 @@ class CppExprRowsTest {
                     }
                     t += i
                 }
-                do {
-                    t -= 1
-                } while t > 100
                 return t
             }
 
-            pub fx early: (x: Int32) Void {
+            pub early: (x: Int32) Void {
                 if x > 0 {
                     return
                 }
                 trace(x)
             }
             """,
-            listOf("while(i < n)", "continue;", "break;", "do", "while(t > 100);", "return;"),
+            listOf("while(i < n)", "continue;", "break;", "return;"),
             listOf(
-                """check(s4::control(10) == 7, "5.4: while, do-while, break, continue");""",
+                """check(s4::control(10) == 8, "5.4: while, break, continue");""",
                 """s4::early(1);""",
             ),
         ),
         row(
             "s5",
             """
-            pub fx risky: (ok: Bool) Int32 {
+            pub risky: (ok: Bool) Int32 {
                 if !ok {
                     throw "bad"
                 }
                 return 1
             }
 
-            pub fx caught: () Str {
+            pub caught: () Str {
                 mut msg: Str = ""
                 try {
                     v: Int32 = risky(false)
@@ -957,26 +931,26 @@ class CppExprRowsTest {
         row(
             "m1",
             """
-            pub fx some: () Maybe<Int32> {
+            pub some: () Maybe<Int32> {
                 return 42
             }
 
-            pub fx nothing: () Maybe<Int32> {
+            pub nothing: () Maybe<Int32> {
                 return null
             }
 
-            pub fx read: (m: Maybe<Int32>) Int32 {
+            pub read: (m: Maybe<Int32>) Int32 {
                 if m.isNone() {
                     return -1
                 }
                 return m.unwrap() + m.unwrapOr(0)
             }
 
-            pub fx small: () Maybe<UInt8> {
+            pub small: () Maybe<UInt8> {
                 return 200
             }
 
-            pub fx locals: () Int32 {
+            pub locals: () Int32 {
                 a: Maybe<Int32> = null
                 b: Maybe<Int32> = 7
                 return a.unwrapOr(1) + b.value
@@ -1001,16 +975,16 @@ class CppExprRowsTest {
         row(
             "d24",
             """
-            pub fx run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
+            pub run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
                 f(mut x)
             }
 
-            pub fx twiceBumped: () Int32 {
+            pub twiceBumped: () Int32 {
                 mut n: Int32 = 1
-                run(fx(mut v: Int32) Void {
+                run((mut v: Int32) Void {
                     v += 1
                 }, mut n)
-                run(fx(mut v: Int32) Void {
+                run((mut v: Int32) Void {
                     v += 1
                 }, mut n)
                 return n
@@ -1022,14 +996,14 @@ class CppExprRowsTest {
         row(
             "d39",
             """
-            pub fx half: (n: Int32) Result<Int32, Str> {
+            pub half: (n: Int32) Result<Int32, Str> {
                 if n % 2 != 0 {
                     return Result.error("odd")
                 }
                 return Result.success(n / 2)
             }
 
-            pub fx halved: (n: Int32) Int32 {
+            pub halved: (n: Int32) Int32 {
                 r: Result<Int32, Str> = half(n)
                 if r.isOk() {
                     return r.unwrap()
@@ -1048,11 +1022,11 @@ class CppExprRowsTest {
         row(
             "d55",
             """
-            pub fx read: (b: View<UInt8>) Str {
+            pub read: (b: View<UInt8>) Str {
                 return Str.of(b)
             }
 
-            pub fx text: () Str {
+            pub text: () Str {
                 b: List<UInt8> = [0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82]
                 return Str.of(b)
             }
@@ -1066,15 +1040,15 @@ class CppExprRowsTest {
         row(
             "d56",
             """
-            pub fx before: (a: Str, b: Str) Bool {
+            pub before: (a: Str, b: Str) Bool {
                 return a < b
             }
 
-            pub fx atMost: (a: Str) Bool {
+            pub atMost: (a: Str) Bool {
                 return a <= "m"
             }
 
-            pub fx literals: () Bool {
+            pub literals: () Bool {
                 return "abc" < "abd" && "b" >= "abc"
             }
             """,
@@ -1088,23 +1062,23 @@ class CppExprRowsTest {
         row(
             "d57",
             """
-            pub fx padded: (s: Str) Str {
+            pub padded: (s: Str) Str {
                 return s.padEnd(4, '.')
             }
 
-            pub fx trimmed: (s: Str) Str {
+            pub trimmed: (s: Str) Str {
                 return "[" + s.trimStart() + "|" + s.trimEnd() + "]"
             }
 
-            pub fx words: (s: Str) Size {
+            pub words: (s: Str) Size {
                 return s.splitWhitespace().size()
             }
 
-            pub fx swapped: (s: Str) Str {
+            pub swapped: (s: Str) Str {
                 return s.replace("ab", "ba").replace("", "/")
             }
 
-            pub fx hex: (s: Str) Int64 {
+            pub hex: (s: Str) Int64 {
                 return s.toInt64Radix(16).unwrapOr(-1)
             }
             """,
@@ -1124,11 +1098,11 @@ class CppExprRowsTest {
         row(
             "d58",
             """
-            pub fx joined: (xs: List<Str>, sep: Str) Str {
+            pub joined: (xs: List<Str>, sep: Str) Str {
                 return xs.joinToString(sep)
             }
 
-            pub fx words: (s: Str) Str {
+            pub words: (s: Str) Str {
                 return s.splitWhitespace().joinToString("|")
             }
             """,
@@ -1141,11 +1115,11 @@ class CppExprRowsTest {
         row(
             "d59",
             """
-            pub @_const fx wordChar: (c: Char) Bool {
+            pub @_const wordChar: (c: Char) Bool {
                 return c.isDigit() || c.isLetter()
             }
 
-            pub fx spaces: (s: Str) Int32 {
+            pub spaces: (s: Str) Int32 {
                 mut n: Int32 = 0
                 mut i: Size = 0
                 while i < s.length() {
@@ -1166,13 +1140,13 @@ class CppExprRowsTest {
         row(
             "d60",
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx rem: (a: Float64, b: Float64) Float64 {
+            pub rem: (a: Float64, b: Float64) Float64 {
                 return fmod(a, b)
             }
 
-            pub fx rem32: (a: Float32, b: Float32) Float32 {
+            pub rem32: (a: Float32, b: Float32) Float32 {
                 return fmod(a, b)
             }
             """,
@@ -1186,21 +1160,21 @@ class CppExprRowsTest {
         row(
             "k5",
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx hyp32: (x: Float32, y: Float32) Float32 {
+            pub hyp32: (x: Float32, y: Float32) Float32 {
                 return hypot(x, y)
             }
 
-            pub fx angle32: (y: Float32, x: Float32) Float32 {
+            pub angle32: (y: Float32, x: Float32) Float32 {
                 return atan2(y, x)
             }
 
-            pub fx exp32: (v: Float32) Float32 {
+            pub exp32: (v: Float32) Float32 {
                 return exp(v)
             }
 
-            pub fx mod32: (a: Float32, b: Float32) Float32 {
+            pub mod32: (a: Float32, b: Float32) Float32 {
                 return floorMod(a, b)
             }
             """,
@@ -1215,23 +1189,23 @@ class CppExprRowsTest {
         row(
             "d61",
             """
-            pub fx sorted: (xs: List<Int32>) List<Int32> {
+            pub sorted: (xs: List<Int32>) List<Int32> {
                 mut out: List<Int32> = xs
                 out.sort()
                 return out
             }
 
-            pub fx words: (s: Str) Str {
+            pub words: (s: Str) Str {
                 mut ws: List<Str> = s.splitWhitespace()
                 ws.sort()
                 return ws.joinToString(",")
             }
 
-            pub fx total: (xs: List<UInt8>) UInt8 {
+            pub total: (xs: List<UInt8>) UInt8 {
                 return xs.sum()
             }
 
-            pub fx spread: (xs: List<Float64>) Float64 {
+            pub spread: (xs: List<Float64>) Float64 {
                 return xs.maxOrNull().unwrapOr(0.0) - xs.minOrNull().unwrapOr(0.0)
             }
             """,
@@ -1246,21 +1220,21 @@ class CppExprRowsTest {
         row(
             "b1",
             """
-            fx poke: (v: MutView<UInt8>, x: UInt8) Void {
+            poke: (v: MutView<UInt8>, x: UInt8) Void {
                 v[0] = x
             }
 
-            pub fx lend: () UInt8 {
+            pub lend: () UInt8 {
                 mut p: Arr<UInt8, 4> = [0, 0, 0, 0]
                 poke(p.from(2), 9)
                 return p[2]
             }
 
-            pub fx fill: (servo: Int32, esc: UInt32, mut out: StrBuf<32>) Void {
+            pub fill: (servo: Int32, esc: UInt32, mut out: StrBuf<32>) Void {
                 out.set("servo=${'$'}{servo} esc=${'$'}{esc}")
             }
 
-            pub fx append: (mut out: StrBuf<32>) Void {
+            pub append: (mut out: StrBuf<32>) Void {
                 out.add("!")
             }
             """,
@@ -1282,45 +1256,45 @@ class CppExprRowsTest {
         row(
             "f1",
             """
-            pub fx negneg: (y: Int32) Int32 {
+            pub negneg: (y: Int32) Int32 {
                 return -(-y)
             }
 
-            pub fx negTwice: (a: Int32) Int32 {
+            pub negTwice: (a: Int32) Int32 {
                 mut y: Int32 = a
                 z: Int32 = -(-y)
                 y += 1
                 return z * 10 + y
             }
 
-            pub fx big: () Int64 {
+            pub big: () Int64 {
                 big: Int64 = 1 << 40
                 return big
             }
 
-            pub fx ubig: () UInt64 {
+            pub ubig: () UInt64 {
                 u: UInt64 = 1 << 63
                 return u
             }
 
-            pub fx mask: (v: UInt64) UInt64 {
+            pub mask: (v: UInt64) UInt64 {
                 m: UInt64 = ~0
                 return v & ~0xFF & m
             }
 
-            pub fx alignDown: (x: Size) Size {
+            pub alignDown: (x: Size) Size {
                 return x & ~7
             }
 
-            pub fx lowNibbleOff: (v: UInt8) UInt8 {
+            pub lowNibbleOff: (v: UInt8) UInt8 {
                 return v & ~0x0F
             }
 
-            pub @_const fx mul16: (a: UInt16, b: UInt16) UInt16 {
+            pub @_const mul16: (a: UInt16, b: UInt16) UInt16 {
                 return a * b
             }
 
-            pub fx mulAssign16: (a: UInt16, b: UInt16) UInt16 {
+            pub mulAssign16: (a: UInt16, b: UInt16) UInt16 {
                 mut x: UInt16 = a
                 x *= b
                 return x
@@ -1352,63 +1326,63 @@ class CppExprRowsTest {
             mut ticks: Int32 = 0
             mut idx: Size = 0
 
-            fx next: () Int32 {
+            next: () Int32 {
                 ticks += 1
                 return ticks
             }
 
-            fx nextSize: () Size {
+            nextSize: () Size {
                 idx += 1
                 return idx
             }
 
-            fx sub: (a: Int32, b: Int32) Int32 {
+            sub: (a: Int32, b: Int32) Int32 {
                 return a - b
             }
 
-            fx store: (mut into: Int32, tens: Int32, ones: Int32) Void {
+            store: (mut into: Int32, tens: Int32, ones: Int32) Void {
                 into = tens * 10 + ones
             }
 
-            pub struct Box {
+            pub Box: Struct {
                 pub v: Int32 = 0
 
-                pub fx pair: (a: Int32, b: Int32) Int32 {
+                pub pair: (a: Int32, b: Int32) Int32 {
                     return v * 100 + a * 10 + b
                 }
 
-                pub mut fx grow: (a: Int32, b: Int32) Void {
+                pub mut grow: (a: Int32, b: Int32) Void {
                     v = v * 100 + a * 10 + b
                 }
             }
 
-            fx makeBox: () Box {
+            makeBox: () Box {
                 ticks += 1
                 return Box { v = ticks }
             }
 
-            pub fx readBesideEffect: () Int32 {
+            pub readBesideEffect: () Int32 {
                 ticks = 0
                 return sub(ticks, next())
             }
 
-            pub fx holeBesideEffect: () Str {
+            pub holeBesideEffect: () Str {
                 ticks = 0
                 return "${'$'}{ticks}:${'$'}{next()}"
             }
 
-            pub fx compoundReadsFirst: () Int32 {
+            pub compoundReadsFirst: () Int32 {
                 ticks = 0
                 ticks += next()
                 return ticks
             }
 
-            pub fx receiverFirst: () Int32 {
+            pub receiverFirst: () Int32 {
                 ticks = 0
                 return makeBox().pair(next(), next())
             }
 
-            pub fx mutIndexFirst: () Int32 {
+            pub mutIndexFirst: () Int32 {
                 ticks = 0
                 idx = 0
                 mut q: Arr<Int32, 4> = [0, 0, 0, 0]
@@ -1416,7 +1390,7 @@ class CppExprRowsTest {
                 return q[1]
             }
 
-            pub fx targetFirst: () Int32 {
+            pub targetFirst: () Int32 {
                 ticks = 0
                 idx = 0
                 mut s: Arr<Int32, 4> = [0, 0, 0, 0]
@@ -1424,7 +1398,7 @@ class CppExprRowsTest {
                 return s[1] * 10 + s[2]
             }
 
-            pub fx dividedOnce: () Int32 {
+            pub dividedOnce: () Int32 {
                 idx = 0
                 mut p: Arr<Int32, 4> = [80, 80, 80, 80]
                 d: Int32 = 2
@@ -1432,7 +1406,7 @@ class CppExprRowsTest {
                 return p[1] * 100 + p[2] + (idx as Int32)
             }
 
-            pub fx shiftedOnce: () Int32 {
+            pub shiftedOnce: () Int32 {
                 idx = 0
                 mut q: Arr<Int32, 4> = [1, 1, 1, 1]
                 n: Int32 = 3
@@ -1440,7 +1414,7 @@ class CppExprRowsTest {
                 return q[1] * 10 + (idx as Int32)
             }
 
-            pub fx mutReceiverBound: () Int32 {
+            pub mutReceiverBound: () Int32 {
                 ticks = 0
                 idx = 0
                 mut boxes: Arr<Box, 1> = [Box { }]
@@ -1475,20 +1449,20 @@ class CppExprRowsTest {
             mut gl: List<Int32> = List<Int32> { values = [11, 22, 33] }
             mut idx: Size = 0
 
-            fx nextSize: () Size {
+            nextSize: () Size {
                 idx += 1
                 return idx
             }
 
-            fx tailV: (v: View<Int32>, k: Size) View<Int32> {
+            tailV: (v: View<Int32>, k: Size) View<Int32> {
                 return v.from(k)
             }
 
-            fx tailAtV: (k: Size, v: View<Int32>) View<Int32> {
+            tailAtV: (k: Size, v: View<Int32>) View<Int32> {
                 return v.from(k)
             }
 
-            fx sumV: (v: View<Int32>) Int32 {
+            sumV: (v: View<Int32>) Int32 {
                 mut s: Int32 = 0
                 for x: Int32 in v {
                     s += x
@@ -1496,55 +1470,55 @@ class CppExprRowsTest {
                 return s
             }
 
-            pub fx viewOfAPlace: () Int32 {
+            pub viewOfAPlace: () Int32 {
                 idx = 0
                 return sumV(tailAtV(nextSize(), gl))
             }
 
-            pub fx viewOfATemporary: () Int32 {
+            pub viewOfATemporary: () Int32 {
                 idx = 0
                 return sumV(tailV(List<Int32> { values = [5, 6, 7] }.view(), nextSize()))
             }
 
-            pub struct Acc {
+            pub Acc: Struct {
                 pub n: Int32 = 1
 
-                pub mut fx bump: () Int32 {
+                pub mut bump: () Int32 {
                     n = 2
                     return 10
                 }
 
-                pub mut fx viaThis: () Int32 {
+                pub mut viaThis: () Int32 {
                     return peek(this, bump())
                 }
             }
 
-            fx peek: (a: Acc, k: Int32) Int32 {
+            peek: (a: Acc, k: Int32) Int32 {
                 return a.n + k
             }
 
-            pub fx thisBeforeBump: () Int32 {
+            pub thisBeforeBump: () Int32 {
                 mut x: Acc = Acc { }
                 return x.viaThis()
             }
 
-            pub fx fixedContains: () Bool {
+            pub fixedContains: () Bool {
                 a: Arr<Int32, 3> = [1, 2, 3]
                 return a.contains(2) && !a.contains(4)
             }
 
-            pub fx fixedClone: () Size {
+            pub fixedClone: () Size {
                 a: Arr<Int32, 3> = [1, 2, 3]
                 c: Arr<Int32> = a.clone()
                 return c.size()
             }
 
-            pub fx mapLiteral: () Int32 {
+            pub mapLiteral: () Int32 {
                 m: Map<Str, Int32> = Map<Str, Int32> { values = [Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }] }
                 return (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 
-            pub fx setLiteral: () Size {
+            pub setLiteral: () Size {
                 s: Set<Int32> = Set<Int32> { values = [3, 4, 3] }
                 e: Map<Str, Int32> = Map<Str, Int32> { values = [] }
                 f: Set<Float32> = Set<Float32> { values = [1.5, 2.5] }

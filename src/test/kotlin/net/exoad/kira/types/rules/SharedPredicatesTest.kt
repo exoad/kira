@@ -27,28 +27,27 @@ class SharedPredicatesTest {
     fun mayHoldFxOverEveryKindOfType() {
         val p = snippet(
             """
-            pub struct Plain {
+            pub Plain: Struct {
                 pub a: Int32 = 0
                 pub s: Str = ""
             }
-            pub struct WithFx {
+            pub WithFx: Struct {
                 pub a: Int32 = 0
                 pub f: Maybe<Fx<Tuple0, Void>> = null
             }
-            pub struct Deep {
+            pub Deep: Struct {
                 pub w: List<WithFx> = List<WithFx> { }
             }
-            pub struct Gen<T> {
+            pub Gen<T>: Struct {
                 pub t: Maybe<T> = null
             }
-            pub class C {
+            pub C: Any {
                 pub a: Int32 = 0
             }
-            pub trait T {
-                pub fx m: () Int32;
+            pub T: Any {
+                pub m: () Int32;
             }
-            pub enum E: Int32 { E_A = 0, E_B = 1 }
-            pub fx table<X>: (a: Int32, b: Str, c: Bool, d: E, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: Tuple2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<Tuple0, Void>, o: List<Fx<Tuple0, Void>>, q: Maybe<Fx<Tuple0, Void>>, r: Tuple2<Int32, Fx<Tuple0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<Tuple0, Void>>, z: Gen<Int32>, zz: Gen<Fx<Tuple0, Void>>) Int32 {
+            pub table<X>: (a: Int32, b: Str, c: Bool, d: Int32, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: Tuple2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<Tuple0, Void>, o: List<Fx<Tuple0, Void>>, q: Maybe<Fx<Tuple0, Void>>, r: Tuple2<Int32, Fx<Tuple0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<Tuple0, Void>>, z: Gen<Int32>, zz: Gen<Fx<Tuple0, Void>>) Int32 {
                 return 0
             }
             """,
@@ -73,15 +72,15 @@ class SharedPredicatesTest {
     }
 
     private val callees = """
-        pub @_extern(cpp = "ext::ext", header = "ext.hxx") fx ext: (p: Unsafe<Int32>) Int32;
-        pub fx proto: (p: Unsafe<Int32>) Int32;
-        pub @_opaque class Handle {
-            pub fx op: (p: Unsafe<Int32>) Int32;
+        pub @_extern(cpp = "ext::ext", header = "ext.hxx") ext: (p: Unsafe<Int32>) Int32;
+        pub proto: (p: Unsafe<Int32>) Int32;
+        pub @_opaque Handle: Any {
+            pub op: (p: Unsafe<Int32>) Int32;
         }
-        pub class Slot {
-            pub fx slot: (p: Unsafe<Int32>) Int32;
+        pub Slot: Any {
+            pub slot: (p: Unsafe<Int32>) Int32;
         }
-        pub fx kira: (p: Unsafe<Int32>) Int32 {
+        pub kira: (p: Unsafe<Int32>) Int32 {
             return 0
         }
     """
@@ -93,7 +92,7 @@ class SharedPredicatesTest {
         // construction fills and a stdlib binding are none of these.
         val p = snippet(
             callees + """
-            pub fx caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
+            pub caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
                 mut ys: List<Int32> = List<Int32> { values = [1] }
                 return ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
             }
@@ -130,19 +129,19 @@ class SharedPredicatesTest {
         // them, or a class (whose field may hold one), it may run anything. A Kira function's body is known.
         val p = snippet(
             """
-            pub class Box {
+            pub Box: Any {
                 pub f: Maybe<Fx<Tuple0, Void>> = null
             }
-            pub @_extern(cpp = "ext::a", header = "ext.hxx") fx a: (n: Int32, s: Str) Int32;
-            pub @_extern(cpp = "ext::b", header = "ext.hxx") fx b: (fs: List<Fx<Tuple0, Void>>) Int32;
-            pub @_extern(cpp = "ext::c", header = "ext.hxx") fx c: (x: Box) Int32;
-            pub @_extern(cpp = "ext::d", header = "ext.hxx") fx d: (f: Fx<Tuple0, Void>) Int32;
-            pub fx k: (x: Box) Int32 {
+            pub @_extern(cpp = "ext::a", header = "ext.hxx") a: (n: Int32, s: Str) Int32;
+            pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<Tuple0, Void>>) Int32;
+            pub @_extern(cpp = "ext::c", header = "ext.hxx") c: (x: Box) Int32;
+            pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<Tuple0, Void>) Int32;
+            pub k: (x: Box) Int32 {
                 return 0
             }
-            pub fx caller: (bx: Box) Int32 {
+            pub caller: (bx: Box) Int32 {
                 fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
-                return a(1, "s") + b(fs) + c(bx) + d(fx () Void { }) + k(bx)
+                return a(1, "s") + b(fs) + c(bx) + d(() Void { }) + k(bx)
             }
             """,
         )
@@ -172,69 +171,69 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub mut G: Int32 = 0
-            pub class K {
+            pub K: Any {
                 pub n: Int32 = 0
-                pub fx get: () Int32 {
+                pub get: () Int32 {
                     return n
                 }
             }
-            pub class Base {
-                pub fx act: () Int32 {
+            pub Base: Any {
+                pub act: () Int32 {
                     return 0
                 }
             }
-            pub class Sub: Base {
-                override pub fx act: () Int32 {
+            pub Sub: Base {
+                override pub act: () Int32 {
                     G += 1
                     return 1
                 }
             }
-            pub trait T {
-                pub fx m: () Int32;
+            pub T: Any {
+                pub m: () Int32;
             }
-            pub fx pure: () Int32 {
+            pub pure: () Int32 {
                 return 1
             }
-            pub fx writesG: () Int32 {
+            pub writesG: () Int32 {
                 G += 1
                 return 1
             }
-            pub fx writesOwn: (mut x: Int32) Int32 {
+            pub writesOwn: (mut x: Int32) Int32 {
                 x += 1
                 return x
             }
-            pub fx apply: (f: Fx<Tuple0, Int32>) Int32 {
+            pub apply: (f: Fx<Tuple0, Int32>) Int32 {
                 return f()
             }
-            pub fx swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
+            pub swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
                 f = writesG
                 return f()
             }
-            pub fx ping: (n: Int32) Int32 {
+            pub ping: (n: Int32) Int32 {
                 if n > 0 {
                     return pong(n - 1)
                 }
                 return 0
             }
-            pub fx pong: (n: Int32) Int32 {
+            pub pong: (n: Int32) Int32 {
                 mut k: Int32 = n
                 k += 1
                 return ping(k - 2)
             }
-            pub fx virt: (b: Base) Int32 {
+            pub virt: (b: Base) Int32 {
                 return b.act()
             }
-            pub fx ext: (n: Int32, s: Str) Int32;
-            pub fx extFx: (f: Fx<Tuple0, Int32>) Int32;
-            pub fx extK: (k: K) Int32;
-            pub fx caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
+            pub ext: (n: Int32, s: Str) Int32;
+            pub extFx: (f: Fx<Tuple0, Int32>) Int32;
+            pub extK: (k: K) Int32;
+            pub caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
                 mut x: Int32 = 0
                 mut xs: List<Int32> = List<Int32> { values = [1] }
                 ks: List<K> = List<K> { values = [k] }
                 a: Int32 = pure() + writesG() + writesOwn(mut x)
-                c: Int32 = apply(fx() Int32 {
+                c: Int32 = apply(() Int32 {
                     return 1
-                }) + apply(fx() Int32 {
+                }) + apply(() Int32 {
                     G += 1
                     return 1
                 }) + apply(pure) + apply(writesG) + apply(f)
@@ -242,9 +241,9 @@ class SharedPredicatesTest {
                 xs.add(1)
                 e: Bool = ks.contains(k) || xs.contains(1)
                 trace(a)
-                g: Int32 = ext(1, "s") + extFx(fx() Int32 {
+                g: Int32 = ext(1, "s") + extFx(() Int32 {
                     return 1
-                }) + extFx(fx() Int32 {
+                }) + extFx(() Int32 {
                     G += 1
                     return 1
                 }) + extK(k)
@@ -285,35 +284,35 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub mut G: Int32 = 0
-            pub fx pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+            pub pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
                 f(x)
             }
-            pub fx keepG<T>: (mut xs: List<T>, x: T) Void {
+            pub keepG<T>: (mut xs: List<T>, x: T) Void {
                 xs.add(x)
             }
-            pub class Box<T> {
-                require pub v: T
-                pub fx run: (f: Fx<Tuple1<T>, Void>) Void {
+            pub Box<T>: Any {
+                pub v: T
+                pub run: (f: Fx<Tuple1<T>, Void>) Void {
                     f(this.v)
                 }
             }
-            pub fx drive: () Void {
+            pub drive: () Void {
                 mut fs: List<Fx<Tuple0, Void>> = []
                 mut ns: List<Int32> = []
-                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                keepG<Fx<Tuple0, Void>>(mut fs, () Void {
                     G += 1
                 })
-                keepG<Fx<Tuple0, Void>>(mut fs, fx () Void {
+                keepG<Fx<Tuple0, Void>>(mut fs, () Void {
                     trace(1)
                 })
                 keepG<Int32>(mut ns, 1)
-                fs.add(fx () Void {
+                fs.add(() Void {
                     G += 1
                 })
-                fs.add(fx () Void {
+                fs.add(() Void {
                     trace(1)
                 })
-                pass<Int32>(fx (n: Int32) Void {
+                pass<Int32>((n: Int32) Void {
                     trace(n)
                 }, 1)
             }
@@ -333,57 +332,40 @@ class SharedPredicatesTest {
     }
 
     @Test
-    fun aConstructionOrADropThatMayRunCodeIsNotConfined() {
-        // A class construction runs its chain's initially and the defaults it leaves out; a drop may run an IMPURE
-        // finally (the local d in keep, the elements clear drops), which may write anything.
+    fun aConstructionThatMayRunCodeIsNotConfined() {
+        // A class construction runs its chain's initially and the defaults it leaves out, which may write anything.
         val p = snippet(
             """
             pub mut G: Int32 = 0
-            pub class Init {
+            pub Init: Any {
                 pub n: Int32 = 0
                 initially {
                     G += 1
                 }
             }
-            pub class Kid: Init {
+            pub Kid: Init {
                 pub k: Int32 = 0
             }
-            pub class Plain {
+            pub Plain: Any {
                 pub n: Int32 = 0
             }
-            pub fx bumped: () Int32 {
+            pub bumped: () Int32 {
                 G += 1
                 return G
             }
-            pub class Defaulted {
+            pub Defaulted: Any {
                 pub n: Int32 = bumped()
             }
-            pub class Dropper {
-                pub n: Int32 = 0
-                finally {
-                    G += 1
-                }
-            }
-            pub fx keep: () Int32 {
-                d: Dropper = Dropper {}
-                return d.n
-            }
-            pub fx clearAll: (mut ds: List<Dropper>) Void {
-                ds.clear()
-            }
-            pub fx count: (mut xs: List<Int32>) Void {
+            pub count: (mut xs: List<Int32>) Void {
                 xs.add(1)
             }
             """,
         )
-        // Round 7 (KI-20): ds is a mut parameter, STABLE, and clear drops Droppers mid-operation, so rule M refuses it
-        // there (its caller may pass `mut h.ds`, which a finally could reach). The CONFINED answers are unchanged.
-        assertEquals(listOf("rules.exclusivity.mut"), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
-        assertTrue(RulesTestSupport.message(p, "rules.exclusivity.mut").startsWith("the receiver 'ds' of the mut fx, storage inside the caller's mut place, is passed to 'clear', which drops"))
+        assertEquals(emptyList(), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
         val built = listOf("Init", "Kid", "Plain", "Defaulted").associateWith { CallReach.construction(RulesTestSupport.cls(p, it), emptyMap(), p.model) }
         assertEquals(mapOf("Init" to false, "Kid" to false, "Plain" to true, "Defaulted" to false), built)
-        assertEquals(mapOf("clear" to listOf(false), "add" to listOf(true)), confined(p, "clear", "add"))
-        assertEquals(mapOf("keep" to false, "clearAll" to false, "count" to true), listOf("keep", "clearAll", "count").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] })
+        assertEquals(mapOf("add" to listOf(true)), confined(p, "add"))
+        assertEquals(mapOf("count" to true), listOf("count").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] })
     }
 
     @Test
@@ -394,21 +376,21 @@ class SharedPredicatesTest {
         // the chain; one that only stores an Fx field runs nothing until a later call of it, charged where it runs.
         val p = snippet(
             """
-            use "kira:sync"
-            pub class Runner {
-                require pub f: Fx<Tuple0, Void>
+            kira.sync as sync
+            pub Runner: Any {
+                pub f: Fx<Tuple0, Void>
                 initially {
                     f()
                 }
             }
-            pub class Kid: Runner {
-                require pub g: Fx<Tuple0, Void>
+            pub Kid: Runner {
+                pub g: Fx<Tuple0, Void>
                 pub n: Int32 = 0
             }
-            pub class Keeper {
-                require pub f: Fx<Tuple0, Void>
+            pub Keeper: Any {
+                pub f: Fx<Tuple0, Void>
             }
-            pub class Counted {
+            pub Counted: Any {
                 pub mut n: Int32 = 0
                 initially {
                     n = 1
@@ -431,17 +413,17 @@ class SharedPredicatesTest {
         assertEquals(false, CallReach.construction(RulesTestSupport.cls(p, "Runner"), emptyMap(), p.model))
         val t = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
             pub mut G: Int32 = 0
             pub mut hooks: List<Fx<Tuple0, Void>> = []
-            pub fx quiet: () Void {
+            pub quiet: () Void {
             }
-            pub fx loud: () Void {
+            pub loud: () Void {
                 G = 1
             }
-            pub fx drive: () Void {
-                a: Thread = Thread { name = "a", body = fx () Void { } }
-                b: Thread = Thread { name = "b", body = fx () Void { G = 1 } }
+            pub drive: () Void {
+                a: Thread = Thread { name = "a", body = () Void { } }
+                b: Thread = Thread { name = "b", body = () Void { G = 1 } }
                 c: Thread = Thread { name = "c", body = hooks[0] }
                 d: Thread = Thread { name = "d", body = quiet }
                 e: Thread = Thread { name = "e", body = loud }

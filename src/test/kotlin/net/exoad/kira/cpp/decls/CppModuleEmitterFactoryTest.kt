@@ -28,7 +28,7 @@ class CppModuleEmitterFactoryTest {
 
     @Test
     fun aTyperWarningPassesThroughAsAWarning() {
-        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "use \"test:main\"\npub X: Int32 = 1"))
+        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "test.main as main\npub X: Int32 = 1"))
         val warning = emitted.runDiagnostics.firstOrNull { it.code == "types.use.self" } ?: kotlin.test.fail(emitted.render(emitted.runDiagnostics))
         assertTrue(!warning.isError)
         assertTrue(emitted.header("test:main").contains("inline constexpr std::int32_t X = 1;"))
@@ -53,7 +53,7 @@ class CppModuleEmitterFactoryTest {
                 throw UnsupportedConstruct(fn!!.decl!!, "the body of ${fn.name}")
         }
         val emitted = DeclTestSupport.emit(
-            DeclTestSupport.module("test:main", "pub fx f: () Void { }"),
+            DeclTestSupport.module("test:main", "pub f: () Void { }"),
             parts = CppEmitParts(stmts = throwing),
         )
         val m = emitted.module("test:main")

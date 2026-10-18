@@ -20,29 +20,29 @@ class EscapePassTest {
     fun anFxParameterThatIsOnlyCalledDoesNotEscape() {
         val p = snippet(
             """
-            pub fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                 return f(x)
             }
-            pub fx twice: (g: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub twice: (g: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                 return applyTo(g, applyTo(g, x))
             }
-            pub fx keep: (h: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+            pub keep: (h: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
                 return h
             }
-            pub fx store: (k: Fx<Tuple1<Int32>, Int32>) Int32 {
+            pub store: (k: Fx<Tuple1<Int32>, Int32>) Int32 {
                 held: Fx<Tuple1<Int32>, Int32> = k
                 return held(1)
             }
-            pub fx forward: (m: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+            pub forward: (m: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
                 return keep(m)
             }
-            pub fx capture: (c: Fx<Tuple1<Int32>, Int32>) Int32 {
-                inner: Fx<Tuple0, Int32> = fx() Int32 {
+            pub capture: (c: Fx<Tuple1<Int32>, Int32>) Int32 {
+                inner: Fx<Tuple0, Int32> = () Int32 {
                     return c(1)
                 }
                 return inner()
             }
-            pub fx collect: (q: Fx<Tuple1<Int32>, Int32>) Void {
+            pub collect: (q: Fx<Tuple1<Int32>, Int32>) Void {
                 mut xs: List<Fx<Tuple1<Int32>, Int32>> = List<Fx<Tuple1<Int32>, Int32>> {}
                 xs.add(q)
             }
@@ -63,35 +63,35 @@ class EscapePassTest {
     fun thisEscapesOnlyWhenItLeavesTheMethod() {
         val p = snippet(
             """
-            pub class Counter {
+            pub Counter: Any {
                 pub mut k: Int32 = 5
-                pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                     return f(x)
                 }
-                pub fx offset: (x: Int32) Int32 {
-                    return apply(fx(y: Int32) Int32 {
+                pub offset: (x: Int32) Int32 {
+                    return apply((y: Int32) Int32 {
                         return y + k
                     }, x)
                 }
             }
-            pub class Leaky {
+            pub Leaky: Any {
                 pub mut k: Int32 = 5
-                pub fx multiplier: () Fx<Tuple1<Int32>, Int32> {
-                    return fx(x: Int32) Int32 {
+                pub multiplier: () Fx<Tuple1<Int32>, Int32> {
+                    return (x: Int32) Int32 {
                         return x * k
                     }
                 }
             }
-            pub class Self {
-                pub fx me: () Self {
+            pub Self: Any {
+                pub me: () Self {
                     return this
                 }
             }
-            pub trait Cb {
-                pub fx run: (f: Fx<Tuple1<Int32>, Int32>) Int32;
+            pub Cb: Any {
+                pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32;
             }
-            pub class Impl: Cb {
-                override pub fx run: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+            pub Impl: Cb {
+                override pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
                     return f(1)
                 }
             }
@@ -108,17 +108,17 @@ class EscapePassTest {
     fun aFunctionTakenAsAValueHasEscapingFxParameters() {
         val p = snippet(
             """
-            pub fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                 return f(x)
             }
-            pub fx direct: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub direct: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                 return f(x)
             }
-            pub fx useIt: () Int32 {
+            pub useIt: () Int32 {
                 h: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
-                return h(fx(y: Int32) Int32 {
+                return h((y: Int32) Int32 {
                     return y
-                }, 1) + direct(fx(y: Int32) Int32 {
+                }, 1) + direct((y: Int32) Int32 {
                     return y
                 }, 2)
             }
@@ -134,19 +134,19 @@ class EscapePassTest {
         val p = snippet(
             """
             mut KEPT: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> {}
-            pub fx keep: (k: Fx<Tuple0, Int32>) Void {
+            pub keep: (k: Fx<Tuple0, Int32>) Void {
                 KEPT.add(k)
             }
-            pub fx middle: (m: Fx<Tuple0, Int32>) Void {
+            pub middle: (m: Fx<Tuple0, Int32>) Void {
                 keep(m)
             }
-            pub fx outer: (o: Fx<Tuple0, Int32>) Void {
+            pub outer: (o: Fx<Tuple0, Int32>) Void {
                 middle(o)
             }
-            pub fx call: (c: Fx<Tuple0, Int32>) Int32 {
+            pub call: (c: Fx<Tuple0, Int32>) Int32 {
                 return c()
             }
-            pub fx relay: (q: Fx<Tuple0, Int32>) Int32 {
+            pub relay: (q: Fx<Tuple0, Int32>) Int32 {
                 return call(q)
             }
             """,
@@ -165,11 +165,11 @@ class EscapePassTest {
     fun anFxHandedToAnExternOrAnFxValueEscapes() {
         val p = snippet(
             """
-            pub @_extern(cpp = "ext::later", header = "ext.hxx") fx later: (f: Fx<Tuple0, Void>) Void;
-            pub fx viaExtern: (e: Fx<Tuple0, Void>) Void {
+            pub @_extern(cpp = "ext::later", header = "ext.hxx") later: (f: Fx<Tuple0, Void>) Void;
+            pub viaExtern: (e: Fx<Tuple0, Void>) Void {
                 later(e)
             }
-            pub fx viaValue: (g: Fx<Tuple1<Fx<Tuple0, Void>>, Void>, v: Fx<Tuple0, Void>) Void {
+            pub viaValue: (g: Fx<Tuple1<Fx<Tuple0, Void>>, Void>, v: Fx<Tuple0, Void>) Void {
                 g(v)
             }
             """,
@@ -184,33 +184,33 @@ class EscapePassTest {
     fun thisPassedOnEscapesButAStructOrATraitMarksNoClass() {
         val p = snippet(
             """
-            pub class Node {
+            pub Node: Any {
                 pub mut n: Int32 = 0
-                pub fx register: () Void {
+                pub register: () Void {
                     remember(this)
                 }
-                pub fx size: () Int32 {
+                pub size: () Int32 {
                     return n
                 }
             }
             mut NODES: List<Node> = List<Node> {}
-            pub fx remember: (x: Node) Void {
+            pub remember: (x: Node) Void {
                 NODES.add(x)
             }
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
-                pub fx same: () Pt {
+                pub same: () Pt {
                     return this
                 }
             }
-            pub trait Named {
-                pub fx name: () Str;
-                pub fx me: () Named {
+            pub Named: Any {
+                pub name: () Str;
+                pub me: () Named {
                     return this
                 }
             }
-            pub class Tag: Named {
-                override pub fx name: () Str {
+            pub Tag: Named {
+                override pub name: () Str {
                     return "tag"
                 }
             }
@@ -230,27 +230,27 @@ class EscapePassTest {
         val p = snippet(
             """
             mut GF: Maybe<Fx<Tuple0, Int32>> = null
-            pub struct Keeper {
+            pub Keeper: Struct {
                 pub k: Int32 = 0
-                pub fx @op_add: (f: Fx<Tuple0, Int32>) Int32 {
+                pub @op_add: (f: Fx<Tuple0, Int32>) Int32 {
                     GF = f
                     return 0
                 }
             }
-            pub struct Caller {
+            pub Caller: Struct {
                 pub k: Int32 = 0
-                pub fx @op_add: (f: Fx<Tuple0, Int32>) Int32 {
+                pub @op_add: (f: Fx<Tuple0, Int32>) Int32 {
                     return f()
                 }
             }
-            pub fx viaOp: (f: Fx<Tuple0, Int32>) Int32 {
+            pub viaOp: (f: Fx<Tuple0, Int32>) Int32 {
                 return Keeper { } + f
             }
-            pub fx passOn: (g: Fx<Tuple0, Int32>) Int32 {
+            pub passOn: (g: Fx<Tuple0, Int32>) Int32 {
                 return Caller { } + g
             }
-            pub fx grab: (v: View<Int32>) Int32 {
-                return viaOp(fx() Int32 { return v[0] })
+            pub grab: (v: View<Int32>) Int32 {
+                return viaOp(() Int32 { return v[0] })
             }
             """,
         )

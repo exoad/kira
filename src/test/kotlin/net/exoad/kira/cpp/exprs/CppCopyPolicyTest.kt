@@ -1,14 +1,8 @@
 package net.exoad.kira.cpp.exprs
 
-import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.KType
-import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.typeArgs
-import net.exoad.kira.compiler.backend.codegen.cpp.CppClassesPart
-import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitContextImpl
-import net.exoad.kira.compiler.backend.codegen.cpp.CppEmitParts
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
-import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.cpp.exprs.CppExprTestSupport.Module
 import net.exoad.kira.cpp.support.CppToolchain
@@ -40,34 +34,34 @@ class CppCopyPolicyTest {
         mut hooks: List<Fx<Tuple0, Void>> = []
         mut gfs: List<Fx<Tuple0, Int32>> = []
 
-        pub struct Tag {
-            pub name: Str
-            pub n: Int32
+        pub Tag: Struct {
+            pub name: Str = ""
+            pub n: Int32 = 0
 
-            pub fx describe: () Str {
+            pub describe: () Str {
                 runHooks()
                 return "${'$'}{name}:${'$'}{n}"
             }
 
-            pub fx plain: () Str {
+            pub plain: () Str {
                 return "${'$'}{name}:${'$'}{n}"
             }
 
-            pub fx viaThis: () Str {
+            pub viaThis: () Str {
                 return describe()
             }
         }
 
         mut gt: Tag = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
 
-        pub fx runHooks: () Void {
+        pub runHooks: () Void {
             items: List<Fx<Tuple0, Void>> = hooks
             for h: Fx<Tuple0, Void> in items {
                 h()
             }
         }
 
-        pub fx arm: () Void {
+        pub arm: () Void {
             gs = "old-text-long-enough-to-live-on-the-heap-000000"
             gl = [1, 2, 3]
             gt = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
@@ -75,13 +69,13 @@ class CppCopyPolicyTest {
             // Rule M (round 5): a global handed an Fx that is not CONFINED is refused as a
             // mut receiver, so each list is built in a local and stored back.
             mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
-            fs.add(fx () Int32 {
+            fs.add(() Int32 {
                 runHooks()
                 return tag.length() as Int32
             })
             gfs = fs
             mut hs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
-            hs.add(fx () Void {
+            hs.add(() Void {
                 gs = "new"
                 gl = [100]
                 gt = Tag { name = "new", n = 2 }
@@ -90,16 +84,16 @@ class CppCopyPolicyTest {
             hooks = hs
         }
 
-        pub fx lenAfter: (s: Str) Int32 {
+        pub lenAfter: (s: Str) Int32 {
             runHooks()
             return s.length() as Int32
         }
 
-        pub fx lenOf: (s: Str) Int32 {
+        pub lenOf: (s: Str) Int32 {
             return s.length() as Int32
         }
 
-        pub fx sumAfter: (xs: List<Int32>) Int32 {
+        pub sumAfter: (xs: List<Int32>) Int32 {
             mut t: Int32 = 0
             for x: Int32 in xs {
                 runHooks()
@@ -108,36 +102,36 @@ class CppCopyPolicyTest {
             return t
         }
 
-        pub fx idAfter<T>: (v: T) T {
+        pub idAfter<T>: (v: T) T {
             runHooks()
             return v
         }
 
-        pub fx copyStr: () Int32 {
+        pub copyStr: () Int32 {
             return lenAfter(gs)
         }
 
-        pub fx copyList: () Int32 {
+        pub copyList: () Int32 {
             return sumAfter(gl)
         }
 
-        pub fx copyGeneric: () Int32 {
+        pub copyGeneric: () Int32 {
             return idAfter<Str>(gs).length() as Int32
         }
 
-        pub fx copyReceiver: () Str {
+        pub copyReceiver: () Str {
             return gt.describe()
         }
 
-        pub fx copyCallee: () Int32 {
+        pub copyCallee: () Int32 {
             return gfs[0]()
         }
 
-        pub fx copyTernary: (c: Bool) Int32 {
+        pub copyTernary: (c: Bool) Int32 {
             return sumAfter(if c { gl } else { gl2 })
         }
 
-        pub fx copyRange: () Int32 {
+        pub copyRange: () Int32 {
             mut t: Int32 = 0
             for x: Int32 in gl {
                 runHooks()
@@ -146,24 +140,24 @@ class CppCopyPolicyTest {
             return t
         }
 
-        pub fx lendLocal: () Int32 {
+        pub lendLocal: () Int32 {
             s: Str = gs
             return lenAfter(s)
         }
 
-        pub fx lendParam: (xs: List<Int32>) Int32 {
+        pub lendParam: (xs: List<Int32>) Int32 {
             return sumAfter(xs)
         }
 
-        pub fx lendParamRow: () Int32 {
+        pub lendParamRow: () Int32 {
             return lendParam(gl)
         }
 
-        pub fx lendThis: () Str {
+        pub lendThis: () Str {
             return gt.viaThis()
         }
 
-        pub fx lendRangeLocal: () Int32 {
+        pub lendRangeLocal: () Int32 {
             xs: List<Int32> = gl
             mut t: Int32 = 0
             for x: Int32 in xs {
@@ -173,19 +167,19 @@ class CppCopyPolicyTest {
             return t
         }
 
-        pub fx lendConfined: () Int32 {
+        pub lendConfined: () Int32 {
             return lenOf(gs)
         }
 
-        pub fx lendReceiverConfined: () Str {
+        pub lendReceiverConfined: () Str {
             return gt.plain()
         }
 
-        pub fx lendHole: () Str {
+        pub lendHole: () Str {
             return "${'$'}{gs}!"
         }
 
-        fx total: (v: View<Int32>) Int32 {
+        total: (v: View<Int32>) Int32 {
             mut t: Int32 = 0
             for x: Int32 in v {
                 t += x
@@ -193,13 +187,13 @@ class CppCopyPolicyTest {
             return t
         }
 
-        pub fx ownerTernary: (c: Bool) Int32 {
+        pub ownerTernary: (c: Bool) Int32 {
             la: List<Int32> = [1, 2, 3]
             lb: List<Int32> = [4, 5]
             return total((if c { la } else { lb }).view())
         }
 
-        pub fx lendRangeReads: () Int32 {
+        pub lendRangeReads: () Int32 {
             mut t: Int32 = 0
             for x: Int32 in gl {
                 t += x
@@ -309,22 +303,22 @@ class CppCopyPolicyTest {
     private val assign = Module(
         "copy:assign",
         """
-        pub struct Tree {
+        pub Tree: Struct {
             pub v: Int32
             pub name: Str
             pub kids: List<Tree>
         }
 
-        fx leaf: (v: Int32, n: Str) Tree {
+        leaf: (v: Int32, n: Str) Tree {
             return Tree { v = v, name = n, kids = [] }
         }
 
-        fx two: () Tree {
+        two: () Tree {
             return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = [leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")] }
         }
 
         // One kid, two(), with room for more, so a vector assign takes the no-reallocation path.
-        fx roomy: () Tree {
+        roomy: () Tree {
             mut t: Tree = Tree { v = 1, name = "one", kids = [] }
             t.kids.add(two())
             t.kids.add(leaf(9, "nine"))
@@ -334,7 +328,7 @@ class CppCopyPolicyTest {
             return t
         }
 
-        fx shape: (t: Tree) Str {
+        shape: (t: Tree) Str {
             mut out: Str = "${'$'}{t.v} ${'$'}{t.name.length()} ${'$'}{t.kids.size()}"
             for k: Tree in t.kids {
                 out += " ${'$'}{k.v}/${'$'}{k.kids.size()}"
@@ -342,124 +336,124 @@ class CppCopyPolicyTest {
             return out
         }
 
-        fx flag: () Bool {
+        flag: () Bool {
             return true
         }
 
         mut gt: Tree = Tree { v = 0, name = "g", kids = [] }
 
-        pub struct Holder {
+        pub Holder: Struct {
             pub t: Tree
 
-            pub mut fx descend: () Void {
+            pub mut descend: () Void {
                 t = t.kids[0]
             }
         }
 
-        pub fx rebindLocal: () Str {
+        pub rebindLocal: () Str {
             mut t: Tree = roomy()
             t = t.kids[0]
             return shape(t)
         }
 
-        pub fx selfIntoElement: () Str {
+        pub selfIntoElement: () Str {
             mut t: Tree = roomy()
             t.kids[0] = t
             return "${'$'}{shape(t)}|${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
         }
 
-        pub fx rebindTernary: () Str {
+        pub rebindTernary: () Str {
             mut t: Tree = roomy()
             t = if flag() { t.kids[0] } else { t }
             return shape(t)
         }
 
-        fx descend: (mut t: Tree) Void {
+        descend: (mut t: Tree) Void {
             t = t.kids[0]
         }
 
-        pub fx rebindMutParam: () Str {
+        pub rebindMutParam: () Str {
             mut t: Tree = roomy()
             descend(mut t)
             return shape(t)
         }
 
-        pub fx fieldFromElement: () Str {
+        pub fieldFromElement: () Str {
             mut t: Tree = roomy()
             t.kids = t.kids[0].kids
             return shape(t)
         }
 
-        pub fx elementIntoItsElement: () Str {
+        pub elementIntoItsElement: () Str {
             mut t: Tree = roomy()
             t.kids[0].kids[0] = t.kids[0]
             return "${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
         }
 
-        fx descendGlobal: () Void {
+        descendGlobal: () Void {
             gt = gt.kids[0]
         }
 
-        pub fx rebindGlobal: () Str {
+        pub rebindGlobal: () Str {
             gt = roomy()
             descendGlobal()
             return shape(gt)
         }
 
-        pub fx elementFromSibling: () Str {
+        pub elementFromSibling: () Str {
             mut xs: List<Str> = ["a-long-string-that-lives-on-the-heap-0000000", "b"]
             xs[0] = xs[1]
             xs[1] = xs[0] + xs[0]
             return "${'$'}{xs[0]} ${'$'}{xs[1]}"
         }
 
-        pub fx twoNamesOfOneRef: () Str {
+        pub twoNamesOfOneRef: () Str {
             r1: Ref<Tree> = Ref<Tree> { value = roomy() }
             r2: Ref<Tree> = r1
             r1.value = r2.value.kids[0]
             return shape(r2.value)
         }
 
-        pub fx listElements: () Str {
+        pub listElements: () Str {
             mut ts: List<Tree> = [roomy(), leaf(5, "five")]
             ts[1] = ts[0].kids[0]
             ts[0] = ts[0].kids[0]
             return "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
         }
 
-        pub fx maybePayload: () Str {
+        pub maybePayload: () Str {
             mut m: Maybe<Tree> = roomy()
             m = m.unwrap().kids[0]
             return shape(m.unwrap())
         }
 
-        pub fx valueThisInMutFx: () Str {
+        pub valueThisInMutFx: () Str {
             mut h: Holder = Holder { t = roomy() }
             h.descend()
             return shape(h.t)
         }
 
-        pub fx nestedElement: () Str {
+        pub nestedElement: () Str {
             mut t: Tree = leaf(0, "zero")
             t.kids.add(roomy())
             t.kids[0] = t.kids[0].kids[0]
             return shape(t.kids[0])
         }
 
-        pub fx lendLocal: () Str {
+        pub lendLocal: () Str {
             u: Tree = roomy()
             mut t: Tree = leaf(0, "zero")
             t = u
             return shape(t)
         }
 
-        pub fx lendParam: (u: Tree) Str {
+        pub lendParam: (u: Tree) Str {
             mut t: Tree = leaf(0, "zero")
             t = u
             return shape(t)
         }
 
-        pub fx lendParamRow: () Str {
+        pub lendParamRow: () Str {
             return lendParam(roomy())
         }
         """,
@@ -548,72 +542,72 @@ class CppCopyPolicyTest {
         mut keep: Maybe<Fx<Tuple0, Int32>> = null
         mut ticks: Int32 = 0
 
-        fx apply: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
+        apply: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
             return f() * 100 + k
         }
 
-        fx applyKeep: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
+        applyKeep: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
             keep = f
             return f() * 100 + k
         }
 
-        fx applyS: (f: Fx<Tuple0, Str>, k: Int32) Str {
+        applyS: (f: Fx<Tuple0, Str>, k: Int32) Str {
             return "${'$'}{f()}:${'$'}{k}"
         }
 
-        fx applyAfter: (k: Int32, f: Fx<Tuple0, Int32>) Int32 {
+        applyAfter: (k: Int32, f: Fx<Tuple0, Int32>) Int32 {
             return f() * 100 + k
         }
 
-        fx inc: (mut v: Int32) Int32 {
+        inc: (mut v: Int32) Int32 {
             v += 10
             return 1
         }
 
-        fx change: (mut s: Str) Int32 {
+        change: (mut s: Str) Int32 {
             s = "changedchangedchangedchangedchangedchangedchanged"
             return 2
         }
 
-        pub struct Cell {
+        pub Cell: Struct {
             pub v: Int32 = 5
 
-            pub mut fx bump: () Int32 {
+            pub mut bump: () Int32 {
                 v += 10
                 return 3
             }
 
-            pub mut fx probe: () Int32 {
-                return apply(fx () Int32 { return v }, bump())
+            pub mut probe: () Int32 {
+                return apply(() Int32 { return v }, bump())
             }
         }
 
-        pub fx captureRead: () Int32 {
+        pub captureRead: () Int32 {
             mut x: Int32 = 5
-            return apply(fx () Int32 { return x }, inc(mut x))
+            return apply(() Int32 { return x }, inc(mut x))
         }
 
-        pub fx captureKept: () Int32 {
+        pub captureKept: () Int32 {
             mut y: Int32 = 5
-            return applyKeep(fx () Int32 { return y }, inc(mut y))
+            return applyKeep(() Int32 { return y }, inc(mut y))
         }
 
-        pub fx captureStr: () Str {
+        pub captureStr: () Str {
             mut s: Str = "old"
-            return applyS(fx () Str { return s }, change(mut s))
+            return applyS(() Str { return s }, change(mut s))
         }
 
-        pub fx captureThis: () Int32 {
+        pub captureThis: () Int32 {
             mut c: Cell = Cell { }
             return c.probe()
         }
 
-        pub fx captureAfter: () Int32 {
+        pub captureAfter: () Int32 {
             mut a: Int32 = 5
-            return applyAfter(inc(mut a), fx () Int32 { return a })
+            return applyAfter(inc(mut a), () Int32 { return a })
         }
 
-        fx churn: () Void {
+        churn: () Void {
             mut i: Int32 = 0
             while i < 200 {
                 junk.add(List<Int32> { values = [-1, -2] })
@@ -621,7 +615,7 @@ class CppCopyPolicyTest {
             }
         }
 
-        fx growGll: () Size {
+        growGll: () Size {
             mut i: Int32 = 0
             while i < 64 {
                 gll.add(List<Int32> { values = [i] })
@@ -632,7 +626,7 @@ class CppCopyPolicyTest {
             return 1
         }
 
-        fx growGls: () Size {
+        growGls: () Size {
             mut i: Int32 = 0
             while i < 64 {
                 gls.add("padpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpad")
@@ -643,57 +637,57 @@ class CppCopyPolicyTest {
             return 1
         }
 
-        fx chIdx: () Size {
+        chIdx: () Size {
             gs = "ZYXWVUTSRQPONMLKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA"
             return 1
         }
 
-        fx resetLists: () Void {
+        resetLists: () Void {
             gll = List<List<Int32>> { }
             gll.add(List<Int32> { values = [10, 20] })
             gls = List<Str> { }
             gls.add("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz")
         }
 
-        pub fx nestedRead: () Int32 {
+        pub nestedRead: () Int32 {
             resetLists()
             return gll[0][growGll()]
         }
 
-        pub fx nestedWrite: () Int32 {
+        pub nestedWrite: () Int32 {
             resetLists()
             gll[0][growGll()] = 5
             return gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
         }
 
-        pub fx nestedCompound: () Int32 {
+        pub nestedCompound: () Int32 {
             resetLists()
             gll[0][growGll()] += 1
             return gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
         }
 
-        pub fx strIndex: () Char {
+        pub strIndex: () Char {
             gs = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
             return gs[chIdx()]
         }
 
-        pub fx strElementIndex: () Char {
+        pub strElementIndex: () Char {
             resetLists()
             return gls[0][growGls()]
         }
 
-        fx mkT: () Tuple2<Int32, Int32> {
+        mkT: () Tuple2<Int32, Int32> {
             ticks += 1
             return Tuple2<Int32, Int32> { ticks, ticks }
         }
 
-        pub fx bindingDrop: () Int32 {
+        pub bindingDrop: () Int32 {
             ticks = 0
             n: Int32 = mkT().size()
             return n * 10 + ticks
         }
 
-        pub fx bindingDropTwice: () Int32 {
+        pub bindingDropTwice: () Int32 {
             ticks = 0
             s: Int32 = mkT().size() + mkT().size()
             return s * 10 + ticks
@@ -765,32 +759,32 @@ class CppCopyPolicyTest {
         mut hooks: List<Fx<Tuple0, Void>> = []
         mut adds: List<Fx<Tuple1<Int32>, Void>> = []
 
-        pub struct Runner {
+        pub Runner: Struct {
             pub f: Fx<Tuple0, Void>
             pub g: Fx<Tuple1<Int32>, Void>
 
-            pub mut fx run: () Void {
+            pub mut run: () Void {
                 f()
             }
 
-            pub mut fx runWith: () Void {
+            pub mut runWith: () Void {
                 g(3)
             }
 
-            pub fx runPlain: () Void {
+            pub runPlain: () Void {
                 f()
             }
         }
 
-        fx runner: () Runner {
-            return Runner { f = fx () Void {
+        runner: () Runner {
+            return Runner { f = () Void {
                 gi = gi + 1
-            }, g = fx (n: Int32) Void {
+            }, g = (n: Int32) Void {
                 gi = gi + n * 100
             } }
         }
 
-        pub fx implicitThis: () Int32 {
+        pub implicitThis: () Int32 {
             gi = 29
             mut r: Runner = runner()
             r.run()
@@ -798,24 +792,24 @@ class CppCopyPolicyTest {
             return gi
         }
 
-        pub fx implicitThisArg: () Int32 {
+        pub implicitThisArg: () Int32 {
             gi = 29
             mut r: Runner = runner()
             r.runWith()
             return gi
         }
 
-        pub fx lentThis: () Int32 {
+        pub lentThis: () Int32 {
             gi = 29
             r: Runner = runner()
             r.runPlain()
             return gi
         }
 
-        pub fx statementHook: () Int32 {
+        pub statementHook: () Int32 {
             gi = 29
             mut hs: List<Fx<Tuple0, Void>> = []
-            hs.add(fx () Void {
+            hs.add(() Void {
                 gi = gi + 100
             })
             hooks = hs
@@ -823,10 +817,10 @@ class CppCopyPolicyTest {
             return gi
         }
 
-        pub fx statementHookArg: () Int32 {
+        pub statementHookArg: () Int32 {
             gi = 29
             mut xs: List<Fx<Tuple1<Int32>, Void>> = []
-            xs.add(fx (n: Int32) Void {
+            xs.add((n: Int32) Void {
                 gi = gi + n
             })
             adds = xs
@@ -891,13 +885,13 @@ class CppCopyPolicyTest {
     private val replace = Module(
         "copy:replace",
         """
-        pub struct Rec {
-            pub v: Int32
-            pub name: Str
-            pub kids: List<Int32>
+        pub Rec: Struct {
+            pub v: Int32 = 0
+            pub name: Str = ""
+            pub kids: List<Int32> = List<Int32> { }
         }
 
-        fx rec: (v: Int32, n: Str) Rec {
+        rec: (v: Int32, n: Str) Rec {
             return Rec { v = v, name = n, kids = [v] }
         }
 
@@ -909,24 +903,24 @@ class CppCopyPolicyTest {
         mut gi: Int32 = 0
         mut gn: List<Int32> = [1, 2]
 
-        pub fx element: () Str {
+        pub element: () Str {
             gl = [rec(1, "one")]
             gl[0] = rec(2, "two")
             return "${'$'}{gl.size()} ${'$'}{gl[0].v} ${'$'}{gl[0].name}"
         }
 
-        pub fx whole: () Str {
+        pub whole: () Str {
             gt = rec(2, "two")
             return "${'$'}{gt.v} ${'$'}{gt.name} ${'$'}{gt.kids.size()}"
         }
 
-        pub fx nested: () Str {
+        pub nested: () Str {
             gll = [[rec(1, "a")], [rec(2, "b")]]
             gll[0] = [rec(3, "c"), rec(4, "d")]
             return "${'$'}{gll.size()} ${'$'}{gll[0].size()} ${'$'}{gll[0][1].v}"
         }
 
-        pub fx maybe: () Str {
+        pub maybe: () Str {
             gm = rec(1, "one")
             gm = rec(2, "two")
             s: Str = "${'$'}{gm.unwrap().v}"
@@ -934,47 +928,47 @@ class CppCopyPolicyTest {
             return "${'$'}{s} ${'$'}{gm.isSome()}"
         }
 
-        pub fx mapValue: () Str {
+        pub mapValue: () Str {
             mm[1] = rec(1, "one")
             mm[1] = rec(3, "three")
             return "${'$'}{mm.size()} ${'$'}{mm.get(1).unwrap().v}"
         }
 
-        pub fx listSet: () Str {
+        pub listSet: () Str {
             mut xs: List<Rec> = [rec(1, "one")]
             xs.set(0, rec(2, "two"))
             return "${'$'}{xs[0].v} ${'$'}{xs[0].name}"
         }
 
-        pub fx arrSet: () Str {
+        pub arrSet: () Str {
             mut a: Arr<Rec, 2> = [rec(1, "a"), rec(2, "b")]
             a.set(1, rec(5, "e"))
             return "${'$'}{a[1].v} ${'$'}{a[1].name}"
         }
 
-        fx setView: (m: MutView<Rec>) Int32 {
+        setView: (m: MutView<Rec>) Int32 {
             m.set(0, rec(7, "g"))
             m[1] = rec(8, "h")
             return 0
         }
 
-        pub fx viewSet: () Str {
+        pub viewSet: () Str {
             mut xs: List<Rec> = [rec(1, "one"), rec(2, "two")]
             z: Int32 = setView(xs.from(0))
             return "${'$'}{xs[0].v} ${'$'}{xs[1].name}"
         }
 
-        fx setFirst<T>: (mut xs: List<T>, v: T) Void {
+        setFirst<T>: (mut xs: List<T>, v: T) Void {
             xs[0] = v
         }
 
-        pub fx bools: () Str {
+        pub bools: () Str {
             mut bs: List<Bool> = [false, false]
             setFirst<Bool>(mut bs, true)
             return "${'$'}{bs[0]} ${'$'}{bs[1]}"
         }
 
-        pub fx plain: () Str {
+        pub plain: () Str {
             gi = 3
             gn[0] = 5
             return "${'$'}{gi} ${'$'}{gn[0]}"
@@ -1047,503 +1041,6 @@ class CppCopyPolicyTest {
                 }
                 val stdout = CppExprTestSupport.compileAndRun(replaceTree, driver, tc) ?: return@dynamicTest
                 assertTrue(stdout.contains("\n${rows.size} checks, 0 failed\n"), "${tc.id}:\n$stdout")
-            }
-        }
-
-    /**
-     * Round 6's w2-3 finding (sc-round6.json, the verifier's v23r6x/atk hx1-hx8 and k_c1): a write
-     * over a class or trait handle, or a `Maybe` of one, was left to `std::shared_ptr`'s own
-     * assignment, and libstdc++'s copy-assignment releases the old count before it stores the new
-     * one. The old object's IMPURE `finally` met the new pointer beside its own dying count: on g++
-     * hx1's Res 1 was destroyed twice (`count 2`), hx2 stored a control block into a freed buffer,
-     * and hx4's Res 3 never ran its `finally`. Every such write is now `kira::replace(place) =
-     * value` (`CppCopyPolicy.dropsOnWrite`) on every compiler: stored whole, then the old object
-     * dropped. The probes are the verifier's, less the module line and `fx main`, with `run`
-     * public; hx1c (a prvalue) is the verifier's control. This branch lowers no class, so here
-     * the text test emits them through [ClassBodies] and the runs are skipped;
-     * kira/cpp/tests/rt_test.cxx's testReplaceHandle runs hx1, hx2 and k_c1 with a real
-     * destructor as the `finally`. Where W2.4's classes part is merged, the real part emits the
-     * probes and both tests check them, the runs on gcc, clang and msvc.
-     */
-    private val handleProbes: List<Module> = listOf(
-        Module(
-            "handle:hx1",
-            """
-            // hx1: gm = b, with b a local handle (PRIVATE, so the value is lent and C++ copy-assigns the
-            // std::shared_ptr; dropsOnWrite leaves a Maybe of a class to shared_ptr's own assignment).
-            // The old object's IMPURE finally copies the handle it finds in gm into a local and reads it.
-            // Kira: the write stores b, then Res 1 drops once: its finally sees Res 2.
-            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
-
-            mut gm: Maybe<Res> = null
-            mut gc: Int32 = 0
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gc = gc + 1
-                        if gc == 1 {
-                            x: Res = gm.unwrap()
-                            trace("fin1 sees ${'$'}{x.n}")
-                        }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            pub fx run: () Void {
-                gm = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                gm = b
-                trace("count ${'$'}{gc}")
-                trace("after ${'$'}{gm.unwrap().n}")
-                gm = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx1c",
-            """
-            // hx1c (control for hx1): gm = Res { n = 2 }, a prvalue (C++ move-assigns, which swaps). Was: gm = b, with b a local handle (PRIVATE, so the value is lent and C++ copy-assigns the
-            // std::shared_ptr; dropsOnWrite leaves a Maybe of a class to shared_ptr's own assignment).
-            // The old object's IMPURE finally copies the handle it finds in gm into a local and reads it.
-            // Kira: the write stores b, then Res 1 drops once: its finally sees Res 2.
-            // Kira prints: fin1 sees 2, count 1, after 2, fin2, end
-
-            mut gm: Maybe<Res> = null
-            mut gc: Int32 = 0
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gc = gc + 1
-                        if gc == 1 {
-                            x: Res = gm.unwrap()
-                            trace("fin1 sees ${'$'}{x.n}")
-                        }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            pub fx run: () Void {
-                gm = Res { n = 1 }
-                gm = Res { n = 2 }
-                trace("count ${'$'}{gc}")
-                trace("after ${'$'}{gm.unwrap().n}")
-                gm = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx2",
-            """
-            // hx2: xs[0] = b over a global List of class handles, b a by-value parameter (PRIVATE, lent).
-            // The old element's IMPURE finally replaces the global List (freeing its buffer) and then
-            // allocates a List<Int64> of the same byte size.
-            // Kira: the element takes b, then the old element drops: the finally's writes come last.
-            // Kira prints: fin1, size 0, gk 11 22, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gl = []
-                        gk = [11, 22]
-                        trace("fin1")
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            mut gl: List<Res> = []
-            mut gk: List<Int64> = []
-
-            fx put: (b: Res) Void {
-                gl[0] = b
-            }
-
-            pub fx run: () Void {
-                gl = [Res { n = 1 }]
-                put(Res { n = 2 })
-                trace("size ${'$'}{gl.size()}")
-                trace("gk ${'$'}{gk[0]} ${'$'}{gk[1]}")
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx3",
-            """
-            // hx3: gmap[1] = b over a global Map of class handles, b a local handle (lent). The old value's
-            // IMPURE finally replaces the global Map (freeing its storage) and then allocates Lists of the
-            // sizes the freed blocks had.
-            // Kira: the entry takes b, then the old value drops: the finally's writes come last.
-            // Kira prints: fin1, size 0, gk 11 22 33, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gmap = Map<Int32, Res> { }
-                        gk = [11, 22, 33]
-                        gk2 = [44, 55]
-                        trace("fin1")
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            mut gmap: Map<Int32, Res> = Map<Int32, Res> { }
-            mut gk: List<Int64> = []
-            mut gk2: List<Int64> = []
-
-            pub fx run: () Void {
-                gmap[1] = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                gmap[1] = b
-                trace("size ${'$'}{gmap.size()}")
-                trace("gk ${'$'}{gk[0]} ${'$'}{gk[1]} ${'$'}{gk[2]}")
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx4",
-            """
-            // hx4: h.child = b, a class field through a local handle (the object is held by h), with b a
-            // local handle (lent). The old child's IMPURE finally rewrites the same field through a global
-            // alias of h.
-            // Kira: the field takes b, then the old child drops; its finally sees b (2) and its own write
-            // (Res 3) is last. Res 3 drops when the field is cleared, Res 2 when b goes.
-            // Kira prints: fin1 sees 2, child 3, fin3, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        trace("fin1 sees ${'$'}{gh.unwrap().child.unwrap().n}")
-                        gh.unwrap().child = Res { n = 3 }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                    if n == 3 {
-                        trace("fin3")
-                    }
-                }
-            }
-
-            pub class Holder {
-                pub mut child: Maybe<Res> = null
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            pub fx run: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.child = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                h.child = b
-                trace("child ${'$'}{h.child.unwrap().n}")
-                h.child = null
-                gh = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx5",
-            """
-            // hx5: a trait-typed global assigned a local class handle (an Upcast, C++'s converting
-            // shared_ptr assignment). The old object's IMPURE finally copies what the global holds into a
-            // local and asks it for its id.
-            // Kira: the global takes b, then Res 1 drops once: its finally sees Res 2.
-            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
-
-            pub trait Tagged {
-                pub fx id: () Int32
-            }
-
-            pub class Res: Tagged {
-                pub n: Int32 = 0
-
-                pub fx id: () Int32 {
-                    return n
-                }
-
-                finally {
-                    if n == 1 {
-                        gc = gc + 1
-                        if gc == 1 {
-                            x: Tagged = gt.unwrap()
-                            trace("fin1 sees ${'$'}{x.id()}")
-                        }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            mut gt: Maybe<Tagged> = null
-            mut gc: Int32 = 0
-
-            pub fx run: () Void {
-                gt = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                gt = b
-                trace("count ${'$'}{gc}")
-                trace("after ${'$'}{gt.unwrap().id()}")
-                gt = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx7",
-            """
-            // hx7: the binding List.set(i, v) on a STABLE receiver (this.items in a class mut fx) with a
-            // class-handle element, v a by-value parameter (lent). The old element's IMPURE finally copies
-            // the element it finds at items[0] through a global alias.
-            // Kira: the element takes v, then Res 1 drops once: its finally sees Res 2.
-            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gc = gc + 1
-                        if gc == 1 {
-                            x: Res = gh.unwrap().items[0]
-                            trace("fin1 sees ${'$'}{x.n}")
-                        }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            pub class Holder {
-                pub mut items: List<Res> = []
-
-                pub mut fx swapIn: (v: Res) Void {
-                    items.set(0, v)
-                }
-            }
-
-            mut gh: Maybe<Holder> = null
-            mut gc: Int32 = 0
-
-            pub fx run: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.items = [Res { n = 1 }]
-                b: Res = Res { n = 2 }
-                h.swapIn(b)
-                trace("count ${'$'}{gc}")
-                trace("after ${'$'}{h.items[0].n}")
-                h.items = []
-                gh = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:hx8",
-            """
-            // hx8: a write through a mut parameter, `slot = v`, where the caller passes the STABLE field of
-            // an object held by a local handle (mut h.child) and v a by-value parameter (lent). The old
-            // child's IMPURE finally copies the child it finds in the same field through a global alias.
-            // Kira: the field takes v, then Res 1 drops once: its finally sees Res 2.
-            // Kira prints: fin1 sees 2, count 1, after 2, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        gc = gc + 1
-                        if gc == 1 {
-                            x: Res = gh.unwrap().child.unwrap()
-                            trace("fin1 sees ${'$'}{x.n}")
-                        }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                }
-            }
-
-            pub class Holder {
-                pub mut child: Maybe<Res> = null
-            }
-
-            mut gh: Maybe<Holder> = null
-            mut gc: Int32 = 0
-
-            fx setVia: (mut slot: Maybe<Res>, v: Res) Void {
-                slot = v
-            }
-
-            pub fx run: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.child = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                setVia(mut h.child, b)
-                trace("count ${'$'}{gc}")
-                trace("after ${'$'}{h.child.unwrap().n}")
-                h.child = null
-                gh = null
-                trace("end")
-            }
-            """,
-        ),
-        Module(
-            "handle:k_c1",
-            """
-            // c1: the handle writes dropsOnWrite leaves to std::shared_ptr's own assignment, with a lent
-            // (PRIVATE local) handle as the value, so C++ copy-assigns. The old object's IMPURE finally
-            // rewrites the same handle. Kira stores, then drops: the finally sees the new object (2), its
-            // own write (Res 3) is last, and Res 3's finally runs when gm lets it go; Res 2's runs when b does.
-            // Kira prints: fin1 sees 2, after 3, fin3, end, fin2
-
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        trace("fin1 sees ${'$'}{gm.unwrap().n}")
-                        gm = Res { n = 3 }
-                    }
-                    if n == 2 {
-                        trace("fin2")
-                    }
-                    if n == 3 {
-                        trace("fin3")
-                    }
-                }
-            }
-
-            mut gm: Maybe<Res> = null
-
-            pub fx run: () Void {
-                gm = Res { n = 1 }
-                b: Res = Res { n = 2 }
-                gm = b
-                trace("after ${'$'}{gm.unwrap().n}")
-                gm = null
-                trace("end")
-            }
-            """,
-        ),
-    )
-
-    /**
-     * A stand-in for W2.4's classes part, which this branch does not have: each class or trait a
-     * bare `class C {};`, and each method and `finally` a block whose statements this branch's
-     * own statement emitter writes, so every write the probes make is spelled as the trial
-     * spells it. The text is checked, never compiled. Once W2.4's part is merged
-     * ([classesLower]), the real part emits the probes and they run.
-     */
-    private object ClassBodies : CppClassesPart {
-        override fun define(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter) {
-            w.line("class ${sym.name} {};")
-        }
-
-        override fun defineMembers(ctx: CppEmitContextImpl, sym: TypeSymbol, w: CppWriter, inline: Boolean) {
-            val c = sym as? ClassSymbol ?: return
-            ctx.inScopeOf(c) {
-                c.methods.forEach { fn -> w.block("void ${c.name}::${fn.name}()") { ctx.body(fn, fn.body ?: emptyList(), this) } }
-                c.finally?.let { statements -> w.block("${c.name}::~${c.name}()") { ctx.body(null, statements, this) } }
-            }
-        }
-    }
-
-    /** Whether the compiler's own parts lower a class: false on this branch, true once W2.4's classes part is merged. */
-    private val classesLower: Boolean = CppEmitParts.standard().classes != CppClassesPart.Unsupported
-
-    private val handleTree by lazy {
-        CppExprTestSupport.emit("copy-handles", handleProbes, emitterFactory = { unit, options ->
-            val parts = CppEmitParts.standard()
-            CppModuleEmitterFactory.create(unit, options, if (classesLower) parts else parts.copy(classes = ClassBodies))
-        })
-    }
-
-    /** What Kira prints for each probe's `run()`, the verifier's values (hx2's `fin2` before `size 0`: put's by-value parameter drops at its return). */
-    private val handleKira: Map<String, String> = mapOf(
-        "hx1" to "fin1 sees 2|count 1|after 2|end|fin2",
-        "hx1c" to "fin1 sees 2|count 1|after 2|fin2|end",
-        "hx2" to "fin1|fin2|size 0|gk 11 22|end",
-        "hx3" to "fin1|size 0|gk 11 22 33|end|fin2",
-        "hx4" to "fin1 sees 2|child 3|fin3|end|fin2",
-        "hx5" to "fin1 sees 2|count 1|after 2|end|fin2",
-        "hx7" to "fin1 sees 2|count 1|after 2|end|fin2",
-        "hx8" to "fin1 sees 2|count 1|after 2|end|fin2",
-        "k_c1" to "fin1 sees 2|after 3|fin3|end|fin2",
-    )
-
-    @Test
-    fun aWriteOverAHandleWhoseOldObjectMayRunAFinallyStoresFirst() {
-        val probe = handleProbes.associateBy { it.uri.substringAfter(':') }
-        listOf(
-            // A lent value (a PRIVATE local or by-value parameter) is a C++ lvalue: shared_ptr copy-assignment.
-            "hx1" to "kira::replace(gm) = b;",
-            "hx2" to "kira::replace(kira::at(gl, 0)) = b;",
-            "hx3" to "kira::replace(gmap[1]) = b;",
-            "hx4" to "kira::replace(h->child) = b;",
-            // The Upcast: the converting assignment.
-            "hx5" to "kira::replace(gt) = b;",
-            // The binding List.set, and a mut parameter's slot.
-            "hx7" to "kira::replace(kira::at(items, 0)) = v;",
-            "hx8" to "kira::replace(slot) = v;",
-            "k_c1" to "kira::replace(gm) = b;",
-            // The finally's own write over the same handle.
-            "k_c1" to "kira::replace(gm) = std::make_shared<Res>(3);",
-            // A prvalue stores first the same way: the order is never the library's.
-            "hx1c" to "kira::replace(gm) = std::make_shared<Res>(2);",
-        ).forEach { (name, text) ->
-            val source = handleTree.source(probe.getValue(name))
-            assertTrue(source.contains(text), "$name: $text:\n$source")
-        }
-    }
-
-    @TestFactory
-    fun aWriteOverAHandlePrintsKirasValueOnEveryCompiler(): List<DynamicNode> =
-        listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
-            DynamicTest.dynamicTest("handles [${tc.id}]") {
-                Assumptions.assumeTrue(classesLower, "no class lowers on this branch (KI-18): the trial runs the probes")
-                val names = handleProbes.map { it.uri.substringAfter(':') }
-                val driver = buildString {
-                    handleProbes.forEach { append("#include \"").append(it.relativePath.removeSuffix(".kira")).append(".kira.hxx\"\n") }
-                    append("#include <cstdio>\n\nint main()\n{\n")
-                    names.forEach { append("    std::printf(\"[$it]\\n\");\n    $it::run();\n") }
-                    append("    return 0;\n}\n")
-                }
-                val stdout = CppExprTestSupport.compileAndRun(handleTree, driver, tc) ?: return@dynamicTest
-                val expected = names.joinToString("") { "[$it]\n" + handleKira.getValue(it).replace('|', '\n') + "\n" }
-                assertEquals(expected, stdout.replace("\r\n", "\n"), tc.id)
             }
         }
 }

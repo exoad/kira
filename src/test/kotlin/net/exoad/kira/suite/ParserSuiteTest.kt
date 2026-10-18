@@ -57,7 +57,6 @@ class ParserSuiteTest {
     }
 
     private fun module(body: String): String = """
-        module "test:parser"
         $body
     """.trimIndent()
 
@@ -74,24 +73,25 @@ class ParserSuiteTest {
     // --- declarations -------------------------------------------------------
 
     @Test
-    fun parsesModuleDeclaration() {
-        val ast = parse("""module "test:parser" """)
-        val first = exprsOf(ast).first()
+    fun theFileIsTheModule() {
+        // No header: the parser names the module after the file's path.
+        val ast = parse("")
+        val first = exprsOf(ast).single()
         assertIs<ModuleDecl>(first)
-        assertEquals("test:parser", first.uri.value)
+        assertEquals("tests:parser", first.uri.value)
         assertEquals("parser", first.getModuleName())
     }
 
     @Test
     fun parsesUseImport() {
-        parseModule("""use "kira:core" """)
+        parseModule("""kira.core as core """)
     }
 
     @Test
-    fun requiresModuleFirst() {
-        assertThrows<Throwable>("a program must start with a module declaration") {
-            parse("fx main: () Void { }")
-        }
+    fun aModuleHeaderIsRefused() {
+        val e = assertThrows<DiagnosticsException> { parse("module \"test:parser\"" + "\n" + "main: () Void { }") }
+        assertEquals("parse.removed", e.tag)
+        assertTrue(e.message.contains("the file is the module"), e.message)
     }
 
     @Test
@@ -110,11 +110,11 @@ class ParserSuiteTest {
     fun parsesFunctionDeclarationWithParametersAndReturn() {
         val ast = parseModule(
             """
-            fx add: (a: Int32, b: Int32) Int32 {
+            add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx stub: (x: Str) Void;
+            stub: (x: Str) Void;
             """
         )
         val fns = declsOf(ast).filterIsInstance<FunctionDecl>()
@@ -127,11 +127,11 @@ class ParserSuiteTest {
     fun parsesClassWithFieldsAndMethods() {
         val ast = parseModule(
             """
-            pub class Counter {
-                require pub value: Int32
-                mut pub label: Str
+            pub Counter: Any {
+                pub value: Int32
+                mut pub label: Str = ""
 
-                pub fx increment: () Int32 {
+                pub increment: () Int32 {
                     value = value + 1
                     return value
                 }
@@ -145,99 +145,27 @@ class ParserSuiteTest {
     fun parsesTraitWithSignatureAndImplementation() {
         val ast = parseModule(
             """
-            pub trait Speaker {
-                pub fx speak: () Str
+            pub Speaker: Any {
+                pub speak: () Str
             }
 
-            pub trait Loud: Speaker {
-                pub fx volume: () Int32 {
+            pub Loud: Speaker {
+                pub volume: () Int32 {
                     return 8
                 }
             }
             """
         )
-        assertEquals(2, declsOf(ast).filterIsInstance<TraitDecl>().size)
-    }
-
-    @Test
-    fun parsesEnumWithExplicitValues() {
-        val ast = parseModule(
-            """
-            pub enum Status {
-                READY = 1,
-                RUNNING = 2,
-                DONE = 4
-            }
-            """
-        )
-        assertEquals(1, declsOf(ast).filterIsInstance<EnumDecl>().size)
-    }
-
-    @Test
-    fun parsesEnumWithBaseTypeAndValues() {
-        val ast = parseModule(
-            """
-            pub enum Status: Int32 {
-                PENDING = 0,
-                ACTIVE = 5,
-                DONE,
-                FAILED = -1
-            }
-
-            pub enum Priority: Str {
-                LOW = "low",
-                HIGH = "high"
-            }
-
-            pub enum Threshold: Float64 {
-                MIN = 0.5,
-                MAX = 100.0
-            }
-            """
-        )
-        val enums = declsOf(ast).filterIsInstance<EnumDecl>()
-        assertEquals(3, enums.size)
-        val status = enums[0]
-        assertEquals("Int32", (status.baseType?.identifier as? Identifier)?.value)
-        // Implicit members count on from the previous value, as in C.
-        assertEquals(listOf<Any>(0L, 5L, 6L, -1L), status.memberValues())
-        assertEquals(listOf<Any>("low", "high"), enums[1].memberValues())
-        assertEquals(listOf<Any>(0.5, 100.0), enums[2].memberValues())
-    }
-
-    @Test
-    fun enumBaseTypeRulesAreEnforced() {
-        // Str members need explicit values; Bool is not an allowed base; a
-        // value must match the declared base; members must agree in kind.
-        assertThrows<Throwable> { parseModule("enum P: Str { LOW }") }
-        assertThrows<Throwable> { parseModule("enum P: Bool { A = 1 }") }
-        assertThrows<Throwable> { parseModule("enum P: Int32 { A = \"a\" }") }
-        assertThrows<Throwable> { parseModule("enum P { A = \"a\", B = 1 }") }
-        assertThrows<Throwable> { parseModule("enum P { A, B = \"b\" }") }
-        // Without a declared base the first value decides the kind.
-        val inferred = declsOf(parseModule("enum Color { RED = \"red\", BLUE = \"blue\" }"))
-            .filterIsInstance<EnumDecl>().single()
-        assertEquals("Str", inferred.baseTypeName())
-        assertEquals("Int32", declsOf(parseModule("enum Plain { A, B }")).filterIsInstance<EnumDecl>().single().baseTypeName())
-    }
-
-    @Test
-    fun parsesVariantWithoutModifier() {
-        parseModule(
-            """
-            variant Shape {
-                Circle: Radius
-                Square: Side
-            }
-            """
-        )
+        // Speaker holds no state and is a parent: a trait. Loud is a class.
+        assertEquals(1, declsOf(ast).filterIsInstance<TraitDecl>().size)
+        assertEquals(1, declsOf(ast).filterIsInstance<ClassDecl>().size)
     }
 
     @Test
     fun parsesTypeAlias() {
         val ast = parseModule(
             """
-            pub alias MyInt as Int32
+            pub Int32 as MyInt
             """
         )
         assertEquals(1, declsOf(ast).filterIsInstance<TypeAliasDecl>().size)
@@ -247,16 +175,16 @@ class ParserSuiteTest {
     fun parsesGenericsWithBounds() {
         val ast = parseModule(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            pub class Pair<K, V: Any> {
-                require pub first: K
-                require pub second: V
+            pub Pair<K, V: Any>: Any {
+                pub first: K
+                pub second: V
             }
 
-            fx id<T: Any>: (value: T) T {
+            id<T: Any>: (value: T) T {
                 return value
             }
             """
@@ -273,7 +201,7 @@ class ParserSuiteTest {
         // closers at once, no `> >` required).
         val ast = parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 a: Arr<Arr<Arr<Int32>>> = [[[1]]]
                 b: Arr<Arr<Arr<Arr<Int32>>>> = [[[[1]]]]
             }
@@ -286,7 +214,7 @@ class ParserSuiteTest {
     fun genericsAndComparisonsOnTheSameLine() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 a: Arr<Int32> = [1]
                 b: Bool = a.size() > 0
                 c: Bool = a.size() >= 1
@@ -300,11 +228,11 @@ class ParserSuiteTest {
     fun genericCallsWithExplicitTypeArguments() {
         parseModule(
             """
-            fx id<T>: (v: T) T {
+            id<T>: (v: T) T {
                 return v
             }
 
-            fx main: () Void {
+            main: () Void {
                 x: Int32 = id<Int32>(1)
                 s: Str = id<Str>("a")
             }
@@ -316,7 +244,7 @@ class ParserSuiteTest {
     fun aComparisonWithANegatedOperandIsNotATypeArgumentList() {
         val ast = parseModule(
             """
-            fx f: (x: Int64) Bool {
+            f: (x: Int64) Bool {
                 if x < -LIMIT {
                     return false
                 }
@@ -342,7 +270,7 @@ class ParserSuiteTest {
     fun parsesIfElseIfElse() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 x: Int32 = 2
                 if x == 1 {
                     trace("one")
@@ -357,17 +285,14 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun parsesWhileAndDoWhile() {
+    fun parsesWhile() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 mut i: Int32 = 0
                 while i < 3 {
                     i = i + 1
                 }
-                do {
-                    i = i - 1
-                } while i > 0
             }
             """
         )
@@ -377,7 +302,7 @@ class ParserSuiteTest {
     fun parsesForRange() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 for mut i: 0..5 {
                     trace(i)
                 }
@@ -390,7 +315,7 @@ class ParserSuiteTest {
     fun parsesReturnBreakContinue() {
         parseModule(
             """
-            fx pick: (x: Int32) Int32 {
+            pick: (x: Int32) Int32 {
                 for mut i: 0..10 {
                     if i == 2 {
                         continue
@@ -412,11 +337,11 @@ class ParserSuiteTest {
     fun parsesThrowAndTryOn() {
         parseModule(
             """
-            fx fail: () Void {
+            fail: () Void {
                 throw Exception { "boom" }
             }
 
-            fx main: () Void {
+            main: () Void {
                 try {
                     fail()
                 } on e: Exception {
@@ -431,7 +356,7 @@ class ParserSuiteTest {
     fun parsesCompoundAssignments() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 mut a: Int32 = 1
                 a += 2
                 a -= 1
@@ -453,7 +378,7 @@ class ParserSuiteTest {
     fun parsesOperatorPrecedence() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 a: Int32 = 1 + 2 * 3 - 4 / 2
                 b: Bool = a > 2 && a <= 9 || a != 5
                 c: Int32 = 1 .. 3 .size()
@@ -469,7 +394,7 @@ class ParserSuiteTest {
     fun parsesPostfixMemberIndexCallCastIs() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 values: Arr<Int32> = [1, 2, 3]
                 first: Int32 = values[0]
                 length: Int32 = values.size()
@@ -486,7 +411,7 @@ class ParserSuiteTest {
     fun asBindsTighterThanTheBinaryOperatorsAndLooserThanAPrefixOne() {
         val ast = parseModule(
             """
-            fx f: (x: Int32, n: Int64) Int32 {
+            f: (x: Int32, n: Int64) Int32 {
                 a: Float64 = x as Float64 / 1000.0
                 b: Int64 = n + x as Int64
                 c: Bool = x as Int64 > n
@@ -522,19 +447,19 @@ class ParserSuiteTest {
     fun aLessThanAfterACastIsADiagnosticAtTheCast() {
         val e = assertThrows<DiagnosticsException> {
             parse(
-                "module \"test:parser\"\n" +
-                    "fx f: (x: Int32, n: Int64) Bool {\n" +
+                "" +
+                    "f: (x: Int32, n: Int64) Bool {\n" +
                     "    c: Bool = x as Int64 < n\n" +
                     "    return c\n" +
                     "}\n"
             )
         }
         assertTrue(e.message.contains("put the cast in parentheses: (... as Int64) < ..."), e.message)
-        assertEquals(3, e.location?.lineNumber)
+        assertEquals(2, e.location?.lineNumber)
         assertEquals(17, e.location?.column)
         parseModule(
             """
-            fx g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
+            g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
                 c: Bool = (x as Int64) < n
                 d: List<Int32> = xs as List<Int32>
                 return c
@@ -569,7 +494,7 @@ class ParserSuiteTest {
     fun aRangeEndTakesTheCast() {
         val ast = parseModule(
             """
-            fx f: (n: Int32) Int64 {
+            f: (n: Int32) Int64 {
                 mut s: Int64 = 0
                 for i: Int64 in 0..n as Int64 {
                     s += i
@@ -594,12 +519,12 @@ class ParserSuiteTest {
     fun parsesObjectCreationPositionalAndNamed() {
         parseModule(
             """
-            pub class Point {
-                require pub x: Int32
-                require pub y: Int32
+            pub Point: Any {
+                pub x: Int32
+                pub y: Int32
             }
 
-            fx main: () Void {
+            main: () Void {
                 p1: Point = Point { 1, 2 }
                 p2: Point = Point { x = 3, y = 4 }
             }
@@ -611,7 +536,7 @@ class ParserSuiteTest {
     fun parsesArrayLiterals() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 empty: Arr<Int32> = []
                 nums: Arr<Int32> = [1, 2, 3]
                 nested: Arr<Arr<Int32>> = [[1], [2, 3]]
@@ -624,7 +549,7 @@ class ParserSuiteTest {
     fun parsesIntrinsicCalls() {
         parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 @op_add(1, 2)
                 @_trace_("plain")
             }
@@ -637,7 +562,7 @@ class ParserSuiteTest {
     @Test
     fun nullableTypesAreRejected() {
         assertThrows<Throwable> {
-            parseModule("pub class Node { require pub next: Node? }")
+            parseModule("pub Node: Any { pub next: Node? }")
         }
     }
 
@@ -646,9 +571,9 @@ class ParserSuiteTest {
         // Was pinned as rejected; design 2.4 adds ThisExpr (see ParserGrowthTest).
         parseModule(
             """
-            pub class Node {
-                require pub label: Str
-                pub fx get: () Str {
+            pub Node: Any {
+                pub label: Str
+                pub get: () Str {
                     return this.label
                 }
             }
@@ -657,55 +582,44 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun functionTypeSpellingIsRejected() {
-        // The lambda on the right is syntax now (design 2.4, LambdaExpr); the
-        // `fx (x: Int32) Int32` *type* on the left is not: a function type is
-        // spelled Fx<Tuple1<Int32>, Int32> (spec Function Types).
-        assertThrows<Throwable> {
-            parseModule(
-                """
-                fx main: () Void {
-                    f: fx (x: Int32) Int32 = fx (x: Int32) Int32 { return x }
-                }
-                """
-            )
-        }
-        parseModule(
+    fun aFunctionTypeIsFxOfItsParameterTuple() {
+        // `(x: Int32) Int32` is the spelling of Fx<Tuple1<Int32>, Int32>, `() Void` of Fx<Tuple0, Void>.
+        val ast = parseModule(
             """
-            fx main: () Void {
-                f: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 { return x }
-            }
+            f: (x: Int32) Int32 = (x: Int32) Int32 { return x }
+            g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { return x }
+            h: () Void = () Void { }
+            k: Fx<Tuple0, Void> = () Void { }
             """
         )
+        fun text(t: net.exoad.kira.compiler.frontend.parser.ast.elements.Type): String {
+            val name = (t.identifier as Identifier).value
+            return if (t.children.isEmpty()) name else name + "<" + t.children.joinToString(", ") { text(it) } + ">"
+        }
+        val types = declsOf(ast).filterIsInstance<VariableDecl>().map { text(it.type) }
+        assertEquals(listOf("Fx<Tuple1<Int32>, Int32>", "Fx<Tuple1<Int32>, Int32>", "Fx<Tuple0, Void>", "Fx<Tuple0, Void>"), types)
     }
 
     @Test
     fun namingConventionsReserveUnderscoresForConstants() {
-        // Accepted: UPPER_SNAKE_CASE globals, fields and enum members.
+        // Accepted: UPPER_SNAKE_CASE globals and fields.
         val ast = parseModule(
             """
             MAX_SIZE: Int32 = 10
 
-            class Limits {
-                require pub MAX_X: Int32
-            }
-
-            enum Gear {
-                LOW_RANGE,
-                HIGH_RANGE = 4
+            Limits: Any {
+                pub MAX_X: Int32
             }
             """
         )
-        assertEquals(3, declsOf(ast).size, ast.toString())
+        assertEquals(2, declsOf(ast).size, ast.toString())
         // Rejected: types, functions, parameters and type parameters.
         for (bad in listOf(
-            "class A_T {}",
-            "trait T_A {}",
-            "enum E_N { A }",
-            "alias A_B as Int32",
-            "fx MY_FN: () Void {}",
-            "fx f: (X_Y: Int32) Void {}",
-            "fx id<T_X>: (v: T_X) T_X { return v }",
+            "A_T: Any {}",
+            "Int32 as A_B",
+            "MY_FN: () Void {}",
+            "f: (X_Y: Int32) Void {}",
+            "id<T_X>: (v: T_X) T_X { return v }",
         )) {
             assertThrows<Throwable>(bad) { parseModule(bad) }
         }
@@ -715,7 +629,7 @@ class ParserSuiteTest {
     fun parsesBareReturn() {
         val ast = parseModule(
             """
-            fx stop: (n: Int32) Void {
+            stop: (n: Int32) Void {
                 if n < 0 {
                     return
                 }
@@ -738,21 +652,18 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun initiallyFinallyBlocksParse() {
-        // Was pinned as rejected; design 2.4 adds ClassDecl.initially/finally
-        // (see ParserGrowthTest).
+    fun initiallyBlockParses() {
+        // Design 2.4 adds ClassDecl.initially (see ParserGrowthTest).
         val ast = parseModule(
             """
-            pub class C {
+            pub C: Any {
                 mut x: Int32 = 0
                 initially { x = 1 }
-                finally { x = 0 }
             }
             """
         )
         val cls = declsOf(ast).filterIsInstance<ClassDecl>().single()
         assertNotNull(cls.initially)
-        assertNotNull(cls.finally)
     }
 
     // --- malformed programs --------------------------------------------------
@@ -767,35 +678,35 @@ class ParserSuiteTest {
     @Test
     fun unterminatedBlockFails() {
         assertThrows<Throwable> {
-            parseModule("fx main: () Void {")
+            parseModule("main: () Void {")
         }
     }
 
     @Test
     fun badStatementFails() {
         assertThrows<Throwable> {
-            parseModule("fx main: () Void { 1 + }")
+            parseModule("main: () Void { 1 + }")
         }
     }
 
     @Test
     fun unknownTokenFails() {
         assertThrows<Throwable> {
-            parseModule("fx main: () Void { \$ }")
+            parseModule("main: () Void { \$ }")
         }
     }
 
     @Test
-    fun anEmptySourceIsADiagnostic() {
-        val e = assertThrows<DiagnosticsException> { parse("") }
-        assertTrue(e.message.contains("must be a module declaration"), e.message)
+    fun anEmptySourceIsAnEmptyModule() {
+        assertEquals(emptyList(), declsOf(parse("")))
+        assertEquals(emptyList(), declsOf(parse("// only a comment" + "\n")))
     }
 
     @Test
     fun aThreeLevelGenericInitialiserParses() {
         val ast = parseModule(
             """
-            fx main: () Void {
+            main: () Void {
                 m: Map<Str, Map<Str, Map<Str, Int32>>> = Map<Str, Map<Str, Map<Str, Int32>>> { }
             }
             """
@@ -809,6 +720,6 @@ class ParserSuiteTest {
         val deep = "(".repeat(50_000) + "1" + ")".repeat(50_000)
         val e = assertThrows<DiagnosticsException> { parseModule("x: Int32 = $deep") }
         assertTrue(e.message.contains("nests too deeply"), e.message)
-        assertEquals(2, e.location?.lineNumber)
+        assertEquals(1, e.location?.lineNumber)
     }
 }

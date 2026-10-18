@@ -52,11 +52,11 @@ class MinifiedCodegenTest {
         withMinify {
             val result = compile(
                 """
-                fx add: (a: Int32, b: Int32) Int32 {
+                add: (a: Int32, b: Int32) Int32 {
                     return a + b
                 }
 
-                fx main: () Void {
+                main: () Void {
                     trace(add(20, 10))
                 }
                 """,
@@ -93,7 +93,7 @@ class MinifiedCodegenTest {
         withMinify {
             val result = compile(
                 """
-                fx main: () Void {
+                main: () Void {
                     trace("hello, kira")
                 }
                 """,
@@ -125,7 +125,7 @@ class MinifiedCodegenTest {
         try {
             val result = compile(
                 """
-                fx main: () Void {
+                main: () Void {
                     trace("hi")
                 }
                 """,

@@ -76,9 +76,9 @@ class CppDeclFixesTest {
     fun aNullDefaultIsKiraNone() {
         val h = header(
             """
-            pub struct Cfg { pub limit: Maybe<Int32> = null }
+            pub Cfg: Struct { pub limit: Maybe<Int32> = null }
             pub mut last: Maybe<Int32> = null
-            pub fx find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
+            pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
             """
         )
         assertContains(
@@ -103,8 +103,6 @@ class CppDeclFixesTest {
             pub MASK: UInt32 = 0xFFFFFFFF
             pub MINUS: Int32 = -010
             pub TENS: Arr<Int32, 010> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-            pub enum Kind: Int32 { K_A = 010, K_B = 0x7F }
-            pub enum Wide: Int64 { W_A = 0xFFFFFFFFFFFFFFFF }
             """
         )
         assertContains(
@@ -117,8 +115,6 @@ class CppDeclFixesTest {
             "inline constexpr std::uint32_t MASK = 0xFFFFFFFFu;",
             "inline constexpr std::int32_t MINUS = -10;",
             "inline constexpr std::array<std::int32_t, 10> TENS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};",
-            "      K_A = 10,\n      K_B = 0x7F,",
-            "      W_A = static_cast<std::int64_t>(0xFFFFFFFFFFFFFFFFu),",
         )
     }
 
@@ -130,20 +126,18 @@ class CppDeclFixesTest {
             """
             pub ORIGIN: Pt = Pt {}
             pub mut cursor: Pt = Pt {}
-            pub alias Frame as Arr<UInt8, N>
+            pub Arr<UInt8, N> as Frame
             pub A: Int32 = B
-            pub K: Kind = Kind.K_A
             pub N: Size = 4
             pub B: Int32 = 2
-            pub enum Kind: Int32 { K_A = 0 }
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Pt: Struct { pub x: Int32 = 0 }
             pub SCALE: Int32 = 3
             """
         )
         // values that need nothing later keep their place; each forward reference waits for its target
         assertContains(
             h,
-            "  inline constexpr kira::Size N = 4;\n  using Frame = std::array<std::uint8_t, N>;\n  inline constexpr std::int32_t B = 2;\n  inline constexpr std::int32_t A = B;\n\n  enum class Kind : std::int32_t\n  {\n      K_A = 0,\n  };\n\n  inline constexpr Kind K = Kind::K_A;\n  inline constexpr std::int32_t SCALE = 3;\n\n  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  inline Pt cursor = Pt{};\n}",
+            "  inline constexpr kira::Size N = 4;\n  using Frame = std::array<std::uint8_t, N>;\n  inline constexpr std::int32_t B = 2;\n  inline constexpr std::int32_t A = B;\n  inline constexpr std::int32_t SCALE = 3;\n\n  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  inline Pt cursor = Pt{};\n}",
         )
     }
 
@@ -151,7 +145,7 @@ class CppDeclFixesTest {
     fun aStructWhoseDefaultNamesALaterConstantFollowsIt() {
         val h = header(
             """
-            pub struct S { pub n: Int32 = LIMIT pub fx f: (x: Int32 = LIMIT) Int32; }
+            pub S: Struct { pub n: Int32 = LIMIT pub f: (x: Int32 = LIMIT) Int32; }
             pub LIMIT: Int32 = 5
             """
         )
@@ -162,7 +156,7 @@ class CppDeclFixesTest {
     fun aCycleThatIsNotByValueContainmentIsAnError() {
         val (emitted, _) = emit(
             """
-            pub struct S { pub xs: List<S> = EMPTY }
+            pub S: Struct { pub xs: List<S> = EMPTY }
             pub EMPTY: List<S> = []
             """
         )
@@ -178,14 +172,13 @@ class CppDeclFixesTest {
         val (emitted, _) = emit(
             """
             LIMIT: Int32 = 5
-            enum Mode: Int32 { MODE_A = 0 }
-            struct Inner { pub v: Int32 = 1 }
-            struct Unseen { pub v: Int32 = 2 }
-            @_const fx helper: (v: Int32) Int32 { return v }
-            fx unseenHelper: (v: Int32) Int32 { return v }
-            pub struct S { pub m: Mode = Mode.MODE_A pub n: Int32 = LIMIT pub i: Inner = Inner {} }
-            pub fx f: (x: Int32) Int32 { return unseenHelper(x) }
-            pub @_const fx c: (x: Int32) Int32 { return helper(x) }
+            Inner: Struct { pub v: Int32 = 1 }
+            Unseen: Struct { pub v: Int32 = 2 }
+            @_const helper: (v: Int32) Int32 { return v }
+            unseenHelper: (v: Int32) Int32 { return v }
+            pub S: Struct { pub n: Int32 = LIMIT pub i: Inner = Inner {} }
+            pub f: (x: Int32) Int32 { return unseenHelper(x) }
+            pub @_const c: (x: Int32) Int32 { return helper(x) }
             @_static_assert(LIMIT == 5, "limit")
             """
         )
@@ -193,7 +186,7 @@ class CppDeclFixesTest {
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
         assertContains(
             h,
-            "  namespace impl_\n  {\n    inline constexpr std::int32_t LIMIT = 5;\n\n    enum class Mode : std::int32_t\n    {\n        MODE_A = 0,\n    };\n\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Mode m = impl_::Mode::MODE_A;\n      std::int32_t n = impl_::LIMIT;\n      impl_::Inner i = impl_::Inner{};\n  };",
+            "  namespace impl_\n  {\n    inline constexpr std::int32_t LIMIT = 5;\n\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      std::int32_t n = impl_::LIMIT;\n      impl_::Inner i = impl_::Inner{};\n  };",
             "  namespace impl_\n  {\n    [[nodiscard]] constexpr std::int32_t helper(std::int32_t v);\n  }\n  [[nodiscard]] std::int32_t f(std::int32_t x);\n  [[nodiscard]] constexpr std::int32_t c(std::int32_t x);",
             "  namespace impl_\n  {\n    constexpr std::int32_t helper(std::int32_t v)\n    {\n        return {}; // body of helper\n    }\n  }\n\n  constexpr std::int32_t c(std::int32_t x)",
             "  static_assert(<BinaryExpr>, \"limit\");",
@@ -207,9 +200,9 @@ class CppDeclFixesTest {
     fun aHeaderOnlyModuleDefinesAPrivateStructBeforeThePublicOneHoldingIt() {
         val h = header(
             """
-            pub struct S { pub i: Inner = Inner {} pub xs: List<Later> = List<Later> {} }
-            struct Inner { pub v: Int32 = 1 }
-            struct Later { pub v: Int32 = 2 }
+            pub S: Struct { pub i: Inner = Inner {} pub xs: List<Later> = List<Later> {} }
+            Inner: Struct { pub v: Int32 = 1 }
+            Later: Struct { pub v: Int32 = 2 }
             """,
             uri = "lib:units",
             options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:units")),
@@ -229,9 +222,9 @@ class CppDeclFixesTest {
     fun comparingAStructDefaultsEqualityOnEveryStructItHolds() {
         val h = header(
             """
-            pub struct Inner { pub v: Int32 = 0 }
-            pub struct Outer { pub a: Inner = Inner {} pub xs: List<Inner> = List<Inner> {} }
-            pub struct Apart { pub v: Int32 = 0 }
+            pub Inner: Struct { pub v: Int32 = 0 }
+            pub Outer: Struct { pub a: Inner = Inner {} pub xs: List<Inner> = List<Inner> {} }
+            pub Apart: Struct { pub v: Int32 = 0 }
             """,
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Outer"] as ClassSymbol)) },
         )
@@ -243,8 +236,8 @@ class CppDeclFixesTest {
     fun comparingAContainerOfStructsMarksTheStruct() {
         val (_, ctx) = emit(
             """
-            pub struct Pt { pub x: Int32 = 0 }
-            pub fx same: (a: List<Pt>, b: List<Pt>) Bool { return a == b }
+            pub Pt: Struct { pub x: Int32 = 0 }
+            pub same: (a: List<Pt>, b: List<Pt>) Bool { return a == b }
             """
         )
         val pt = ctx.symbol.members["Pt"] as ClassSymbol
@@ -262,7 +255,7 @@ class CppDeclFixesTest {
     fun aComparedStructWithAFieldThatHasNoEqualityIsAnError() {
         // A required field: `= null` on an Fx is what the semantic pass rejects (types are non-nullable).
         val (emitted, _) = emit(
-            "pub struct Cb { pub f: Fx<Tuple0, Void> }",
+            "pub Cb: Struct { pub f: Fx<Tuple0, Void> }",
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Cb"] as ClassSymbol)) },
         )
         val error = emitted.diagnostics.singleOrNull { it.code == CppDeclEmitter.STRUCT_EQUALITY_CODE } ?: fail(emitted.diagnostics.joinToString("\n") { it.render() })
@@ -275,9 +268,9 @@ class CppDeclFixesTest {
     fun anEmptyClassConstructionGoesThroughMakeShared() {
         val h = header(
             """
-            pub class Reg { pub n: Int32 = 0 }
-            pub struct Holder { pub r: Reg = Reg {} pub p: Pt = Pt {} }
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Reg: Any { pub n: Int32 = 0 }
+            pub Holder: Struct { pub r: Reg = Reg {} pub p: Pt = Pt {} }
+            pub Pt: Struct { pub x: Int32 = 0 }
             """
         )
         // (module-level mut state may not start from a class construction: D49 wants a constant expression)
@@ -290,10 +283,10 @@ class CppDeclFixesTest {
     fun aGenericStructsMethodIsDefinedWithItsTemplateHeadAndArguments() {
         val (emitted, _) = emit(
             """
-            pub struct Pair<T> {
+            pub Pair<T>: Struct {
                 pub a: T
-                pub fx first: () T { return a }
-                pub fx swap<U>: (u: U) U { return u }
+                pub first: () T { return a }
+                pub swap<U>: (u: U) U { return u }
             }
             """
         )
@@ -312,10 +305,10 @@ class CppDeclFixesTest {
     fun aMemberNameOrANamedArgumentIsNotAUseOfTheParameter() {
         val (emitted, _) = emit(
             """
-            pub struct P { pub x: Int32 = 0 }
-            pub fx f: (x: Int32, p: P) Int32 { return p.x }
-            pub fx g: (x: Int32) P { return P { x = 1 } }
-            pub fx h: (x: Int32) P { return P { x = x } }
+            pub P: Struct { pub x: Int32 = 0 }
+            pub f: (x: Int32, p: P) Int32 { return p.x }
+            pub g: (x: Int32) P { return P { x = 1 } }
+            pub h: (x: Int32) P { return P { x = x } }
             """
         )
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
@@ -334,8 +327,8 @@ class CppDeclFixesTest {
         val (emitted, ctx) = emit(
             """
             pub LIMIT: Int32 = 3
-            pub struct Pt { pub x: Int32 = 0 pub mut fx setX: (mut x: Int32, y: Int32) Void { x = y } }
-            pub fx g: (LIMIT: Int32, other: Int32) Int32 { return LIMIT + other }
+            pub Pt: Struct { pub x: Int32 = 0 pub mut setX: (mut x: Int32, y: Int32) Void { x = y } }
+            pub g: (LIMIT: Int32, other: Int32) Int32 { return LIMIT + other }
             """
         )
         val h = CppWriter.normalize(emitted.header)
@@ -353,15 +346,15 @@ class CppDeclFixesTest {
     fun lineDirectivesPrecedeDefinitionsWhenAsked() {
         val (emitted, _) = emit(
             """
-            pub fx f: () Void { }
-            pub @_const fx c: (v: Int32) Int32 { return v }
+            pub f: () Void { }
+            pub @_const c: (v: Int32) Int32 { return v }
             """,
             options = CppOptions(lineDirectives = true),
         )
         val h = CppWriter.normalize(emitted.header)
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
-        assertContains(h, "  #line 4 \"src/test/main.kira\"\n  constexpr std::int32_t c(std::int32_t v)")
-        assertContains(s, "  #line 3 \"src/test/main.kira\"\n  void f()")
+        assertContains(h, "  #line 2 \"src/test/main.kira\"\n  constexpr std::int32_t c(std::int32_t v)")
+        assertContains(s, "  #line 1 \"src/test/main.kira\"\n  void f()")
     }
 
     // ---- the Int and Float aliases of kira:core are spelled as their targets -------------------
@@ -370,7 +363,7 @@ class CppDeclFixesTest {
     fun theCoreAliasesAreSpelledAsTheirTargetsAndReachNoStdlibHeader() {
         // kira:core's header would hold its traits (unsupported until W2.4) and is hosted, which a
         // freestanding module could not include; `Int` is `std::int32_t` wherever it is written.
-        val (emitted, _) = emit("pub X: Int = 3\npub F: Float = 0.5\npub alias Idx as Int\npub struct S { pub n: Int = 1 }\npub fx f: (n: Int, xs: List<Int>) Int;")
+        val (emitted, _) = emit("pub X: Int = 3\npub F: Float = 0.5\npub Int as Idx\npub S: Struct { pub n: Int = 1 }\npub f: (n: Int, xs: List<Int>) Int;")
         val h = CppWriter.normalize(emitted.header)
         assertContains(
             h,
@@ -408,8 +401,8 @@ class CppDeclFixesTest {
             pub MFI: Maybe<Float32> = 1
             pub MD: Maybe<Float64> = 0.5
             pub MFN: Maybe<Float32> = -0.25
-            pub struct M { pub a: Maybe<UInt8> = 7 pub b: Maybe<Float32> = 2.5 pub c: UInt8 = 7 }
-            pub fx g: (x: Maybe<Int16> = 3, y: Int16 = 3) Void;
+            pub M: Struct { pub a: Maybe<UInt8> = 7 pub b: Maybe<Float32> = 2.5 pub c: UInt8 = 7 }
+            pub g: (x: Maybe<Int16> = 3, y: Int16 = 3) Void;
             """
         )
         assertContains(
@@ -435,10 +428,10 @@ class CppDeclFixesTest {
     fun aContainerOfALaterStructIsOrderedOrValueInitializedAsTheCompilersNeed() {
         val h = header(
             """
-            pub struct Early { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
-            pub struct Queued { pub d: Deque<Later> = Deque<Later> {} }
-            pub struct Later { pub v: Int32 = 0 }
-            pub class Node { pub v: Int32 = 0 }
+            pub Early: Struct { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
+            pub Queued: Struct { pub d: Deque<Later> = Deque<Later> {} }
+            pub Later: Struct { pub v: Int32 = 0 }
+            pub Node: Any { pub v: Int32 = 0 }
             """,
             usageOf = { CppUsage.NONE },
         )
@@ -454,19 +447,19 @@ class CppDeclFixesTest {
 
     @Test
     fun structsHoldingEachOtherInListsAreFineAndInDequesAreACycle() {
-        val h = header("pub struct A { pub bs: List<B> = List<B> {} }\npub struct B { pub items: List<A> = List<A> {} }")
+        val h = header("pub A: Struct { pub bs: List<B> = List<B> {} }\npub B: Struct { pub items: List<A> = List<A> {} }")
         assertContains(h, "  struct A\n  {\n      kira::List<B> bs{};\n  };\n\n  struct B\n  {\n      kira::List<A> items{};\n  };")
-        val (emitted, _) = emit("pub struct A { pub bs: Deque<B> = Deque<B> {} }\npub struct B { pub items: Deque<A> = Deque<A> {} }")
+        val (emitted, _) = emit("pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
         val cycle = emitted.diagnostics.filter { it.code == CppPlacement.DECL_CYCLE_CODE }
         assertEquals(2, cycle.size, emitted.diagnostics.joinToString("\n") { it.render() })
         assertTrue(cycle.all { it.message.contains("container") && it.message.contains("class") }, cycle.joinToString { it.message })
-        val self = header("pub struct S { pub kids: List<S> = List<S> {} pub v: Int32 = 0 }")
+        val self = header("pub S: Struct { pub kids: List<S> = List<S> {} pub v: Int32 = 0 }")
         assertContains(self, "  struct S\n  {\n      kira::List<S> kids{};\n      std::int32_t v = 0;\n  };")
     }
 
     @Test
     fun aModuleNamedMainGetsAnEscapedNamespaceSoIntMainCanSitBesideIt() {
-        val (emitted, _) = emit("pub LIMIT: Int32 = 3\nfx main: () Int32 { return 0 }", uri = "app:main")
+        val (emitted, _) = emit("pub LIMIT: Int32 = 3\nmain: () Int32 { return 0 }", uri = "app:main")
         val h = CppWriter.normalize(emitted.header)
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
         assertContains(h, "namespace main_\n{\n  inline constexpr std::int32_t LIMIT = 3;\n\n  [[nodiscard]] std::int32_t main();\n}")
@@ -486,11 +479,11 @@ class CppDeclFixesTest {
             """
             LIMIT: Int32 = 5
             HIDDEN: Int32 = 6
-            pub struct S { pub n: Int32 = LIMIT }
-            pub fx f: (x: Int32) Int32 { return x + HIDDEN }
+            pub S: Struct { pub n: Int32 = LIMIT }
+            pub f: (x: Int32) Int32 { return x + HIDDEN }
             """,
         )
-        val app = DeclTestSupport.module("app:b", "use \"lib:a\"\npub Y: Int32 = 1")
+        val app = DeclTestSupport.module("app:b", "lib.a as a\npub Y: Int32 = 1")
         val (_, ctx) = DeclTestSupport.emitWith(lib, app, uri = "app:b", parts = fakeBodies)
         val a = ctx.program.module("lib:a") ?: fail("no lib:a")
         // LIMIT is a field default of an exported struct, so lib:a's header holds it in impl_; HIDDEN is only the body's, so the .cxx holds it.
@@ -509,10 +502,10 @@ class CppDeclFixesTest {
             """
             pub DATA: Arr<UInt8, 2> = [1, 2]
             pub X: UInt32 = crc8(DATA)
-            pub @_const fx crc8: (buf: View<UInt8>) UInt32 { return 7 }
-            pub struct S { pub n: Int32 = limit() }
-            pub fx limit: () Int32 { return 1 }
-            pub fx other: () Int32 { return 2 }
+            pub @_const crc8: (buf: View<UInt8>) UInt32 { return 7 }
+            pub S: Struct { pub n: Int32 = limit() }
+            pub limit: () Int32 { return 1 }
+            pub other: () Int32 { return 2 }
             """
         )
         val h = CppWriter.normalize(emitted.header)
@@ -538,27 +531,27 @@ class CppDeclFixesTest {
         // or a pub constant, so `Pt {}` or a call cannot sit there; a field default can hold either.)
         val h = header(
             """
-            pub struct S { pub n: Int32 = limit() }
-            pub fx limit: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub S: Struct { pub n: Int32 = limit() }
+            pub limit: (p: Pt = ORIGIN) Int32 { return 1 }
             pub ORIGIN: Pt = Pt {}
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Pt: Struct { pub x: Int32 = 0 }
             """
         )
         assertContains(h, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  [[nodiscard]] std::int32_t limit(const Pt& p = ORIGIN);\n\n  struct S\n  {\n      std::int32_t n = <FunctionCallExpr>;\n  };")
         val const = header(
             """
             pub X: Int32 = pick()
-            pub @_const fx pick: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub @_const pick: (p: Pt = ORIGIN) Int32 { return 1 }
             pub ORIGIN: Pt = Pt {}
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Pt: Struct { pub x: Int32 = 0 }
             """
         )
         assertContains(const, "  struct Pt\n  {\n      std::int32_t x = 0;\n  };\n\n  inline constexpr Pt ORIGIN = Pt{};\n  [[nodiscard]] constexpr std::int32_t pick(const Pt& p = ORIGIN);\n\n  constexpr std::int32_t pick([[maybe_unused]] const Pt& p)\n  {\n      return {}; // body of pick\n  }\n\n  inline constexpr std::int32_t X = <FunctionCallExpr>;")
         val call = header(
             """
-            pub struct S { pub p: Pt = origin() }
-            pub fx origin: () Pt { return Pt {} }
-            pub struct Pt { pub x: Int32 = 0 }
+            pub S: Struct { pub p: Pt = origin() }
+            pub origin: () Pt { return Pt {} }
+            pub Pt: Struct { pub x: Int32 = 0 }
             """
         )
         // origin's prototype may return the still-incomplete Pt; the field default that calls it waits for Pt
@@ -575,15 +568,15 @@ class CppDeclFixesTest {
         // builds lib:z's placement before lib:z's own emission; the cycle it finds must reach
         // lib:z's diagnostics all the same, or `kira --target cpp` writes a header C++ rejects
         // and exits 0.
-        val z = DeclTestSupport.module("lib:z", "pub struct A { pub bs: Deque<B> = Deque<B> {} }\npub struct B { pub items: Deque<A> = Deque<A> {} }")
-        val a = DeclTestSupport.module("app:a", "use \"lib:z\"\n\npub struct H { pub a: A = A {} }")
+        val z = DeclTestSupport.module("lib:z", "pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
+        val a = DeclTestSupport.module("app:a", "lib.z as z\n\npub H: Struct { pub a: A = A {} }")
         val emitted = DeclTestSupport.emit(a, z, parts = fakeBodies)
         assertTrue(!emitted.module("app:a").hasErrors, emitted.render(emitted.diagnostics("app:a")))
         val cycle = emitted.diagnostics("lib:z").filter { it.code == CppPlacement.DECL_CYCLE_CODE }
         assertEquals(2, cycle.size, emitted.render(emitted.diagnostics("lib:z")))
         assertTrue(emitted.module("lib:z").hasErrors)
         // the same for a by-value cycle
-        val zv = DeclTestSupport.module("lib:z", "pub struct A { pub b: Maybe<B> = null }\npub struct B { pub a: Maybe<A> = null }")
+        val zv = DeclTestSupport.module("lib:z", "pub A: Struct { pub b: Maybe<B> = null }\npub B: Struct { pub a: Maybe<A> = null }")
         val byValue = DeclTestSupport.emit(a, zv, parts = fakeBodies)
         assertEquals(2, byValue.diagnostics("lib:z").count { it.code == CppPlacement.STRUCT_CYCLE_CODE }, byValue.render(byValue.diagnostics("lib:z")))
         // and the errors are lib:z's, at lib:z's declarations, reported once
@@ -601,8 +594,8 @@ class CppDeclFixesTest {
             pub A: Maybe<Int32> = -2147483648
             pub B: Int32 = -2147483648
             pub C: Maybe<Int32> = -2147483647
-            pub struct W { pub a: Maybe<Int32> = -2147483648 }
-            pub fx g: (x: Maybe<Int32> = -2147483648) Void;
+            pub W: Struct { pub a: Maybe<Int32> = -2147483648 }
+            pub g: (x: Maybe<Int32> = -2147483648) Void;
             """
         )
         assertContains(
@@ -616,27 +609,12 @@ class CppDeclFixesTest {
     }
 
     @Test
-    fun aFloatEnumNumbersItsEntriesAndValueOfGivesTheValueWhereUsed() {
-        val src = """pub enum Ratio: Float32 { HALF = 0.5, FULL = 1.0 }
-            pub enum Wide: Float64 { W_A = 2.5 }"""
-        val h = header(src)
-        assertContains(h, "  enum class Ratio : std::int32_t\n  {\n      HALF = 0,\n      FULL = 1,\n  };", "  enum class Wide : std::int32_t\n  {\n      W_A = 0,\n  };")
-        assertTrue(!h.contains("valueOf"), "valueOf is emitted only where used:\n$h")
-        val used = header(src, usageOf = { ctx -> CppUsage.of(valueOf = setOf(ctx.symbol.members["Ratio"] as EnumSymbol, ctx.symbol.members["Wide"] as EnumSymbol)) })
-        assertContains(
-            used,
-            "  [[nodiscard]] constexpr float valueOf(Ratio v)\n  {\n      switch(v)\n      {\n          case Ratio::HALF:\n              return 0.5f;\n          case Ratio::FULL:\n              return 1.0f;\n      }\n      return 0.0f;\n  }",
-            "  [[nodiscard]] constexpr double valueOf(Wide v)\n  {\n      switch(v)\n      {\n          case Wide::W_A:\n              return 2.5;\n      }\n      return 0.0;\n  }",
-        )
-    }
-
-    @Test
     fun comparingAGenericStructInstanceMarksItsArgument() {
         val (_, ctx) = emit(
             """
-            pub struct Pt { pub x: Int32 = 0 }
-            pub struct Pair<T> { pub a: T pub b: T }
-            pub fx same: (a: Pair<Pt>, b: Pair<Pt>) Bool { return a == b }
+            pub Pt: Struct { pub x: Int32 = 0 }
+            pub Pair<T>: Struct { pub a: T pub b: T }
+            pub same: (a: Pair<Pt>, b: Pair<Pt>) Bool { return a == b }
             """
         )
         val pt = ctx.symbol.members["Pt"] as ClassSymbol

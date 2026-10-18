@@ -68,7 +68,7 @@ class TyperPhaseTest {
 
     @Test
     fun structIsCollectedAsAStructAndImplementsTraitsStatically() {
-        val unit = TyperTestSupport.unitOf(module("test:shapes", "pub trait Sized {\n pub fx width: () Int32\n}"))
+        val unit = TyperTestSupport.unitOf(module("test:shapes", "pub Sized: Any {\n pub width: () Int32\n}"))
         val struct = StructDecl(
             ty("Band"),
             listOf(Modifier.PUBLIC),
@@ -111,7 +111,7 @@ class TyperPhaseTest {
 
     @Test
     fun structCannotInheritAClass() {
-        val unit = TyperTestSupport.unitOf(module("test:base", "pub class Base { }"))
+        val unit = TyperTestSupport.unitOf(module("test:base", "pub Base: Any { pub n: Int32 = 0 }"))
         val struct = StructDecl(ty("S"), emptyList(), emptyList(), listOf(ty("Base")), null)
         val src = astModule(unit, "test:s", struct)
         src.ast = net.exoad.kira.compiler.frontend.parser.ast.RootASTNode(
@@ -183,7 +183,7 @@ class TyperPhaseTest {
 
     @Test
     fun aConstantNameInTypeArgumentPositionIsAConst() {
-        val p = snippet("pub LEN: Size = 2\npub alias Frame as Arr<UInt8, LEN>\nf: Frame = [1, 2]")
+        val p = snippet("pub LEN: Size = 2\npub Arr<UInt8, LEN> as Frame\nf: Frame = [1, 2]")
         expectNoErrors(p)
         val frame = p.workspaceModules.single().members["f"] as GlobalSymbol
         assertEquals("Arr<UInt8, 2>", frame.type.display())
@@ -230,7 +230,8 @@ class TyperPhaseTest {
     @Test
     fun overrideModifier() {
         val unit = CompilationUnit()
-        val base = ClassDecl(ty("Base"), emptyList(), listOf(fn("run", emptyList(), ty("Int32"))))
+        // Base holds state, so it is a class (a stateless parent is a trait).
+        val base = ClassDecl(ty("Base"), emptyList(), listOf(field("n", ty("Int32"), IntegerLiteral(0)), fn("run", emptyList(), ty("Int32"))))
         val child = ClassDecl(
             ty("Child"), emptyList(),
             listOf(
@@ -258,9 +259,9 @@ class TyperPhaseTest {
     fun magicOpaqueAndExternMarkers() {
         val p = snippet(
             """
-            pub @_magic fx clock: () Int64;
-            pub @_opaque class Window
-            pub @_extern fx cSin: (x: Float64) Float64;
+            pub @_magic clock: () Int64;
+            pub @_opaque Window: Any
+            pub @_extern cSin: (x: Float64) Float64;
             """
         )
         expectNoErrors(p)
@@ -275,11 +276,11 @@ class TyperPhaseTest {
     fun membersOfMagicAndExternClassesInheritTheirForeignness() {
         val p = snippet(
             """
-            pub @_extern class Car {
-                pub mut fx arm: () Bool;
+            pub @_extern Car: Any {
+                pub mut arm: () Bool;
             }
-            pub class Plain {
-                pub fx run: () Void { }
+            pub Plain: Any {
+                pub run: () Void { }
             }
             """
         )
@@ -311,10 +312,10 @@ class TyperPhaseTest {
         TyperTestSupport.assumeDialectParser("reading @_extern arguments")
         val p = snippet(
             """
-            pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
-                pub fx ok: () Bool;
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
+                pub ok: () Bool;
             }
-            pub @_extern("c_cos") fx cosine: (x: Float64) Float64;
+            pub @_extern("c_cos") cosine: (x: Float64) Float64;
             """
         )
         assertEquals(Foreign.Extern(mapOf("cpp" to "bibo::Car", "header" to "car.hxx")), (p.member("test:main", "Car") as ClassSymbol).foreign)
@@ -337,10 +338,10 @@ class TyperPhaseTest {
     fun declaredNamesMapToTheirOwnSymbols() {
         val p = snippet(
             """
-            fx first: (x: Int32) Int32 {
+            first: (x: Int32) Int32 {
                 return x
             }
-            fx second: (x: Str) Str {
+            second: (x: Str) Str {
                 return x
             }
             """
@@ -365,12 +366,12 @@ class TyperPhaseTest {
     fun genericBoundsAndMethodTypeParameters() {
         val p = snippet(
             """
-            pub trait Named {
-                pub fx name: () Str
+            pub Named: Any {
+                pub name: () Str
             }
-            pub class Holder<T: Named> {
-                require pub item: T
-                pub fx map<U>: (f: Fx<Tuple1<T>, U>) U {
+            pub Holder<T: Named>: Any {
+                pub item: T
+                pub map<U>: (f: Fx<Tuple1<T>, U>) U {
                     return f(item)
                 }
             }
@@ -390,26 +391,26 @@ class TyperPhaseTest {
     fun traitMethodsFlattenWithDefaultsAndGenericTraitsSubstitute() {
         val p = snippet(
             """
-            pub trait Keyed<K> {
-                pub fx key: () K
-                pub fx describe: () Str {
+            pub Keyed<K>: Any {
+                pub key: () K
+                pub describe: () Str {
                     return "keyed"
                 }
             }
-            pub trait Named: Keyed<Str> {
-                pub fx name: () Str
+            pub Named: Keyed<Str> {
+                pub name: () Str
             }
-            pub class Tag: Named {
-                require pub label: Str
-                pub fx key: () Str {
+            pub Tag: Named {
+                pub label: Str
+                pub key: () Str {
                     return label
                 }
-                pub fx name: () Str {
+                pub name: () Str {
                     return label
                 }
             }
-            pub class Broken: Keyed<Int32> {
-                pub fx key: () Str {
+            pub Broken: Keyed<Int32> {
+                pub key: () Str {
                     return "no"
                 }
             }
@@ -434,7 +435,7 @@ class TyperPhaseTest {
 
         val declared = TyperTestSupport.phasesAAndB {
             TyperTestSupport.type(
-                module("kira:aaa", "pub @_magic class View<T> {\n    pub fx size: () Size;\n}"),
+                module("kira:aaa", "pub @_magic View<T>: Any {\n    pub size: () Size;\n}"),
                 module("test:main", "v: View<UInt8> = 1"),
             )
         }
@@ -448,7 +449,7 @@ class TyperPhaseTest {
     @Test
     fun aUserTypeShadowsABuiltinName() {
         // Phases A and B alone: a class constant is not a compile-time value, which phase C reports.
-        val p = TyperTestSupport.phasesAAndB { snippet("pub class View { }\nv: View = View { }") }
+        val p = TyperTestSupport.phasesAAndB { snippet("pub View: Any { }\nv: View = View { }") }
         expectNoErrors(p)
         val t = (p.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals(ClassKind.CLASS, (t.sym as ClassSymbol).kind)
@@ -539,7 +540,7 @@ class TyperPhaseTest {
         val source = p.module("test:main")!!.source
         val dump = TypedModelDumper.dump(p, source)
         val lines = dump.lines()
-        assertTrue(lines.any { it.startsWith("main.kira:3:20  2 + 3  ?  const=5:Int32") }, dump)
+        assertTrue(lines.any { it.startsWith("main.kira:1:20  2 + 3  ?  const=5:Int32") }, dump)
         assertTrue(lines.any { it.contains("\"a\" + \"b\"  ?  const=\"ab\"") }, dump)
         val all = TypedModelDumper.dump(p, source, includeUntyped = true)
         assertTrue(all.lines().size >= lines.size)
@@ -551,7 +552,7 @@ class TyperPhaseTest {
         // `proto.kira:31:12  s.length()  Size  call=MAGIC(Str.length)`.
         val p = snippet(
             """
-            fx size: (s: Str) Size {
+            size: (s: Str) Size {
                 return s.length()
             }
             """
@@ -567,7 +568,7 @@ class TyperPhaseTest {
             false, emptyList(), emptyList(), emptyList(), KType.SIZE,
         )
         val line = TypedModelDumper.dump(p, source).lines().single { "length" in it }
-        assertEquals("main.kira:4:12  s.length()  Size  call=MAGIC(Str.length)", line)
+        assertEquals("main.kira:2:12  s.length()  Size  call=MAGIC(Str.length)", line)
     }
 
     @Test
@@ -592,7 +593,7 @@ class TyperPhaseTest {
 
     @Test
     fun fieldsKnowTheirOwnerAndIndex() {
-        val p = snippet("pub class P {\n    require pub x: Int32\n    pub mut y: Int32 = 2\n}")
+        val p = snippet("pub P: Any {\n    pub x: Int32\n    pub mut y: Int32 = 2\n}")
         val cls = p.member("test:main", "P") as ClassSymbol
         val y: FieldSymbol = cls.field("y")!!
         assertSame(cls, y.owner)

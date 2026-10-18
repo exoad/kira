@@ -93,34 +93,30 @@ class CppDeclRound1Test {
             pub width: Int32 = 5
             pub OTHER: Int32 = 3
             LIMIT: Int32 = 7
-            enum Mode: Int32 { MODE_A = 0, MODE_B = 1 }
-            pub fx scale: (x: Int32) Int32;
-            pub struct Box {
+            pub scale: (x: Int32) Int32;
+            pub Box: Struct {
                 pub width: Int32 = width
                 pub LIMIT: Int32 = LIMIT
                 pub other: Int32 = OTHER
-                pub Mode: Mode = Mode.MODE_B
-                pub fx grow: (by: Int32 = OTHER) Int32;
-                pub fx scale: (x: Int32 = width) Int32;
+                pub grow: (by: Int32 = OTHER) Int32;
+                pub scale: (x: Int32 = width) Int32;
             }
-            pub struct Plain {
+            pub Plain: Struct {
                 pub w: Int32 = width
-                pub m: Mode = Mode.MODE_A
             }
             """,
         )
         // a field, a private constant in impl_ (a field default may name one; a default argument may not, D48),
-        // an enum both as the field's type and its default, a default argument a field hides
+        // a default argument a field hides
         assertContains(
             h,
             "std::int32_t width = ::main_::width;",
             "std::int32_t LIMIT = ::main_::impl_::LIMIT;",
-            "::main_::impl_::Mode Mode = ::main_::impl_::Mode::MODE_B;",
             "scale(std::int32_t x = ::main_::width) const;",
         )
         // a name no member hides stays bare, inside the struct and outside it
-        assertContains(h, "std::int32_t other = OTHER;", "grow(std::int32_t by = OTHER) const;", "std::int32_t w = width;", "impl_::Mode m = impl_::Mode::MODE_A;")
-        assertLacks(h, "std::int32_t width = width;", "::main_::OTHER", "::main_::Mode m")
+        assertContains(h, "std::int32_t other = OTHER;", "grow(std::int32_t by = OTHER) const;", "std::int32_t w = width;")
+        assertLacks(h, "std::int32_t width = width;", "::main_::OTHER")
     }
 
     @Test
@@ -128,7 +124,7 @@ class CppDeclRound1Test {
         val h = header(
             """
             LIMIT: Int32 = 7
-            pub struct Box {
+            pub Box: Struct {
                 pub LIMIT: Int32 = LIMIT
             }
             """,
@@ -143,11 +139,11 @@ class CppDeclRound1Test {
         val (emitted, _) = emit(
             """
             pub LIMIT: Int32 = 7
-            pub struct Box {
+            pub Box: Struct {
                 pub LIMIT: Int32 = 1
-                pub fx limit: () Int32 { return LIMIT }
+                pub limit: () Int32 { return LIMIT }
             }
-            pub fx limit: () Int32 { return LIMIT }
+            pub limit: () Int32 { return LIMIT }
             """,
         )
         val errors = emitted.diagnostics.filter { it.isError }
@@ -164,12 +160,12 @@ class CppDeclRound1Test {
         val (emitted, ctx) = emit(
             """
             pub LIMIT: Int32 = 7
-            pub class Holder {
+            pub Holder: Any {
                 pub n: Int32 = 1
-                pub fx limit: () Int32 { return LIMIT }
+                pub limit: () Int32 { return LIMIT }
             }
-            pub trait Sized {
-                fx size: () Int32
+            pub Sized: Any {
+                size: () Int32
             }
             """,
             parts = CppEmitParts(stmts = ReturnsNamed("LIMIT"), exprs = FakeExprs, classes = classes),
@@ -189,7 +185,7 @@ class CppDeclRound1Test {
         val h = header(
             """
             pub std: Int32 = 1
-            pub struct S {
+            pub S: Struct {
                 pub kira: Int32 = std
                 pub v: Int32 = 2
             }
@@ -206,7 +202,7 @@ class CppDeclRound1Test {
             "test:util",
             """
             pub LIMIT: Int32 = 1
-            pub struct Pt { pub x: Int32 = 0 }
+            pub Pt: Struct { pub x: Int32 = 0 }
             pub ONLY_HERE: Int32 = 3
             hidden: Int32 = 4
             """,
@@ -215,7 +211,7 @@ class CppDeclRound1Test {
             "test:other",
             """
             pub LIMIT: Int32 = 2
-            pub fx Pt: () Int32;
+            pub Pt: () Int32;
             hidden: Int32 = 5
             """,
         )
@@ -236,7 +232,7 @@ class CppDeclRound1Test {
 
     @Test
     fun aNestedNamespaceCollidesWithADeclarationOfItsName() {
-        val a = DeclTestSupport.module("test:a", "pub struct text { pub x: Int32 = 0 }")
+        val a = DeclTestSupport.module("test:a", "pub text: Struct { pub x: Int32 = 0 }")
         val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 = 1")
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:a" to "bibo", "test:b" to "bibo::text"))
         val emitted = DeclTestSupport.emit(a, b, options = options)
@@ -248,42 +244,31 @@ class CppDeclRound1Test {
 
     // ---- issue 5: two entries, one value ---------------------------------------------------------------
 
-    @Test
-    fun duplicateEnumValuesLabelOneCase() {
-        val h = header(
-            "pub enum Dup: Int32 { D_A = 1, D_B = 1, D_C = 2 }",
-            usageOf = { ctx -> CppUsage.of(nameOf = setOf(ctx.symbol.members["Dup"] as EnumSymbol), enumValues = setOf(ctx.symbol.members["Dup"] as EnumSymbol)) },
-        )
-        assertContains(h, "D_A = 1,", "D_B = 1,", "case Dup::D_A:\n              return \"D_A\";", "case Dup::D_C:")
-        assertLacks(h, "case Dup::D_B:")
-        assertContains(h, "return {Dup::D_A, Dup::D_B, Dup::D_C};")
-    }
-
     // ---- issue 7: a prototype nothing can define ------------------------------------------------------
 
     @Test
     fun aPrivateFunctionWithoutABodyIsAnError() {
         val (emitted, _) = emit(
             """
-            fx helper: (x: Int32, y: Int32) Int32;
-            pub fx defined: (x: Int32) Int32;
-            struct Inner {
+            helper: (x: Int32, y: Int32) Int32;
+            pub defined: (x: Int32) Int32;
+            Inner: Struct {
                 pub v: Int32 = 1
-                pub fx twice: () Int32;
+                pub twice: () Int32;
             }
-            pub struct Outer {
+            pub Outer: Struct {
                 pub v: Int32 = 1
-                pub fx twice: () Int32;
+                pub twice: () Int32;
             }
             """,
         )
         val refused = emitted.diagnostics.filter { it.code == CppDeclEmitter.NO_BODY_CODE }
         assertEquals(2, refused.size, render(emitted.diagnostics))
-        assertTrue(refused[0].message.contains("function 'helper'") && refused[0].position?.lineNumber == 3, refused[0].render())
+        assertTrue(refused[0].message.contains("function 'helper'") && refused[0].position?.lineNumber == 1, refused[0].render())
         assertTrue(refused[1].message.contains("method 'twice'") && refused[1].position != null, refused[1].render())
         assertTrue(emitted.diagnostics.none { it.isError && it.code != CppDeclEmitter.NO_BODY_CODE }, render(emitted.diagnostics))
 
-        val headerOnly = emit("fx helper: (x: Int32) Int32;\npub X: Int32 = 1", uri = "lib:h", options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:h"))).first
+        val headerOnly = emit("helper: (x: Int32) Int32;\npub X: Int32 = 1", uri = "lib:h", options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:h"))).first
         assertEquals(1, headerOnly.diagnostics.count { it.code == CppDeclEmitter.NO_BODY_CODE }, render(headerOnly.diagnostics))
     }
 
@@ -303,16 +288,16 @@ class CppDeclRound1Test {
     fun aMagicClassNoRuntimeTypeBacksIsRefusedAtItsLine() {
         val (emitted, _) = emit(
             """
-            use "kira:result"
-            pub struct Holder {
+            kira.result as result
+            pub Holder: Struct {
                 pub failure: Maybe<Exception> = null
             }
-            pub fx describe: (e: Exception) Str;
+            pub describe: (e: Exception) Str;
             """,
         )
         val refused = emitted.diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }
         assertEquals(2, refused.size, render(emitted.diagnostics))
-        assertEquals(listOf(5, 7), refused.map { it.position?.lineNumber }, render(refused))
+        assertEquals(listOf(3, 5), refused.map { it.position?.lineNumber }, render(refused))
         assertTrue(refused.all { it.message.contains("Exception") }, render(refused))
     }
 }

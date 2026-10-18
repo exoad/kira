@@ -179,7 +179,7 @@ class CppBindingTableTest {
      */
     @Test
     fun everyBindingThatLeavesOutAnOperandIsListed() {
-        val program = TyperTestSupport.snippet("fx main: () Void {}")
+        val program = TyperTestSupport.snippet("main: () Void {}")
         val omitted = sortedSetOf<String>()
         var checked = 0
         program.modules.filter { it.isStdlib }.forEach { m ->

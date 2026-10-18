@@ -24,39 +24,37 @@ class ProfilePassTest {
         expectClean(
             snippet(
                 """
-                pub enum Mode: Int32 {
-                    MODE_A = 0
-                }
-                pub struct Frame {
+                pub MODE_A: Int32 = 0
+                pub Frame: Struct {
                     pub bytes: Arr<UInt8, 8> = [0, 0, 0, 0, 0, 0, 0, 0]
-                    pub mode: Mode = Mode.MODE_A
-                    pub mut fx clear: () Void {
+                    pub mode: Int32 = MODE_A
+                    pub mut clear: () Void {
                         bytes[0] = 0
                     }
                 }
                 pub mut STATE: Int32 = 0
-                pub trait Show {
-                    pub fx code: () Int32;
+                pub Show: Any {
+                    pub code: () Int32;
                 }
-                pub @_const fx twice: (v: Int32) Int32 {
+                pub @_const twice: (v: Int32) Int32 {
                     return v * 2
                 }
-                pub fx each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Void {
+                pub each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Void {
                     for b: UInt8 in buf {
                         f(b)
                     }
                 }
-                pub fx reply: (servo: Int32, mut out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
+                pub reply: (servo: Int32, mut out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
                     out.set("OK drive servo=${'$'}{servo}")
                     if servo < 0 {
                         return null
                     }
                     return Tuple2<Int32, Int32> { servo, servo }
                 }
-                pub fx pick<T: Show>: (s: T) Int32 {
+                pub pick<T: Show>: (s: T) Int32 {
                     return s.code()
                 }
-                pub fx fail: () Void {
+                pub fail: () Void {
                     throw "boom"
                 }
                 """,
@@ -78,8 +76,8 @@ class ProfilePassTest {
         expectClean(
             snippet(
                 """
-                use "kira:sync"
-                pub fx f: (s: Str, xs: List<Int32>) Str {
+                kira.sync as sync
+                pub f: (s: Str, xs: List<Int32>) Str {
                     return "${'$'}{s} ${'$'}{xs.size()}"
                 }
                 """,
@@ -94,13 +92,13 @@ class ProfilePassTest {
     fun heapTypesAreRefusedWithTheirReplacement() {
         val p = snippet(
             """
-            pub class Node {
+            pub Node: Any {
                 pub n: Int32 = 0
             }
-            pub trait Show {
-                pub fx code: () Int32;
+            pub Show: Any {
+                pub code: () Int32;
             }
-            pub fx f: (s: Str, xs: List<Int32>, m: Maybe<Str>, a: Arr<Int32>, r: Ref<Int32>, sh: Show, node: Node) Void {
+            pub f: (s: Str, xs: List<Int32>, m: Maybe<Str>, a: Arr<Int32>, r: Ref<Int32>, sh: Show, node: Node) Void {
             }
             """,
             options = pico,
@@ -123,8 +121,8 @@ class ProfilePassTest {
     fun hostedConstructsAreRefused() {
         val p = snippet(
             """
-            use "kira:os"
-            pub fx f: (g: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+            kira.os as os
+            pub f: (g: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
                 try {
                     trace(1)
                 } on e: Str {
@@ -132,7 +130,7 @@ class ProfilePassTest {
                 t: Str = "n=${'$'}{1}"
                 return g
             }
-            pub fx g: () Int64 {
+            pub g: () Int64 {
                 return monoNowMs()
             }
             """,
@@ -152,7 +150,7 @@ class ProfilePassTest {
     fun aStrConcatenationAllocatesWithoutSpellingStr() {
         val p = snippet(
             """
-            pub fx g: () Void {
+            pub g: () Void {
                 trace("a" + "b")
                 trace("a" + "b" + "c")
             }
@@ -167,13 +165,13 @@ class ProfilePassTest {
     fun whatAFreestandingModuleUsesIsCheckedToo() {
         val p = modules(
             "test:util" to """
-                pub fx label: (n: Int32) Str {
+                pub label: (n: Int32) Str {
                     return n as Str
                 }
             """,
             "test:main" to """
-                use "test:util"
-                pub fx f: () Int32 {
+                test.util as util
+                pub f: () Int32 {
                     return 1
                 }
             """,

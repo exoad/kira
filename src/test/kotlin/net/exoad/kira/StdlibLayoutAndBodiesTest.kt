@@ -66,7 +66,7 @@ class StdlibLayoutAndBodiesTest {
         // lower through the binding manifest to fmin/fmax.
         val generated = emitC(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(clamp(5.0, 0.0, 10.0))
             }
             """
@@ -82,7 +82,7 @@ class StdlibLayoutAndBodiesTest {
         val cc = compiler ?: return
         val generated = emitC(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(clamp(5.0, 0.0, 10.0))
                 trace(clamp(-3.0, 0.0, 10.0))
                 trace(clamp(20.0, 0.0, 10.0))
@@ -100,7 +100,7 @@ class StdlibLayoutAndBodiesTest {
         val nodePath = node ?: return
         val generated = emitJS(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(clamp(5.0, 0.0, 10.0))
                 trace(clamp(-3.0, 0.0, 10.0))
                 trace(clamp(20.0, 0.0, 10.0))
@@ -119,7 +119,7 @@ class StdlibLayoutAndBodiesTest {
         val cc = compiler ?: return
         val generated = emitC(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(sign(-5.0))
                 trace(sign(0.0))
                 trace(sign(3.5))
@@ -142,7 +142,7 @@ class StdlibLayoutAndBodiesTest {
         val nodePath = node ?: return
         val generated = emitJS(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(sign(-5.0))
                 trace(sign(0.0))
                 trace(sign(3.5))

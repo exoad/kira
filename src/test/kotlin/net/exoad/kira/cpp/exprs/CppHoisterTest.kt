@@ -43,53 +43,53 @@ class CppHoisterTest {
         mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
         mut gl: List<Int32> = List<Int32> { }
 
-        fx next: () Int32 {
+        next: () Int32 {
             ticks += 1
             return ticks
         }
 
-        fx nextSize: () Size {
+        nextSize: () Size {
             idx += 1
             return idx
         }
 
-        fx sub: (a: Int32, b: Int32) Int32 {
+        sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
 
-        fx put: (mut into: Int32, a: Int32, b: Int32) Void {
+        put: (mut into: Int32, a: Int32, b: Int32) Void {
             into = a - b
         }
 
-        pub struct Box {
+        pub Box: Struct {
             pub v: Int32 = 0
 
-            pub fx pair: (a: Int32, b: Int32) Int32 {
+            pub pair: (a: Int32, b: Int32) Int32 {
                 return v * 100 + a * 10 + b
             }
 
-            pub mut fx grow: (a: Int32, b: Int32) Void {
+            pub mut grow: (a: Int32, b: Int32) Void {
                 v = v * 100 + a * 10 + b
             }
         }
 
         mut gboxes: Arr<Box, 2> = [Box { }, Box { }]
 
-        fx makeBox: () Box {
+        makeBox: () Box {
             ticks += 1
             return Box { v = ticks }
         }
 
-        fx pushed: () Size {
+        pushed: () Size {
             gl.add(7)
             return gl.size() - 1
         }
 
-        fx tail: (xs: View<Int32>, at: Size) View<Int32> {
+        tail: (xs: View<Int32>, at: Size) View<Int32> {
             return xs.from(at)
         }
 
-        fx total: (v: View<Int32>) Int32 {
+        total: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -97,295 +97,295 @@ class CppHoisterTest {
             return s
         }
 
-        pub fx nestedTarget: () Void {
+        pub nestedTarget: () Void {
             mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
             grid[nextSize()][nextSize()] = 5
             grid[nextSize()][nextSize()] += 1
         }
 
-        pub fx nestedMutArgument: () Void {
+        pub nestedMutArgument: () Void {
             mut grid: Arr<Arr<Int32, 3>, 3> = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
             put(mut grid[row][nextSize()], 1, 2)
         }
 
-        pub fx nestedMutReceiver: () Void {
+        pub nestedMutReceiver: () Void {
             mut boxes: Arr<Arr<Box, 3>, 3> = [[Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }], [Box { }, Box { }, Box { }]]
             boxes[nextSize()][nextSize()].grow(1, 2)
         }
 
-        fx tailAt: (at: Size, xs: View<Int32>) View<Int32> {
+        tailAt: (at: Size, xs: View<Int32>) View<Int32> {
             return xs.from(at)
         }
 
-        pub fx lentFromParameter: (xs: List<Int32>) Int32 {
+        pub lentFromParameter: (xs: List<Int32>) Int32 {
             return total(tailAt(nextSize(), xs))
         }
 
-        pub fx lentFromGlobal: () Int32 {
+        pub lentFromGlobal: () Int32 {
             return total(garr.from(nextSize()))
         }
 
-        pub fx listIndexBeside: () Int32 {
+        pub listIndexBeside: () Int32 {
             return gl[pushed()]
         }
 
         mut gs: Str = "a"
 
-        fx changeS: () Int32 {
+        changeS: () Int32 {
             gs = "b"
             return 1
         }
 
-        fx resetL: () Int32 {
+        resetL: () Int32 {
             gl = List<Int32> { values = [8] }
             return 0
         }
 
-        fx pairS: (s: Str, k: Int32) Str {
+        pairS: (s: Str, k: Int32) Str {
             return "${'$'}{s}${'$'}{k}"
         }
 
-        fx firstL: (xs: List<Int32>, k: Int32) Int32 {
+        firstL: (xs: List<Int32>, k: Int32) Int32 {
             return xs.get(0) + k
         }
 
-        pub fx strBeside: () Str {
+        pub strBeside: () Str {
             return pairS(gs, changeS())
         }
 
-        pub fx strHole: () Str {
+        pub strHole: () Str {
             return "${'$'}{gs}:${'$'}{changeS()}"
         }
 
-        pub fx listBeside: () Int32 {
+        pub listBeside: () Int32 {
             return firstL(gl, resetL())
         }
 
-        pub fx localStrBeside: () Str {
+        pub localStrBeside: () Str {
             s: Str = "x"
             return pairS(s, changeS())
         }
 
-        pub fx setOnce: (mut bufs: Arr<StrBuf<8>, 3>) Void {
+        pub setOnce: (mut bufs: Arr<StrBuf<8>, 3>) Void {
             bufs[nextSize()].set("x")
         }
 
-        pub fx setPlain: (mut buf: StrBuf<8>) Void {
+        pub setPlain: (mut buf: StrBuf<8>) Void {
             buf.set("x")
         }
 
-        pub fx piecesOnce: (mut bufs: Arr<StrBuf<8>, 3>, n: Int32) Void {
+        pub piecesOnce: (mut bufs: Arr<StrBuf<8>, 3>, n: Int32) Void {
             bufs[nextSize()].set("a${'$'}{n}b")
         }
 
-        pub fx piecesPlain: (mut buf: StrBuf<8>, n: Int32) Void {
+        pub piecesPlain: (mut buf: StrBuf<8>, n: Int32) Void {
             buf.set("a${'$'}{n}b")
         }
 
-        pub fx scalarElementBeside: () Int32 {
+        pub scalarElementBeside: () Int32 {
             return sub(garr[row], next())
         }
 
-        pub fx structElementReceiver: () Int32 {
+        pub structElementReceiver: () Int32 {
             return gboxes[row].pair(next(), next())
         }
 
-        pub fx readBeside: () Int32 {
+        pub readBeside: () Int32 {
             return sub(ticks, next())
         }
 
-        pub fx readAfter: () Int32 {
+        pub readAfter: () Int32 {
             return sub(next(), ticks)
         }
 
-        pub fx twoReads: () Int32 {
+        pub twoReads: () Int32 {
             return sub(ticks, ticks)
         }
 
-        pub fx localBeside: (x: Int32) Int32 {
+        pub localBeside: (x: Int32) Int32 {
             return sub(x, next())
         }
 
-        pub fx placeIndex: () Int32 {
+        pub placeIndex: () Int32 {
             mut q: Arr<Int32, 4> = [0, 0, 0, 0]
             put(mut q[nextSize()], next(), next())
             return q[1]
         }
 
-        pub fx receiverFirst: () Int32 {
+        pub receiverFirst: () Int32 {
             return makeBox().pair(next(), next())
         }
 
-        pub fx localReceiver: (b: Box) Int32 {
+        pub localReceiver: (b: Box) Int32 {
             return b.pair(next(), next())
         }
 
-        pub fx targetFirst: () Void {
+        pub targetFirst: () Void {
             mut s: Arr<Int32, 4> = [0, 0, 0, 0]
             s[nextSize()] = next()
             s[0] = next()
         }
 
-        pub fx twoImpure: () Int32 {
+        pub twoImpure: () Int32 {
             return sub(next(), next())
         }
 
-        pub fx oneImpure: (x: Int32) Int32 {
+        pub oneImpure: (x: Int32) Int32 {
             return sub(next(), x + 1)
         }
 
-        pub fx operands: () Int32 {
+        pub operands: () Int32 {
             return next() * next()
         }
 
-        pub fx shortCircuit: () Bool {
+        pub shortCircuit: () Bool {
             return next() > 0 && next() > 1
         }
 
-        pub fx mutStays: () Int32 {
+        pub mutStays: () Int32 {
             mut slot: Int32 = 0
             put(mut slot, next(), next())
             return slot
         }
 
-        pub fx pureBindings: (s: Str) Size {
+        pub pureBindings: (s: Str) Size {
             return s.length() + s.length()
         }
 
-        pub fx holes: () Str {
+        pub holes: () Str {
             return "${'$'}{next()}-${'$'}{next()}"
         }
 
-        pub fx nested: () Int32 {
+        pub nested: () Int32 {
             return sub(sub(next(), next()), next())
         }
 
-        pub struct Acc {
+        pub Acc: Struct {
             pub n: Int32 = 1
 
-            pub mut fx bump: () Int32 {
+            pub mut bump: () Int32 {
                 n = 2
                 return 10
             }
 
-            pub mut fx viaThis: () Int32 {
+            pub mut viaThis: () Int32 {
                 return peek(this, bump())
             }
         }
 
-        fx peek: (a: Acc, k: Int32) Int32 {
+        peek: (a: Acc, k: Int32) Int32 {
             return a.n + k
         }
 
-        fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
+        adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
             n: Int32 = s.length() as Int32
-            return fx (x: Int32) Int32 {
+            return (x: Int32) Int32 {
                 return x + n + k
             }
         }
 
-        fx viaPair: (s: Str, k: Int32) Str {
+        viaPair: (s: Str, k: Int32) Str {
             return pairS(s, k)
         }
 
-        pub struct Bag {
+        pub Bag: Struct {
             pub items: List<Int32> = List<Int32> { }
 
-            pub fx head: (k: Size) View<Int32> {
+            pub head: (k: Size) View<Int32> {
                 return items.from(k)
             }
 
-            pub fx firstPlus: (k: Int32) Int32 {
+            pub firstPlus: (k: Int32) Int32 {
                 return items.get(0) + k
             }
         }
 
         mut gbag: Bag = Bag { }
 
-        pub fx adderBeside: () Int32 {
+        pub adderBeside: () Int32 {
             f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
             return f(0)
         }
 
-        pub fx viaPairBeside: () Str {
+        pub viaPairBeside: () Str {
             return viaPair(gs, changeS())
         }
 
-        pub fx bagLends: () Int32 {
+        pub bagLends: () Int32 {
             return total(gbag.head(nextSize()))
         }
 
-        pub fx bagReads: () Int32 {
+        pub bagReads: () Int32 {
             return gbag.firstPlus(next())
         }
 
-        fx eachOf: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
+        eachOf: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
             for x: Int32 in xs {
                 each(x)
             }
         }
 
-        fx handOn: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
+        handOn: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
             eachOf(xs, each)
         }
 
-        fx inc: (mut v: Int32) Int32 {
+        inc: (mut v: Int32) Int32 {
             v += 10
             return 1
         }
 
-        fx countAfter: (k: Size, v: View<Int32>) Size {
+        countAfter: (k: Size, v: View<Int32>) Size {
             return v.size()
         }
 
-        pub struct Holder<T> {
+        pub Holder<T>: Struct {
             pub v: T
             pub k: Size = 0
         }
 
-        fx keep<T>: (mut into: Holder<T>, value: T, k: Size) Void {
+        keep<T>: (mut into: Holder<T>, value: T, k: Size) Void {
             into.v = value
             into.k = k
         }
 
-        fx zero: (m: MutView<Int32>) Int32 {
+        zero: (m: MutView<Int32>) Int32 {
             m[0] = 9
             return 0
         }
 
-        fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
+        applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
             return f(n)
         }
 
-        fx twice: (n: Int32) Int32 {
+        twice: (n: Int32) Int32 {
             return n * 2
         }
 
-        pub fx mutArgumentSibling: () Int32 {
+        pub mutArgumentSibling: () Int32 {
             mut x: Int32 = 5
             return sub(x, inc(mut x))
         }
 
-        pub fx mutArgumentCompound: () Int32 {
+        pub mutArgumentCompound: () Int32 {
             mut z: Int32 = 5
             z += inc(mut z)
             return z
         }
 
-        pub fx mutViewSibling: () Int32 {
+        pub mutViewSibling: () Int32 {
             mut p: Arr<Int32, 4> = [1, 2, 3, 4]
             return sub(p[0], zero(p.from(0)))
         }
 
-        pub fx viewKeptNowhere: () Size {
+        pub viewKeptNowhere: () Size {
             return countAfter(nextSize(), gl)
         }
 
-        pub fx genericKeepsAList: (mut h: Holder<List<Int32>>) Void {
+        pub genericKeepsAList: (mut h: Holder<List<Int32>>) Void {
             keep<List<Int32>>(mut h, gl, nextSize())
         }
 
-        pub fx functionAsValue: () Int32 {
+        pub functionAsValue: () Int32 {
             g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
             return g(twice, 5)
         }
@@ -394,55 +394,55 @@ class CppHoisterTest {
         mut gls: List<Int32> = List<Int32> { }
         mut gv3: List<Int32> = List<Int32> { values = [1, 2, 3] }
 
-        fx growGll: () Int32 {
+        growGll: () Int32 {
             gll.add(List<Int32> { values = [1] })
             return 7
         }
 
-        fx growGls: () Int32 {
+        growGls: () Int32 {
             gls.add(5)
             return 7
         }
 
-        fx setG3: () Int32 {
+        setG3: () Int32 {
             gv3.set(0, 9)
             return 1
         }
 
-        fx plusView: (k: Int32, v: View<Int32>) Int32 {
+        plusView: (k: Int32, v: View<Int32>) Int32 {
             return total(v) + k
         }
 
-        fx sizeOfChars: (v: View<Char>) Size {
+        sizeOfChars: (v: View<Char>) Size {
             return v.size()
         }
 
-        pub fx boundReceiverBeside: () Void {
+        pub boundReceiverBeside: () Void {
             gll[0].add(growGll())
         }
 
-        pub fx boundArgumentBeside: () Void {
+        pub boundArgumentBeside: () Void {
             put(mut gls[0], growGls(), 1)
         }
 
-        pub fx boundArrElement: () Void {
+        pub boundArrElement: () Void {
             put(mut garr[0], next(), 1)
         }
 
-        pub fx boundLocalList: () Void {
+        pub boundLocalList: () Void {
             mut ll: List<Int32> = List<Int32> { values = [1] }
             put(mut ll[0], next(), 1)
         }
 
-        pub fx viewReadBeside: () Int32 {
+        pub viewReadBeside: () Int32 {
             return sub(gv3.view().get(0), setG3())
         }
 
-        pub fx arrViewBeside: () Int32 {
+        pub arrViewBeside: () Int32 {
             return plusView(growGls(), garr.view())
         }
 
-        pub fx literalView: () Size {
+        pub literalView: () Size {
             return sizeOfChars("abc".view())
         }
         """,
@@ -673,53 +673,53 @@ class CppHoisterTest {
         mut gl: List<Int32> = List<Int32> { }
         mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
 
-        fx pushed: () Size {
+        pushed: () Size {
             gl.add(7)
             return gl.size() - 1
         }
 
-        fx putKey: () Int32 {
+        putKey: () Int32 {
             gm.put(1, 42)
             return 1
         }
 
-        pub fx mapReadBeside: () Int32 {
+        pub mapReadBeside: () Int32 {
             return gm.get(putKey()).unwrapOr(-1)
         }
 
-        pub fx listReadBeside: () Int32 {
+        pub listReadBeside: () Int32 {
             return gl.get(pushed())
         }
 
-        pub struct Acc {
+        pub Acc: Struct {
             pub n: Int32 = 1
 
-            pub mut fx bump: () Int32 {
+            pub mut bump: () Int32 {
                 n = 2
                 return 10
             }
 
-            pub fx plus: (k: Int32) Int32 {
+            pub plus: (k: Int32) Int32 {
                 return n * 100 + k
             }
 
-            pub mut fx viaExplicit: () Int32 {
+            pub mut viaExplicit: () Int32 {
                 return this.plus(bump())
             }
 
-            pub mut fx viaImplicit: () Int32 {
+            pub mut viaImplicit: () Int32 {
                 return plus(bump())
             }
         }
 
         mut gacc: Acc = Acc { }
 
-        fx bumpAcc: () Int32 {
+        bumpAcc: () Int32 {
             gacc.n = 2
             return 10
         }
 
-        pub fx namedBeside: () Int32 {
+        pub namedBeside: () Int32 {
             return gacc.plus(bumpAcc())
         }
         """,
@@ -850,35 +850,35 @@ class CppHoisterTest {
         mut idx: Size = 0
         mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
 
-        fx next: () Int32 {
+        next: () Int32 {
             ticks += 1
             return ticks
         }
 
-        fx nextSize: () Size {
+        nextSize: () Size {
             idx += 1
             return idx
         }
 
-        fx makeList: () List<Int32> {
+        makeList: () List<Int32> {
             ticks += 1
             return List<Int32> { values = [1000, 2000, 3000, 4000] }
         }
 
         // Impure (they count), so their result is an owner D33 must spill before the view of
         // it is formed; a pure one stays in the full expression that uses the view.
-        fx makeRef: () Ref<List<Int32>> {
+        makeRef: () Ref<List<Int32>> {
             ticks += 1
             return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30, 40] } }
         }
 
-        fx makeMaybe: () Maybe<List<Int32>> {
+        makeMaybe: () Maybe<List<Int32>> {
             ticks += 1
             m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30, 40] }
             return m
         }
 
-        fx total: (v: View<Int32>) Int32 {
+        total: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -886,117 +886,117 @@ class CppHoisterTest {
             return s
         }
 
-        fx minus: (v: View<Int32>, k: Int32) Int32 {
+        minus: (v: View<Int32>, k: Int32) Int32 {
             return total(v) - k
         }
 
-        fx plusSize: (k: Size, v: View<Int32>) Int32 {
+        plusSize: (k: Size, v: View<Int32>) Int32 {
             return total(v) + (k as Int32)
         }
 
-        fx tail: (v: View<Int32>, at: Size) View<Int32> {
+        tail: (v: View<Int32>, at: Size) View<Int32> {
             return v.from(at)
         }
 
-        fx pick: (v: View<Int32>, k: Size) View<Int32> {
+        pick: (v: View<Int32>, k: Size) View<Int32> {
             return v
         }
 
-        pub fx ownerSpilled: () Int32 {
+        pub ownerSpilled: () Int32 {
             ticks = 0
             return minus(makeList().view(), next())
         }
 
-        pub fx chainAtItsRoot: () Int32 {
+        pub chainAtItsRoot: () Int32 {
             ticks = 0
             idx = 0
             return minus(tail(makeList().view(), nextSize()), next())
         }
 
-        pub fx receiverOwnerSpilled: () Int32 {
+        pub receiverOwnerSpilled: () Int32 {
             idx = 0
             return total(makeList().from(nextSize()))
         }
 
-        pub fx chainOfChains: () Int32 {
+        pub chainOfChains: () Int32 {
             idx = 0
             return total(pick(tail(makeList().view(), 1), nextSize()))
         }
 
-        pub fx refOwnerSpilled: () Int32 {
+        pub refOwnerSpilled: () Int32 {
             idx = 0
             return plusSize(nextSize(), makeRef().value.from(1))
         }
 
-        pub fx maybeOwnerSpilled: () Int32 {
+        pub maybeOwnerSpilled: () Int32 {
             idx = 0
             return plusSize(nextSize(), makeMaybe().value.from(1))
         }
 
-        pub fx convertedRefStorage: () Int32 {
+        pub convertedRefStorage: () Int32 {
             idx = 0
             return plusSize(nextSize(), tail(makeRef().value, 1))
         }
 
-        pub fx pureOwnerKept: () Int32 {
+        pub pureOwnerKept: () Int32 {
             idx = 0
             return total(tail(List<Int32> { values = [5, 6, 7] }.view(), nextSize()))
         }
 
-        pub fx inOneStatement: () Int32 {
+        pub inOneStatement: () Int32 {
             return total(makeList().view())
         }
 
-        fx setAt: (mut e: Int32) Int32 {
+        setAt: (mut e: Int32) Int32 {
             e = 50
             return 0
         }
 
-        pub fx elementWriteSeen: () Int32 {
+        pub elementWriteSeen: () Int32 {
             mut ls: List<Int32> = List<Int32> { values = [1, 2, 3] }
             return minus(ls, setAt(mut ls[0]))
         }
 
-        fx churn: () Int32 {
+        churn: () Int32 {
             ticks += 1
             mut junk: List<Int32> = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }
             junk.add(7)
             return ticks
         }
 
-        pub struct Wrap {
+        pub Wrap: Struct {
             pub r: Ref<List<Int32>>
 
-            pub fx items: () View<Int32> {
+            pub items: () View<Int32> {
                 return r.value.view()
             }
         }
 
-        fx sum2: (v: View<Int32>, k: Int32) Int32 {
+        sum2: (v: View<Int32>, k: Int32) Int32 {
             return total(v) + k
         }
 
-        pub fx positionalOwner: () Int32 {
+        pub positionalOwner: () Int32 {
             ticks = 0
             return sum2(Wrap { Ref<List<Int32>> { [100, 200, 300, 400, 500, 600, 700, 800] } }.items(), churn())
         }
 
-        pub fx namedOwner: () Int32 {
+        pub namedOwner: () Int32 {
             ticks = 0
             return sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = [100, 200, 300, 400, 500, 600, 700, 800] } } }.items(), churn())
         }
 
-        pub struct Stamp {
+        pub Stamp: Struct {
             pub a: Int32 = 0
             pub k: Int32 = stamp()
         }
 
-        pub fx stamp: () Int32 {
+        pub stamp: () Int32 {
             ticks += 1
             return ticks
         }
 
-        pub fx impureDefault: () Int32 {
+        pub impureDefault: () Int32 {
             ticks = 10
             return ticks * 100 + Stamp { a = 1 }.k
         }
@@ -1102,29 +1102,29 @@ class CppHoisterTest {
         """
         mut ticks: Int32 = 0
 
-        fx next: () Int32 {
+        next: () Int32 {
             ticks += 1
             return ticks
         }
 
-        fx sub: (a: Int32, b: Int32) Int32 {
+        sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
 
-        fx zero: (m: MutView<Int32>) Int32 {
+        zero: (m: MutView<Int32>) Int32 {
             m[0] = 9
             return 0
         }
 
-        pub fx trustedPure: () Int32 {
+        pub trustedPure: () Int32 {
             return sub(ticks, next())
         }
 
-        pub fx throughAnFx: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+        pub throughAnFx: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
             return sub(ticks, f(1))
         }
 
-        pub fx handedAMutView: () Int32 {
+        pub handedAMutView: () Int32 {
             mut p: Arr<Int32, 4> = [1, 2, 3, 4]
             return sub(p[0], zero(p.from(0)))
         }
@@ -1164,32 +1164,32 @@ class CppHoisterTest {
     // ---- what the emitter refuses: the rule's backstops, and one order D33 cannot give -------------
 
     private val refusing = """
-        use "kira:sync"
+        kira.sync as sync
 
         mut gl: List<Int32> = List<Int32> { values = [1, 2, 3] }
         mut sbs: List<StrBuf<8>> = List<StrBuf<8>> { }
         mut gv: Maybe<MutView<Int32>> = null
         mut ticks: Int32 = 0
 
-        fx next: () Int32 {
+        next: () Int32 {
             ticks += 1
             return ticks
         }
 
-        fx growSbs: () Int32 {
+        growSbs: () Int32 {
             sbs.add(StrBuf<8> { })
             return 1
         }
 
-        fx makeList: () List<Int32> {
+        makeList: () List<Int32> {
             return List<Int32> { values = [10, 20, 30] }
         }
 
-        fx tail: (v: View<Int32>, at: Size) View<Int32> {
+        tail: (v: View<Int32>, at: Size) View<Int32> {
             return v.from(at)
         }
 
-        fx total: (v: View<Int32>) Int32 {
+        total: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -1197,76 +1197,76 @@ class CppHoisterTest {
             return s
         }
 
-        fx minus: (v: View<Int32>, k: Int32) Int32 {
+        minus: (v: View<Int32>, k: Int32) Int32 {
             return total(v) - k
         }
 
-        pub struct Win {
+        pub Win: Struct {
             pub v: View<Int32>
             pub k: Size = 0
         }
 
-        fx keepField: (r: Ref<List<Int32>>) Void {
+        keepField: (r: Ref<List<Int32>>) Void {
             gv = r.value.view()
         }
 
-        fx keepM: (m: Maybe<Ref<List<Int32>>>) Void {
+        keepM: (m: Maybe<Ref<List<Int32>>>) Void {
             gv = m.value.value.view()
         }
 
-        fx mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
-            return fx (r: Ref<List<T>>) Void {
+        mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
+            return (r: Ref<List<T>>) Void {
                 sink.value.add(r.value.view())
             }
         }
 
-        fx lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
-            m.lock(fx (mut l: Ref<List<Int32>>) Void {
+        lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
+            m.lock((mut l: Ref<List<Int32>>) Void {
                 gv = l.value.view()
             })
         }
 
-        pub fx keptByAnFxValue: () Void {
-            k: Fx<Tuple1<Ref<List<Int32>>>, Void> = fx (r: Ref<List<Int32>>) Void {
+        pub keptByAnFxValue: () Void {
+            k: Fx<Tuple1<Ref<List<Int32>>>, Void> = (r: Ref<List<Int32>>) Void {
                 gv = r.value.view()
             }
         }
 
-        pub fx keptByATemporaryMutex: () Void {
-            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = [1] } } }.lock(fx (mut l: Ref<List<Int32>>) Void {
+        pub keptByATemporaryMutex: () Void {
+            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = [1] } } }.lock((mut l: Ref<List<Int32>>) Void {
                 gv = l.value.view()
             })
         }
 
-        pub fx viewInALocal: () Int32 {
+        pub viewInALocal: () Int32 {
             v: View<Int32> = makeList().view()
             return total(v)
         }
 
-        pub fx viewsInALocalList: () Size {
+        pub viewsInALocalList: () Size {
             mut vs: List<View<Int32>> = List<View<Int32>> { }
             return 0
         }
 
-        pub fx viewInAField: () Size {
+        pub viewInAField: () Size {
             w: Size = Win { v = gl, k = 1 }.k
             return w
         }
 
-        pub fx returnsATemporarysView: () View<Int32> {
+        pub returnsATemporarysView: () View<Int32> {
             return tail(makeList().view(), 2)
         }
 
-        fx tailOfAList: (xs: List<Int32>, at: Size) View<Int32> {
+        tailOfAList: (xs: List<Int32>, at: Size) View<Int32> {
             return xs.from(at)
         }
 
-        pub fx returnsALocalsView: () View<Int32> {
+        pub returnsALocalsView: () View<Int32> {
             ys: List<Int32> = makeList()
             return ys.view()
         }
 
-        pub fx loopsOverATemporarysView: () Int32 {
+        pub loopsOverATemporarysView: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in makeList().view() {
                 s += x
@@ -1274,7 +1274,7 @@ class CppHoisterTest {
             return s
         }
 
-        pub fx branchesAView: (c: Bool, v: View<Int32>) View<Int32> {
+        pub branchesAView: (c: Bool, v: View<Int32>) View<Int32> {
             return if c {
                 trace(1)
                 v
@@ -1283,23 +1283,23 @@ class CppHoisterTest {
             }
         }
 
-        pub fx branchViewsATemporaryBesideAnEffect: (c: Bool) Int32 {
+        pub branchViewsATemporaryBesideAnEffect: (c: Bool) Int32 {
             return minus(if c { makeList().view() } else { gl.view() }, next())
         }
 
-        pub fx strBufElementBesideAGrowth: () Void {
+        pub strBufElementBesideAGrowth: () Void {
             sbs[0].set("a${'$'}{growSbs()}")
         }
 
-        pub fx safeInOneStatement: () Int32 {
+        pub safeInOneStatement: () Int32 {
             return total(makeList().view())
         }
 
-        pub fx safeBranchInOneStatement: (c: Bool) Int32 {
+        pub safeBranchInOneStatement: (c: Bool) Int32 {
             return total(if c { makeList().view() } else { gl.view() })
         }
 
-        pub fx safeLoopOverAParameter: (v: View<Int32>) Int32 {
+        pub safeLoopOverAParameter: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -1307,7 +1307,7 @@ class CppHoisterTest {
             return s
         }
 
-        pub fx safeReturnOfAParameter: (v: View<Int32>) View<Int32> {
+        pub safeReturnOfAParameter: (v: View<Int32>) View<Int32> {
             return v.from(1)
         }
     """.trimIndent()
@@ -1333,7 +1333,7 @@ class CppHoisterTest {
         // A view of a temporary in an if-expression's branch (KI-13) is rules.view.position, as a
         // for range with a TEMP origin is (40-round3 F3), in both the ordered and the one-statement
         // form.
-        val lines = "module \"vl:bad\"\n\n$refusing\n".lines()
+        val lines = "$refusing\n".lines()
         fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
         val checked = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
         // The typer's and the rules' diagnostics are the run's; the refused module emits nothing of its own.
@@ -1342,7 +1342,7 @@ class CppHoisterTest {
         val expected = listOf(
             line("mut gv: Maybe<MutView<Int32>>") to "rules.view.type",
             line("pub v: View<Int32>") to "rules.view.type",
-            line("fx mkKeeper<T>") to "rules.view.type",
+            line("mkKeeper<T>") to "rules.view.type",
             line("sink.value.add(r.value.view())") to "rules.view.write",
             line("v: View<Int32> = makeList().view()") to "rules.view.local",
             line("mut vs: List<View<Int32>>") to "rules.view.type",
@@ -1409,12 +1409,12 @@ class CppHoisterTest {
         val source = """
             mut sbs: List<StrBuf<8>> = List<StrBuf<8>> { }
 
-            fx growSbs: () Int32 {
+            growSbs: () Int32 {
                 sbs.add(StrBuf<8> { })
                 return 1
             }
 
-            pub fx strBufElementBesideAGrowth: () Void {
+            pub strBufElementBesideAGrowth: () Void {
                 sbs[0].set("a${'$'}{growSbs()}")
             }
         """.trimIndent()
@@ -1427,24 +1427,24 @@ class CppHoisterTest {
     private val ranges = Module(
         "hoist:ranges",
         """
-        fx makeLists: () List<List<Int32>> {
+        makeLists: () List<List<Int32>> {
             return List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
         }
 
-        fx makeRef: () Ref<List<Int32>> {
+        makeRef: () Ref<List<Int32>> {
             return Ref<List<Int32>> { value = List<Int32> { values = [1, 2, 3] } }
         }
 
-        fx makeMaybe: () Maybe<List<Int32>> {
+        makeMaybe: () Maybe<List<Int32>> {
             m: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
             return m
         }
 
-        fx makeList: () List<Int32> {
+        makeList: () List<Int32> {
             return List<Int32> { values = [1, 2, 3] }
         }
 
-        pub fx rangesOfTemporaries: () Int32 {
+        pub rangesOfTemporaries: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in makeLists()[0] {
                 s += x
@@ -1458,7 +1458,7 @@ class CppHoisterTest {
             return s
         }
 
-        pub fx rangesThatNeedNoCopy: (v: View<Int32>) Int32 {
+        pub rangesThatNeedNoCopy: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             l: List<Int32> = makeList()
             for x: Int32 in l {
@@ -1506,7 +1506,7 @@ class CppHoisterTest {
         pub mut GLL: List<List<Int32>> = List<List<Int32>> { }
         pub mut GLS: List<Int32> = List<Int32> { }
 
-        pub fx reset: () Void {
+        pub reset: () Void {
             G = 5
             GS = "old"
             GL = List<Int32> { values = [1, 2, 3] }
@@ -1515,17 +1515,17 @@ class CppHoisterTest {
             GLS = List<Int32> { values = [100] }
         }
 
-        pub fx bumpG: () Int32 {
+        pub bumpG: () Int32 {
             G += 10
             return 0
         }
 
-        pub fx changeGS: () Int32 {
+        pub changeGS: () Int32 {
             GS = "newnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnew"
             return 0
         }
 
-        pub fx growGL: () Int32 {
+        pub growGL: () Int32 {
             mut i: Int32 = 0
             while i < 64 {
                 GL.add(1000)
@@ -1534,7 +1534,7 @@ class CppHoisterTest {
             return 0
         }
 
-        pub fx growGSL: () Int32 {
+        pub growGSL: () Int32 {
             mut i: Int32 = 0
             while i < 64 {
                 GSL.add("padpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpad")
@@ -1543,7 +1543,7 @@ class CppHoisterTest {
             return 0
         }
 
-        pub fx growGLL: () Int32 {
+        pub growGLL: () Int32 {
             mut i: Int32 = 0
             while i < 64 {
                 GLL.add(List<Int32> { values = [i] })
@@ -1552,7 +1552,7 @@ class CppHoisterTest {
             return 7
         }
 
-        pub fx growGLS: () Int32 {
+        pub growGLS: () Int32 {
             mut i: Int32 = 0
             while i < 64 {
                 GLS.add(i)
@@ -1561,7 +1561,7 @@ class CppHoisterTest {
             return 7
         }
 
-        pub fx store: (mut into: Int32, v: Int32) Void {
+        pub store: (mut into: Int32, v: Int32) Void {
             into = v
         }
         """,
@@ -1576,113 +1576,113 @@ class CppHoisterTest {
     private val twins = Module(
         "hoist:twins",
         """
-        use "hoist:ctr"
+        hoist.ctr as ctr
 
-        fx sub: (a: Int32, b: Int32) Int32 {
+        sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
 
-        fx show: (s: Str, k: Int32) Str {
+        show: (s: Str, k: Int32) Str {
             return "${'$'}{s}${'$'}{k}"
         }
 
-        fx count: (xs: List<Int32>, k: Int32) Size {
+        count: (xs: List<Int32>, k: Int32) Size {
             return xs.size()
         }
 
-        fx showK: (k: Int32, s: Str) Str {
+        showK: (k: Int32, s: Str) Str {
             return "${'$'}{k}:${'$'}{s}"
         }
 
-        pub fx m1q: () Int32 {
+        pub m1q: () Int32 {
             reset()
             return sub(ctr.G, bumpG())
         }
 
-        pub fx m1u: () Int32 {
+        pub m1u: () Int32 {
             reset()
             return sub(G, bumpG())
         }
 
-        pub fx m1oq: () Int32 {
+        pub m1oq: () Int32 {
             reset()
             return ctr.G + bumpG()
         }
 
-        pub fx m1ou: () Int32 {
+        pub m1ou: () Int32 {
             reset()
             return G + bumpG()
         }
 
-        pub fx m1hq: () Str {
+        pub m1hq: () Str {
             reset()
             return "${'$'}{ctr.G}/${'$'}{bumpG()}"
         }
 
-        pub fx m1hu: () Str {
+        pub m1hu: () Str {
             reset()
             return "${'$'}{G}/${'$'}{bumpG()}"
         }
 
-        pub fx m2q: () Str {
+        pub m2q: () Str {
             reset()
             return show(ctr.GS, changeGS())
         }
 
-        pub fx m2u: () Str {
+        pub m2u: () Str {
             reset()
             return show(GS, changeGS())
         }
 
-        pub fx m2lq: () Size {
+        pub m2lq: () Size {
             reset()
             return count(ctr.GL, growGL())
         }
 
-        pub fx m2lu: () Size {
+        pub m2lu: () Size {
             reset()
             return count(GL, growGL())
         }
 
-        pub fx m4q: () Str {
+        pub m4q: () Str {
             reset()
             return showK(growGSL(), ctr.GSL[0])
         }
 
-        pub fx m4u: () Str {
+        pub m4u: () Str {
             reset()
             return showK(growGSL(), GSL[0])
         }
 
-        pub fx m4rq: () Str {
+        pub m4rq: () Str {
             reset()
             return show(ctr.GSL[0], growGSL())
         }
 
-        pub fx m4ru: () Str {
+        pub m4ru: () Str {
             reset()
             return show(GSL[0], growGSL())
         }
 
-        pub fx m6q: () Size {
+        pub m6q: () Size {
             reset()
             ctr.GLL[0].add(growGLL())
             return GLL[0].size()
         }
 
-        pub fx m6u: () Size {
+        pub m6u: () Size {
             reset()
             GLL[0].add(growGLL())
             return GLL[0].size()
         }
 
-        pub fx m6sq: () Int32 {
+        pub m6sq: () Int32 {
             reset()
             store(mut ctr.GLS[0], growGLS())
             return GLS[0]
         }
 
-        pub fx m6su: () Int32 {
+        pub m6su: () Int32 {
             reset()
             store(mut GLS[0], growGLS())
             return GLS[0]
@@ -1748,36 +1748,36 @@ class CppHoisterTest {
         mut gll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
         mut gms: Maybe<Str> = "some"
 
-        fx next: () Int32 {
+        next: () Int32 {
             ticks += 1
             return ticks
         }
 
-        fx nextSize: () Size {
+        nextSize: () Size {
             idx += 1
             return idx
         }
 
-        fx sub: (a: Int32, b: Int32) Int32 {
+        sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
 
-        fx resetL: () Int32 {
+        resetL: () Int32 {
             gl = List<Int32> { values = [8] }
             return 0
         }
 
-        fx change: () Int32 {
+        change: () Int32 {
             gstrs = List<Str> { values = ["replaced, and long enough to live on the heap, not in a small buffer"] }
             gms = "replaced too, and long enough to live on the heap, not in a small buffer"
             return 0
         }
 
-        fx showL: (s: Str, k: Int32) Str {
+        showL: (s: Str, k: Int32) Str {
             return "${'$'}{s}:${'$'}{k}"
         }
 
-        fx total: (v: View<Int32>) Int32 {
+        total: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -1785,73 +1785,73 @@ class CppHoisterTest {
             return s
         }
 
-        fx minus: (v: View<Int32>, k: Int32) Int32 {
+        minus: (v: View<Int32>, k: Int32) Int32 {
             return total(v) - k
         }
 
-        fx setAt: (mut e: Int32) Int32 {
+        setAt: (mut e: Int32) Int32 {
             e = 50
             return 0
         }
 
-        pub fx lentScalar: () Int32 {
+        pub lentScalar: () Int32 {
             gl = List<Int32> { values = [1, 2, 3] }
             return sub(gl.get(0), resetL())
         }
 
-        pub fx indexScalar: () Int32 {
+        pub indexScalar: () Int32 {
             gl = List<Int32> { values = [1, 2, 3] }
             return sub(gl[0], resetL())
         }
 
-        pub fx lentStr: () Str {
+        pub lentStr: () Str {
             gstrs = List<Str> { values = ["first"] }
             return showL(gstrs.get(0), change())
         }
 
-        pub fx indexStr: () Str {
+        pub indexStr: () Str {
             gstrs = List<Str> { values = ["first"] }
             return showL(gstrs[0], change())
         }
 
-        pub fx lentMaybe: () Str {
+        pub lentMaybe: () Str {
             gms = "some"
             return showL(gms.unwrap(), change())
         }
 
-        pub fx fieldMaybe: () Str {
+        pub fieldMaybe: () Str {
             gms = "some"
             return showL(gms.value, change())
         }
 
-        pub fx lentView: () Int32 {
+        pub lentView: () Int32 {
             mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
             return minus(ll.get(0), setAt(mut ll[0][0]))
         }
 
-        pub fx indexView: () Int32 {
+        pub indexView: () Int32 {
             mut ll: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
             return minus(ll[0], setAt(mut ll[0][0]))
         }
 
-        pub fx lentNested: () Int32 {
+        pub lentNested: () Int32 {
             idx = 0
             ticks = 0
             return sub(gll.get(0).get(nextSize()), next())
         }
 
-        pub fx indexNested: () Int32 {
+        pub indexNested: () Int32 {
             idx = 0
             ticks = 0
             return sub(gll[0][nextSize()], next())
         }
 
-        pub fx lentIndexArg: () Int32 {
+        pub lentIndexArg: () Int32 {
             idx = 0
             return gll.get(0).get(nextSize())
         }
 
-        pub fx indexIndexArg: () Int32 {
+        pub indexIndexArg: () Int32 {
             idx = 0
             return gll[0][nextSize()]
         }
@@ -1916,9 +1916,9 @@ class CppHoisterTest {
         mut gl2: List<List<Int32>> = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
         mut gm: Maybe<List<Int32>> = List<Int32> { values = [1, 2, 3] }
 
-        pub @_extern(cpp = "w::sumVF", header = "w.hxx") fx sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "w::sumVF", header = "w.hxx") sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
 
-        fx sumV: (v: View<Int32>) Int32 {
+        sumV: (v: View<Int32>) Int32 {
             mut s: Int32 = 0
             for x: Int32 in v {
                 s += x
@@ -1926,29 +1926,29 @@ class CppHoisterTest {
             return s
         }
 
-        fx sumAndClear: (v: View<Int32>) Int32 {
+        sumAndClear: (v: View<Int32>) Int32 {
             gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] }
             return sumV(v)
         }
 
-        fx sumAndClearM: (v: View<Int32>) Int32 {
+        sumAndClearM: (v: View<Int32>) Int32 {
             gm = List<Int32> { values = [7] }
             return sumV(v)
         }
 
-        pub fx c2: () Int32 {
+        pub c2: () Int32 {
             return sumAndClear(gl2.get(0).view())
         }
 
-        pub fx c2b: () Int32 {
+        pub c2b: () Int32 {
             return sumAndClearM(gm.unwrap().view())
         }
 
-        pub fx c2c: () Int32 {
-            return sumVF(gl2.get(0).view(), fx () Void { gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] } })
+        pub c2c: () Int32 {
+            return sumVF(gl2.get(0).view(), () Void { gl2 = List<List<Int32>> { values = [List<Int32> { values = [7] }] } })
         }
 
-        pub fx c4: () Int32 {
+        pub c4: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in gl2.get(0) {
                 gl2 = List<List<Int32>> { values = [List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }] }
@@ -1957,7 +1957,7 @@ class CppHoisterTest {
             return s
         }
 
-        pub fx c4b: () Int32 {
+        pub c4b: () Int32 {
             mut s: Int32 = 0
             for x: Int32 in gm.unwrap() {
                 gm = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7] }

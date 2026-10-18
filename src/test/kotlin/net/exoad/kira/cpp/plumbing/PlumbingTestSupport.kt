@@ -1,6 +1,7 @@
 package net.exoad.kira.cpp.plumbing
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.ModuleNames
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
@@ -11,6 +12,7 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
+import net.exoad.kira.kim.ProjectManifest
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Files
@@ -39,7 +41,7 @@ class FakeCppModuleEmitter(
         val body = if (options.isHeaderOnly(uri)) null else "// fake source for $uri\n#include \"$stem${options.headerExt}\"\n"
         // As the real emitter: the header includes every `use`d module's, so the backend reaches them.
         val uses = mutableListOf<String>()
-        runCatching { AstTree.walk(source.ast) { node -> if (node is UseStatement) uses += node.uri.value } }
+        runCatching { AstTree.walk(source.ast) { node -> if (node is UseStatement) uses += node.moduleUri } }
         return EmittedModule(header, body, extraDiagnostics, uses)
     }
 }
@@ -69,13 +71,20 @@ object PlumbingTestSupport {
         return stdlib.resolve("cpp")
     }
 
-    /** Parses [files] (absolute path to Kira text) the way the CLI does. */
-    fun compilationUnit(files: Map<Path, String>): CompilationUnit {
+    /**
+     * Parses [files] (absolute path to Kira text) the way the CLI does, each named as [manifest]'s
+     * project under [root] names it; a file under `<root>/stdlib` is a stdlib module.
+     */
+    fun compilationUnit(files: Map<Path, String>, manifest: ProjectManifest? = null, root: Path? = null): CompilationUnit {
         val unit = CompilationUnit()
+        val names = if (root == null) emptyMap() else {
+            val (std, own) = files.keys.partition { it.toAbsolutePath().normalize().startsWith(root.resolve("stdlib").toAbsolutePath().normalize()) }
+            ModuleNames.assign(manifest, root, std.map { it.toString() }, own.map { it.toString() })
+        }
         files.forEach { (path, text) ->
             val processed = KiraPreprocessor(text).process()
             val canonical = path.toFile().canonicalPath
-            var ctx = unit.addSource(canonical, processed.processedContent, emptyList())
+            var ctx = unit.addSource(canonical, processed.processedContent, emptyList(), names[canonical])
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
             KiraSourceParsers.from(ctx).parse()
@@ -83,9 +92,8 @@ object PlumbingTestSupport {
         return unit
     }
 
-    fun module(uri: String, body: String = ""): String {
-        return "module \"$uri\"\n\n" + body.trimIndent() + "\n"
-    }
+    /** A module's text: the file is the module, so the body is all of it. */
+    fun source(body: String = ""): String = body.trimIndent() + "\n"
 
     /** Every regular file under [root], relative with forward slashes, sorted. */
     fun listFiles(root: Path): List<String> {

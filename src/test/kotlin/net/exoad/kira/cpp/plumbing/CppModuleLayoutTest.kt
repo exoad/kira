@@ -15,11 +15,11 @@ class CppModuleLayoutTest {
     // An absolute root under build/: the layout only ever joins and relativizes it, nothing is written.
     private val root: Path = Path.of("build/tmp/cpp-plumbing/layout-root").toAbsolutePath().normalize()
 
-    private val proto = CppModuleRef("firmware:pilot.src.proto", root.resolve("firmware/pilot/src/proto.kira"))
-    private val scan = CppModuleRef("firmware:pilot.src.scan", root.resolve("firmware/pilot/src/scan.kira"))
-    private val text = CppModuleRef("firmware:lib.text", root.resolve("firmware/lib/text.kira"))
-    private val cal = CppModuleRef("firmware:lib.chassis.cal", root.resolve("firmware/lib/chassis/cal.kira"))
-    private val wireA = CppModuleRef("firmware:pilot.src.bibowire.frame", root.resolve("firmware/pilot/src/bibowire/frame.kira"))
+    private val proto = CppModuleRef("bibo:firmware.pilot.src.proto", root.resolve("firmware/pilot/src/proto.kira"))
+    private val scan = CppModuleRef("bibo:firmware.pilot.src.scan", root.resolve("firmware/pilot/src/scan.kira"))
+    private val text = CppModuleRef("bibo:firmware.lib.text", root.resolve("firmware/lib/text.kira"))
+    private val cal = CppModuleRef("bibo:firmware.lib.chassis.cal", root.resolve("firmware/lib/chassis/cal.kira"))
+    private val wireA = CppModuleRef("bibo:firmware.pilot.src.bibowire.frame", root.resolve("firmware/pilot/src/bibowire/frame.kira"))
     private val math = CppModuleRef("kira:math", root.resolve("stdlib/math.kira"))
 
     private fun rel(path: Path): String = root.relativize(path).toString().replace('\\', '/')
@@ -44,7 +44,7 @@ class CppModuleLayoutTest {
 
     @Test
     fun headerOnlyGlobDropsTheSource() {
-        val options = CppOptions(headerOnly = listOf("firmware:lib.**", "firmware:pilot.src.{scan,imu}"))
+        val options = CppOptions(headerOnly = listOf("bibo:firmware.lib.**", "bibo:firmware.pilot.src.{scan,imu}"))
         val layout = CppModuleLayout(options, root, listOf(proto, scan, text, cal))
         assertNull(layout.filesFor(text).source)
         assertNull(layout.filesFor(cal).source)
@@ -81,50 +81,50 @@ class CppModuleLayoutTest {
     @Test
     fun defaultNamespaceIsTheLastUriSegment() {
         val layout = CppModuleLayout(CppOptions(), root, listOf(proto, cal))
-        assertEquals("proto", layout.namespaceFor("firmware:pilot.src.proto"))
-        assertEquals("cal", layout.namespaceFor("firmware:lib.chassis.cal"))
+        assertEquals("proto", layout.namespaceFor("bibo:firmware.pilot.src.proto"))
+        assertEquals("cal", layout.namespaceFor("bibo:firmware.lib.chassis.cal"))
     }
 
     @Test
     fun manifestOverrideWinsAndMayNest() {
         val options = CppOptions(
             namespaces = mapOf(
-                "firmware:lib.text" to "bibo::text",
-                "firmware:pilot.src.scan" to "bibo",
+                "bibo:firmware.lib.text" to "bibo::text",
+                "bibo:firmware.pilot.src.scan" to "bibo",
             )
         )
         val layout = CppModuleLayout(options, root, listOf(text, scan, proto))
-        assertEquals("bibo::text", layout.namespaceFor("firmware:lib.text"))
-        assertEquals("bibo", layout.namespaceFor("firmware:pilot.src.scan"))
-        assertEquals("proto", layout.namespaceFor("firmware:pilot.src.proto"))
+        assertEquals("bibo::text", layout.namespaceFor("bibo:firmware.lib.text"))
+        assertEquals("bibo", layout.namespaceFor("bibo:firmware.pilot.src.scan"))
+        assertEquals("proto", layout.namespaceFor("bibo:firmware.pilot.src.proto"))
     }
 
     @Test
     fun globOverrideCoversSubmodulesAndExactBeatsGlob() {
         val options = CppOptions(
             namespaces = mapOf(
-                "firmware:pilot.src.bibowire.*" to "bibowire",
-                "firmware:lib.**" to "lib",
-                "firmware:lib.chassis.cal" to "bibo::drive",
+                "bibo:firmware.pilot.src.bibowire.*" to "bibowire",
+                "bibo:firmware.lib.**" to "lib",
+                "bibo:firmware.lib.chassis.cal" to "bibo::drive",
             )
         )
         val layout = CppModuleLayout(options, root, listOf(wireA, text, cal))
-        assertEquals("bibowire", layout.namespaceFor("firmware:pilot.src.bibowire.frame"))
-        assertEquals("lib", layout.namespaceFor("firmware:lib.text"))
-        assertEquals("bibo::drive", layout.namespaceFor("firmware:lib.chassis.cal"))
+        assertEquals("bibowire", layout.namespaceFor("bibo:firmware.pilot.src.bibowire.frame"))
+        assertEquals("lib", layout.namespaceFor("bibo:firmware.lib.text"))
+        assertEquals("bibo::drive", layout.namespaceFor("bibo:firmware.lib.chassis.cal"))
     }
 
     @Test
     fun longerGlobBeatsShorterGlob() {
         val options = CppOptions(
             namespaces = mapOf(
-                "firmware:**" to "fw",
-                "firmware:lib.**" to "lib",
+                "bibo:firmware.**" to "fw",
+                "bibo:firmware.lib.**" to "lib",
             )
         )
         val layout = CppModuleLayout(options, root, listOf(text, proto))
-        assertEquals("lib", layout.namespaceFor("firmware:lib.text"))
-        assertEquals("fw", layout.namespaceFor("firmware:pilot.src.proto"))
+        assertEquals("lib", layout.namespaceFor("bibo:firmware.lib.text"))
+        assertEquals("fw", layout.namespaceFor("bibo:firmware.pilot.src.proto"))
     }
 
     @Test
@@ -153,9 +153,9 @@ class CppModuleLayoutTest {
 
     @Test
     fun aKeywordSegmentIsEscapedLikeAnyName() {
-        val new = CppModuleRef("firmware:pilot.new", root.resolve("firmware/pilot/new.kira"))
+        val new = CppModuleRef("bibo:firmware.pilot.new", root.resolve("firmware/pilot/new.kira"))
         val layout = CppModuleLayout(CppOptions(), root, listOf(new))
-        assertEquals("new_", layout.namespaceFor("firmware:pilot.new"))
+        assertEquals("new_", layout.namespaceFor("bibo:firmware.pilot.new"))
         assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
     }
 
@@ -171,7 +171,7 @@ class CppModuleLayoutTest {
         assertTrue(errors.any { it.message.contains("app:x.kira") && it.message.contains("runtime") })
 
         val spelled = CppModuleLayout(
-            CppOptions(namespaces = mapOf("firmware:pilot.src.proto" to "bibo::new", "firmware:pilot.src.scan" to "std::x")),
+            CppOptions(namespaces = mapOf("bibo:firmware.pilot.src.proto" to "bibo::new", "bibo:firmware.pilot.src.scan" to "std::x")),
             root, listOf(proto, scan),
         )
         val spelledErrors = spelled.checkCollisions().filter { it.isError }
@@ -211,7 +211,7 @@ class CppModuleLayoutTest {
 
     @Test
     fun twoFilesDeclaringOneModuleCollide() {
-        val twin = CppModuleRef("firmware:pilot.src.proto", root.resolve("firmware/other/proto.kira"))
+        val twin = CppModuleRef("bibo:firmware.pilot.src.proto", root.resolve("firmware/other/proto.kira"))
         val layout = CppModuleLayout(CppOptions(), root, listOf(proto, twin))
         val errors = layout.checkCollisions().filter { it.isError }
         assertTrue(errors.any { it.code == "cpp.module-collision" }, "expected a module collision, got $errors")
@@ -250,7 +250,7 @@ class CppModuleLayoutTest {
 
     @Test
     fun unusedNamespaceOverrideIsAWarningAndABadOneAnError() {
-        val options = CppOptions(namespaces = mapOf("firmware:nope" to "x", "firmware:lib.text" to "bad name"))
+        val options = CppOptions(namespaces = mapOf("bibo:firmware.nope" to "x", "bibo:firmware.lib.text" to "bad name"))
         val layout = CppModuleLayout(options, root, listOf(text))
         val diagnostics = layout.checkCollisions()
         assertTrue(diagnostics.any { it.code == "cpp.namespace-unused" && it.severity == CppSeverity.WARNING })
@@ -268,14 +268,14 @@ class CppModuleLayoutTest {
         assertEquals("kira::errno_", CppModuleLayout(CppOptions(), root, emptyList()).namespaceFor("kira:errno"))
 
         val spelled = CppModuleLayout(
-            CppOptions(namespaces = mapOf("firmware:pilot.src.proto" to "errno", "firmware:pilot.src.scan" to "bibo::linux")),
+            CppOptions(namespaces = mapOf("bibo:firmware.pilot.src.proto" to "errno", "bibo:firmware.pilot.src.scan" to "bibo::linux")),
             root, listOf(proto, scan),
         )
         val errors = spelled.checkCollisions().filter { it.isError }
         assertEquals(2, errors.size, errors.toString())
         assertTrue(errors.all { it.code == "cpp.namespace-invalid" && it.message.contains("macro") }, errors.toString())
-        assertNull(spelled.namespaceProblem("firmware:pilot.src.proto", "proto"))
-        assertTrue(spelled.namespaceProblem("firmware:pilot.src.proto", "EOF")!!.contains("EOF"))
+        assertNull(spelled.namespaceProblem("bibo:firmware.pilot.src.proto", "proto"))
+        assertTrue(spelled.namespaceProblem("bibo:firmware.pilot.src.proto", "EOF")!!.contains("EOF"))
     }
 
     @Test
@@ -288,7 +288,7 @@ class CppModuleLayoutTest {
         val layout = CppModuleLayout(CppOptions(), root, modules)
         assertEquals(listOf("main_", "exit_", "time_", "log_", "abs_", "div_", "select_", "random_"), modules.map { layout.namespaceFor(it.uri) })
         assertEquals(emptyList(), layout.checkCollisions().filter { it.isError })
-        assertEquals("proto", layout.namespaceFor("firmware:pilot.src.proto"))
+        assertEquals("proto", layout.namespaceFor("bibo:firmware.pilot.src.proto"))
 
         val spelled = CppModuleLayout(CppOptions(namespaces = mapOf("app:main" to "exit", "app:exit" to "bibo::exit")), root, modules.take(2))
         val errors = spelled.checkCollisions().filter { it.isError }

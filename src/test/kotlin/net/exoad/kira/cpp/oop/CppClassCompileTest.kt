@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * the aarch64 cross build, and a C++ driver runs them: virtual dispatch through a base and a
  * trait, a trait default body, a diamond of traits, `this` as a value (the chain root's
  * `kira::Shared`), a generic class and a generic bound, `Maybe<Class>`, `Ref<T>`, a stack-
- * constructed class, a destructor from `finally`, a skipped middle default of a narrow
+ * constructed class, a skipped middle default of a narrow
  * type, `mut fx` methods that write their receiver (not `const`), field defaults that are not
  * PURE run in Kira's order inside the constructors (R-D and OQ-2: the given values, then the
  * defaults in declaration order, a superclass's and its `initially` first), and bodies that
@@ -30,114 +30,111 @@ class CppClassCompileTest {
 
     private val program = """
         // Two traits over one parent: a diamond, so both derive Named virtually.
-        pub trait Named {
-            pub fx id: () Str;
-            pub fx greeting: () Str {
+        pub Named: Any {
+            pub id: () Str;
+            pub greeting: () Str {
                 return "hello"
             }
         }
 
-        pub trait Tagged: Named {
-            pub fx tag: () Str;
+        pub Tagged: Named {
+            pub tag: () Str;
         }
 
-        pub trait Labelled: Named {
-            pub fx label: () Str;
+        pub Labelled: Named {
+            pub label: () Str;
         }
 
-        pub trait Sized {
-            pub fx size: () Int32;
+        pub Sized: Any {
+            pub size: () Int32;
         }
 
-        pub class Animal: Named {
-            require pub name: Str
+        pub Animal: Named {
+            pub name: Str
             mut legs: Int32 = 4
 
-            finally {
-            }
-
-            override pub fx id: () Str {
+            override pub id: () Str {
                 return name
             }
 
-            pub fx sound: () Str {
+            pub sound: () Str {
                 return "..."
             }
 
-            pub fx legCount: () Int32 {
+            pub legCount: () Int32 {
                 return legs
             }
         }
 
-        pub class Dog: Animal, Sized {
+        pub Dog: Animal, Sized {
             mut tricks: Int32 = 0
 
-            override pub fx sound: () Str {
+            override pub sound: () Str {
                 return "woof"
             }
 
-            override pub fx size: () Int32 {
+            override pub size: () Int32 {
                 return tricks
             }
 
-            pub fx me: () Dog {
+            pub me: () Dog {
                 return this
             }
 
             // Lambdas that escape and capture the receiver: [self = ...], cast to Dog.
-            pub fx later: () Fx<Tuple0, Dog> {
-                return fx() Dog {
+            pub later: () Fx<Tuple0, Dog> {
+                return () Dog {
                     return this
                 }
             }
 
-            pub mut fx laterMut: () Fx<Tuple0, Dog> {
-                return fx() Dog {
+            pub mut laterMut: () Fx<Tuple0, Dog> {
+                return () Dog {
                     return this
                 }
             }
         }
 
-        pub class Both: Tagged, Labelled {
-            override pub fx id: () Str {
+        pub Both: Tagged, Labelled {
+            override pub id: () Str {
                 return "both"
             }
 
-            override pub fx tag: () Str {
+            override pub tag: () Str {
                 return "t"
             }
 
-            override pub fx label: () Str {
+            override pub label: () Str {
                 return "l"
             }
         }
 
         // Reaches Named through Animal (which implements id) and through Tagged (which does
         // not): id is inherited by dominance, so Pup forwards it (MSVC C4250 otherwise).
-        pub class Pup: Animal, Tagged {
-            override pub fx tag: () Str {
+        pub Pup: Animal, Tagged {
+            override pub tag: () Str {
                 return "pup"
             }
         }
 
-        pub class Box<T> {
-            require pub value: T
+        pub Box<T>: Any {
+            pub value: T
 
-            pub fx get: () T {
+            pub get: () T {
                 return value
             }
         }
 
         // A class template whose `this` escapes: its kira::Shared base is dependent.
-        pub class Cell<T> {
-            require pub value: T
+        pub Cell<T>: Any {
+            pub value: T
 
-            pub fx me: () Cell<T> {
+            pub me: () Cell<T> {
                 return this
             }
 
-            pub mut fx later: () Fx<Tuple0, Cell<T>> {
-                return fx() Cell<T> {
+            pub mut later: () Fx<Tuple0, Cell<T>> {
+                return () Cell<T> {
                     return this
                 }
             }
@@ -145,427 +142,427 @@ class CppClassCompileTest {
 
         // A trait template with a default body, implemented at one instantiation; take's
         // parameter is a bare T, const T& in C++.
-        pub trait Source<T> {
-            pub fx get: () T;
-            pub fx take: (v: T) T;
-            pub fx again: () T {
+        pub Source<T>: Any {
+            pub get: () T;
+            pub take: (v: T) T;
+            pub again: () T {
                 return get()
             }
         }
 
-        pub class Five: Source<Int32> {
-            override pub fx get: () Int32 {
+        pub Five: Source<Int32> {
+            override pub get: () Int32 {
                 return 5
             }
 
-            override pub fx take: (v: Int32) Int32 {
+            override pub take: (v: Int32) Int32 {
                 return v
             }
         }
 
         // The same requirement at Bool, and a generic class's method overridden at Int32:
         // each override says const T& as its base does, or it overrides nothing.
-        pub class Flag: Source<Bool> {
-            override pub fx get: () Bool {
+        pub Flag: Source<Bool> {
+            override pub get: () Bool {
                 return true
             }
 
-            override pub fx take: (v: Bool) Bool {
+            override pub take: (v: Bool) Bool {
                 return v
             }
         }
 
-        pub class Base<T> {
-            pub fx take: (v: T) Int32 {
+        pub Base<T>: Any {
+            pub take: (v: T) Int32 {
                 return 0
             }
         }
 
-        pub class IntBase: Base<Int32> {
-            override pub fx take: (v: Int32) Int32 {
+        pub IntBase: Base<Int32> {
+            override pub take: (v: Int32) Int32 {
                 return v
             }
         }
 
-        pub fx makeFlag: () Source<Bool> {
+        pub makeFlag: () Source<Bool> {
             return Flag {}
         }
 
-        pub fx makeIntBase: () Base<Int32> {
+        pub makeIntBase: () Base<Int32> {
             return IntBase {}
         }
 
-        pub class Holder {
-            require pet: Animal
+        pub Holder: Any {
+            pet: Animal
             mut spare: Maybe<Animal> = null
 
-            pub fx getPet: () Animal {
+            pub getPet: () Animal {
                 return pet
             }
 
-            pub fx getSpare: () Maybe<Animal> {
+            pub getSpare: () Maybe<Animal> {
                 return spare
             }
         }
 
-        pub fx makeDog: (name: Str) Dog {
+        pub makeDog: (name: Str) Dog {
             return Dog { name }
         }
 
-        pub fx makePup: (name: Str) Pup {
+        pub makePup: (name: Str) Pup {
             return Pup { name }
         }
 
-        pub fx makeCell: (v: Int32) Cell<Int32> {
+        pub makeCell: (v: Int32) Cell<Int32> {
             return Cell<Int32> { v }
         }
 
-        pub fx makeFive: () Source<Int32> {
+        pub makeFive: () Source<Int32> {
             return Five {}
         }
 
-        pub fx makeBox: (v: Int32) Box<Int32> {
+        pub makeBox: (v: Int32) Box<Int32> {
             return Box<Int32> { v }
         }
 
-        pub fx asNamed: (d: Dog) Named {
+        pub asNamed: (d: Dog) Named {
             return d
         }
 
-        pub fx sizeOf<T: Sized>: (v: T) Int32 {
+        pub sizeOf<T: Sized>: (v: T) Int32 {
             return v.size()
         }
 
-        pub fx dogSize: (d: Dog) Int32 {
+        pub dogSize: (d: Dog) Int32 {
             return sizeOf<Dog>(d)
         }
 
-        pub fx counter: () Ref<Int32> {
+        pub counter: () Ref<Int32> {
             return Ref<Int32> { value = 7 }
         }
 
         // A skipped middle default of a narrow type: typed, or MSVC /W4 /WX sees an int
         // narrowed inside make_shared (C4244).
-        pub class Band {
-            require pub lo: Int32
+        pub Band: Any {
+            pub lo: Int32
             pub mid: UInt8 = 5
-            require pub hi: Int32
+            pub hi: Int32
         }
 
-        pub fx makeBand: () Band {
+        pub makeBand: () Band {
             return Band { lo = 1, hi = 2 }
         }
 
         // mut fx methods that write the receiver: not const, callable through a const Rc (D29).
-        pub fx grab: (mut v: Int32) Void {
+        pub grab: (mut v: Int32) Void {
             v = 7
         }
 
-        pub class Counter {
+        pub Counter: Any {
             mut n: Int32 = 0
 
-            pub mut fx bump: () Int32 {
+            pub mut bump: () Int32 {
                 n += 1
                 return n
             }
 
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 n = 0
             }
 
-            pub mut fx again: () Int32 {
+            pub mut again: () Int32 {
                 reset()
                 return n
             }
 
-            pub mut fx take: () Int32 {
+            pub mut take: () Int32 {
                 grab(mut n)
                 return n
             }
 
-            pub fx peek: () Int32 {
+            pub peek: () Int32 {
                 return n
             }
         }
 
-        pub fx makeCounter: () Counter {
+        pub makeCounter: () Counter {
             return Counter {}
         }
 
         // A skipped middle default of an Arr type: make_shared deduces nothing from a bare
         // braced list, so the filled-in default carries its type, in a subclass's construction too.
-        pub class Frame {
+        pub Frame: Any {
             pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
-            require pub id: Int32
+            pub id: Int32
         }
 
-        pub class Stamped: Frame {
-            require pub stamp: Int32
+        pub Stamped: Frame {
+            pub stamp: Int32
         }
 
-        pub fx makeFrame: () Frame {
+        pub makeFrame: () Frame {
             return Frame { id = 7 }
         }
 
-        pub fx makeStamped: () Stamped {
+        pub makeStamped: () Stamped {
             return Stamped { id = 8, stamp = 9 }
         }
 
         // One override of a method two traits declare, writing its receiver: both pure virtuals lose const.
-        pub trait Left {
-            pub mut fx hit: () Int32;
+        pub Left: Any {
+            pub mut hit: () Int32;
         }
 
-        pub trait Right {
-            pub mut fx hit: () Int32;
+        pub Right: Any {
+            pub mut hit: () Int32;
         }
 
-        pub class Target: Left, Right {
+        pub Target: Left, Right {
             mut hits: Int32 = 0
 
-            override pub mut fx hit: () Int32 {
+            override pub mut hit: () Int32 {
                 hits += 1
                 return hits
             }
         }
 
-        pub fx makeTarget: () Target {
+        pub makeTarget: () Target {
             return Target {}
         }
 
-        pub fx hitLeft: (l: Left) Int32 {
+        pub hitLeft: (l: Left) Int32 {
             return l.hit()
         }
 
-        pub fx hitRight: (r: Right) Int32 {
+        pub hitRight: (r: Right) Int32 {
             return r.hit()
         }
 
         // One override of a superclass method that also implements a trait's, writing: the trait's follows.
-        pub trait Stamper {
-            pub mut fx stamp: () Int32;
+        pub Stamper: Any {
+            pub mut stamp: () Int32;
         }
 
-        pub class Plain {
+        pub Plain: Any {
             pub mut count: Int32 = 0
 
-            pub mut fx stamp: () Int32 {
+            pub mut stamp: () Int32 {
                 return 1
             }
         }
 
-        pub class Counting: Plain, Stamper {
-            override pub mut fx stamp: () Int32 {
+        pub Counting: Plain, Stamper {
+            override pub mut stamp: () Int32 {
                 count += 1
                 return count
             }
         }
 
-        pub fx makeCounting: () Counting {
+        pub makeCounting: () Counting {
             return Counting {}
         }
 
-        pub fx stampVia: (s: Stamper) Int32 {
+        pub stampVia: (s: Stamper) Int32 {
             return s.stamp()
         }
 
-        pub fx stampPlain: (p: Plain) Int32 {
+        pub stampPlain: (p: Plain) Int32 {
             return p.stamp()
         }
 
         // A struct takes a trait's default body as its own member: static dispatch through a bound and directly.
-        pub trait Shape {
-            pub fx area: () Int32;
-            pub fx same: () Int32 {
+        pub Shape: Any {
+            pub area: () Int32;
+            pub same: () Int32 {
                 return area()
             }
-            pub mut fx grow: () Void;
-            pub fx growOnce: () Void {
+            pub mut grow: () Void;
+            pub growOnce: () Void {
                 grow()
             }
         }
 
-        pub struct Square: Shape {
+        pub Square: Struct, Shape {
             pub side: Int32 = 3
 
-            override pub fx area: () Int32 {
+            override pub area: () Int32 {
                 return side
             }
 
-            override pub mut fx grow: () Void {
+            override pub mut grow: () Void {
                 side = 5
             }
         }
 
-        pub fx sameOf<T: Shape>: (s: T) Int32 {
+        pub sameOf<T: Shape>: (s: T) Int32 {
             return s.same()
         }
 
-        pub fx squareSame: (q: Square) Int32 {
+        pub squareSame: (q: Square) Int32 {
             return sameOf<Square>(q)
         }
 
-        pub fx squareDirect: (q: Square) Int32 {
+        pub squareDirect: (q: Square) Int32 {
             return q.same()
         }
 
         // A subclass's escaping lambda that writes a field and calls a mut fx: the captured
         // self is cast down without const, as the method itself is not const.
-        pub class Lower {
+        pub Lower: Any {
             mut n: Int32 = 0
 
-            pub fx get: () Int32 {
+            pub get: () Int32 {
                 return n
             }
         }
 
-        pub class Upper: Lower {
+        pub Upper: Lower {
             mut k: Int32 = 0
 
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 k = 100
             }
 
-            pub fx later: () Fx<Tuple0, Int32> {
-                return fx() Int32 {
+            pub later: () Fx<Tuple0, Int32> {
+                return () Int32 {
                     k += 1
                     return k
                 }
             }
 
-            pub fx laterReset: () Fx<Tuple0, Int32> {
-                return fx() Int32 {
+            pub laterReset: () Fx<Tuple0, Int32> {
+                return () Int32 {
                     reset()
                     return k
                 }
             }
 
-            pub fx peek: () Fx<Tuple0, Int32> {
-                return fx() Int32 {
+            pub peek: () Fx<Tuple0, Int32> {
+                return () Int32 {
                     return k
                 }
             }
         }
 
-        pub fx makeUpper: () Upper {
+        pub makeUpper: () Upper {
             return Upper {}
         }
 
         // One name from two unrelated traits, a requirement beside a default: the struct takes
         // the default as its member, the class declares a forwarder to it (C++ would hold the
         // class abstract and the call ambiguous).
-        pub trait Abs {
-            pub fx f: () Int32;
+        pub Abs: Any {
+            pub f: () Int32;
         }
 
-        pub trait Def {
-            pub fx f: () Int32 {
+        pub Def: Any {
+            pub f: () Int32 {
                 return 7
             }
         }
 
-        pub struct Sib: Abs, Def {
+        pub Sib: Struct, Abs, Def {
             pub v: Int32 = 0
         }
 
-        pub class SibClass: Abs, Def {
+        pub SibClass: Abs, Def {
         }
 
-        pub fx viaAbs: (a: Abs) Int32 {
+        pub viaAbs: (a: Abs) Int32 {
             return a.f()
         }
 
-        pub fx viaAbsBound<T: Abs>: (s: T) Int32 {
+        pub viaAbsBound<T: Abs>: (s: T) Int32 {
             return s.f()
         }
 
-        pub fx sibBound: (s: Sib) Int32 {
+        pub sibBound: (s: Sib) Int32 {
             return viaAbsBound<Sib>(s)
         }
 
-        pub fx makeSib: () SibClass {
+        pub makeSib: () SibClass {
             return SibClass {}
         }
 
         // An override of an override of a generic root, at Int32: both say the root's const&.
-        pub trait Feed<T> {
-            pub mut fx take: (v: T) T;
+        pub Feed<T>: Any {
+            pub mut take: (v: T) T;
         }
 
-        pub class Mid: Feed<Int32> {
-            override pub mut fx take: (v: Int32) Int32 {
+        pub Mid: Feed<Int32> {
+            override pub mut take: (v: Int32) Int32 {
                 return v
             }
         }
 
-        pub class Leaf: Mid {
-            override pub mut fx take: (v: Int32) Int32 {
+        pub Leaf: Mid {
+            override pub mut take: (v: Int32) Int32 {
                 return 12
             }
         }
 
-        pub fx makeLeaf: () Leaf {
+        pub makeLeaf: () Leaf {
             return Leaf {}
         }
 
         // An Fx parameter and an Fx return of a generic base, at Int32: kira::Fn<...(const T&)> stays so.
-        pub trait Each<T> {
-            pub fx each: (f: Fx<Tuple1<T>, Int32>) Int32;
+        pub Each<T>: Any {
+            pub each: (f: Fx<Tuple1<T>, Int32>) Int32;
         }
 
-        pub class Nums: Each<Int32> {
-            override pub fx each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+        pub Nums: Each<Int32> {
+            override pub each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
                 return f(5)
             }
         }
 
-        pub fx makeNums: () Each<Int32> {
+        pub makeNums: () Each<Int32> {
             return Nums {}
         }
 
-        pub trait Maker<T> {
-            pub fx make: () Fx<Tuple1<T>, Int32>;
+        pub Maker<T>: Any {
+            pub make: () Fx<Tuple1<T>, Int32>;
         }
 
-        pub class IntMaker: Maker<Int32> {
-            override pub fx make: () Fx<Tuple1<Int32>, Int32> {
-                return fx(x: Int32) Int32 {
+        pub IntMaker: Maker<Int32> {
+            override pub make: () Fx<Tuple1<Int32>, Int32> {
+                return (x: Int32) Int32 {
                     return x
                 }
             }
         }
 
-        pub fx makeMaker: () Maker<Int32> {
+        pub makeMaker: () Maker<Int32> {
             return IntMaker {}
         }
 
         // An override taken by const& where Kira takes a value: the body reads the value it
         // was passed, not the field the argument named, which it writes first.
-        pub class Alias: Feed<Int32> {
+        pub Alias: Feed<Int32> {
             pub mut n: Int32 = 1
 
-            override pub mut fx take: (v: Int32) Int32 {
+            override pub mut take: (v: Int32) Int32 {
                 n = 100
                 return v
             }
         }
 
-        pub fx makeAlias: () Alias {
+        pub makeAlias: () Alias {
             return Alias {}
         }
 
         // A trait default whose parameter is named as a field of the struct that copies it.
-        pub trait Scaled {
-            pub fx unit: () Int32;
-            pub fx scaled: (side: Int32) Int32 {
+        pub Scaled: Any {
+            pub unit: () Int32;
+            pub scaled: (side: Int32) Int32 {
                 return side
             }
         }
 
-        pub struct Tile: Scaled {
+        pub Tile: Struct, Scaled {
             pub side: Int32 = 3
 
-            override pub fx unit: () Int32 {
+            override pub unit: () Int32 {
                 return side
             }
         }
@@ -573,187 +570,178 @@ class CppClassCompileTest {
         // An override of a generic v: T at an opaque handle (`Handle* const&`), copying v as the
         // pointer its own declaration takes; the driver defines the bodyless functions. (Unsafe
         // and CStr are second-class, decision 4b: never a type argument or a field.)
-        pub @_opaque class Handle
+        pub @_opaque Handle: Any
 
-        pub fx useIt: (h: Handle) Int32;
-        pub fx open: () Handle;
+        pub useIt: (h: Handle) Int32;
+        pub open: () Handle;
 
-        pub trait Sink<T> {
-            pub fx put: (v: T) Int32;
+        pub Sink<T>: Any {
+            pub put: (v: T) Int32;
         }
 
-        pub class HSink: Sink<Handle> {
-            override pub fx put: (v: Handle) Int32 {
+        pub HSink: Sink<Handle> {
+            override pub put: (v: Handle) Int32 {
                 return useIt(v)
             }
         }
 
-        pub fx makeHSink: () Sink<Handle> {
+        pub makeHSink: () Sink<Handle> {
             return HSink {}
         }
 
-        // A construction's D33 temporaries of pointer type, and pointer fields value-initialized.
-        pub class PtrHolder {
-            require pub g: Handle
-            require pub h: Handle
-        }
-
-        pub class Loose {
+        // A construction's D33 temporaries of pointer type.
+        pub PtrHolder: Any {
+            pub g: Handle
             pub h: Handle
-            require pub n: Int32
         }
 
-        pub fx makePtrHolder: () PtrHolder {
+        pub makePtrHolder: () PtrHolder {
             return PtrHolder { h = open(), g = open() }
-        }
-
-        pub fx makeLoose: () Loose {
-            return Loose { n = 1 }
         }
 
         // A method whose Str parameter names an object the body drops, and one that reads itself
         // after dropping its only other owner: neither guards, the caller copies and holds (I).
-        pub class Link {
-            require pub name: Str
+        pub Link: Any {
+            pub name: Str
             pub mut next: Maybe<Link> = null
 
-            pub mut fx cut: (s: Str) Str {
+            pub mut cut: (s: Str) Str {
                 next = null
                 return s
             }
 
-            pub fx detach: (owner: Link) Str {
+            pub detach: (owner: Link) Str {
                 owner.drop()
                 return name
             }
 
-            pub mut fx drop: () Void {
+            pub mut drop: () Void {
                 next = null
             }
         }
 
-        pub fx makeLink: (name: Str) Link {
+        pub makeLink: (name: Str) Link {
             return Link { name }
         }
 
         // A free function whose Str parameter names an object its other parameter drops.
-        pub fx consume: (h: Link, s: Str) Str {
+        pub consume: (h: Link, s: Str) Str {
             h.drop()
             return s
         }
 
         // A template's const T& parameter, bound to the field the body writes first.
-        pub class Twin<T> {
+        pub Twin<T>: Any {
             pub mut n: T
-            require pub m: T
+            pub m: T
 
-            pub mut fx take: (v: T) T {
+            pub mut take: (v: T) T {
                 n = m
                 return v
             }
         }
 
-        pub fx makeTwin: (n: Int32, m: Int32) Twin<Int32> {
+        pub makeTwin: (n: Int32, m: Int32) Twin<Int32> {
             return Twin<Int32> { n = n, m = m }
         }
 
         // A construction reads a field, a const& parameter, an implicit field and a mut global
         // before the impure sibling that renames or frees what it names, and a skipped middle
         // default after the given values (D33, as W2.3's call hoister orders a call).
-        pub class Tag {
-            require pub mut name: Str
+        pub Tag: Any {
+            pub mut name: Str
 
-            pub mut fx rename: () Int32 {
+            pub mut rename: () Int32 {
                 name = "new"
                 return 7
             }
         }
 
-        pub class TagPair {
-            require pub a: Str
-            require pub n: Int32
+        pub TagPair: Any {
+            pub a: Str
+            pub n: Int32
         }
 
-        pub fx tagPair: (b: Tag, c: Tag) TagPair {
+        pub tagPair: (b: Tag, c: Tag) TagPair {
             return TagPair { b.name, c.rename() }
         }
 
-        pub class Shelf {
+        pub Shelf: Any {
             pub mut tag: Maybe<Tag> = null
 
-            pub mut fx empty: () Int32 {
+            pub mut empty: () Int32 {
                 tag = null
                 return 7
             }
         }
 
-        pub fx shelved: (s: Str, h: Shelf) TagPair {
+        pub shelved: (s: Str, h: Shelf) TagPair {
             return TagPair { a = s, n = h.empty() }
         }
 
-        pub class Nest {
+        pub Nest: Any {
             pub mut twig: Maybe<Twig> = null
 
-            pub mut fx drop: () Int32 {
+            pub mut drop: () Int32 {
                 twig = null
                 return 7
             }
         }
 
-        pub class Twig {
-            require pub name: Str
-            require pub nest: Nest
+        pub Twig: Any {
+            pub name: Str
+            pub nest: Nest
 
-            pub fx leave: () TagPair {
+            pub leave: () TagPair {
                 return TagPair { name, nest.drop() }
             }
         }
 
         pub mut seed: Int32 = 1
 
-        pub fx bumpSeed: () Int32 {
+        pub bumpSeed: () Int32 {
             seed += 10
             return seed
         }
 
-        pub class Duo {
-            require pub a: Int32
+        pub Duo: Any {
+            pub a: Int32
             pub b: Int32 = seed
-            require pub c: Int32
+            pub c: Int32
         }
 
-        pub fx duo: () Duo {
+        pub duo: () Duo {
             return Duo { a = seed, c = bumpSeed() }
         }
 
         // The same spill in a field's default, a constructor's default argument: its lambda captures nothing.
-        pub class DuoBox {
+        pub DuoBox: Any {
             pub duo: Duo = Duo { a = seed, c = bumpSeed() }
         }
 
         // A type-parameter receiver the arguments replace in the caller's slot: the caller copies it (I).
-        pub trait Greets {
-            pub fx greet: (n: Int32) Str;
+        pub Greets: Any {
+            pub greet: (n: Int32) Str;
         }
 
-        pub class Kid: Greets {
-            require pub name: Str
+        pub Kid: Greets {
+            pub name: Str
 
-            override pub fx greet: (n: Int32) Str {
+            override pub greet: (n: Int32) Str {
                 return name
             }
         }
 
-        pub class Crib {
+        pub Crib: Any {
             pub mut kid: Kid = Kid { "short" }
 
-            pub mut fx swap: () Int32 {
+            pub mut swap: () Int32 {
                 kid = Kid { "other" }
                 return 7
             }
         }
 
-        pub fx greetIt<T: Greets>: (x: T, h: Crib) Str {
+        pub greetIt<T: Greets>: (x: T, h: Crib) Str {
             return x.greet(h.swap())
         }
 
@@ -763,18 +751,18 @@ class CppClassCompileTest {
         // initially.
         pub mut tick: Int32 = 0
 
-        pub fx next: () Int32 {
+        pub next: () Int32 {
             tick += 1
             return tick
         }
 
-        pub class Three {
+        pub Three: Any {
             pub a: Int32 = next()
             pub b: Int32 = next()
             pub c: Int32 = next()
         }
 
-        pub class Seen {
+        pub Seen: Any {
             pub mut seen: Int32 = 0
 
             initially {
@@ -782,7 +770,7 @@ class CppClassCompileTest {
             }
         }
 
-        pub class Late: Seen {
+        pub Late: Seen {
             pub k: Int32 = next()
             pub mut after: Int32 = 0
 
@@ -791,57 +779,57 @@ class CppClassCompileTest {
             }
         }
 
-        pub class Low {
+        pub Low: Any {
             pub a: Int32 = next()
         }
 
-        pub class High: Low {
+        pub High: Low {
             pub b: Int32 = next()
         }
 
-        pub class Mix {
+        pub Mix: Any {
             pub x: Int32 = next()
-            require pub y: Int32
+            pub y: Int32
             pub z: Int32 = next()
             pub w: Int32 = next()
         }
 
-        pub fx makeThree: () Three {
+        pub makeThree: () Three {
             return Three {}
         }
 
-        pub fx makeLate: () Late {
+        pub makeLate: () Late {
             return Late {}
         }
 
-        pub fx makeHigh: () High {
+        pub makeHigh: () High {
             return High {}
         }
 
-        pub fx makeMix: () Mix {
+        pub makeMix: () Mix {
             return Mix { y = next() }
         }
 
-        pub fx makeMixGiven: () Mix {
+        pub makeMixGiven: () Mix {
             return Mix { w = 70, y = next(), x = 50 }
         }
 
         // A deferred default that calls a private function, in the constructor's definition; and a Maybe field whose
         // default is not PURE, given null: the null is the field's, not an omitted value.
-        fx pick: () Maybe<Str> {
+        pick: () Maybe<Str> {
             tick += 100
             return "picked"
         }
 
-        pub class Slot {
+        pub Slot: Any {
             pub mut item: Maybe<Str> = pick()
         }
 
-        pub fx emptySlot: () Slot {
+        pub emptySlot: () Slot {
             return Slot { item = null }
         }
 
-        pub fx fullSlot: () Slot {
+        pub fullSlot: () Slot {
             return Slot {}
         }
     """
@@ -958,8 +946,7 @@ class CppClassCompileTest {
             check(tile.scaled(2) == 2 && tile.unit() == 3, "a trait default's parameter named as the copying struct's field");
             check(shapes::makeHSink()->put(shapes::open()) == 9, "an override at an opaque handle copies it as the pointer it takes");
             const kira::Rc<shapes::PtrHolder> held = shapes::makePtrHolder();
-            const kira::Rc<shapes::Loose> loose = shapes::makeLoose();
-            check(held->g == shapes::open() && held->h == shapes::open() && loose->h == nullptr && loose->n == 1, "a construction spills pointers into const pointers and value-initializes a skipped one");
+            check(held->g == shapes::open() && held->h == shapes::open(), "a construction spills pointers into const pointers");
             // Longer than any small-string buffer, so a read of a freed Str reads freed heap memory.
             const char* longName = "a name long enough that no standard library keeps it in the string object itself";
             const kira::Rc<shapes::Link> head = shapes::makeLink("head");

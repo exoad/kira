@@ -14,10 +14,7 @@ class BackendCompilationPipelineTest {
             runSemantic = true
         )
 
-        assertTrue(generated.contains("typedef enum TestEnum"), generated)
-        assertTrue(generated.contains("TEST_ENUM_A"), generated)
-        assertTrue(generated.contains("TEST_ENUM_B"), generated)
-        assertTrue(generated.contains("TEST_ENUM_C"), generated)
+        assertTrue(generated.contains("TestType"), generated)
     }
 
     @Test
@@ -26,11 +23,11 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx add: (a: Int32, b: Int32) Int32 {
+            add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace("OK\\n")
             }
             """
@@ -73,11 +70,11 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx sum: (a: Int32, b: Int32) Int32 {
+            sum: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx main: () Void {
+            main: () Void {
                 mut v: Int32 = sum(3, 4)
                 trace("syntax-ok\\n")
             }
@@ -117,7 +114,7 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx main: () Void {
+            main: () Void {
                 trace("runtime-ok\\n")
             }
             """
@@ -151,15 +148,15 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            fx first: (values: Arr<Int32>) Int32 {
+            first: (values: Arr<Int32>) Int32 {
                 return values[0]
             }
 
-            fx hasAny: (values: Map<Str, Int32>) Bool {
+            hasAny: (values: Map<Str, Int32>) Bool {
                 return !values.isEmpty()
             }
 
-            fx main: () Void {
+            main: () Void {
                 numbers: Arr<Int32> = [10, 20, 30]
                 head: Int32 = first(numbers)
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
@@ -210,25 +207,21 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            pub enum BuildStatus {
-                READY,
-                RUNNING,
-                DONE
+            pub READY: Int32 = 0
+
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            pub class Box<T> {
-                require pub value: T
-            }
-
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
 
-            fx main: () Void {
-                state: BuildStatus = BuildStatus.READY
+            main: () Void {
+                state: Int32 = READY
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 value: Int32 = id<Int32>(wrapped.value)
-                if state == BuildStatus.READY {
+                if state == READY {
                     trace(value)
                 }
             }
@@ -269,16 +262,16 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            pub class Pet {
-                require pub name: Str
-                require pub sound: Str
+            pub Pet: Any {
+                pub name: Str
+                pub sound: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return sound
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())

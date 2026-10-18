@@ -33,9 +33,6 @@ class CppClassCopyTest {
     /** alb's element: past every small-string buffer, so a read of it after the free reads freed heap. */
     private val ALB = "a long list element, past the small string buffer 000000"
 
-    private fun unsupported(body: String): List<String> =
-        OopTestSupport.emit(OopTestSupport.module(uri, body)).module(uri).diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }.map { it.message }
-
     private fun typerErrors(body: String): List<String> = OopTestSupport.typerErrors(OopTestSupport.module(uri, body))
 
     private fun assertRefusedBy(code: String, body: String, what: String = code) {
@@ -57,10 +54,10 @@ class CppClassCopyTest {
         "oop:lifetimes",
         """
         // uaflist: a Str element of an object's List, given to a method that grows that List (g++: std::bad_alloc).
-        pub class Log {
+        pub Log: Any {
             pub mut lines: List<Str> = List<Str> {}
 
-            pub mut fx append: (s: Str) Str {
+            pub mut append: (s: Str) Str {
                 mut i: Int32 = 0
                 while i < 64 {
                     lines.add("one long line that is not in the small string buffer 0000")
@@ -70,90 +67,90 @@ class CppClassCopyTest {
             }
         }
 
-        pub fx appendOwnLine: () Str {
+        pub appendOwnLine: () Str {
             a: Log = Log {}
             a.lines.add("the first line, long enough to live on the heap 0000000")
             b: Log = a
             return a.append(b.lines[0])
         }
 
-        pub class Holder {
+        pub Holder: Any {
             pub mut item: Maybe<Item> = null
 
-            pub mut fx clear: () Void {
+            pub mut clear: () Void {
                 item = null
             }
 
-            pub mut fx take: () Str {
+            pub mut take: () Str {
                 item = null
                 return "a long added line that is not in the small string buffer"
             }
         }
 
-        pub class Item {
+        pub Item: Any {
             pub mut label: Str = "a long item label that is not in the small string buffer 00"
             pub mut labels: List<Str> = List<Str> {}
             pub mut n: Int32 = 0
 
             // mutthis: its own field passed mut to a call that frees the Item (a segfault, an ASan heap-use-after-free).
-            pub mut fx relabel: (h: Holder) Str {
+            pub mut relabel: (h: Holder) Str {
                 return setAfter(h, mut label)
             }
 
             // recvfree: labels.add(h.take()) pushed onto the freed Item.
-            pub mut fx grab: (h: Holder) Int32 {
+            pub mut grab: (h: Holder) Int32 {
                 labels.add(h.take())
                 return labels.size() as Int32
             }
 
-            pub mut fx put: (s: Str) Int32 {
+            pub mut put: (s: Str) Int32 {
                 n = n + 1
                 return n
             }
 
             // implicitcall: put(h.take()) ran put on the freed Item.
-            pub mut fx grab2: (h: Holder) Int32 {
+            pub mut grab2: (h: Holder) Int32 {
                 return put(h.take())
             }
         }
 
         // uaf3: consume(h, h.item.unwrap().label) with consume clearing h first (g++: freed heap bytes).
-        pub fx consume: (h: Holder, s: Str) Str {
+        pub consume: (h: Holder, s: Str) Str {
             h.clear()
             return s
         }
 
-        pub fx consumeOwn: () Str {
+        pub consumeOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
             return consume(h, h.item.unwrap().label)
         }
 
-        pub fx setAfter: (h: Holder, mut s: Str) Str {
+        pub setAfter: (h: Holder, mut s: Str) Str {
             h.clear()
             t: Str = s
             s = "y"
             return t
         }
 
-        pub fx relabelOwn: () Str {
+        pub relabelOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
             return h.item.unwrap().relabel(h)
         }
 
         // mutparam: the handle parameter was a const kira::Rc<Item>& bound to h->item, which h.clear() dropped.
-        pub fx relabelParam: (it: Item, h: Holder) Str {
+        pub relabelParam: (it: Item, h: Holder) Str {
             return setAfter(h, mut it.label)
         }
 
-        pub fx relabelParamOwn: () Str {
+        pub relabelParamOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
             return relabelParam(h.item.unwrap(), h)
         }
 
-        pub fx grabOwn: () Int32 {
+        pub grabOwn: () Int32 {
             h: Holder = Holder {}
             h.item = Item {}
             a: Int32 = h.item.unwrap().grab(h)
@@ -163,37 +160,37 @@ class CppClassCopyTest {
         }
 
         // genalias4: b.take(g.n) with g = b printed 7 where Kira gives 1.
-        pub class Twin<T> {
+        pub Twin<T>: Any {
             pub mut n: T
-            require pub m: T
+            pub m: T
 
-            pub mut fx take: (v: T) T {
+            pub mut take: (v: T) T {
                 n = m
                 return v
             }
         }
 
-        pub fx twinOwn: () Int32 {
+        pub twinOwn: () Int32 {
             b: Twin<Int32> = Twin<Int32> { n = 1, m = 7 }
             g: Twin<Int32> = b
             return b.take(g.n)
         }
 
         // An override taken by const& where its own declaration takes the Int32 by value (was vRef_).
-        pub trait Feed<T> {
-            pub mut fx take: (v: T) T;
+        pub Feed<T>: Any {
+            pub mut take: (v: T) T;
         }
 
-        pub class Alias: Feed<Int32> {
+        pub Alias: Feed<Int32> {
             pub mut n: Int32 = 1
 
-            override pub mut fx take: (v: Int32) Int32 {
+            override pub mut take: (v: Int32) Int32 {
                 n = 100
                 return v
             }
         }
 
-        pub fx aliasOwn: () Int32 {
+        pub aliasOwn: () Int32 {
             a: Alias = Alias {}
             f: Feed<Int32> = a
             g: Alias = a
@@ -203,38 +200,38 @@ class CppClassCopyTest {
         }
 
         // selfkill2 and capthis: a method that drops its object's only owner, then reads itself.
-        pub class Tree {
+        pub Tree: Any {
             pub mut kids: List<Kid> = List<Kid> {}
 
-            pub mut fx clear: () Void {
+            pub mut clear: () Void {
                 kids = List<Kid> {}
             }
         }
 
-        pub class Kid {
-            require pub name: Str
-            require pub tree: Tree
+        pub Kid: Any {
+            pub name: Str
+            pub tree: Tree
 
-            pub fx leave: () Str {
+            pub leave: () Str {
                 tree.clear()
                 return name
             }
 
-            pub fx leaveLater: () Fx<Tuple0, Str> {
+            pub leaveLater: () Fx<Tuple0, Str> {
                 tree.clear()
-                return fx() Str {
+                return () Str {
                     return name
                 }
             }
         }
 
-        pub fx leaveOwn: () Str {
+        pub leaveOwn: () Str {
             t: Tree = Tree {}
             t.kids.add(Kid { name = "a kid's name long enough to live on the heap 0000", tree = t })
             return t.kids[0].leave()
         }
 
-        pub fx leaveLaterOwn: () Str {
+        pub leaveLaterOwn: () Str {
             t: Tree = Tree {}
             t.kids.add(Kid { name = "a kid's name long enough to live on the heap 0000", tree = t })
             g: Fx<Tuple0, Str> = t.kids[0].leaveLater()
@@ -242,108 +239,108 @@ class CppClassCopyTest {
         }
 
         // A class template's method that drops its own object's owner.
-        pub class Node<T> {
-            require pub value: T
+        pub Node<T>: Any {
+            pub value: T
             pub mut next: Maybe<Node<T>> = null
 
-            pub fx detach: (owner: Node<T>) T {
+            pub detach: (owner: Node<T>) T {
                 owner.drop()
                 return value
             }
 
-            pub mut fx drop: () Void {
+            pub mut drop: () Void {
                 next = null
             }
         }
 
-        pub fx detachOwn: () Str {
+        pub detachOwn: () Str {
             head: Node<Str> = Node<Str> { value = "head" }
             head.next = Node<Str> { value = "the next node's value, long enough for the heap 00" }
             return head.next.unwrap().detach(head)
         }
 
         // A trait call whose override drops the object the calling method runs on.
-        pub trait Step {
-            pub mut fx step: () Void;
+        pub Step: Any {
+            pub mut step: () Void;
         }
 
-        pub class Dropper: Step {
+        pub Dropper: Step {
             pub mut spare: Maybe<Runner> = null
 
-            override pub mut fx step: () Void {
+            override pub mut step: () Void {
                 spare = null
             }
         }
 
-        pub class Runner {
-            require pub s: Step
-            require pub n: Int32
+        pub Runner: Any {
+            pub s: Step
+            pub n: Int32
 
-            pub fx run: () Int32 {
+            pub run: () Int32 {
                 s.step()
                 return n
             }
         }
 
-        pub fx runOwn: () Int32 {
+        pub runOwn: () Int32 {
             d: Dropper = Dropper {}
             d.spare = Runner { s = d, n = 42 }
             return d.spare.unwrap().run()
         }
 
         // A trait default body that drops its object, then calls it (refused as needing a hold, round 2).
-        pub trait Leaves {
-            pub mut fx drop: () Void;
-            pub fx id: () Int32;
-            pub fx leave: () Int32 {
+        pub Leaves: Any {
+            pub mut drop: () Void;
+            pub id: () Int32;
+            pub leave: () Int32 {
                 drop()
                 return id()
             }
         }
 
-        pub class Home {
+        pub Home: Any {
             pub mut leaf: Maybe<Leaf> = null
         }
 
-        pub class Leaf: Leaves {
-            require pub home: Home
-            require pub k: Int32
+        pub Leaf: Leaves {
+            pub home: Home
+            pub k: Int32
 
-            override pub mut fx drop: () Void {
+            override pub mut drop: () Void {
                 home.leaf = null
             }
 
-            override pub fx id: () Int32 {
+            override pub id: () Int32 {
                 return k
             }
         }
 
-        pub fx leaveHome: () Int32 {
+        pub leaveHome: () Int32 {
             h: Home = Home {}
             h.leaf = Leaf { home = h, k = 42 }
             return h.leaf.unwrap().leave()
         }
 
         // The chain golden's has(): a loop over a field of this whose body makes a trait call iterates a copy.
-        pub trait Behaviour {
-            pub fx id: () Str;
+        pub Behaviour: Any {
+            pub id: () Str;
         }
 
-        class Stop: Behaviour {
-            override pub fx id: () Str {
+        Stop: Behaviour {
+            override pub id: () Str {
                 return "stop"
             }
         }
 
-        pub class Chain {
+        pub Chain: Any {
             mut loaded: List<Behaviour> = List<Behaviour> {}
             mut hits: Int32 = 0
 
-            pub mut fx load: () Void {
+            pub mut load: () Void {
                 loaded.add(Stop {})
             }
 
-            pub mut fx has: (wanted: Str) Bool {
+            pub mut has: (wanted: Str) Bool {
                 for b: Behaviour in loaded {
                     hits += 1
                     if b.id() == wanted {
@@ -354,49 +351,49 @@ class CppClassCopyTest {
             }
         }
 
-        pub fx chainHas: () Bool {
+        pub chainHas: () Bool {
             c: Chain = Chain {}
             c.load()
             return c.has("stop")
         }
 
         // A mut argument in an object a handle parameter holds (STABLE, rule M), the callee growing it through another handle.
-        pub class Bag {
+        pub Bag: Any {
             pub mut items: List<Str> = List<Str> {}
 
-            pub mut fx grow: () Void {
+            pub mut grow: () Void {
                 items.add("x")
             }
         }
 
-        pub fx both: (c: Bag, mut v: List<Str>) Void {
+        pub both: (c: Bag, mut v: List<Str>) Void {
             c.grow()
             v.add("y")
         }
 
-        pub fx feed: (b: Bag, c: Bag) Int32 {
+        pub feed: (b: Bag, c: Bag) Int32 {
             both(c, mut b.items)
             return b.items.size() as Int32
         }
 
-        pub fx feedOwn: () Int32 {
+        pub feedOwn: () Int32 {
             b: Bag = Bag {}
             return feed(b, b)
         }
 
         // fxself: a lambda assigning b.f while it runs as b.f (g++: freed heap bytes for its capture).
-        pub class FxBox {
-            require pub mut f: Fx<Tuple0, Int32>
+        pub FxBox: Any {
+            pub mut f: Fx<Tuple0, Int32>
 
-            pub mut fx run: () Int32 {
+            pub mut run: () Int32 {
                 return f()
             }
         }
 
-        pub fx fxSelf: () Int32 {
-            b: FxBox = FxBox { f = fx() Int32 { return 1 } }
-            b.f = fx() Int32 {
-                b.f = fx() Int32 { return 2 }
+        pub fxSelf: () Int32 {
+            b: FxBox = FxBox { f = () Int32 { return 1 } }
+            b.f = () Int32 {
+                b.f = () Int32 { return 2 }
                 return 3
             }
             x: Int32 = b.run()
@@ -404,24 +401,24 @@ class CppClassCopyTest {
         }
 
         // lamparam: a lambda's const& parameter bound to h's Item's label, read after h.clear().
-        pub fx callWith: (h: Holder, f: Fx<Tuple1<Str>, Str>) Str {
+        pub callWith: (h: Holder, f: Fx<Tuple1<Str>, Str>) Str {
             return f(h.item.unwrap().label)
         }
 
-        pub fx lamParam: () Str {
+        pub lamParam: () Str {
             h: Holder = Holder {}
             h.item = Item {}
-            return callWith(h, fx(s: Str) Str {
+            return callWith(h, (s: Str) Str {
                 h.clear()
                 return s
             })
         }
 
         // A view of a List parameter after the body grows the List it was given (decision 4b's W4 positions).
-        pub class IntBag {
+        pub IntBag: Any {
             pub mut items: List<Int32> = List<Int32> {}
 
-            pub mut fx grow: () Void {
+            pub mut grow: () Void {
                 mut i: Int32 = 0
                 while i < 64 {
                     items.add(9)
@@ -430,16 +427,16 @@ class CppClassCopyTest {
             }
         }
 
-        pub fx total: (v: View<Int32>) Int32 {
+        pub total: (v: View<Int32>) Int32 {
             return v.get(0)
         }
 
-        pub fx sumAfter: (xs: List<Int32>, b: IntBag) Int32 {
+        pub sumAfter: (xs: List<Int32>, b: IntBag) Int32 {
             b.grow()
             return total(xs.view())
         }
 
-        pub fx sumAfterOwn: () Int32 {
+        pub sumAfterOwn: () Int32 {
             b: IntBag = IntBag {}
             b.items.add(5)
             return sumAfter(b.items, b)
@@ -448,28 +445,24 @@ class CppClassCopyTest {
         // loopfresh: loops over storage only a temporary keeps alive, bodies that build and drop objects.
         mut freed: Int32 = 0
 
-        pub class Bin {
+        pub Bin: Any {
             pub mut labels: List<Str> = List<Str> {}
-
-            finally {
-                freed += 1
-            }
         }
 
-        pub fx makeBin: () Bin {
+        pub makeBin: () Bin {
             b: Bin = Bin {}
             b.labels.add("first label, long enough for the heap 000000000000")
             b.labels.add("second label, long enough for the heap 00000000000")
             return b
         }
 
-        pub fx makeBins: () List<Bin> {
+        pub makeBins: () List<Bin> {
             mut xs: List<Bin> = List<Bin> {}
             xs.add(makeBin())
             return xs
         }
 
-        pub fx walkFresh: () Int32 {
+        pub walkFresh: () Int32 {
             mut n: Int32 = 0
             for s: Str in makeBin().labels {
                 other: Bin = Bin {}
@@ -485,31 +478,31 @@ class CppClassCopyTest {
         }
 
         // fxparam3 and fxparam2: a template Fx parameter bound to an Fx an object holds, which the code it runs replaces.
-        pub class FBox {
-            require pub mut f: Fx<Tuple0, Str>
+        pub FBox: Any {
+            pub mut f: Fx<Tuple0, Str>
         }
 
-        pub fx callIt: (g: Fx<Tuple0, Str>) Str {
+        pub callIt: (g: Fx<Tuple0, Str>) Str {
             return g()
         }
 
-        pub fx callAfter: (g: Fx<Tuple0, Str>, b: FBox) Str {
-            b.f = fx() Str {
+        pub callAfter: (g: Fx<Tuple0, Str>, b: FBox) Str {
+            b.f = () Str {
                 return "other"
             }
             return g()
         }
 
-        pub fx fxParams: () Str {
-            b: FBox = FBox { f = fx() Str { return "init" } }
-            b.f = fx() Str {
-                b.f = fx() Str {
+        pub fxParams: () Str {
+            b: FBox = FBox { f = () Str { return "init" } }
+            b.f = () Str {
+                b.f = () Str {
                     return "other"
                 }
                 return "captured"
             }
             first: Str = callIt(b.f)
-            b.f = fx() Str {
+            b.f = () Str {
                 return "passed"
             }
             c: FBox = b
@@ -518,18 +511,18 @@ class CppClassCopyTest {
         }
 
         // capparam: a lambda made after the body renames the object its parameter was bound into.
-        pub class Renamer {
-            require pub mut name: Str
+        pub Renamer: Any {
+            pub mut name: Str
 
-            pub mut fx set: (s: Str) Fx<Tuple0, Str> {
+            pub mut set: (s: Str) Fx<Tuple0, Str> {
                 name = "b"
-                return fx() Str {
+                return () Str {
                     return s
                 }
             }
         }
 
-        pub fx capParam: () Str {
+        pub capParam: () Str {
             c: Renamer = Renamer { "a" }
             d: Renamer = c
             g: Fx<Tuple0, Str> = c.set(d.name)
@@ -537,26 +530,26 @@ class CppClassCopyTest {
         }
 
         // capparamfree: the same after a call that frees the object (MSVC ASan: heap-use-after-free).
-        pub class Label {
-            require pub label: Str
+        pub Label: Any {
+            pub label: Str
         }
 
-        pub class Shelf {
+        pub Shelf: Any {
             pub mut item: Label = Label { "short" }
 
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 item = Label { "other" }
             }
         }
 
-        pub fx later: (s: Str, h: Shelf) Fx<Tuple0, Str> {
+        pub later: (s: Str, h: Shelf) Fx<Tuple0, Str> {
             h.reset()
-            return fx() Str {
+            return () Str {
                 return s
             }
         }
 
-        pub fx capParamFree: () Str {
+        pub capParamFree: () Str {
             c: Shelf = Shelf {}
             c.item = Label { "a long label that is not in the small string buffer 0000000" }
             h: Shelf = c
@@ -565,61 +558,61 @@ class CppClassCopyTest {
         }
 
         // genrecv: a type-parameter receiver the arguments replace (it printed `other`).
-        pub trait Greets {
-            pub fx greet: (n: Int32) Str;
+        pub Greets: Any {
+            pub greet: (n: Int32) Str;
         }
 
-        pub class Pup: Greets {
-            require pub name: Str
+        pub Pup: Greets {
+            pub name: Str
 
-            override pub fx greet: (n: Int32) Str {
+            override pub greet: (n: Int32) Str {
                 return name
             }
         }
 
-        pub class Crib {
+        pub Crib: Any {
             pub mut kid: Pup = Pup { "short" }
 
-            pub mut fx reset: () Int32 {
+            pub mut reset: () Int32 {
                 kid = Pup { "other" }
                 return 7
             }
         }
 
-        pub fx greetIt<T: Greets>: (x: T, h: Crib) Str {
+        pub greetIt<T: Greets>: (x: T, h: Crib) Str {
             return x.greet(h.reset())
         }
 
-        pub fx genRecv: () Str {
+        pub genRecv: () Str {
             c: Crib = Crib {}
             c.kid = Pup { "a long pup name that is not in the small string buffer 0000" }
             return greetIt<Pup>(c.kid, c)
         }
 
         // A type-parameter field receiver beside arguments that replace another object's field.
-        pub class Keep<T: Greets> {
-            require pub mut item: T
+        pub Keep<T: Greets>: Any {
+            pub mut item: T
 
-            pub fx poke: (h: Crib) Str {
+            pub poke: (h: Crib) Str {
                 return item.greet(h.reset())
             }
         }
 
-        pub fx keepPoke: () Str {
+        pub keepPoke: () Str {
             c: Crib = Crib {}
             k: Keep<Pup> = Keep<Pup> { item = c.kid }
             return k.poke(c)
         }
 
         // dispstr: a Str in object storage given to a dispatched call beside a List of Fx that frees it.
-        pub class Base {
-            pub fx fire: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
+        pub Base: Any {
+            pub fire: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
                 return "base"
             }
         }
 
-        pub class Sub: Base {
-            override pub fx fire: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
+        pub Sub: Base {
+            override pub fire: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
                 for f: Fx<Tuple0, Void> in fs {
                     f()
                 }
@@ -627,51 +620,51 @@ class CppClassCopyTest {
             }
         }
 
-        pub fx dispStr: () Str {
+        pub dispStr: () Str {
             c: Holder = Holder {}
             c.item = Item {}
             h: Holder = c
             r: Base = Sub {}
-            return r.fire(c.item.unwrap().label, [fx() Void {
+            return r.fire(c.item.unwrap().label, [() Void {
                 h.clear()
             }])
         }
 
         // A trait receiver in object storage (and one given as a parameter) whose callback replaces its only owner.
-        pub trait Runs {
-            pub fx run: (f: Fx<Tuple0, Void>) Int32;
+        pub Runs: Any {
+            pub run: (f: Fx<Tuple0, Void>) Int32;
         }
 
-        pub class R1: Runs {
-            require pub k: Int32
+        pub R1: Runs {
+            pub k: Int32
 
-            override pub fx run: (f: Fx<Tuple0, Void>) Int32 {
+            override pub run: (f: Fx<Tuple0, Void>) Int32 {
                 f()
                 return k
             }
         }
 
-        pub class Slot {
-            require pub mut r: Runs
+        pub Slot: Any {
+            pub mut r: Runs
 
-            pub mut fx clear: (other: Runs) Void {
+            pub mut clear: (other: Runs) Void {
                 r = other
             }
         }
 
-        pub fx go: (s: Slot, spare: Runs) Int32 {
-            return s.r.run(fx() Void {
+        pub go: (s: Slot, spare: Runs) Int32 {
+            return s.r.run(() Void {
                 s.clear(spare)
             })
         }
 
-        pub fx goParam: (r: Runs, s: Slot, spare: Runs) Int32 {
-            return r.run(fx() Void {
+        pub goParam: (r: Runs, s: Slot, spare: Runs) Int32 {
+            return r.run(() Void {
                 s.clear(spare)
             })
         }
 
-        pub fx traitRecv: () Int32 {
+        pub traitRecv: () Int32 {
             s: Slot = Slot { r = R1 { k = 11 } }
             a: Int32 = go(s, R1 { k = 22 })
             s.r = R1 { k = 33 }
@@ -681,20 +674,20 @@ class CppClassCopyTest {
 
         // w2-5 minor #0 (alb): an element reached through a call result's handle, read by a callee after it frees
         // the List; safe in round 3 only by the entry snapshot, now copied at the call in both spellings.
-        pub class H {
+        pub H: Any {
             pub mut items: List<Str> = List<Str> {}
         }
 
-        pub fx pick: (h: H) H {
+        pub pick: (h: H) H {
             return h
         }
 
-        pub fx readAfterH: (s: Str, h: H) Int32 {
+        pub readAfterH: (s: Str, h: H) Int32 {
             h.items = List<Str> {}
             return s.length() as Int32
         }
 
-        pub fx readAfterHOwn: () Int32 {
+        pub readAfterHOwn: () Int32 {
             h: H = H {}
             h.items.add("$ALB")
             a: Int32 = readAfterH(pick(h).items.get(0), h)
@@ -795,22 +788,22 @@ class CppClassCopyTest {
     // ---- what a mut argument needs: rule M (W2.5), moved in from this package's mutArgRefusals ------------
 
     private val externItem = """
-        pub class Item {
-            require pub label: Str
+        pub Item: Any {
+            pub label: Str
             pub mut count: Int32 = 0
         }
 
-        pub class Box {
+        pub Box: Any {
             pub mut item: Item = Item { "short" }
 
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 item = Item { "other" }
             }
         }
 
-        pub fx bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
-        pub fx measure: (s: Str, f: Fx<Tuple0, Void>) Int32;
-        pub fx plain: (s: Str) Int32;
+        pub bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
+        pub measure: (s: Str, f: Fx<Tuple0, Void>) Int32;
+        pub plain: (s: Str) Int32;
     """.trimIndent()
 
     @Test
@@ -822,10 +815,10 @@ class CppClassCopyTest {
             """
             $externItem
 
-            pub fx main: () Int32 {
+            pub main: () Int32 {
                 h: Box = Box {}
                 c: Box = h
-                bump(mut h.item.count, fx() Void {
+                bump(mut h.item.count, () Void {
                     c.reset()
                 })
                 return h.item.count
@@ -841,7 +834,7 @@ class CppClassCopyTest {
             """
             $externItem
 
-            pub fx apply: (h: Box, f: Fx<Tuple0, Void>) Void {
+            pub apply: (h: Box, f: Fx<Tuple0, Void>) Void {
                 bump(mut h.item.count, f)
             }
             """,
@@ -857,9 +850,9 @@ class CppClassCopyTest {
             """
             $externItem
 
-            pub fx main: () Int32 {
+            pub main: () Int32 {
                 h: Box = Box {}
-                bump(mut h.item.count, fx() Void {
+                bump(mut h.item.count, () Void {
                 })
                 return h.item.count
             }
@@ -869,16 +862,16 @@ class CppClassCopyTest {
 
     /** The five holders of an `Fx` 40-round3 5.5 names, each as a value the call is given, whose callback runs `c.reset()`. */
     private val holders = listOf(
-        Triple("a class field", "w: Wrap", "held: Wrap = Wrap { f = fx() Void { c.reset() } }"),
-        Triple("an Arr", "w: Arr<Fx<Tuple0, Void>, 1>", "held: Arr<Fx<Tuple0, Void>, 1> = [fx() Void { c.reset() }]"),
-        Triple("a List", "w: List<Fx<Tuple0, Void>>", "held: List<Fx<Tuple0, Void>> = [fx() Void { c.reset() }]"),
-        Triple("a Maybe", "w: Maybe<Fx<Tuple0, Void>>", "held: Maybe<Fx<Tuple0, Void>> = fx() Void { c.reset() }"),
-        Triple("a tuple", "w: Tuple2<Fx<Tuple0, Void>, Int32>", "held: Tuple2<Fx<Tuple0, Void>, Int32> = Tuple2<Fx<Tuple0, Void>, Int32> { fx() Void { c.reset() }, 1 }"),
+        Triple("a class field", "w: Wrap", "held: Wrap = Wrap { f = () Void { c.reset() } }"),
+        Triple("an Arr", "w: Arr<Fx<Tuple0, Void>, 1>", "held: Arr<Fx<Tuple0, Void>, 1> = [() Void { c.reset() }]"),
+        Triple("a List", "w: List<Fx<Tuple0, Void>>", "held: List<Fx<Tuple0, Void>> = [() Void { c.reset() }]"),
+        Triple("a Maybe", "w: Maybe<Fx<Tuple0, Void>>", "held: Maybe<Fx<Tuple0, Void>> = () Void { c.reset() }"),
+        Triple("a tuple", "w: Tuple2<Fx<Tuple0, Void>, Int32>", "held: Tuple2<Fx<Tuple0, Void>, Int32> = Tuple2<Fx<Tuple0, Void>, Int32> { () Void { c.reset() }, 1 }"),
     )
 
     private val wrap = """
-        pub class Wrap {
-            require pub f: Fx<Tuple0, Void>
+        pub Wrap: Any {
+            pub f: Fx<Tuple0, Void>
         }
     """.trimIndent()
 
@@ -894,9 +887,9 @@ class CppClassCopyTest {
 
                 $wrap
 
-                pub fx bumpHeld: (mut n: Int32, $param) Void;
+                pub bumpHeld: (mut n: Int32, $param) Void;
 
-                pub fx main: () Int32 {
+                pub main: () Int32 {
                     h: Box = Box {}
                     c: Box = h
                     $build
@@ -917,14 +910,14 @@ class CppClassCopyTest {
             """
             $externItem
 
-            pub trait Bumper {
-                pub fx bump: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
+            pub Bumper: Any {
+                pub bump: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
             }
 
-            pub fx bumpVia: (b: Bumper) Int32 {
+            pub bumpVia: (b: Bumper) Int32 {
                 h: Box = Box {}
                 c: Box = h
-                fs: List<Fx<Tuple0, Void>> = [fx() Void { c.reset() }]
+                fs: List<Fx<Tuple0, Void>> = [() Void { c.reset() }]
                 b.bump(mut h.item.count, fs)
                 return h.item.count
             }
@@ -938,13 +931,13 @@ class CppClassCopyTest {
         // parameter: each is accepted, and no definition copies a parameter at entry any more. The copy is the
         // caller's (W2.3's policy), spelled by W2.6 at an extern's call.
         val programs = listOf(
-            "pub fx later: (s: Str, h: Box) Int32 {\n    return measure(s, fx() Void {\n        h.reset()\n    })\n}",
-            "pub fx direct: (s: Str, h: Box) Int32 {\n    return plain(s)\n}",
-            "pub fx sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub fx later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = [1, 2]\n    return sumAll(s, xs)\n}",
-            "pub fx inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub fx later: (c: Box, h: Box) Int32 {\n    return inspect(c.item, fx() Void {\n        h.reset()\n    })\n}",
-            "pub fx later: (c: Box, h: Box) Int32 {\n    return measure(c.item.label, fx() Void {\n        h.reset()\n    })\n}",
+            "pub later: (s: Str, h: Box) Int32 {\n    return measure(s, () Void {\n        h.reset()\n    })\n}",
+            "pub direct: (s: Str, h: Box) Int32 {\n    return plain(s)\n}",
+            "pub sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = [1, 2]\n    return sumAll(s, xs)\n}",
+            "pub inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub later: (c: Box, h: Box) Int32 {\n    return inspect(c.item, () Void {\n        h.reset()\n    })\n}",
+            "pub later: (c: Box, h: Box) Int32 {\n    return measure(c.item.label, () Void {\n        h.reset()\n    })\n}",
         ) + holders.map { (_, param, build) ->
-            "$wrap\n\npub fx measureHeld: (s: Str, $param) Int32;\n\npub fx later: (s: Str, c: Box) Int32 {\n    $build\n    return measureHeld(s, held)\n}"
+            "$wrap\n\npub measureHeld: (s: Str, $param) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    $build\n    return measureHeld(s, held)\n}"
         }
         for (p in programs) {
             val e = OopTestSupport.emit(OopTestSupport.module(uri, "$externItem\n\n$p"))
@@ -960,10 +953,10 @@ class CppClassCopyTest {
         // bagloop2 (for s in b.items { c.grow() } with c = b), in a function and in a field's default lambda (fielddefault):
         // D37's loop rule, over the named and HiddenWrites writes, which W2.5 keeps.
         val bag = """
-            pub class Bag {
+            pub Bag: Any {
                 pub mut items: List<Str> = List<Str> {}
 
-                pub mut fx grow: () Void {
+                pub mut grow: () Void {
                     items.add("another long string that is not in the small buffer")
                 }
             }
@@ -973,7 +966,7 @@ class CppClassCopyTest {
             """
             $bag
 
-            pub fx walk: (b: Bag, c: Bag) Int32 {
+            pub walk: (b: Bag, c: Bag) Int32 {
                 mut n: Int32 = 0
                 for s: Str in b.items {
                     c.grow()
@@ -988,8 +981,8 @@ class CppClassCopyTest {
             """
             $bag
 
-            pub class Runner {
-                pub walk: Fx<Tuple1<Bag>, Int32> = fx(b: Bag) Int32 {
+            pub Runner: Any {
+                pub walk: Fx<Tuple1<Bag>, Int32> = (b: Bag) Int32 {
                     c: Bag = b
                     mut n: Int32 = 0
                     for s: Str in b.items {
@@ -1008,16 +1001,16 @@ class CppClassCopyTest {
         assertRefusedBy(
             "rules.exclusivity.argument",
             """
-            pub class Item {
+            pub Item: Any {
                 pub mut label: Str = "a"
             }
 
-            pub fx swap: (mut it: Item, mut s: Str) Void {
+            pub swap: (mut it: Item, mut s: Str) Void {
                 it = Item {}
                 s = "b"
             }
 
-            pub fx feed: () Void {
+            pub feed: () Void {
                 mut x: Item = Item {}
                 swap(mut x, mut x.label)
             }
@@ -1032,19 +1025,19 @@ class CppClassCopyTest {
         assertRefusedBy(
             "rules.exclusivity.order",
             """
-            pub trait Greets {
-                pub fx greet: (n: Int32) Str;
+            pub Greets: Any {
+                pub greet: (n: Int32) Str;
             }
 
-            pub class Keep<T: Greets> {
-                require pub mut item: T
+            pub Keep<T: Greets>: Any {
+                pub mut item: T
 
-                pub mut fx replace: (v: T) Int32 {
+                pub mut replace: (v: T) Int32 {
                     item = v
                     return 7
                 }
 
-                pub mut fx poke: (v: T) Str {
+                pub mut poke: (v: T) Str {
                     return item.greet(replace(v))
                 }
             }
@@ -1055,67 +1048,53 @@ class CppClassCopyTest {
     // ---- constructions, and no object holding a view -----------------------------------------------------
 
     @Test
-    fun aConstructionThatLeavesAHandleOrAnFxWithoutAValueIsRefused() {
-        // nullfield, nullfield2, nullfx: a null kira::Rc or an empty kira::Fn, for a type Kira calls non-nullable.
-        val messages = unsupported(
+    fun aConstructionThatLeavesAFieldWithoutAValueIsRefused() {
+        // A null kira::Rc or an empty kira::Fn never reaches C++: the typer wants every field with no value.
+        assertRefusedBy(
+            "types.init.missing-required",
             """
-            pub class Other {
+            pub Other: Any {
                 pub k: Int32 = 3
             }
 
-            pub trait Speaker {
-                pub fx say: () Int32;
-            }
-
-            pub struct Wrap {
-                pub o: Other
-            }
-
-            pub class X {
+            pub X: Any {
                 pub c: Other
-                pub s: Speaker
-                pub r: Ref<Int32>
                 pub f: Fx<Tuple0, Int32>
-                pub w: Wrap
-                require pub n: Int32
+                pub n: Int32
             }
 
-            pub fx make: () X {
+            pub make: () X {
                 return X { n = 1 }
             }
-            """
+            """,
         )
-        listOf("c: Other", "s: Speaker", "r: Ref<Int32>", "f: Fx<Tuple0, Int32>", "w: Wrap").forEach { field ->
-            assertTrue(messages.any { it.contains("constructing X leaves the field $field without a value") }, "no refusal for $field in $messages")
-        }
-        assertTrue(messages.first().contains("give c a value here, declare it with a default, or make it Maybe<Other>"), messages.toString())
     }
 
     @Test
-    fun aConstructionMayLeaveWhatHasAnEmptyValue() {
+    fun aConstructionLeavesWhatHasAValue() {
+        // A field with no value is given at construction (the typer says so), so what is left has one.
         val e = OopTestSupport.emit(
             OopTestSupport.module(
                 uri,
                 """
-                pub class Other {
+                pub Other: Any {
                     pub k: Int32 = 3
                 }
 
-                pub struct Plain {
-                    pub a: Int32
-                    pub b: Str
+                pub Plain: Struct {
+                    pub a: Int32 = 0
+                    pub b: Str = ""
                 }
 
-                pub class X {
-                    pub m: Maybe<Other>
-                    pub w: Weak<Other>
-                    pub l: List<Other>
-                    pub p: Plain
-                    pub t: Str
-                    require pub n: Int32
+                pub X: Any {
+                    pub m: Maybe<Other> = null
+                    pub l: List<Other> = List<Other> { }
+                    pub p: Plain = Plain { }
+                    pub t: Str = ""
+                    pub n: Int32
                 }
 
-                pub fx make: () X {
+                pub make: () X {
                     return X { n = 1 }
                 }
                 """,
@@ -1129,11 +1108,11 @@ class CppClassCopyTest {
         // refview's `Ref<View<Int32>> { value = makeList().view() }` is W2.5's ViewPass's (rules.view.type). Should one reach
         // the classes part, it is the checker's bug, reported as cpp.internal, and never lowered as it is.
         val program = """
-            pub fx makeList: () List<Int32> {
+            pub makeList: () List<Int32> {
                 return List<Int32> {}
             }
 
-            pub fx boxed: () Int32 {
+            pub boxed: () Int32 {
                 return Ref<View<Int32>> { value = makeList().view() }.value.get(0)
             }
         """

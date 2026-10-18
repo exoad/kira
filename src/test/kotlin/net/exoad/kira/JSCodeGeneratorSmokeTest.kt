@@ -44,7 +44,7 @@ class JSCodeGeneratorSmokeTest {
     fun mainIsInvokedExplicitly() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace("hi")
             }
             """,
@@ -57,7 +57,7 @@ class JSCodeGeneratorSmokeTest {
     fun printFormatsBooleansLikeC() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(true)
                 trace(false)
             }
@@ -71,7 +71,7 @@ class JSCodeGeneratorSmokeTest {
     fun integerDivisionTruncatesLikeC() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace(7 / 2)
                 trace(9 / 3)
             }
@@ -87,7 +87,7 @@ class JSCodeGeneratorSmokeTest {
     fun strMethodsRewriteToPreludeHelpers() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 s: Str = "  Kira  "
                 t: Str = s.trim()
                 trace(t.length())
@@ -109,15 +109,15 @@ class JSCodeGeneratorSmokeTest {
     fun genericsEraseInsteadOfMonomorphizing() {
         val generated = emit(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
 
-            fx main: () Void {
+            main: () Void {
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 value: Int32 = id<Int32>(wrapped.value)
                 trace(value)
@@ -140,16 +140,16 @@ class JSCodeGeneratorSmokeTest {
     fun classesAndMethodsLowerToJsClasses() {
         val generated = emit(
             """
-            pub class Pet {
-                require pub name: Str
-                require pub sound: Str
+            pub Pet: Any {
+                pub name: Str
+                pub sound: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return sound
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())
@@ -172,23 +172,23 @@ class JSCodeGeneratorSmokeTest {
     fun traitsEraseToDuckTyping() {
         val generated = emit(
             """
-            trait Speaker {
-                pub fx speak: () Str
+            Speaker: Any {
+                pub speak: () Str
             }
 
-            class Dog {
-                require pub label: Str
+            Dog: Any {
+                pub label: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return label
                 }
             }
 
-            fx announce: (s: Speaker) Void {
+            announce: (s: Speaker) Void {
                 trace(s.speak())
             }
 
-            fx main: () Void {
+            main: () Void {
                 dog: Dog = Dog { "Rex" }
                 announce(dog)
             }
@@ -208,12 +208,12 @@ class JSCodeGeneratorSmokeTest {
     fun arcIsANoOp() {
         val generated = emit(
             """
-            pub class Point {
-                require pub x: Int32
-                require pub y: Int32
+            pub Point: Any {
+                pub x: Int32
+                pub y: Int32
             }
 
-            fx main: () Void {
+            main: () Void {
                 p: Point = Point { 1, 2 }
                 trace(p.x)
             }
@@ -229,7 +229,7 @@ class JSCodeGeneratorSmokeTest {
     fun setDeduplicatesThroughRuntimeClass() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 seen: Set<Int32> = Set<Int32> { }
                 seen.add(1)
                 seen.add(2)
@@ -249,7 +249,7 @@ class JSCodeGeneratorSmokeTest {
     fun mapGetReturnsMaybeAndUnwraps() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 ages: Map<Str, Int32> = Map<Str, Int32> { }
                 ages.put("ada", 36)
                 found: Maybe<Int32> = ages.get("ada")
@@ -270,7 +270,7 @@ class JSCodeGeneratorSmokeTest {
     fun stackAndQueueReturnMaybeOnEmpty() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 undo: Stack<Int32> = Stack<Int32> { }
                 undo.push(10)
                 top: Maybe<Int32> = undo.pop()
@@ -295,7 +295,7 @@ class JSCodeGeneratorSmokeTest {
     fun numConversionsAreIdentityOnNumbers() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 n: Int32 = 7
                 trace(n.toInt64())
                 trace(n.abs())
@@ -313,7 +313,7 @@ class JSCodeGeneratorSmokeTest {
     fun assertUsesTwoArgumentHelper() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 assert(true, "fine")
                 trace("ok")
             }
@@ -329,7 +329,7 @@ class JSCodeGeneratorSmokeTest {
     fun listHoldsStrElementsByValue() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 names: List<Str> = List<Str> { }
                 names.add("ada")
                 names.add("grace")
@@ -351,7 +351,7 @@ class JSCodeGeneratorSmokeTest {
     fun stdlibSourcesAreSkippedAndRuntimeComesFromPrelude() {
         val generated = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace("no stdlib noise")
             }
             """,

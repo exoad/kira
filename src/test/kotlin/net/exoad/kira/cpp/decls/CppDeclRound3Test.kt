@@ -64,28 +64,21 @@ class CppDeclRound3Test {
                 uri,
                 """
                 pub QUERY: Str = "a ??= b"
-                pub enum Op: Str {
-                    OP_SET = "??=",
-                    OP_LT = "??<"
-                }
-                pub struct Cfg {
+                pub Cfg: Struct {
                     pub text: Str = "??/"
                 }
-                pub fx show: (label: Str = "??'") Void;
+                pub show: (label: Str = "??'") Void;
                 @_static_assert(1 == 1, "??(")
                 """,
             ),
             uri = uri,
             parts = CppEmitParts(exprs = FakeExprs),
-            usageOf = { ctx -> CppUsage.of(nameOf = setOf(ctx.symbol.members["Op"] as EnumSymbol)) },
         )
         assertTrue(!emitted.hasErrors, emitted.diagnostics.joinToString("\n") { it.render() })
         val h = CppWriter.normalize(emitted.header)
         assertContains(
             h,
             "inline constexpr const char* QUERY = \"a ?\\?= b\";",
-            "case Op::OP_SET:\n              return \"?\\?=\";",
-            "case Op::OP_LT:\n              return \"?\\?<\";",
             "kira::Str text = \"?\\?/\";",
             "void show(const kira::Str& label = \"?\\?'\");",
             "static_assert(<BinaryExpr>, \"?\\?(\");",
@@ -99,7 +92,7 @@ class CppDeclRound3Test {
         "test:util",
         """
         pub LIMIT: Int32 = 1
-        pub struct Pt { pub x: Int32 = 0 }
+        pub Pt: Struct { pub x: Int32 = 0 }
         """,
     )
 
@@ -109,9 +102,9 @@ class CppDeclRound3Test {
         $uses
         LIMIT: Int32 = 2
         mut counter: Int32 = LIMIT
-        struct Pt { pub y: Int32 = 0 }
+        Pt: Struct { pub y: Int32 = 0 }
         mut p: Pt = Pt {}
-        pub fx get: () Int32;
+        pub get: () Int32;
         """,
     )
 
@@ -129,7 +122,7 @@ class CppDeclRound3Test {
 
     @Test
     fun aPrivateNameBesideAnExportedOneTheModuleUsesIsACollisionOnBothSides() {
-        val emitted = DeclTestSupport.emit(util, other("use \"test:util\""), options = CppOptions(lineDirectives = false, namespaces = shared))
+        val emitted = DeclTestSupport.emit(util, other("test.util as util"), options = CppOptions(lineDirectives = false, namespaces = shared))
         val inOther = emitted.diagnostics("test:other").filter { it.code == CppNamespaceCollisions.CODE }
         val inUtil = emitted.diagnostics("test:util").filter { it.code == CppNamespaceCollisions.CODE }
         assertEquals(listOf("LIMIT", "Pt"), inOther.map(::named).sorted(), emitted.render(inOther))
@@ -142,11 +135,11 @@ class CppDeclRound3Test {
         val mid = DeclTestSupport.module(
             "test:mid",
             """
-            use "test:util"
-            pub struct Wrap { pub at: Pt = Pt {} }
+            test.util as util
+            pub Wrap: Struct { pub at: Pt = Pt {} }
             """,
         )
-        val emitted = DeclTestSupport.emit(util, mid, other("use \"test:mid\""), options = CppOptions(lineDirectives = false, namespaces = shared))
+        val emitted = DeclTestSupport.emit(util, mid, other("test.mid as mid"), options = CppOptions(lineDirectives = false, namespaces = shared))
         val inOther = emitted.diagnostics("test:other").filter { it.code == CppNamespaceCollisions.CODE }
         val inUtil = emitted.diagnostics("test:util").filter { it.code == CppNamespaceCollisions.CODE }
         assertEquals(listOf("LIMIT", "Pt"), inOther.map(::named).sorted(), emitted.render(inOther))
@@ -154,8 +147,8 @@ class CppDeclRound3Test {
         assertTrue(emitted.diagnostics("test:mid").none { it.code == CppNamespaceCollisions.CODE }, emitted.render(emitted.diagnostics("test:mid")))
         // the reverse direction reaches nothing: util uses nobody, so its exported names meet no private one of mid
         val reversed = DeclTestSupport.emit(
-            DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub struct Pt { pub x: Int32 = 0 }"),
-            DeclTestSupport.module("test:mid", "use \"test:util\"\npub struct Wrap { pub at: Pt = Pt {} }\nmut helper: Int32 = 4\npub fx go: () Void;"),
+            DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub Pt: Struct { pub x: Int32 = 0 }"),
+            DeclTestSupport.module("test:mid", "test.util as util\npub Wrap: Struct { pub at: Pt = Pt {} }\nmut helper: Int32 = 4\npub go: () Void;"),
             options = CppOptions(lineDirectives = false, namespaces = shared),
         )
         // util's private helper and mid's private helper are two anonymous namespaces
@@ -167,13 +160,13 @@ class CppDeclRound3Test {
     fun aPrivateNameBesideANestedNamespaceSegmentMeetsItOnlyWhenReached() {
         val inner = DeclTestSupport.module("test:inner", "pub DEPTH: Int32 = 1")
         val outer = { uses: String ->
-            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 = 2\nmut n: Int32 = util\npub fx go: () Void;")
+            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 = 2\nmut n: Int32 = util\npub go: () Void;")
         }
         val ns = mapOf("test:inner" to "shared::util", "test:outer" to "shared")
         val apart = DeclTestSupport.emit(inner, outer(""), options = CppOptions(lineDirectives = false, namespaces = ns))
         val apartAll = apart.diagnostics("test:inner") + apart.diagnostics("test:outer")
         assertTrue(apartAll.none { it.code == CppNamespaceCollisions.CODE }, apart.render(apartAll))
-        val reached = DeclTestSupport.emit(inner, outer("use \"test:inner\""), options = CppOptions(lineDirectives = false, namespaces = ns))
+        val reached = DeclTestSupport.emit(inner, outer("test.inner as inner"), options = CppOptions(lineDirectives = false, namespaces = ns))
         val inOuter = reached.diagnostics("test:outer").filter { it.code == CppNamespaceCollisions.CODE }
         assertEquals(listOf("util"), inOuter.map(::named), reached.render(inOuter))
     }

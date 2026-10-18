@@ -17,16 +17,16 @@ class VisibilityPassTest {
             modules(
                 "test:lib" to """
                     pub SCALE: Int32 = 100
-                    pub fx percent: (v: Int32) Int32 {
+                    pub percent: (v: Int32) Int32 {
                         return clamp(v) * SCALE
                     }
-                    fx clamp: (v: Int32) Int32 {
+                    clamp: (v: Int32) Int32 {
                         return v
                     }
                 """,
                 "test:main" to """
-                    use "test:lib"
-                    pub fx f: () Int32 {
+                    test.lib as lib
+                    pub f: () Int32 {
                         return percent(3) + lib.percent(SCALE)
                     }
                 """,
@@ -39,22 +39,22 @@ class VisibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub class Counter {
+                pub Counter: Any {
                     mut n: Int32 = 0
-                    fx step: () Int32 {
+                    step: () Int32 {
                         return 1
                     }
-                    pub mut fx bump: () Int32 {
+                    pub mut bump: () Int32 {
                         n += step()
                         return this.n
                     }
                 }
-                pub trait Shape {
-                    pub fx area: () Int32;
-                    fx scale: () Int32 {
+                pub Shape: Any {
+                    pub area: () Int32;
+                    scale: () Int32 {
                         return 2
                     }
-                    pub fx scaled: () Int32 {
+                    pub scaled: () Int32 {
                         return area() * scale()
                     }
                 }
@@ -68,16 +68,16 @@ class VisibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub class Cfg {
-                    require n: Int32
-                    pub fx get: () Int32 {
+                pub Cfg: Any {
+                    n: Int32
+                    pub get: () Int32 {
                         return n
                     }
                 }
-                pub struct Pt {
+                pub Pt: Struct {
                     x: Int32 = 0
                 }
-                pub fx f: () Int32 {
+                pub f: () Int32 {
                     c: Cfg = Cfg { n = 1 }
                     d: Cfg = Cfg { 2 }
                     p: Pt = Pt { x = 3 }
@@ -95,16 +95,16 @@ class VisibilityPassTest {
         val p = modules(
             "test:lib" to """
                 LIMIT: Int32 = 3
-                fx helper: () Int32 {
+                helper: () Int32 {
                     return LIMIT
                 }
-                pub fx ok: () Int32 {
+                pub ok: () Int32 {
                     return 1
                 }
             """,
             "test:main" to """
-                use "test:lib"
-                pub fx f: () Int32 {
+                test.lib as lib
+                pub f: () Int32 {
                     return helper() + LIMIT + lib.helper() + ok()
                 }
             """,
@@ -117,16 +117,16 @@ class VisibilityPassTest {
     fun aPrivateMemberOutsideItsClass() {
         val p = snippet(
             """
-            pub class Counter {
+            pub Counter: Any {
                 mut n: Int32 = 0
-                fx step: () Int32 {
+                step: () Int32 {
                     return 1
                 }
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     n += 1
                 }
             }
-            pub fx f: (c: Counter) Int32 {
+            pub f: (c: Counter) Int32 {
                 c.bump()
                 c.n = 2
                 return c.n + c.step()
@@ -141,14 +141,14 @@ class VisibilityPassTest {
     fun aSubclassIsOutsideItsParent() {
         val p = snippet(
             """
-            pub class Base {
+            pub Base: Any {
                 mut n: Int32 = 0
-                fx secret: () Int32 {
+                secret: () Int32 {
                     return n
                 }
             }
-            pub class Derived: Base {
-                pub fx peek: () Int32 {
+            pub Derived: Base {
+                pub peek: () Int32 {
                     return n + secret()
                 }
             }

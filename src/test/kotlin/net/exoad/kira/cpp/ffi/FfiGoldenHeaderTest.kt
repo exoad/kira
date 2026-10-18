@@ -7,9 +7,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * The extern modules of the golden corpus, byte for byte: forward's `pilot:car` (design
+ * The extern modules of the golden corpus, byte for byte: forward's `golden.forward.pilot.car` (design
  * 7.2's example, checked against `driver/car.hxx` by goldens.sh and CppGoldenCompileTest)
- * and imgui-shape's `ui:imgui`. CppGoldenEmitTest covers every module of an `emit:
+ * and imgui-shape's `golden.imgui.shape.ui.imgui`. CppGoldenEmitTest covers every module of an `emit:
  * required` case; forward stays `pending` until the program body's part (W2.3) lands, so
  * its extern header is pinned here on its own.
  */
@@ -25,8 +25,8 @@ class FfiGoldenHeaderTest {
 
     @Test
     fun forwardsCarModuleIsSection72Literally() {
-        assertSame("forward", "pilot:car")
-        val header = FfiGoldenSupport.emit("forward").header("pilot:car")
+        assertSame("forward", "golden.forward:pilot.car")
+        val header = FfiGoldenSupport.emit("forward").header("golden.forward:pilot.car")
         // The shape 7.2 fixes: real headers, then kira/ffi.hxx, then one check per member.
         val lines = header.lines()
         val includes = lines.filter { it.startsWith("#include") }
@@ -42,6 +42,6 @@ class FfiGoldenHeaderTest {
 
     @Test
     fun imguiShapesModuleMatchesExpected() {
-        assertSame("imgui-shape", "ui:imgui")
+        assertSame("imgui-shape", "golden.imgui.shape:ui.imgui")
     }
 }

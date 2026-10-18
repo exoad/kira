@@ -15,7 +15,7 @@ class BodyFixturesTest {
     lateinit var dir: File
 
     // `for n: Str in 0..3` reports types.for.range-type once and types.assign.mismatch twice (each bound).
-    private val body = "module \"fixture:count\"\n\npub fx f: () Void {\n    for n: Str in 0..3 { // @error types.for.range-type ; %s\n        trace(n)\n    }\n}\n"
+    private val body = "pub f: () Void {\n    for n: Str in 0..3 { // @error types.for.range-type ; %s\n        trace(n)\n    }\n}\n"
 
     private fun failuresWith(clauses: String): List<String> {
         val file = File(dir, "count.kira").apply { writeText(body.format(clauses)) }

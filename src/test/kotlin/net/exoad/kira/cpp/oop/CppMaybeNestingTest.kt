@@ -33,11 +33,11 @@ class CppMaybeNestingTest {
         // shared_ptr, in which Some(None) and None are the same value. Kira keeps them apart:
         // Map.get of a key mapped to null is Some(None); of a missing key, None.
 
-        pub class Node {
+        pub Node: Any {
             pub n: Int32 = 7
         }
 
-        pub fx run: () Void {
+        pub run: () Void {
             mut m: Map<Str, Maybe<Node>> = Map<Str, Maybe<Node>> { }
             m["a"] = null
             m["b"] = Node { }
@@ -73,15 +73,15 @@ class CppMaybeNestingTest {
     private val b10s = Module(
         "oop:b10s",
         """
-        pub class Node {
+        pub Node: Any {
             pub n: Int32 = 7
         }
 
-        fx some<T>: (x: T) Maybe<T> {
+        some<T>: (x: T) Maybe<T> {
             return x
         }
 
-        fx level: (m: Maybe<Maybe<Node>>) Int32 {
+        level: (m: Maybe<Maybe<Node>>) Int32 {
             if m.isNull() {
                 return 0
             }
@@ -91,7 +91,7 @@ class CppMaybeNestingTest {
             return 2
         }
 
-        pub fx run: () Void {
+        pub run: () Void {
             mut s: Stack<Maybe<Node>> = Stack<Maybe<Node>> { }
             s.push(null)
             s.push(Node { })
@@ -126,7 +126,7 @@ class CppMaybeNestingTest {
     private val b10v = Module(
         "oop:b10v",
         """
-        fx level: (m: Maybe<Maybe<Int32>>) Int32 {
+        level: (m: Maybe<Maybe<Int32>>) Int32 {
             if m.isNull() {
                 return 0
             }
@@ -136,7 +136,7 @@ class CppMaybeNestingTest {
             return 2
         }
 
-        pub fx run: () Void {
+        pub run: () Void {
             mut m: Map<Str, Maybe<Int32>> = Map<Str, Maybe<Int32>> { }
             m["a"] = null
             m["b"] = 5

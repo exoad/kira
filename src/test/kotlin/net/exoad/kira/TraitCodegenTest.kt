@@ -7,55 +7,53 @@ class TraitCodegenTest {
     @Test
     fun traitDispatchEmitsVtableStructsAndTrampolines() {
         val source = """
-            module "tests:traits"
-
-            trait Speaker {
-                pub fx speak: () Str
-                pub fx name: () Str
+            Speaker: Any {
+                pub speak: () Str
+                pub name: () Str
             }
 
-            trait Noisy: Speaker {
-                pub fx loudness: () Int32
+            Noisy: Speaker {
+                pub loudness: () Int32
             }
 
-            class Dog: Noisy {
-                require pub label: Str
+            Dog: Noisy {
+                pub label: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return "woof"
                 }
 
-                pub fx name: () Str {
+                pub name: () Str {
                     return label
                 }
 
-                pub fx loudness: () Int32 {
+                pub loudness: () Int32 {
                     return 8
                 }
             }
 
-            class Cat: Speaker {
-                require pub label: Str
+            Cat: Speaker {
+                pub label: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return "meow"
                 }
 
-                pub fx name: () Str {
+                pub name: () Str {
                     return label
                 }
             }
 
-            fx announce: (s: Speaker) Void {
+            announce: (s: Speaker) Void {
                 trace(s.name())
                 trace(s.speak())
             }
 
-            fx noiseLevel: (s: Noisy) Int32 {
+            noiseLevel: (s: Noisy) Int32 {
                 return s.loudness()
             }
 
-            fx main: () Void {
+            main: () Void {
                 dog: Dog = Dog { "Rex" }
                 cat: Cat = Cat { "Luna" }
                 announce(dog)
@@ -67,7 +65,7 @@ class TraitCodegenTest {
                 trace(makeCatSpeaker().name())
             }
 
-            fx makeCatSpeaker: () Speaker {
+            makeCatSpeaker: () Speaker {
                 c: Cat = Cat { "Mochi" }
                 return c
             }

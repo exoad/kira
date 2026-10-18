@@ -53,15 +53,15 @@ class CodegenSuiteTest {
     fun functionsLowerToCSignatures() {
         val output = emit(
             """
-            fx add: (a: Int32, b: Int32) Int32 {
+            add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
-            fx greet: (name: Str) Str {
+            greet: (name: Str) Str {
                 return name
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace("hi")
             }
             """
@@ -89,7 +89,7 @@ class CodegenSuiteTest {
     fun traceLowersToPrintWithCorrectFormat() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace("text")
                 trace(7)
             }
@@ -105,7 +105,7 @@ class CodegenSuiteTest {
     fun ifElseLowersToCIfElse() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 x: Int32 = 2
                 if x == 1 {
                     trace("one")
@@ -125,7 +125,7 @@ class CodegenSuiteTest {
     fun whileLowersToCWhile() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 mut i: Int32 = 0
                 while i < 3 {
                     i = i + 1
@@ -141,7 +141,7 @@ class CodegenSuiteTest {
     fun forRangeLowersToCFor() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 for mut i: 0..3 {
                     trace(i)
                 }
@@ -158,7 +158,7 @@ class CodegenSuiteTest {
         // `(a + 2);` expression. Primitives keep the native compound op.
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 mut a: Int32 = 1
                 a += 2
             }
@@ -174,11 +174,11 @@ class CodegenSuiteTest {
     fun classLowersToStructConstructorAndFreeMethod() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
-                require pub sound: Str
+            pub Pet: Any {
+                pub name: Str
+                pub sound: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return sound
                 }
             }
@@ -200,15 +200,15 @@ class CodegenSuiteTest {
     fun methodCallsLowerToFreeFunctionWithReceiver() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return name
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi" }
                 trace(friend.name)
                 trace(friend.speak())
@@ -224,11 +224,11 @@ class CodegenSuiteTest {
     fun classLocalsAreArcReleasedAtScopeEnd() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi" }
                 trace(friend.name)
             }
@@ -240,116 +240,21 @@ class CodegenSuiteTest {
 
     // --- enums ---------------------------------------------------------------
 
-    @Test
-    fun enumLowersToTypedefEnumWithPrefixedMembers() {
-        val output = emit(
-            """
-            pub enum Mood {
-                HAPPY,
-                SAD
-            }
-            """
-        )
-        assertTrue(output.contains("typedef enum Mood"), output)
-        assertTrue(output.contains("MOOD_HAPPY,"), output)
-        assertTrue(output.contains("MOOD_SAD"), output)
-    }
-
-    @Test
-    fun enumMemberAccessLowersToUppercaseConstant() {
-        val output = emit(
-            """
-            pub enum Mood {
-                HAPPY,
-                SAD
-            }
-
-            fx main: () Void {
-                state: Mood = Mood.HAPPY
-            }
-            """
-        )
-        assertTrue(output.contains("Mood state = MOOD_HAPPY;"), output)
-    }
-
-    @Test
-    fun userUnderscoresAreMangledAwayFromGeneratedNames() {
-        // `enum Mode { DRIVE }` generates MODE_DRIVE; the user's constant of
-        // the same name must not land on it. User `_` becomes `_0` in C.
-        val output = emit(
-            """
-            pub enum Mode {
-                DRIVE
-            }
-
-            MODE_DRIVE: Int32 = 99
-
-            fx main: () Void {
-                trace(MODE_DRIVE)
-                trace(Mode.DRIVE)
-            }
-            """
-        )
-        assertTrue(output.contains("Int32 MODE_0DRIVE = 99;"), output)
-        assertTrue(output.contains("MODE_DRIVE\n"), output)
-        assertTrue(output.contains("print(\"%d\\n\", MODE_0DRIVE)"), output)
-        assertTrue(output.contains("print(\"%d\\n\", MODE_DRIVE)"), output)
-    }
-
-    @Test
-    fun enumExplicitValuesAreWrittenIntoTheCEnum() {
-        // Explicit values used to be dropped: `DRIVE = 7` lowered as 1.
-        val output = emit(
-            """
-            pub enum Mode: Int32 {
-                IDLE,
-                DRIVE = 7,
-                BRAKE,
-                REVERSE = -2
-            }
-            """
-        )
-        assertTrue(output.contains("MODE_IDLE,"), output)
-        assertTrue(output.contains("MODE_DRIVE = 7,"), output)
-        assertTrue(output.contains("MODE_BRAKE,"), output)
-        assertTrue(output.contains("MODE_REVERSE = -2"), output)
-    }
-
-    @Test
-    fun strEnumLowersToTypedefAndConstants() {
-        // A C enum holds ints, so a Str-based enum is an alias plus constants.
-        val output = emit(
-            """
-            pub enum Priority: Str {
-                LOW = "low",
-                HIGH = "high"
-            }
-
-            fx main: () Void {
-                trace(Priority.HIGH)
-            }
-            """
-        )
-        assertTrue(output.contains("typedef Str Priority;"), output)
-        assertTrue(output.contains("static const Str PRIORITY_LOW = \"low\";"), output)
-        assertTrue(output.contains("print(\"%s\\n\", PRIORITY_HIGH)"), output)
-    }
-
     // --- generics -------------------------------------------------------------
 
     @Test
     fun genericsMonomorphize() {
         val output = emit(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
 
-            fx main: () Void {
+            main: () Void {
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 value: Int32 = id<Int32>(wrapped.value)
                 trace(value)
@@ -367,7 +272,7 @@ class CodegenSuiteTest {
     fun nestedGenericsLowerToNestedLiteralsAndAccessors() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
                 trace(grid[1][0])
             }
@@ -385,9 +290,9 @@ class CodegenSuiteTest {
     fun namedArgumentsAreOrderedByTheCalleeNotByTheCall() {
         val output = emit(
             """
-            fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { return a - b }
 
-            fx main: () Void {
+            main: () Void {
                 trace(sub(b = 3, a = 10))
             }
             """
@@ -398,9 +303,9 @@ class CodegenSuiteTest {
         val e = assertThrows<IllegalStateException> {
             emit(
                 """
-                fx sub: (a: Int32, b: Int32) Int32 { return a - b }
+                sub: (a: Int32, b: Int32) Int32 { return a - b }
 
-                fx main: () Void {
+                main: () Void {
                     trace(sub(a = 10, c = 3))
                 }
                 """
@@ -417,7 +322,7 @@ class CodegenSuiteTest {
         val e = assertThrows<IllegalStateException> {
             emit(
                 """
-                fx main: () Void {
+                main: () Void {
                     for mut x: mystery {
                         trace(x)
                     }
@@ -436,11 +341,11 @@ class CodegenSuiteTest {
         // widen to %lld and Str needs %s. A fix flips this test.
         val output = emit(
             """
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(id<Int32>(7))
                 trace(id<Int64>(7))
                 trace(id<Str>("ada"))
@@ -459,23 +364,23 @@ class CodegenSuiteTest {
     fun traitDispatchEmitsVtablesAndTrampolines() {
         val output = emit(
             """
-            pub trait Speaker {
-                pub fx speak: () Str
+            pub Speaker: Any {
+                pub speak: () Str
             }
 
-            pub class Dog: Speaker {
-                require pub label: Str
+            pub Dog: Speaker {
+                pub label: Str
 
-                pub fx speak: () Str {
+                pub speak: () Str {
                     return "woof"
                 }
             }
 
-            fx announce: (s: Speaker) Void {
+            announce: (s: Speaker) Void {
                 trace(s.speak())
             }
 
-            fx main: () Void {
+            main: () Void {
                 d: Dog = Dog { "Rex" }
                 s: Speaker = d
                 announce(s)
@@ -496,7 +401,7 @@ class CodegenSuiteTest {
     fun arrAndMapLowerToPreludeContainers() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 numbers: Arr<Int32> = [10, 20, 30]
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
                 trace(numbers[0])
@@ -515,7 +420,7 @@ class CodegenSuiteTest {
     fun listSetStackQueueLowerToPreludeContainers() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 names: List<Str> = List<Str> { }
                 seen: Set<Int32> = Set<Int32> { }
                 stack: Stack<Int32> = Stack<Int32> { }
@@ -546,11 +451,11 @@ class CodegenSuiteTest {
         // from the parser's stored invocation, not from apply()).
         val output = emit(
             """
-            @_opaque class FileHandle { }
+            @_opaque FileHandle: Any { }
 
-            @_extern("fopen") fx openFile: (path: Str) FileHandle;
+            @_extern("fopen") openFile: (path: Str) FileHandle;
 
-            fx main: () Int32 {
+            main: () Int32 {
                 h: FileHandle = openFile("x")
                 return 0
             }
@@ -577,7 +482,7 @@ class CodegenSuiteTest {
     fun arrayIndexLowersToGetHelper() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 numbers: Arr<Int32> = [10, 20]
                 trace(numbers[0])
             }
@@ -592,7 +497,7 @@ class CodegenSuiteTest {
     fun stringMethodsLowerToPreludeHelpers() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 s: Str = "  Kira  "
                 trace(s.trim().length())
             }

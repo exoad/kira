@@ -43,13 +43,13 @@ class LexerGrowthTest {
     @Test
     fun newKeywordsLexAsKeywords() {
         assertLexes(
-            "struct in initially finally override",
-            Token.Type.K_STRUCT to "struct",
+            "in initially override",
             Token.Type.K_IN to "in",
             Token.Type.K_INITIALLY to "initially",
-            Token.Type.K_FINALLY to "finally",
             Token.Type.K_MODIFIER_OVERRIDE to "override",
         )
+        // The clean dialect's removed words are names now.
+        assertLexes("struct finally", Token.Type.IDENTIFIER to "struct", Token.Type.IDENTIFIER to "finally")
         // `override` sits with the other modifiers, so parseModifiers sees it.
         assertTrue(Token.Type.K_MODIFIER_OVERRIDE in Token.Type.modifiers)
     }

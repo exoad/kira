@@ -36,11 +36,11 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class V2 {
+                pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub fx @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                    pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
                 }
-                fx apply: (a: V2, b: V2) Void {
+                apply: (a: V2, b: V2) Void {
                     c: V2 = a.@_op_add_(b)
                 }
                 """
@@ -54,9 +54,9 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class V2 {
+                pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub fx @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
                 }
                 """
             )
@@ -76,10 +76,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Point {
-                    require pub x: Int32
+                pub Point: Any {
+                    pub x: Int32
                 }
-                pub fx @op_add: (a: Point, b: Point) Point {
+                pub @op_add: (a: Point, b: Point) Point {
                     return Point { a.x + b.x }
                 }
                 """
@@ -97,10 +97,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class V2 {
+                pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub fx @_op_add_: (other: V2) V2 { return V2 { x } }
-                    pub fx @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
                 }
                 """
             )
@@ -113,9 +113,9 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait Ordered<T> {
-                    pub fx @_op_lt_: (other: T) Bool;
-                    pub fx @_op_lt_: (other: T) Bool;
+                pub Ordered<T>: Any {
+                    pub @_op_lt_: (other: T) Bool;
+                    pub @_op_lt_: (other: T) Bool;
                 }
                 """
             )
@@ -128,11 +128,12 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
-                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                pub Base: Any {
+                    pub n: Int32 = 0
+                    pub @_op_eq_: (other: Base) Bool { return true }
                 }
-                pub class Leaf: Base {
-                    override pub fx @_op_eq_: (other: Base) Bool { return false }
+                pub Leaf: Base {
+                    override pub @_op_eq_: (other: Base) Bool { return false }
                 }
                 """
             )
@@ -149,11 +150,11 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
-                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                pub Base: Any {
+                    pub @_op_eq_: (other: Base) Bool { return true }
                 }
-                pub class Leaf: Base {
-                    pub fx @_op_eq_: (other: Base) Bool { return false }
+                pub Leaf: Base {
+                    pub @_op_eq_: (other: Base) Bool { return false }
                 }
                 """
             )
@@ -166,8 +167,8 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Lone {
-                    override pub fx @_op_eq_: (other: Lone) Bool { return true }
+                pub Lone: Any {
+                    override pub @_op_eq_: (other: Lone) Bool { return true }
                 }
                 """
             )
@@ -185,10 +186,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class V2 {
+                pub V2: Any {
                     pub x: Float32 = 0.0
                 }
-                pub fx @_op_add_: (a: V2, b: V2) V2 {
+                pub @_op_add_: (a: V2, b: V2) V2 {
                     return V2 { a.x + b.x }
                 }
                 """
@@ -205,10 +206,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Point {
-                    require pub x: Int32
+                pub Point: Any {
+                    pub x: Int32
                 }
-                pub fx @op_add: (a: Point, b: Point) Point {
+                pub @op_add: (a: Point, b: Point) Point {
                     return Point { a.x + b.x }
                 }
                 """
@@ -226,13 +227,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
-                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                pub Base: Any {
+                    pub @_op_eq_: (other: Base) Bool { return true }
                 }
-                pub trait Eq<T> {
-                    pub fx @_op_eq_: (other: T) Bool
+                pub Eq<T>: Any {
+                    pub @_op_eq_: (other: T) Bool
                 }
-                pub class Leaf: Base, Eq<Leaf> {
+                pub Leaf: Base, Eq<Leaf> {
                 }
                 """
             )
@@ -247,13 +248,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
-                    pub fx name: () Str { return "base" }
+                pub Base: Any {
+                    pub name: () Str { return "base" }
                 }
-                pub trait Named {
-                    pub fx name: (n: Int32) Str
+                pub Named: Any {
+                    pub name: (n: Int32) Str
                 }
-                pub class Leaf: Base, Named {
+                pub Leaf: Base, Named {
                 }
                 """
             )
@@ -268,13 +269,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
-                    pub fx @_op_eq_: (other: Base) Bool { return true }
+                pub Base: Any {
+                    pub @_op_eq_: (other: Base) Bool { return true }
                 }
-                pub trait Eq<T> {
-                    pub fx @_op_eq_: (other: T) Bool
+                pub Eq<T>: Any {
+                    pub @_op_eq_: (other: T) Bool
                 }
-                pub class Leaf: Base, Eq<Base> {
+                pub Leaf: Base, Eq<Base> {
                 }
                 """
             )
@@ -292,13 +293,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait DefA {
-                    pub fx m: () Int32 { return 1 }
+                pub DefA: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait DefB {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub DefB: Any {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub class Both: DefA, DefB {
+                pub Both: DefA, DefB {
                 }
                 """
             )
@@ -315,14 +316,14 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait EqA {
-                    pub fx @_op_eq_: (other: Int32) Bool;
+                pub EqA: Any {
+                    pub @_op_eq_: (other: Int32) Bool;
                 }
-                pub trait EqB {
-                    pub fx @_op_eq_: (other: Str) Bool;
+                pub EqB: Any {
+                    pub @_op_eq_: (other: Str) Bool;
                 }
-                pub class Leaf3: EqA, EqB {
-                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                pub Leaf3: EqA, EqB {
+                    override pub @_op_eq_: (other: Int32) Bool { return true }
                 }
                 """
             )
@@ -339,11 +340,11 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait EqB {
-                    pub fx @_op_eq_: (other: Str) Bool;
+                pub EqB: Any {
+                    pub @_op_eq_: (other: Str) Bool;
                 }
-                pub class Only: EqB {
-                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                pub Only: EqB {
+                    override pub @_op_eq_: (other: Int32) Bool { return true }
                 }
                 """
             )
@@ -361,13 +362,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait Base0 {
-                    pub fx m: () Int32 { return 1 }
+                pub Base0: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait Mid: Base0 {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub Mid: Base0 {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub class Leaf: Mid {
+                pub Leaf: Mid {
                 }
                 """
             )
@@ -393,15 +394,15 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32 { return 1 }
+                pub A: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub B: Any {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub trait T: A, B {
+                pub T: A, B {
                 }
-                pub class C: T {
+                pub C: T {
                 }
                 """
             )
@@ -418,13 +419,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32 { return 1 }
+                pub A: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub B: Any {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub trait T: A, B {
+                pub T: A, B {
                 }
                 """
             )
@@ -447,16 +448,16 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait EqA {
-                    pub fx @_op_eq_: (other: Int32) Bool;
+                pub EqA: Any {
+                    pub @_op_eq_: (other: Int32) Bool;
                 }
-                pub trait EqB {
-                    pub fx @_op_eq_: (other: Str) Bool;
+                pub EqB: Any {
+                    pub @_op_eq_: (other: Str) Bool;
                 }
-                pub trait EqBoth: EqA, EqB {
+                pub EqBoth: EqA, EqB {
                 }
-                pub class Leaf: EqBoth {
-                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                pub Leaf: EqBoth {
+                    override pub @_op_eq_: (other: Int32) Bool { return true }
                 }
                 """
             )
@@ -480,18 +481,18 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32 { return 1 }
+                pub A: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub B: Any {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub trait T: A, B {
+                pub T: A, B {
                 }
-                pub class Base {
-                    pub fx m: () Int32 { return 1 }
+                pub Base: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub class C: Base, T {
+                pub C: Base, T {
                 }
                 """
             )
@@ -511,16 +512,16 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32
+                pub A: Any {
+                    pub m: () Int32
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32
+                pub B: Any {
+                    pub m: (x: Int32) Int32
                 }
-                pub trait T: A, B {
-                    override pub fx m: () Int32 { return 1 }
+                pub T: A, B {
+                    override pub m: () Int32 { return 1 }
                 }
-                pub class C: T {
+                pub C: T {
                 }
                 """
             )
@@ -537,16 +538,16 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32
+                pub A: Any {
+                    pub m: () Int32
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32
+                pub B: Any {
+                    pub m: (x: Int32) Int32
                 }
-                pub trait T: B, A {
-                    override pub fx m: () Int32 { return 1 }
+                pub T: B, A {
+                    override pub m: () Int32 { return 1 }
                 }
-                pub class C: T {
+                pub C: T {
                 }
                 """
             )
@@ -562,16 +563,16 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait EqA {
-                    pub fx @_op_eq_: (other: Int32) Bool;
+                pub EqA: Any {
+                    pub @_op_eq_: (other: Int32) Bool;
                 }
-                pub trait EqB {
-                    pub fx @_op_eq_: (other: Str) Bool;
+                pub EqB: Any {
+                    pub @_op_eq_: (other: Str) Bool;
                 }
-                pub trait EqBoth: EqA, EqB {
-                    override pub fx @_op_eq_: (other: Int32) Bool { return true }
+                pub EqBoth: EqA, EqB {
+                    override pub @_op_eq_: (other: Int32) Bool { return true }
                 }
-                pub class C: EqBoth {
+                pub C: EqBoth {
                 }
                 """
             )
@@ -589,16 +590,16 @@ class OperatorMemberCollectTest {
         // all) gave 0 diagnostics in both orders even though one `m` is `mut` and the other is
         // not. Both orders must now conflict.
         val bodies = """
-            pub trait A {
-                pub fx m: () Int32 { return 1 }
+            pub A: Any {
+                pub m: () Int32 { return 1 }
             }
-            pub trait B {
-                pub mut fx m: () Int32 { return 2 }
+            pub B: Any {
+                pub mut m: () Int32 { return 2 }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -607,16 +608,16 @@ class OperatorMemberCollectTest {
         // Same shape as above, for the operator form the brief calls out specifically ("It
         // matters most for @_op_set_, whose mut-ness 1.3.2 says varies by class").
         val ops = """
-            pub trait SA {
-                pub fx @_op_set_: (i: Int32, v: Int32) Void { }
+            pub SA: Any {
+                pub @_op_set_: (i: Int32, v: Int32) Void { }
             }
-            pub trait SB {
-                pub mut fx @_op_set_: (i: Int32, v: Int32) Void { }
+            pub SB: Any {
+                pub mut @_op_set_: (i: Int32, v: Int32) Void { }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$ops\npub class C: SA, SB {\n}") }
+        val ab = phasesAAndB { snippet("$ops\npub C: SA, SB {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$ops\npub class C: SB, SA {\n}") }
+        val ba = phasesAAndB { snippet("$ops\npub C: SB, SA {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -627,18 +628,18 @@ class OperatorMemberCollectTest {
         // "the same" method. Measured: `class C: A, B {}` gave 0 diagnostics in both orders even
         // though the two `m`s disagree on their bound. Both orders must now conflict.
         val bounds = """
-            pub trait X {
+            pub X: Any {
             }
-            pub trait A {
-                pub fx m<U: X>: (u: U) U;
+            pub A: Any {
+                pub m<U: X>: (u: U) U;
             }
-            pub trait B {
-                pub fx m<U>: (u: U) U;
+            pub B: Any {
+                pub m<U>: (u: U) U;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bounds\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -652,16 +653,16 @@ class OperatorMemberCollectTest {
         // disagrees) would then compare equal and the conflict would vanish. Both orders must
         // conflict.
         val bodies = """
-            pub trait A {
-                pub fx m: () Int32;
+            pub A: Any {
+                pub m: () Int32;
             }
-            pub trait B {
-                pub fx m: () Str;
+            pub B: Any {
+                pub m: () Str;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -673,16 +674,16 @@ class OperatorMemberCollectTest {
         // `m: (a: Int32)` and `B`'s `m: (mut a: Int32)` (same type, same arity; only the
         // parameter's byRef-ness disagrees) would then compare equal. Both orders must conflict.
         val bodies = """
-            pub trait A {
-                pub fx m: (a: Int32) Int32;
+            pub A: Any {
+                pub m: (a: Int32) Int32;
             }
-            pub trait B {
-                pub fx m: (mut a: Int32) Int32;
+            pub B: Any {
+                pub m: (mut a: Int32) Int32;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -694,20 +695,20 @@ class OperatorMemberCollectTest {
         // have exactly one bound, so the mutant sees them as the same and the suite still passes
         // 932/0, half-reverting round 5's fix. Both orders must conflict.
         val bounds = """
-            pub trait X {
+            pub X: Any {
             }
-            pub trait Y {
+            pub Y: Any {
             }
-            pub trait A {
-                pub fx m<U: X>: (u: U) U;
+            pub A: Any {
+                pub m<U: X>: (u: U) U;
             }
-            pub trait B {
-                pub fx m<U: Y>: (u: U) U;
+            pub B: Any {
+                pub m<U: Y>: (u: U) U;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bounds\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -721,18 +722,18 @@ class OperatorMemberCollectTest {
         // it falsely does, but (the verifier's measurement) only when `A` is the class's first
         // parent, so both orders are asserted.
         val bounds = """
-            pub trait Marker<T> {
+            pub Marker<T>: Any {
             }
-            pub trait A<T> {
-                pub fx m<U: Marker<T>>: (u: U) U;
+            pub A<T>: Any {
+                pub m<U: Marker<T>>: (u: U) U;
             }
-            pub trait B {
-                pub fx m<U: Marker<Int32>>: (u: U) U;
+            pub B: Any {
+                pub m<U: Marker<Int32>>: (u: U) U;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bounds\npub class C: A<Int32>, B {\n}") }
+        val ab = phasesAAndB { snippet("$bounds\npub C: A<Int32>, B {\n}") }
         assertFalse(ab.diagnostics.any { it.code == "types.member.conflict" }, render(ab))
-        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A<Int32> {\n}") }
+        val ba = phasesAAndB { snippet("$bounds\npub C: B, A<Int32> {\n}") }
         assertFalse(ba.diagnostics.any { it.code == "types.member.conflict" }, render(ba))
     }
 
@@ -744,18 +745,18 @@ class OperatorMemberCollectTest {
         // `F`'s `m<U: Marker<U>>` and `G`'s `m<V: Marker<V>>` are the same F-bounded shape under
         // different names, so this must never conflict -- with `ownMap` dropped it falsely does.
         val bounds = """
-            pub trait Marker<T> {
+            pub Marker<T>: Any {
             }
-            pub trait F {
-                pub fx m<U: Marker<U>>: (u: U) U;
+            pub F: Any {
+                pub m<U: Marker<U>>: (u: U) U;
             }
-            pub trait G {
-                pub fx m<V: Marker<V>>: (v: V) V;
+            pub G: Any {
+                pub m<V: Marker<V>>: (v: V) V;
             }
         """.trimIndent()
-        val fg = phasesAAndB { snippet("$bounds\npub class C: F, G {\n}") }
+        val fg = phasesAAndB { snippet("$bounds\npub C: F, G {\n}") }
         assertFalse(fg.diagnostics.any { it.code == "types.member.conflict" }, render(fg))
-        val gf = phasesAAndB { snippet("$bounds\npub class C: G, F {\n}") }
+        val gf = phasesAAndB { snippet("$bounds\npub C: G, F {\n}") }
         assertFalse(gf.diagnostics.any { it.code == "types.member.conflict" }, render(gf))
     }
 
@@ -772,12 +773,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait P {
-                    pub fx @_op_eq_: (o: Int32) Bool { return false }
-                    pub fx name: () Int32 { return 0 }
+                pub P: Any {
+                    pub @_op_eq_: (o: Int32) Bool { return false }
+                    pub name: () Int32 { return 0 }
                 }
-                pub trait Q: P {
-                    override pub fx @_op_eq_: (o: Int32) Bool { return true }
+                pub Q: P {
+                    override pub @_op_eq_: (o: Int32) Bool { return true }
+                    pub tag: () Int32;
                 }
                 """
             )
@@ -810,16 +812,16 @@ class OperatorMemberCollectTest {
         // first it silently drops the conflict (0 bounds either way, so the loop never mismatches
         // on its own). Both orders must report the conflict, and neither may throw.
         val bodies = """
-            pub trait A {
-                pub fx m: (x: Int32) Int32;
+            pub A: Any {
+                pub m: (x: Int32) Int32;
             }
-            pub trait B {
-                pub fx m<U>: (x: Int32) Int32;
+            pub B: Any {
+                pub m<U>: (x: Int32) Int32;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C1: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C1: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C2: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C2: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -833,16 +835,16 @@ class OperatorMemberCollectTest {
         // becoming `Int32`, and a false conflict appears -- but only when `G` is read first
         // (`aSub` applies to `a`), so both orders are asserted.
         val bodies = """
-            pub trait G<T> {
-                pub fx m: (t: T) Int32;
+            pub G<T>: Any {
+                pub m: (t: T) Int32;
             }
-            pub trait H {
-                pub fx m: (t: Int32) Int32;
+            pub H: Any {
+                pub m: (t: Int32) Int32;
             }
         """.trimIndent()
-        val gh = phasesAAndB { snippet("$bodies\npub class GH: G<Int32>, H {\n}") }
+        val gh = phasesAAndB { snippet("$bodies\npub GH: G<Int32>, H {\n}") }
         assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
-        val hg = phasesAAndB { snippet("$bodies\npub class HG: H, G<Int32> {\n}") }
+        val hg = phasesAAndB { snippet("$bodies\npub HG: H, G<Int32> {\n}") }
         assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
     }
 
@@ -855,16 +857,16 @@ class OperatorMemberCollectTest {
         // side is read second, `b`). `G<T>.m(): T` and `H.m(): Int32` must never conflict once
         // `G`'s type argument (`Int32`) is substituted in, in either order.
         val bodies = """
-            pub trait G<T> {
-                pub fx m: () T;
+            pub G<T>: Any {
+                pub m: () T;
             }
-            pub trait H {
-                pub fx m: () Int32;
+            pub H: Any {
+                pub m: () Int32;
             }
         """.trimIndent()
-        val gh = phasesAAndB { snippet("$bodies\npub class GH: G<Int32>, H {\n}") }
+        val gh = phasesAAndB { snippet("$bodies\npub GH: G<Int32>, H {\n}") }
         assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
-        val hg = phasesAAndB { snippet("$bodies\npub class HG: H, G<Int32> {\n}") }
+        val hg = phasesAAndB { snippet("$bodies\npub HG: H, G<Int32> {\n}") }
         assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
     }
 
@@ -878,16 +880,16 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait X<T> {
-                    pub fx m: (t: T) Int32;
+                pub X<T>: Any {
+                    pub m: (t: T) Int32;
                 }
-                pub class Base<T>: X<T> {
-                    override pub fx m: (t: T) Int32 { return 0 }
+                pub Base<T>: X<T> {
+                    override pub m: (t: T) Int32 { return 0 }
                 }
-                pub trait Y {
-                    pub fx m: (t: Int32) Int32;
+                pub Y: Any {
+                    pub m: (t: Int32) Int32;
                 }
-                pub class C1: Base<Str>, Y {
+                pub C1: Base<Str>, Y {
                 }
                 """
             )
@@ -905,13 +907,13 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait P {
-                    pub fx m: (x: Int32) Int32;
+                pub P: Any {
+                    pub m: (x: Int32) Int32;
                 }
-                pub trait TBad: P {
-                    override pub fx m: (x: Str) Int32 { return 1 }
+                pub TBad: P {
+                    override pub m: (x: Str) Int32 { return 1 }
                 }
-                pub class UsesTBad: TBad {
+                pub UsesTBad: TBad {
                 }
                 """
             )
@@ -931,14 +933,14 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait X<T> {
-                    pub fx k: (t: T) Int32;
+                pub X<T>: Any {
+                    pub k: (t: T) Int32;
                 }
-                pub trait A: X<Int32> {
+                pub A: X<Int32> {
                 }
-                pub trait B: X<Str> {
+                pub B: X<Str> {
                 }
-                pub class C: A, B {
+                pub C: A, B {
                 }
                 """
             )
@@ -957,15 +959,15 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait X {
-                    pub fx m: () Int32 { return 1 }
+                pub X: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub class Base: X {
+                pub Base: X {
                 }
-                pub trait Y {
-                    pub fx m: () Str { return "y" }
+                pub Y: Any {
+                    pub m: () Str { return "y" }
                 }
-                pub class C: Base, Y {
+                pub C: Base, Y {
                 }
                 """
             )
@@ -984,15 +986,15 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait X<T> {
-                    pub fx m: (t: T) Int32 { return 0 }
+                pub X<T>: Any {
+                    pub m: (t: T) Int32 { return 0 }
                 }
-                pub class Base<T>: X<T> {
+                pub Base<T>: X<T> {
                 }
-                pub trait Y {
-                    pub fx m: (t: Int32) Int32 { return 0 }
+                pub Y: Any {
+                    pub m: (t: Int32) Int32 { return 0 }
                 }
-                pub class C1: Base<Int32>, Y {
+                pub C1: Base<Int32>, Y {
                 }
                 """
             )
@@ -1011,14 +1013,14 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Bs {
-                    pub fx m: () Int32 { return 1 }
+                pub Bs: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait Y {
-                    pub fx m: () Str { return "y" }
+                pub Y: Any {
+                    pub m: () Str { return "y" }
                 }
-                pub class D: Bs, Y {
-                    override pub fx m: () Int32 { return 2 }
+                pub D: Bs, Y {
+                    override pub m: () Int32 { return 2 }
                 }
                 """
             )
@@ -1038,14 +1040,14 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32;
+                pub A: Any {
+                    pub m: () Int32;
                 }
-                pub trait B {
-                    pub fx m: (x: Int32) Int32;
+                pub B: Any {
+                    pub m: (x: Int32) Int32;
                 }
-                pub trait T: A, B {
-                    override pub fx m: () Int32 { return 1 }
+                pub T: A, B {
+                    override pub m: () Int32 { return 1 }
                 }
                 """
             )
@@ -1071,15 +1073,15 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait A {
-                    pub fx m: () Int32 { return 1 }
+                pub A: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait Mid: A {
+                pub Mid: A {
                 }
-                pub trait Leaf: Mid {
-                    override pub fx m: (x: Int32) Int32 { return 2 }
+                pub Leaf: Mid {
+                    override pub m: (x: Int32) Int32 { return 2 }
                 }
-                pub class C: Leaf {
+                pub C: Leaf {
                 }
                 """
             )
@@ -1092,10 +1094,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub final class Base {
+                pub final Base: Any {
                     pub x: Int32 = 0
                 }
-                pub class Leaf: Base {
+                pub Leaf: Base {
                 }
                 """
             )
@@ -1108,10 +1110,10 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub class Base {
+                pub Base: Any {
                     pub x: Int32 = 0
                 }
-                pub class Leaf: Base {
+                pub Leaf: Base {
                 }
                 """
             )
@@ -1133,21 +1135,21 @@ class OperatorMemberCollectTest {
         // `W: B, A`. Fixed by `frontierClosure`, which dedupes by (trait, substitution) instead, so
         // the class-level result no longer depends on `W`'s own internal parent order.
         val bodies = """
-            pub trait X<T> {
-                pub fx k: (t: T) Int32;
+            pub X<T>: Any {
+                pub k: (t: T) Int32;
             }
-            pub trait A: X<Int32> {
+            pub A: X<Int32> {
             }
-            pub trait B: X<Str> {
+            pub B: X<Str> {
             }
-            pub class Base {
-                pub fx k: (t: Int32) Int32 { return 0 }
+            pub Base: Any {
+                pub k: (t: Int32) Int32 { return 0 }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub class C: Base, W {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub C: Base, W {\n}") }
         val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
-        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub class C: Base, W {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub W: B, A {\n}\npub C: Base, W {\n}") }
         val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
     }
@@ -1158,21 +1160,21 @@ class OperatorMemberCollectTest {
         // plays the role that disagrees with only one branch of `W`'s internal fork. The verifier
         // measured this shape behaves the same way as the superclass one above.
         val bodies = """
-            pub trait X<T> {
-                pub fx k: (t: T) Int32;
+            pub X<T>: Any {
+                pub k: (t: T) Int32;
             }
-            pub trait A: X<Int32> {
+            pub A: X<Int32> {
             }
-            pub trait B: X<Str> {
+            pub B: X<Str> {
             }
-            pub trait Y {
-                pub fx k: (t: Int32) Int32 { return 0 }
+            pub Y: Any {
+                pub k: (t: Int32) Int32 { return 0 }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub class C: W, Y {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub C: W, Y {\n}") }
         val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
-        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub class C: W, Y {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub W: B, A {\n}\npub C: W, Y {\n}") }
         val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
     }
@@ -1185,21 +1187,21 @@ class OperatorMemberCollectTest {
         // (the verifier's "flips the opposite way"), to pin that the fix is not simply "prefer
         // the parent-order-last branch".
         val bodies = """
-            pub trait X<T> {
-                pub fx k: (t: T) Int32;
+            pub X<T>: Any {
+                pub k: (t: T) Int32;
             }
-            pub trait A: X<Int32> {
+            pub A: X<Int32> {
             }
-            pub trait B: X<Str> {
+            pub B: X<Str> {
             }
-            pub class Base {
-                pub fx k: (t: Str) Int32 { return 0 }
+            pub Base: Any {
+                pub k: (t: Str) Int32 { return 0 }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub trait W: A, B {\n}\npub trait V: W {\n}\npub class C: Base, V {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub V: W {\n}\npub C: Base, V {\n}") }
         val abConflicts = ab.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(abConflicts.any { it.message.startsWith("C inherits") }, render(ab))
-        val ba = phasesAAndB { snippet("$bodies\npub trait W: B, A {\n}\npub trait V: W {\n}\npub class C: Base, V {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub W: B, A {\n}\npub V: W {\n}\npub C: Base, V {\n}") }
         val baConflicts = ba.diagnostics.filter { it.code == "types.member.conflict" }
         assertTrue(baConflicts.any { it.message.startsWith("C inherits") }, render(ba))
     }
@@ -1215,20 +1217,20 @@ class OperatorMemberCollectTest {
         // single forking root), so the program as a whole must be refused, with *some*
         // diagnostic, either way.
         val bodies = """
-            pub trait X<T> {
-                pub fx k: (t: T) Int32;
+            pub X<T>: Any {
+                pub k: (t: T) Int32;
             }
-            pub trait A: X<Int32> {
+            pub A: X<Int32> {
             }
-            pub trait B: X<Str> {
+            pub B: X<Str> {
             }
         """.trimIndent()
         val ab = phasesAAndB {
-            snippet("$bodies\npub trait W: A, B {\n}\npub class C: W {\n    override pub fx k: (t: Int32) Int32 { return 0 }\n}")
+            snippet("$bodies\npub W: A, B {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { return 0 }\n}")
         }
         assertTrue(ab.diagnostics.isNotEmpty(), "W: A, B must still refuse the program: ${render(ab)}")
         val ba = phasesAAndB {
-            snippet("$bodies\npub trait W: B, A {\n}\npub class C: W {\n    override pub fx k: (t: Int32) Int32 { return 0 }\n}")
+            snippet("$bodies\npub W: B, A {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { return 0 }\n}")
         }
         assertTrue(ba.diagnostics.isNotEmpty(), "W: B, A must still refuse the program: ${render(ba)}")
     }
@@ -1242,16 +1244,16 @@ class OperatorMemberCollectTest {
         // passes with it. `A` and `B` agree on the first parameter and disagree only on the
         // second, so a comparison that only ever looks at index 0 would see them as the same.
         val bodies = """
-            pub trait A {
-                pub fx m: (a: Int32, b: Int32) Int32;
+            pub A: Any {
+                pub m: (a: Int32, b: Int32) Int32;
             }
-            pub trait B {
-                pub fx m: (a: Int32, b: Str) Int32;
+            pub B: Any {
+                pub m: (a: Int32, b: Str) Int32;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -1261,16 +1263,16 @@ class OperatorMemberCollectTest {
         // on the second (last) parameter and disagree only on the first, so a comparison that
         // only ever looks at the last index would also see them as the same.
         val bodies = """
-            pub trait A {
-                pub fx m: (a: Int32, b: Int32) Int32;
+            pub A: Any {
+                pub m: (a: Int32, b: Int32) Int32;
             }
-            pub trait B {
-                pub fx m: (a: Str, b: Int32) Int32;
+            pub B: Any {
+                pub m: (a: Str, b: Int32) Int32;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -1281,18 +1283,18 @@ class OperatorMemberCollectTest {
         // parameters, `U` and `V`; both leave `U` unbound and disagree only on `V`'s bound, so a
         // comparison that only ever looks at index 0 would also see them as the same.
         val bounds = """
-            pub trait X {
+            pub X: Any {
             }
-            pub trait A {
-                pub fx m<U, V: X>: (u: U, v: V) V;
+            pub A: Any {
+                pub m<U, V: X>: (u: U, v: V) V;
             }
-            pub trait B {
-                pub fx m<U, V>: (u: U, v: V) V;
+            pub B: Any {
+                pub m<U, V>: (u: U, v: V) V;
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$bounds\npub class C: A, B {\n}") }
+        val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bounds\npub class C: B, A {\n}") }
+        val ba = phasesAAndB { snippet("$bounds\npub C: B, A {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -1309,17 +1311,17 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait P1 {
-                    pub fx m: () Int32 { return 1 }
+                pub P1: Any {
+                    pub m: () Int32 { return 1 }
                 }
-                pub trait P2 {
-                    pub fx m: (x: Int32) Int32 { return x }
+                pub P2: Any {
+                    pub m: (x: Int32) Int32 { return x }
                 }
-                pub trait A: P1 {
+                pub A: P1 {
                 }
-                pub trait B: P2 {
+                pub B: P2 {
                 }
-                pub trait W: A, B {
+                pub W: A, B {
                 }
                 """
             )
@@ -1340,11 +1342,11 @@ class OperatorMemberCollectTest {
         val program = phasesAAndB {
             snippet(
                 """
-                pub trait P<T> {
-                    pub fx m: (t: T) Int32;
+                pub P<T>: Any {
+                    pub m: (t: T) Int32;
                 }
-                pub trait A: P<Int32> {
-                    override pub fx m: (t: Int32) Int32 { return 0 }
+                pub A: P<Int32> {
+                    override pub m: (t: Int32) Int32 { return 0 }
                 }
                 """
             )

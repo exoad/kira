@@ -21,36 +21,34 @@ class CppTypeSpellerTest {
     private val module = DeclTestSupport.module(
         "test:types",
         """
-        pub enum Kind: Int32 { KIND_A = 0, KIND_B = 1 }
+        pub Pt: Struct { pub x: Int32 = 0 }
 
-        pub struct Pt { pub x: Int32 = 0 }
+        pub Node: Any { pub v: Int32 = 0 }
 
-        pub class Node { pub v: Int32 = 0 }
+        pub Shape: Any { pub area: () Int32; }
 
-        pub trait Shape { pub fx area: () Int32; }
+        pub @_opaque Handle: Any { }
 
-        pub @_opaque class Handle { }
+        pub @_extern(cpp = "bibo::Scan", header = "scan.hxx") Scan: Struct { }
 
-        pub @_extern(cpp = "bibo::Scan", header = "scan.hxx") struct Scan { }
+        pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any { }
 
-        pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car { }
+        pub Arr<UInt8, 32> as Frame
 
-        pub alias Frame as Arr<UInt8, 32>
-
-        pub fx scalars: (a: Int8, b: UInt64, c: Size, d: Float32, e: Float64, f: Bool, g: Char, mut h: Int32, mut i: Size) Int64;
-        pub fx strings: (s: Str, mut t: Str) Str;
-        pub fx arrays: (fixed: Arr<UInt8, 4>, mut fixedOut: Arr<UInt8, 4>, grow: Arr<Int32>, xs: List<Str>, mut ys: List<Str>) List<Int32>;
-        pub fx maps: (m: Map<Str, Int32>, s: Set<Int32>, d: Deque<Int32>, st: Stack<Int32>, q: Queue<Int32>, mut mm: Map<Str, Int32>) Map<Str, Int32>;
-        pub fx views: (v: View<UInt8>, w: MutView<UInt8>) View<Char> { return "x" }
-        pub fx maybes: (a: Maybe<Int32>, b: Maybe<Pt>, c: Maybe<Node>, d: Maybe<Shape>, mut e: Maybe<Int32>) Maybe<Node>;
-        pub fx nominals: (p: Pt, mut q: Pt, n: Node, mut o: Node, s: Shape, k: Kind, mut kk: Kind) Node;
-        pub fx handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>, mut v: Unsafe<Int32>) Weak<Node>;
-        pub fx nested: (n: Int, mut f: Float) Int;
-        pub fx externs: (s: Scan, mut t: Scan, c: Car) Car;
-        pub fx fns: (f: Fx<Tuple2<Str, Int32>, Kind>, g: Fx<Tuple1<mut Int32>, Void>, h: Fx<Tuple0, Int64>) Fx<Tuple0, Void>;
-        pub fx tuples: (t: Tuple2<Int32, Str>, r: Result<Int32, Str>, z: Tuple0) Tuple2<Int32, Str>;
-        pub fx aliased: (frame: Frame, mut out: Frame, m: Maybe<Frame>) Frame;
-        pub fx buffers: (b: StrBuf<32>, mut c: StrBuf<32>, s: CStr) Void;
+        pub scalars: (a: Int8, b: UInt64, c: Size, d: Float32, e: Float64, f: Bool, g: Char, mut h: Int32, mut i: Size) Int64;
+        pub strings: (s: Str, mut t: Str) Str;
+        pub arrays: (fixed: Arr<UInt8, 4>, mut fixedOut: Arr<UInt8, 4>, grow: Arr<Int32>, xs: List<Str>, mut ys: List<Str>) List<Int32>;
+        pub maps: (m: Map<Str, Int32>, s: Set<Int32>, d: Deque<Int32>, st: Stack<Int32>, q: Queue<Int32>, mut mm: Map<Str, Int32>) Map<Str, Int32>;
+        pub views: (v: View<UInt8>, w: MutView<UInt8>) View<Char> { return "x" }
+        pub maybes: (a: Maybe<Int32>, b: Maybe<Pt>, c: Maybe<Node>, d: Maybe<Shape>, mut e: Maybe<Int32>) Maybe<Node>;
+        pub nominals: (p: Pt, mut q: Pt, n: Node, mut o: Node, s: Shape) Node;
+        pub handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>, mut v: Unsafe<Int32>) Weak<Node>;
+        pub nested: (n: Int, mut f: Float) Int;
+        pub externs: (s: Scan, mut t: Scan, c: Car) Car;
+        pub fns: (f: Fx<Tuple2<Str, Int32>, Bool>, g: Fx<Tuple1<mut Int32>, Void>, h: Fx<Tuple0, Int64>) Fx<Tuple0, Void>;
+        pub tuples: (t: Tuple2<Int32, Str>, r: Result<Int32, Str>, z: Tuple0) Tuple2<Int32, Str>;
+        pub aliased: (frame: Frame, mut out: Frame, m: Maybe<Frame>) Frame;
+        pub buffers: (b: StrBuf<32>, mut c: StrBuf<32>, s: CStr) Void;
         """,
     )
 
@@ -127,14 +125,12 @@ class CppTypeSpellerTest {
     }
 
     @Test
-    fun structsClassesTraitsAndEnums() {
+    fun structsClassesAndTraits() {
         assertEquals("const Pt&", param("nominals", "p"))
         assertEquals("Pt&", param("nominals", "q"))
         assertEquals("const kira::Rc<Node>&", param("nominals", "n"))
         assertEquals("kira::Rc<Node>&", param("nominals", "o"))
         assertEquals("const kira::Rc<Shape>&", param("nominals", "s"))
-        assertEquals("Kind", param("nominals", "k"))
-        assertEquals("Kind&", param("nominals", "kk"))
         assertEquals("kira::Rc<Node>", ret("nominals"))
     }
 
@@ -173,7 +169,7 @@ class CppTypeSpellerTest {
 
     @Test
     fun escapingFxIsKiraFnOverTheParameterColumn() {
-        assertEquals("const kira::Fn<Kind(const kira::Str&, std::int32_t)>&", param("fns", "f"))
+        assertEquals("const kira::Fn<bool(const kira::Str&, std::int32_t)>&", param("fns", "f"))
         assertEquals("const kira::Fn<void(std::int32_t&)>&", param("fns", "g"))
         assertEquals("const kira::Fn<std::int64_t()>&", param("fns", "h"))
         assertEquals("kira::Fn<void()>", ret("fns"))
@@ -182,7 +178,7 @@ class CppTypeSpellerTest {
     @Test
     fun nonEscapingFxSpellsTheCallableConcept() {
         val f = fn("fns").params.first { it.name == "f" }
-        assertEquals("kira::Callable<F_f, Kind, const kira::Str&, std::int32_t>", ctx.speller.callable("F_f", f.type as net.exoad.kira.compiler.analysis.types.KType.Fn))
+        assertEquals("kira::Callable<F_f, bool, const kira::Str&, std::int32_t>", ctx.speller.callable("F_f", f.type as net.exoad.kira.compiler.analysis.types.KType.Fn))
         assertEquals("F_f", ctx.speller.templateParamName(f))
     }
 

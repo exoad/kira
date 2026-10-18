@@ -42,16 +42,14 @@ class FrontendServiceTest {
             val main = srcDir.resolve("main.kira")
             main.writeText(
                 """
-                module "tmp:main"
-                fx main: () Void {
+                main: () Void {
                     trace("ok")
                 }
                 """.trimIndent()
             )
 
             val broken = """
-                module "tmp:main"
-                fx main: () Void {
+                                main: () Void {
                     this is not valid kira !!!
                 }
             """.trimIndent()
@@ -89,13 +87,11 @@ class FrontendServiceTest {
             Files.createDirectories(dir.resolve("src/app"))
             dir.resolve("src/app/main.kira").writeText(
                 """
-                module "app:main"
-
-                pub @_opaque class Sock {
-                    pub @_extern(raises = "TimeoutError") fx recv: (n: Int32) List<UInt8>
+                pub @_opaque Sock: Any {
+                    pub @_extern(raises = "TimeoutError") recv: (n: Int32) List<UInt8>
                 }
 
-                @_extern(raises = "OSError") fx open: () Sock
+                @_extern(raises = "OSError") open: () Sock
                 """.trimIndent()
             )
             val result = FrontendService.compileProject(dir)

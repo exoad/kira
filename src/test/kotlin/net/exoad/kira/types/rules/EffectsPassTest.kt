@@ -21,16 +21,16 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub LIMIT: Int32 = 3
-            pub struct P {
+            pub P: Struct {
                 pub x: Int32 = 0
-                pub fx doubled: () Int32 {
+                pub doubled: () Int32 {
                     return x * 2
                 }
             }
-            pub fx twice: (v: Int32) Int32 {
+            pub twice: (v: Int32) Int32 {
                 return v * 2
             }
-            pub fx quad: (v: Int32) Int32 {
+            pub quad: (v: Int32) Int32 {
                 mut acc: Int32 = twice(v)
                 acc += twice(v)
                 mut p: P = P {}
@@ -39,7 +39,7 @@ class EffectsPassTest {
                 xs[0] = p.x
                 return xs[0] + LIMIT + p.doubled()
             }
-            pub fx len: (s: Str, xs: List<Int32>) Size {
+            pub len: (s: Str, xs: List<Int32>) Size {
                 mut ys: List<Int32> = List<Int32> {}
                 return s.length() + xs.size() + ys.size()
             }
@@ -61,13 +61,13 @@ class EffectsPassTest {
     fun mutualRecursionStaysPure() {
         val p = snippet(
             """
-            pub fx even: (n: Int32) Bool {
+            pub even: (n: Int32) Bool {
                 if n == 0 {
                     return true
                 }
                 return odd(n - 1)
             }
-            pub fx odd: (n: Int32) Bool {
+            pub odd: (n: Int32) Bool {
                 if n == 0 {
                     return false
                 }
@@ -85,15 +85,15 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
-            pub fx bump: () Int32 {
+            pub bump: () Int32 {
                 STATE += 1
                 return STATE
             }
-            pub fx twice: (v: Int32) Int32 {
+            pub twice: (v: Int32) Int32 {
                 return v * 2
             }
-            pub fx f: (a: Int32) Int32 {
-                g: Fx<Tuple0, Int32> = fx() Int32 {
+            pub f: (a: Int32) Int32 {
+                g: Fx<Tuple0, Int32> = () Int32 {
                     return bump()
                 }
                 return twice(a) + bump() + a * 2
@@ -116,28 +116,28 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
-            pub class C {
+            pub C: Any {
                 pub mut n: Int32 = 0
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     n += 1
                 }
-                pub fx peek: () Int32 {
+                pub peek: () Int32 {
                     return n
                 }
             }
-            pub fx global: () Void {
+            pub global: () Void {
                 STATE = 1
             }
-            pub fx param: (mut out: Int32) Void {
+            pub param: (mut out: Int32) Void {
                 out = 1
             }
-            pub fx through: (c: C) Void {
+            pub through: (c: C) Void {
                 c.n = 2
             }
-            pub fx viewed: (v: MutView<UInt8>) Void {
+            pub viewed: (v: MutView<UInt8>) Void {
                 v[0] = 1
             }
-            pub fx ref: () Int32 {
+            pub ref: () Int32 {
                 r: Ref<Int32> = Ref<Int32> { value = 0 }
                 r.value = 1
                 return r.value
@@ -162,25 +162,25 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
-            pub class C {
+            pub C: Any {
                 pub mut n: Int32 = 0
             }
-            pub fx readG: () Int32 {
+            pub readG: () Int32 {
                 return STATE
             }
-            pub fx byRef: (mut x: Int32) Int32 {
+            pub byRef: (mut x: Int32) Int32 {
                 return x
             }
-            pub fx element: (v: View<UInt8>) Int32 {
+            pub element: (v: View<UInt8>) Int32 {
                 return v[0] as Int32
             }
-            pub fx through: (v: View<UInt8>) Size {
+            pub through: (v: View<UInt8>) Size {
                 return v.size()
             }
-            pub fx field: (c: C) Int32 {
+            pub field: (c: C) Int32 {
                 return c.n
             }
-            pub fx parse: (s: Str) Int32 {
+            pub parse: (s: Str) Int32 {
                 if s.isEmpty() {
                     throw "empty"
                 }
@@ -202,20 +202,20 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
-            pub fx bump: () UInt32 {
+            pub bump: () UInt32 {
                 STATE += 1
                 return 1
             }
-            pub fx readU16: (p: View<UInt8>) UInt32 {
+            pub readU16: (p: View<UInt8>) UInt32 {
                 return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
             }
-            pub fx mixed: (p: View<UInt8>) UInt32 {
+            pub mixed: (p: View<UInt8>) UInt32 {
                 return (p[0] as UInt32) + bump()
             }
-            pub fx viaCall: (p: View<UInt8>) UInt32 {
+            pub viaCall: (p: View<UInt8>) UInt32 {
                 return readU16(p) + 1
             }
-            pub fx sizes: (out: Size, buf: View<UInt8>) Bool {
+            pub sizes: (out: Size, buf: View<UInt8>) Bool {
                 return out == buf.size()
             }
             """,
@@ -239,17 +239,17 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub mut STATE: Int32 = 0
-            pub fx bump: () Int32 {
+            pub bump: () Int32 {
                 STATE += 1
                 return STATE
             }
-            pub fx uses: (v: Int32) Int32 {
+            pub uses: (v: Int32) Int32 {
                 return v + bump()
             }
-            pub fx usesUses: (v: Int32) Int32 {
+            pub usesUses: (v: Int32) Int32 {
                 return uses(v)
             }
-            pub fx builds: () Size {
+            pub builds: () Size {
                 mut xs: List<Int32> = List<Int32> {}
                 xs.add(1)
                 return xs.size()
@@ -267,23 +267,22 @@ class EffectsPassTest {
     fun aByValueParameterPassedByConstReferenceReadsTheCallersStorage() {
         // Round 3, issue 9: design 5.1 lowers a struct, Str, container, Maybe, tuple or class parameter to
         // `const T&`, which aliases the caller's argument, so a read of it is READS beside a sibling's effect
-        // (`pair(p.a, bumpGS())` spills p.a first). A scalar, enum or view parameter is copied and stays PURE.
+        // (`pair(p.a, bumpGS())` spills p.a first). A scalar or view parameter is copied and stays PURE.
         val p = snippet(
             """
-            pub struct S {
+            pub S: Struct {
                 pub a: Int32 = 0
             }
-            pub enum E: Int32 { E_A = 0 }
-            pub fx st: (p: S) Int32 {
+            pub st: (p: S) Int32 {
                 return p.a
             }
-            pub fx str: (s: Str) Size {
+            pub str: (s: Str) Size {
                 return s.size()
             }
-            pub fx arr: (xs: Arr<Int32, 2>) Int32 {
+            pub arr: (xs: Arr<Int32, 2>) Int32 {
                 return xs[0]
             }
-            pub fx sc: (n: Int32, e: E, v: View<Int32>) Int32 {
+            pub sc: (n: Int32, v: View<Int32>) Int32 {
                 return n + (v.size() as Int32)
             }
             """,
@@ -301,20 +300,20 @@ class EffectsPassTest {
     fun printsExternsVirtualsAndFxValuesAreImpure() {
         val p = snippet(
             """
-            pub @_extern(cpp = "ext::read", header = "ext.hxx") fx read: () Int32;
-            pub trait Shape {
-                pub fx area: () Int32;
+            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            pub fx prints: (v: Int32) Void {
+            pub prints: (v: Int32) Void {
                 trace(v)
             }
-            pub fx externs: () Int32 {
+            pub externs: () Int32 {
                 return read()
             }
-            pub fx virtuals: (s: Shape) Int32 {
+            pub virtuals: (s: Shape) Int32 {
                 return s.area()
             }
-            pub fx values: (f: Fx<Tuple0, Int32>) Int32 {
+            pub values: (f: Fx<Tuple0, Int32>) Int32 {
                 return f()
             }
             """,
@@ -328,66 +327,6 @@ class EffectsPassTest {
     // ---- conservative where the view rule needs it (decision 4b read literally) --------------------
 
     @Test
-    fun whatDropsTheLastHandleOfAnObjectWithAnImpureFinallyIsImpure() {
-        // w2-5 round 1's first finding: a finally run by a drop. A local, a by-value parameter, a construction or a
-        // call result whose value may be such a handle is dropped by the body, and the finally writes GL. A
-        // trait-typed or generic value may be any class, and a closure holds what it captured. Quiet's finally
-        // writes only its own local, so dropping a Quiet is pure.
-        val p = snippet(
-            """
-            mut GL: List<Int32> = List<Int32> {}
-            pub trait Shape {
-                pub fx area: () Int32;
-            }
-            pub class Dropper: Shape {
-                pub mut n: Int32 = 0
-                override pub fx area: () Int32 {
-                    return n
-                }
-                finally {
-                    GL = List<Int32> {}
-                }
-            }
-            pub class Owner {
-                pub d: Maybe<Dropper> = null
-            }
-            pub class Quiet {
-                pub mut n: Int32 = 0
-                finally {
-                    mut k: Int32 = 1
-                    k += 1
-                }
-            }
-            pub fx local: () Int32 {
-                d: Dropper = Dropper {}
-                return d.n
-            }
-            pub fx param: (d: Dropper) Int32 {
-                return 1
-            }
-            pub fx owner: () Bool {
-                return (Owner {}).d.isSome()
-            }
-            pub fx shape: (s: Maybe<Shape>) Int32 {
-                return 1
-            }
-            pub fx generic<T>: (x: T) Int32 {
-                return 1
-            }
-            pub fx quiet: () Int32 {
-                q: Quiet = Quiet {}
-                return q.n
-            }
-            """,
-        )
-        for (name in listOf("local", "param", "owner", "shape", "generic")) {
-            assertEquals(Effect.IMPURE, p.model.effect(fn(p, name)), name)
-        }
-        assertEquals(Effect.READS, p.model.effect(fn(p, "quiet")), "a finally that writes only its own locals runs nothing a caller can see; q.n is read through a class reference")
-        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr>(p, "Dropper { }")))
-    }
-
-    @Test
     fun externsPrototypesDispatchInitializersAndMutViewWritesAreImpure() {
         // Round 1's other shapes: an extern given an Fx (nested in an Arr), a bodiless prototype, a MutView of a
         // global formed in a callee that writes through it (P12), a construction whose initially writes a global
@@ -396,37 +335,37 @@ class EffectsPassTest {
             """
             mut GXSS: List<List<Int32>> = List<List<Int32>> {}
             mut GD: Int32 = 0
-            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") fx applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32;
-            pub fx proto: () Int32;
-            pub class Maker {
+            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32;
+            pub proto: () Int32;
+            pub Maker: Any {
                 pub mut n: Int32 = 0
                 initially {
                     GD = 1
                 }
             }
-            pub class Id {
+            pub Id: Any {
                 pub k: Int32 = 0
             }
-            pub fx clobber: (mv: MutView<List<Int32>>) Int32 {
+            pub clobber: (mv: MutView<List<Int32>>) Int32 {
                 mv[0] = List<Int32> {}
                 return 0
             }
-            pub fx formsAndLends: () Int32 {
+            pub formsAndLends: () Int32 {
                 return clobber(GXSS.view())
             }
-            pub fx nested: () Int32 {
-                return applyAll([fx() Void {}])
+            pub nested: () Int32 {
+                return applyAll([() Void {}])
             }
-            pub fx prototype: () Int32 {
+            pub prototype: () Int32 {
                 return proto()
             }
-            pub fx made: () Int32 {
+            pub made: () Int32 {
                 return (Maker {}).n
             }
-            pub fx finds: (ids: List<Id>, id: Id, ns: List<Int32>) Bool {
+            pub finds: (ids: List<Id>, id: Id, ns: List<Int32>) Bool {
                 return ids.contains(id)
             }
-            pub fx findsInts: (ns: List<Int32>) Bool {
+            pub findsInts: (ns: List<Int32>) Bool {
                 return ns.contains(3)
             }
             """,
@@ -438,65 +377,19 @@ class EffectsPassTest {
     }
 
     @Test
-    fun aGenericClassIsJudgedUnderEachSubstitutionItIsReachedWith() {
-        // Round 2's minor (w2-5, w2-3 #1): Drops kept one `seen` set across a whole walk, so PairAB, whose Box<Int32>
-        // came first, was judged unable to hold a Dropper (fAB PURE, emitted with no D33 spill) while PairBA, the
-        // same fields swapped, was not. Both field orders are judged alike now: a by-value parameter that may be the
-        // last handle of a Dropper is dropped in the callee.
-        val p = snippet(
-            """
-            mut GI: Int32 = 0
-            pub class Dropper {
-                pub n: Int32 = 0
-                finally {
-                    GI = 5
-                }
-            }
-            pub class Box<T> {
-                pub v: Maybe<T> = null
-            }
-            pub struct PairAB {
-                pub a: Box<Int32> = Box<Int32> {}
-                pub b: Box<Dropper> = Box<Dropper> {}
-            }
-            pub struct PairBA {
-                pub b: Box<Dropper> = Box<Dropper> {}
-                pub a: Box<Int32> = Box<Int32> {}
-            }
-            pub struct Ints {
-                pub a: Box<Int32> = Box<Int32> {}
-                pub c: Box<Int32> = Box<Int32> {}
-            }
-            pub fx fAB: (p: PairAB) Int32 {
-                return 0
-            }
-            pub fx fBA: (p: PairBA) Int32 {
-                return 0
-            }
-            pub fx fInts: (p: Ints) Int32 {
-                return 0
-            }
-            """,
-        )
-        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "fAB")))
-        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "fBA")))
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "fInts")), "a Box<Int32> holds no Dropper")
-    }
-
-    @Test
     fun aLentResultReadsTheStorageItIsLentFrom() {
         // R-A in EffectsPass's READS: GL.get(0) is GL[0], a read of a mut global (READS) whichever spelling; an
         // accessor on a local is PURE either way.
         val p = snippet(
             """
             mut GL: List<Int32> = List<Int32> { values = [1] }
-            pub fx g: () Int32 {
+            pub g: () Int32 {
                 return GL.get(0)
             }
-            pub fx i: () Int32 {
+            pub i: () Int32 {
                 return GL[0]
             }
-            pub fx l: () Int32 {
+            pub l: () Int32 {
                 xs: List<Int32> = List<Int32> { values = [1] }
                 return xs.get(0) + xs[0]
             }
@@ -515,24 +408,24 @@ class EffectsPassTest {
         // `gi + bump()` unspilled (30 on gcc and MSVC for OQ-1's 29) and both(gs, bump()) lent gs (3 for 47).
         val p = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
 
             mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
             mut gi: Int32 = 29
 
-            fx bump: () Int32 {
-                t: Thread = Thread { name = "w", body = fx () Void {
+            bump: () Int32 {
+                t: Thread = Thread { name = "w", body = () Void {
                     gs = "new"
                     gi = 30
                 } }
                 return 0
             }
 
-            pub fx both: (s: Str, n: Int32) Int32 {
+            pub both: (s: Str, n: Int32) Int32 {
                 return (s.length() as Int32) + n
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(both(gs, bump()))
                 gs = "old-text-long-enough-to-live-on-the-heap-000000"
                 gi = 29
@@ -550,29 +443,29 @@ class EffectsPassTest {
         // 2 by its initially); a class that only stores an Fx field runs nothing at its construction.
         val c = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
             pub mut G: Int32 = 0
-            pub class Runner {
-                require pub f: Fx<Tuple0, Void>
+            pub Runner: Any {
+                pub f: Fx<Tuple0, Void>
                 initially {
                     f()
                 }
             }
-            pub class Keeper {
-                require pub f: Fx<Tuple0, Void>
+            pub Keeper: Any {
+                pub f: Fx<Tuple0, Void>
             }
-            pub fx idle: () Int32 {
-                t: Thread = Thread { name = "w", body = fx () Void { } }
+            pub idle: () Int32 {
+                t: Thread = Thread { name = "w", body = () Void { } }
                 return 0
             }
-            pub fx viaInitially: () Int32 {
-                r: Runner = Runner { f = fx () Void {
+            pub viaInitially: () Int32 {
+                r: Runner = Runner { f = () Void {
                     G = 30
                 } }
                 return 0
             }
-            pub fx kept: () Int32 {
-                k: Keeper = Keeper { f = fx () Void {
+            pub kept: () Int32 {
+                k: Keeper = Keeper { f = () Void {
                     G = 30
                 } }
                 return 0

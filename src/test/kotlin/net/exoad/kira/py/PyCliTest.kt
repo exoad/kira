@@ -15,7 +15,7 @@ class PyCliTest {
         File(dir, "kira.yaml").writeText(
             """
             project:
-              name: cli-py
+              name: cli.py
 
             srcDir: src
 
@@ -30,9 +30,7 @@ class PyCliTest {
         File(dir, "src/app").mkdirs()
         File(dir, "src/app/main.kira").writeText(
             """
-            module "app:main"
-
-            fx main: () Void {
+            main: () Void {
                 trace("py-cli")
             }
             """.trimIndent()
@@ -48,7 +46,7 @@ class PyCliTest {
         val generated = File(dir, "src/app/main_kira.py")
         assertTrue(generated.isFile, written.all)
         val text = generated.readText()
-        assertTrue(text.contains("from src/app/main.kira, module app:main."), text)
+        assertTrue(text.contains("from src/app/main.kira, module cli.py.app.main."), text)
         assertTrue(text.contains("def _main():\n    print(\"py-cli\")"), text)
         assertTrue(text.trimEnd().endsWith("def _k_run():\n    return _k_main(_main)\n\n\nif __name__ == \"__main__\":\n    _k_run()"), text)
 
@@ -61,7 +59,7 @@ class PyCliTest {
     @Test
     fun aHandWrittenFileAtATargetIsNeverWrittenOver() {
         val dir = project("overwrite", "py")
-        File(dir, "src/app/other.kira").writeText("module \"app:other\"\n\npub fx one: () Int32 {\n    return 1\n}\n")
+        File(dir, "src/app/other.kira").writeText("pub one: () Int32 {\n    return 1\n}\n")
         val hand = File(dir, "src/app/main_kira.py").apply { writeText("print('hand-written')\n") }
         for (args in listOf(emptyArray(), arrayOf("--check"))) {
             val refused = PyTestSupport.cli(dir, *args)
@@ -99,9 +97,7 @@ class PyCliTest {
         val dir = project("refused", "py")
         File(dir, "src/app/main.kira").writeText(
             """
-            module "app:main"
-
-            fx main: () Void {
+            main: () Void {
                 x: Float32 = 1.5
                 trace(x)
             }
@@ -122,11 +118,9 @@ class PyCliTest {
         val main = { marker: String ->
             File(dir, "src/app/main.kira").writeText(
                 """
-                module "app:main"
+                $marker home: () Str
 
-                $marker fx home: () Str
-
-                fx main: () Void {
+                main: () Void {
                     trace(home())
                 }
                 """.trimIndent()

@@ -26,78 +26,78 @@ class ExternCoercionRunTest {
     private val maybes = Module(
         "app:m",
         """
-        pub @_extern(cpp = "m3::pick", header = "m3.hxx") fx pick: (m: Maybe<Str>) Int32;
+        pub @_extern(cpp = "m3::pick", header = "m3.hxx") pick: (m: Maybe<Str>) Int32;
 
-        pub @_extern(cpp = "m3::pickN", header = "m3.hxx") fx pickN: (m: Maybe<Int32>) Int32;
+        pub @_extern(cpp = "m3::pickN", header = "m3.hxx") pickN: (m: Maybe<Int32>) Int32;
 
-        pub @_extern(cpp = "m3::lenAfter", header = "m3.hxx") fx lenAfter: (m: Maybe<Str>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m3::lenAfter", header = "m3.hxx") lenAfter: (m: Maybe<Str>, f: Fx<Tuple0, Void>) Int32;
 
-        pub @_extern(cpp = "m3::sizeOrNeg", header = "m3.hxx") fx sizeOrNeg: (m: Maybe<Str>) Int32;
+        pub @_extern(cpp = "m3::sizeOrNeg", header = "m3.hxx") sizeOrNeg: (m: Maybe<Str>) Int32;
 
-        pub @_extern(cpp = "m3::sizeThen", header = "m3.hxx") fx sizeThen: (m: Maybe<Str>, k: Int32) Int32;
+        pub @_extern(cpp = "m3::sizeThen", header = "m3.hxx") sizeThen: (m: Maybe<Str>, k: Int32) Int32;
 
-        pub @_extern(cpp = "m3::callKind", header = "m3.hxx") fx callKind: (f: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "m3::callKind", header = "m3.hxx") callKind: (f: Fx<Tuple0, Int32>) Int32;
 
         mut gs: Str = "$OLD"
         mut gm: Maybe<Str> = "$OLD"
         mut gls: List<Str> = ["$OLD"]
 
-        fx reset: () Void {
+        reset: () Void {
             gs = "$OLD"
             gls = ["$OLD"]
         }
 
-        fx two: () Int32 {
+        two: () Int32 {
             return 2
         }
 
-        fx bumpGs: () Int32 {
+        bumpGs: () Int32 {
             gs = "x"
             return 0
         }
 
-        pub fx mMaybe: () Int32 {
+        pub mMaybe: () Int32 {
             return pick(gm)
         }
 
-        pub fx mWrapStr: () Int32 {
+        pub mWrapStr: () Int32 {
             return pick(gs)
         }
 
-        pub fx mWrapInt: () Int32 {
+        pub mWrapInt: () Int32 {
             n: Int32 = 5
             return pickN(n)
         }
 
-        pub fx mMaybeInt: () Int32 {
+        pub mMaybeInt: () Int32 {
             mn: Maybe<Int32> = 5
             return pickN(mn)
         }
 
-        pub fx mGlobal: () Int32 {
+        pub mGlobal: () Int32 {
             reset()
-            return lenAfter(gs, fx () Void { gs = "x" })
+            return lenAfter(gs, () Void { gs = "x" })
         }
 
-        pub fx mElement: () Int32 {
+        pub mElement: () Int32 {
             reset()
-            return lenAfter(gls[0], fx () Void { gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"] })
+            return lenAfter(gls[0], () Void { gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"] })
         }
 
-        pub fx mLiteral: () Int32 {
+        pub mLiteral: () Int32 {
             return pick("ab")
         }
 
-        pub fx mNull: () Int32 {
+        pub mNull: () Int32 {
             return sizeOrNeg(null)
         }
 
-        pub fx mSibling: () Int32 {
+        pub mSibling: () Int32 {
             reset()
             return sizeThen(gs, bumpGs())
         }
 
-        pub fx mFnRef: () Int32 {
+        pub mFnRef: () Int32 {
             return callKind(two)
         }
         """,
@@ -151,56 +151,56 @@ class ExternCoercionRunTest {
     private val classes = Module(
         "app:k",
         """
-        trait Named {
-            pub fx nm: () Str
+        Named: Any {
+            pub nm: () Str
         }
 
-        pub class Base {
+        pub Base: Any {
             pub name: Str = "$OLD"
         }
 
-        pub class Kid: Base {
+        pub Kid: Base {
         }
 
-        pub class Dog: Named {
+        pub Dog: Named {
             pub label: Str = "$OLD"
 
-            override pub fx nm: () Str {
+            override pub nm: () Str {
                 return label
             }
         }
 
-        pub class H {
+        pub H: Any {
             pub mut kid: Kid = Kid { }
             pub mut dog: Dog = Dog { }
         }
 
         mut gks: List<Kid> = []
 
-        pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") fx nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
 
-        pub @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx") fx nmLenAfter: (t: Named, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx") nmLenAfter: (t: Named, f: Fx<Tuple0, Void>) Int32;
 
-        pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") fx maybeNameLenAfter: (b: Maybe<Base>, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") maybeNameLenAfter: (b: Maybe<Base>, f: Fx<Tuple0, Void>) Int32;
 
-        pub fx kParent: () Int32 {
+        pub kParent: () Int32 {
             h: H = H { }
-            return nameLenAfter(h.kid, fx () Void { h.kid = Kid { name = "x" } })
+            return nameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 
-        pub fx kTrait: () Int32 {
+        pub kTrait: () Int32 {
             h: H = H { }
-            return nmLenAfter(h.dog, fx () Void { h.dog = Dog { label = "x" } })
+            return nmLenAfter(h.dog, () Void { h.dog = Dog { label = "x" } })
         }
 
-        pub fx kMaybeParent: () Int32 {
+        pub kMaybeParent: () Int32 {
             h: H = H { }
-            return maybeNameLenAfter(h.kid, fx () Void { h.kid = Kid { name = "x" } })
+            return maybeNameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 
-        pub fx kElement: () Int32 {
+        pub kElement: () Int32 {
             gks = [Kid { }]
-            return nameLenAfter(gks[0], fx () Void { gks = [Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }] })
+            return nameLenAfter(gks[0], () Void { gks = [Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }] })
         }
         """,
     )

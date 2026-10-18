@@ -238,7 +238,7 @@ object OopTestSupport {
             }
     }
 
-    fun module(uri: String, body: String): Src = Src(uri, "module \"$uri\"\n\n${body.trimIndent()}\n")
+    fun module(uri: String, body: String): Src = Src(uri, "${body.trimIndent()}\n")
 
     class Emitted(val program: TypedProgram, private val modules: Map<String, EmittedModule>, val layout: CppModuleLayout) {
         fun module(uri: String): EmittedModule = modules[uri] ?: fail("module $uri was not emitted")
@@ -269,7 +269,7 @@ object OopTestSupport {
         for (s in sources) {
             val path = at.resolve(s.relativePath).toString()
             val processed = KiraPreprocessor(s.text).process().processedContent
-            val bare = unit.addSource(path, processed, emptyList())
+            val bare = unit.addSource(path, processed, emptyList(), s.uri)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = unit.addSource(path, bare.content, tokens)
             KiraSourceParsers.from(ctx).parse()
@@ -363,12 +363,13 @@ object OopTestSupport {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
         val manifest = ManifestLoader.loadFromPath(caseRoot.resolve("kira.yaml"))
         val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
+        val names = net.exoad.kira.compiler.ModuleNames.assign(manifest, caseRoot, emptyList(), workspace)
         val unit = CompilationUnit()
         workspace.sorted().forEach { file ->
             val text = File(file).readText()
             val processed = KiraPreprocessor(text).process().processedContent
             val canonical = File(file).canonicalPath
-            var ctx = unit.addSource(canonical, processed, emptyList())
+            var ctx = unit.addSource(canonical, processed, emptyList(), names[canonical])
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
             KiraSourceParsers.from(ctx).parse()

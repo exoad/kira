@@ -13,7 +13,7 @@ class ReturnPathPassTest {
         expectClean(
             snippet(
                 """
-                pub fx sign: (v: Int32) Int32 {
+                pub sign: (v: Int32) Int32 {
                     if v < 0 {
                         return -1
                     } else if v == 0 {
@@ -22,7 +22,7 @@ class ReturnPathPassTest {
                         return 1
                     }
                 }
-                pub fx pick: (b: Bool) Int32 {
+                pub pick: (b: Bool) Int32 {
                     if b {
                         return 1
                     }
@@ -38,17 +38,17 @@ class ReturnPathPassTest {
         expectClean(
             snippet(
                 """
-                use "kira:os"
-                pub fx fail: (v: Int32) Int32 {
+                kira.os as os
+                pub fail: (v: Int32) Int32 {
                     if v > 0 {
                         return v
                     }
                     throw "negative"
                 }
-                pub fx quit: () Int32 {
+                pub quit: () Int32 {
                     exit(1)
                 }
-                pub fx guarded: (v: Int32) Int32 {
+                pub guarded: (v: Int32) Int32 {
                     try {
                         return v
                     } on e: Str {
@@ -65,25 +65,12 @@ class ReturnPathPassTest {
         expectClean(
             snippet(
                 """
-                pub fx spin: () Int32 {
+                pub spin: () Int32 {
                     while true {
                         return 1
                     }
                 }
-                pub fx once: () Int32 {
-                    do {
-                        return 1
-                    } while false
-                }
-                pub fx again: (x: Int32) Int32 {
-                    do {
-                        if x > 0 {
-                            continue
-                        }
-                        return 1
-                    } while true
-                }
-                pub fx nested: () Int32 {
+                pub nested: () Int32 {
                     while true {
                         mut i: Int32 = 0
                         while i < 3 {
@@ -106,14 +93,14 @@ class ReturnPathPassTest {
     fun anIfWithoutElseDoesNotEndEveryPath() {
         val p = snippet(
             """
-            pub fx sign: (v: Int32) Int32 {
+            pub sign: (v: Int32) Int32 {
                 if v < 0 {
                     return -1
                 } else if v > 0 {
                     return 1
                 }
             }
-            pub fx empty: () Int32 {
+            pub empty: () Int32 {
             }
             """,
         )
@@ -124,52 +111,34 @@ class ReturnPathPassTest {
     fun aConditionalLoopMayExit() {
         val p = snippet(
             """
-            pub fx count: (n: Int32) Int32 {
+            pub count: (n: Int32) Int32 {
                 mut i: Int32 = 0
                 while i < n {
                     i += 1
                     return i
                 }
             }
-            pub fx first: (xs: Arr<Int32>) Int32 {
+            pub first: (xs: Arr<Int32>) Int32 {
                 for x: Int32 in xs {
                     return x
                 }
             }
-            pub fx broken: () Int32 {
+            pub broken: () Int32 {
                 while true {
                     break
                 }
             }
-            pub fx leftEarly: (x: Int32) Int32 {
-                do {
-                    if x > 0 {
-                        break
-                    }
-                    return 1
-                } while true
-            }
-            pub fx skipped: (x: Int32) Int32 {
-                mut i: Int32 = x
-                do {
-                    i -= 1
-                    if i > 0 {
-                        continue
-                    }
-                    return 1
-                } while i > 5
-            }
             """,
         )
-        expectExactly(p, "rules.return.missing", "rules.return.missing", "rules.return.missing", "rules.return.missing", "rules.return.missing")
+        expectExactly(p, "rules.return.missing", "rules.return.missing", "rules.return.missing")
     }
 
     @Test
     fun aLambdaNeedsItsReturnToo() {
         val p = snippet(
             """
-            pub fx f: (b: Bool) Fx<Tuple1<Int32>, Int32> {
-                return fx(x: Int32) Int32 {
+            pub f: (b: Bool) Fx<Tuple1<Int32>, Int32> {
+                return (x: Int32) Int32 {
                     if b {
                         return x
                     }

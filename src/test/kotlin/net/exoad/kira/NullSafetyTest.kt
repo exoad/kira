@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
  */
 class NullSafetyTest {
     private val pet = """
-        pub class Pet {
-            require pub name: Str
+        pub Pet: Any {
+            pub name: Str
         }
     """.trimIndent()
 
@@ -28,7 +28,7 @@ class NullSafetyTest {
     @Test
     fun nullIsDeclaredByTheStdlibRatherThanLexedAsAKeyword() {
         val core = java.io.File("kira/core.kira").readText()
-        assertTrue(core.contains("pub @_magic class Null"), "Null type missing from kira:core")
+        assertTrue(core.contains("pub @_magic Null: Any"), "Null type missing from kira:core")
         assertTrue(core.contains("@_global null: Null"), "null global missing from kira:core")
 
         // If `null` were a keyword the lexer would own it; it must stay an identifier.
@@ -42,7 +42,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Pet = null
             }
             """,
@@ -66,7 +66,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 q: Maybe<Int32> = null
             }
@@ -86,7 +86,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 q: Str = p.name
             }
@@ -106,7 +106,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 trace(p.name)
             }
@@ -126,7 +126,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 a: Bool = p.isSome()
                 b: Bool = p.isNone()
@@ -145,11 +145,11 @@ class NullSafetyTest {
     fun aMaybeLocalDoesNotReachTheSameNameInAnotherFunction() {
         val messages = diagnosticsFor(
             """
-            fx first: () Void {
+            first: () Void {
                 s: Maybe<Str> = null
             }
 
-            fx second: (s: Str) Size {
+            second: (s: Str) Size {
                 mut b: Size = s.length()
                 trace(s.length())
                 c: Size = if b > 0 { s.length() } else { b }
@@ -169,11 +169,11 @@ class NullSafetyTest {
     fun valueAndIsNullAreTheMaybeApi() {
         val messages = diagnosticsFor(
             """
-            fx find: () Maybe<Str> {
+            find: () Maybe<Str> {
                 return null
             }
 
-            fx read: () Str {
+            read: () Str {
                 m: Maybe<Str> = find()
                 if m.isNull() {
                     return ""
@@ -196,7 +196,7 @@ class NullSafetyTest {
     fun anIfExpressionBranchIsAScopeOfItsOwn() {
         val messages = diagnosticsFor(
             """
-            fx f: (c: Bool, s: Str) Size {
+            f: (c: Bool, s: Str) Size {
                 k: Size = if c {
                     s: Maybe<Str> = null
                     s.unwrapOr("zz").size()
@@ -231,7 +231,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx f: (p: Maybe<Pet>) Str {
+            f: (p: Maybe<Pet>) Str {
                 q: Str = p.name
                 return q
             }

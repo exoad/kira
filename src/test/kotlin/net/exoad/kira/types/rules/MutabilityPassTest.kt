@@ -15,14 +15,14 @@ class MutabilityPassTest {
         expectClean(
             snippet(
                 """
-                pub struct P {
+                pub P: Struct {
                     pub x: Int32 = 0
-                    pub mut fx bump: () Void {
+                    pub mut bump: () Void {
                         x += 1
                     }
                 }
                 pub mut COUNT: Int32 = 0
-                pub fx f: (mut out: Int32, v: MutView<UInt8>) Void {
+                pub f: (mut out: Int32, v: MutView<UInt8>) Void {
                     mut a: Int32 = 1
                     a = 2
                     out = a
@@ -45,14 +45,14 @@ class MutabilityPassTest {
         expectClean(
             snippet(
                 """
-                use "kira:test"
-                pub class C {
+                kira.test as test
+                pub C: Any {
                     pub mut n: Int32 = 0
-                    pub mut fx bump: () Void {
+                    pub mut bump: () Void {
                         n += 1
                     }
                 }
-                pub fx f: (c: C) Void {
+                pub f: (c: C) Void {
                     c.bump()
                     c.n = 4
                     d: C = C {}
@@ -70,7 +70,7 @@ class MutabilityPassTest {
         expectClean(
             snippet(
                 """
-                pub fx f: () Void {
+                pub f: () Void {
                     mut xs: List<Int32> = List<Int32> {}
                     xs.add(1)
                     mut m: Map<Str, Int32> = Map<Str, Int32> {}
@@ -78,7 +78,7 @@ class MutabilityPassTest {
                     mut buf: StrBuf<16> = StrBuf<16> {}
                     buf.add("hi")
                 }
-                pub fx g: (mut xs: List<Int32>) Void {
+                pub g: (mut xs: List<Int32>) Void {
                     xs.add(2)
                 }
                 """,
@@ -93,7 +93,7 @@ class MutabilityPassTest {
         val p = snippet(
             """
             pub LIMIT: Int32 = 3
-            pub fx f: (a: Int32) Void {
+            pub f: (a: Int32) Void {
                 b: Int32 = 1
                 b = 2
                 a = 3
@@ -110,15 +110,15 @@ class MutabilityPassTest {
     fun aStructPlainMethodCannotWriteItsReceiver() {
         val p = snippet(
             """
-            pub struct P {
+            pub P: Struct {
                 pub x: Int32 = 0
-                pub fx set: () Void {
+                pub set: () Void {
                     x = 1
                 }
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     x += 1
                 }
-                pub fx twice: () Void {
+                pub twice: () Void {
                     bump()
                 }
             }
@@ -132,16 +132,16 @@ class MutabilityPassTest {
     fun aValueReceiverNeedsAMutablePlace() {
         val p = snippet(
             """
-            pub struct P {
+            pub P: Struct {
                 pub x: Int32 = 0
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     x += 1
                 }
             }
-            pub class C {
+            pub C: Any {
                 pub n: Int32 = 0
             }
-            pub fx f: (xs: List<Int32>, c: C) Void {
+            pub f: (xs: List<Int32>, c: C) Void {
                 ys: List<Int32> = List<Int32> {}
                 ys.add(1)
                 xs.add(2)
@@ -172,19 +172,19 @@ class MutabilityPassTest {
         // the method that returns it modifies nothing itself.
         val p = snippet(
             """
-            pub class Node {
+            pub Node: Any {
                 pub mut n: Int32 = 0
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     n += 1
                 }
             }
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
-                pub mut fx move: () Void {
+                pub mut move: () Void {
                     x += 1
                 }
             }
-            pub class Counter {
+            pub Counter: Any {
                 pub mut count: Int32 = 0
                 pub mut items: List<Int32> = List<Int32> {}
                 pub mut child: Node = Node {}
@@ -192,31 +192,31 @@ class MutabilityPassTest {
                 initially {
                     count = 1
                 }
-                pub fx increment: () Void {
+                pub increment: () Void {
                     count = count + 1
                 }
-                pub fx push: () Void {
+                pub push: () Void {
                     items.add(1)
                 }
-                pub fx movePt: () Void {
+                pub movePt: () Void {
                     at.move()
                 }
-                pub fx setX: () Void {
+                pub setX: () Void {
                     at.x = 2
                 }
-                pub fx twice: () Void {
+                pub twice: () Void {
                     bumpMut()
                 }
-                pub mut fx bumpMut: () Void {
+                pub mut bumpMut: () Void {
                     count += 1
                 }
-                pub fx ok: (other: Counter) Fx<Tuple0, Void> {
+                pub ok: (other: Counter) Fx<Tuple0, Void> {
                     child.n = 3
                     child.bump()
                     other.count = 4
                     other.bumpMut()
                     n: Int32 = count + (items.size() as Int32)
-                    return fx() Void {
+                    return () Void {
                         count += 1
                         bumpMut()
                     }
@@ -236,9 +236,9 @@ class MutabilityPassTest {
         // Phase C reports the capture; the pass does not add a second diagnostic for the same write.
         val p = snippet(
             """
-            pub fx f: () Void {
+            pub f: () Void {
                 n: Int32 = 0
-                g: Fx<Tuple0, Void> = fx() Void {
+                g: Fx<Tuple0, Void> = () Void {
                     n = 1
                 }
             }

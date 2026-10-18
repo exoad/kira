@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
 class OperatorMemberParseTest {
 
     private fun parse(body: String): RootASTNode {
-        val source = "module \"test:opparse\"\n" + body.trimIndent()
+        val source = "" + body.trimIndent()
         val result = TestCompileSupport.compileSnippet(source, "tests/opparse.kira", runSemantic = false)
         return result.sourceContext.ast as RootASTNode
     }
@@ -45,13 +45,13 @@ class OperatorMemberParseTest {
     fun memberOperatorParsesInAClassWithMutAndOverride() {
         val ast = parse(
             """
-            pub class V2 {
+            pub V2: Any {
                 pub x: Float32 = 0.0
-                pub fx @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
             }
-            pub class Box {
+            pub Box: Any {
                 pub v: Int32 = 0
-                mut pub fx @_op_set_: (i: Int32, value: Int32) Void { v = value }
+                mut pub @_op_set_: (i: Int32, value: Int32) Void { v = value }
             }
             """
         )
@@ -71,15 +71,16 @@ class OperatorMemberParseTest {
     fun overrideMemberOperatorParses() {
         val ast = parse(
             """
-            pub class Base {
-                pub fx @_op_eq_: (other: Base) Bool { return true }
+            pub Base: Any {
+                pub @_op_eq_: (other: Base) Bool { return true }
             }
-            pub class Leaf: Base {
-                override pub fx @_op_eq_: (other: Base) Bool { return false }
+            pub Leaf: Base {
+                override pub @_op_eq_: (other: Base) Bool { return false }
             }
             """
         )
-        val leaf = decls(ast).filterIsInstance<ClassDecl>()[1]
+        // Base holds no state and is a parent, so it is a trait: Leaf is the one class.
+        val leaf = decls(ast).filterIsInstance<ClassDecl>().single()
         val eq = leaf.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
         assertTrue(Modifier.OVERRIDE in eq.modifiers)
         assertEquals("_op_eq_", assertIs<IntrinsicExpr>(eq.name).intrinsicKey.name)
@@ -89,8 +90,8 @@ class OperatorMemberParseTest {
     fun memberOperatorParsesInATrait() {
         val ast = parse(
             """
-            pub trait Ordered<T> {
-                pub fx @_op_lt_: (other: T) Bool;
+            pub Ordered<T>: Any {
+                pub @_op_lt_: (other: T) Bool;
             }
             """
         )
@@ -103,7 +104,7 @@ class OperatorMemberParseTest {
     fun dotMemberOperatorParsesAsACall() {
         val ast = parse(
             """
-            fx apply: (a: Int32, i: Int32) Void {
+            apply: (a: Int32, i: Int32) Void {
                 a.@_op_get_(i)
                 a.@_op_add_(i)
             }
@@ -131,7 +132,7 @@ class OperatorMemberParseTest {
     fun dotFreeFormOperatorAlsoParsesAsACall() {
         val ast = parse(
             """
-            fx apply: (a: Int32, b: Int32) Void {
+            apply: (a: Int32, b: Int32) Void {
                 a.@op_add(b)
             }
             """
@@ -150,7 +151,7 @@ class OperatorMemberParseTest {
         assertThrows<DiagnosticsException> {
             parse(
                 """
-                fx apply: (a: Int32) Void {
+                apply: (a: Int32) Void {
                     a.@_trace_(a)
                 }
                 """
@@ -160,20 +161,14 @@ class OperatorMemberParseTest {
 
     @Test
     fun finalClassModifierParses() {
-        val ast = parse("pub final class Reply { pub x: Int32 = 0 }")
+        val ast = parse("pub final Reply: Any { pub x: Int32 = 0 }")
         val reply = classLike<ClassDecl>(ast)
         assertTrue(Modifier.FINAL in reply.modifiers)
     }
 
     @Test
-    fun finalOnATraitIsParseFinal() {
-        val e = assertThrows<DiagnosticsException> { parse("final trait Shape { }") }
-        assertEquals("parse.final", e.tag)
-    }
-
-    @Test
     fun finalOnAFunctionIsParseFinal() {
-        val e = assertThrows<DiagnosticsException> { parse("final fx f: () Void { }") }
+        val e = assertThrows<DiagnosticsException> { parse("final f: () Void { }") }
         assertEquals("parse.final", e.tag)
     }
 
@@ -219,7 +214,7 @@ class OperatorMemberParseTest {
     fun everyMemberNameParsesInAClass() {
         assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
         for (name in theOperatorTable1_3_1) {
-            val ast = parse("pub class V2 { pub fx @$name: ${signatureFor(name)} Void { } }")
+            val ast = parse("pub V2: Any { pub @$name: ${signatureFor(name)} Void { } }")
             val cls = classLike<ClassDecl>(ast)
             val m = cls.members.filterIsInstance<FunctionDecl>().single()
             assertEquals(name, assertIs<IntrinsicExpr>(m.name).intrinsicKey.name, "class member: $name")
@@ -230,7 +225,7 @@ class OperatorMemberParseTest {
     fun everyMemberNameParsesInATrait() {
         assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
         for (name in theOperatorTable1_3_1) {
-            val ast = parse("pub trait Ops { pub fx @$name: ${signatureFor(name)} Void; }")
+            val ast = parse("pub Ops: Any { pub @$name: ${signatureFor(name)} Void; }")
             val trait = classLike<TraitDecl>(ast)
             val m = trait.members.single()
             assertEquals(name, assertIs<IntrinsicExpr>(m.name).intrinsicKey.name, "trait member: $name")
@@ -275,12 +270,10 @@ class OperatorMemberParseTest {
         val records = captureWarnings {
             TestCompileSupport.compileSnippet(
                 """
-                module "test:opparse.warn1"
-
-                pub class Point {
-                    require pub x: Int32
+                pub Point: Any {
+                    pub x: Int32
                 }
-                pub fx @op_add: (a: Point, b: Point) Point {
+                pub @op_add: (a: Point, b: Point) Point {
                     return Point { a.x + b.x }
                 }
                 """.trimIndent(),
@@ -298,11 +291,9 @@ class OperatorMemberParseTest {
         val records = captureWarnings {
             TestCompileSupport.compileSnippet(
                 """
-                module "test:opparse.warn2"
-
-                pub class V2 {
+                pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub fx @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
                 }
                 """.trimIndent(),
                 "tests/opwarn2.kira",

@@ -19,13 +19,13 @@ class ConstEligibilityPassTest {
             snippet(
                 """
                 pub INDEX_OF: Arr<Int8, 4> = [-1, 0, 2, 1]
-                pub struct Decoder {
+                pub Decoder: Struct {
                     pub ticks: Int32 = 0
                     pub state: UInt8 = 0
-                    pub @_const fx errors: () Int32 {
+                    pub @_const errors: () Int32 {
                         return ticks
                     }
-                    pub mut @_const fx feed: (next: UInt8) Void {
+                    pub mut @_const feed: (next: UInt8) Void {
                         idx: Int8 = INDEX_OF[(next & 3) as Size]
                         if idx < 0 {
                             state = next
@@ -34,7 +34,7 @@ class ConstEligibilityPassTest {
                         ticks += idx as Int32
                     }
                 }
-                pub @_const fx settle: (steps: Arr<UInt8, 4>) Decoder {
+                pub @_const settle: (steps: Arr<UInt8, 4>) Decoder {
                     mut d: Decoder = Decoder {}
                     for s: UInt8 in steps {
                         d.feed(s)
@@ -53,13 +53,13 @@ class ConstEligibilityPassTest {
             snippet(
                 """
                 pub MAGIC: Arr<UInt8, 4> = [0x55, 0xAA, 0x05, 0x0A]
-                pub @_const fx readU32: (p: View<UInt8>) UInt32 {
+                pub @_const readU32: (p: View<UInt8>) UInt32 {
                     return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
                 }
-                pub @_const fx writeU32: (p: MutView<UInt8>, v: UInt32) Void {
+                pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
                     p[0] = (v & 0xFF) as UInt8
                 }
-                pub @_const fx frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
+                pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
                     mut p: Arr<UInt8, 8> = [0, 0, 0, 0, 0, 0, 0, 0]
                     for i: Size in 0..MAGIC.size() {
                         p[i] = MAGIC[i]
@@ -70,13 +70,13 @@ class ConstEligibilityPassTest {
                     }
                     return p
                 }
-                pub @_const fx each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Size {
+                pub @_const each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Size {
                     for b: UInt8 in buf {
                         f(b)
                     }
                     return buf.size()
                 }
-                pub @_const fx biggest: (a: Int32, b: Int32) Int32 {
+                pub @_const biggest: (a: Int32, b: Int32) Int32 {
                     return a.abs()
                 }
                 """,
@@ -90,26 +90,26 @@ class ConstEligibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub struct V2 {
+                pub V2: Struct {
                     pub x: Int32 = 0
                 }
-                pub @_const fx @op_add: (a: V2, b: V2) V2 {
+                pub @_const @op_add: (a: V2, b: V2) V2 {
                     return V2 { a.x + b.x }
                 }
-                pub @_const fx sum: (a: V2, b: V2) V2 {
+                pub @_const sum: (a: V2, b: V2) V2 {
                     return a + b
                 }
                 pub LIMITS: Arr<Int32, 2> = [1, 2]
-                pub @_const fx lim: (i: Size) Int32 {
+                pub @_const lim: (i: Size) Int32 {
                     return LIMITS[i]
                 }
-                pub @_const fx seed: () Int32 {
+                pub @_const seed: () Int32 {
                     return 4
                 }
-                pub struct W {
+                pub W: Struct {
                     pub n: Int32 = seed()
                 }
-                pub @_const fx mk: () Int32 {
+                pub @_const mk: () Int32 {
                     w: W = W { }
                     return w.n
                 }
@@ -123,13 +123,13 @@ class ConstEligibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub @_const fx id<T>: (v: T) T {
+                pub @_const id<T>: (v: T) T {
                     return v
                 }
-                pub @_const fx pair: (a: Int32) Tuple2<Int32, Bool> {
+                pub @_const pair: (a: Int32) Tuple2<Int32, Bool> {
                     return Tuple2<Int32, Bool> { a, a > 0 }
                 }
-                pub @_const fx pick: (b: Bool) Int32 {
+                pub @_const pick: (b: Bool) Int32 {
                     return if b { 1 } else { 2 }
                 }
                 """,
@@ -143,20 +143,20 @@ class ConstEligibilityPassTest {
     fun nonLiteralTypesAreNamed() {
         val p = snippet(
             """
-            pub class Box {
+            pub Box: Any {
                 pub n: Int32 = 0
             }
-            pub @_const fx a: (s: Str) Int32 {
+            pub @_const a: (s: Str) Int32 {
                 return 1
             }
-            pub @_const fx b: () Int32 {
+            pub @_const b: () Int32 {
                 xs: List<Int32> = List<Int32> {}
                 return 1
             }
-            pub @_const fx c: () Box {
+            pub @_const c: () Box {
                 return Box {}
             }
-            pub @_const fx d: (v: Int32) Str {
+            pub @_const d: (v: Int32) Str {
                 return "n=${'$'}{v}"
             }
             """,
@@ -172,28 +172,28 @@ class ConstEligibilityPassTest {
     fun callsOutsideTheConstantWorld() {
         val p = snippet(
             """
-            use "kira:math"
-            pub @_extern(cpp = "ext::read", header = "ext.hxx") fx read: () Int32;
-            pub fx slow: (v: Int32) Int32 {
+            kira.math as math
+            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32;
+            pub slow: (v: Int32) Int32 {
                 return v
             }
-            pub @_const fx a: (v: Int32) Int32 {
+            pub @_const a: (v: Int32) Int32 {
                 return slow(v)
             }
-            pub @_const fx b: (v: Float64) Float64 {
+            pub @_const b: (v: Float64) Float64 {
                 return sqrt(v)
             }
-            pub @_const fx c: () Int32 {
+            pub @_const c: () Int32 {
                 return read()
             }
-            pub @_const fx d: (v: Int32) Int32 {
+            pub @_const d: (v: Int32) Int32 {
                 trace(v)
                 return v
             }
-            pub trait Shape {
-                pub fx area: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            pub @_const fx e<T: Shape>: (s: T) Int32 {
+            pub @_const e<T: Shape>: (s: T) Int32 {
                 return s.area()
             }
             """,
@@ -207,32 +207,32 @@ class ConstEligibilityPassTest {
         // p02, p03 and p09 of the fix round: each of these typed clean in Kira and failed in C++.
         val p = snippet(
             """
-            pub struct V2 {
+            pub V2: Struct {
                 pub x: Int32 = 0
             }
-            pub fx @op_add: (a: V2, b: V2) V2 {
+            pub @op_add: (a: V2, b: V2) V2 {
                 return V2 { a.x + b.x }
             }
-            pub fx @op_eq: (a: V2, b: V2) Bool {
+            pub @op_eq: (a: V2, b: V2) Bool {
                 return a.x == b.x
             }
-            pub @_const fx sum: (a: V2, b: V2) V2 {
+            pub @_const sum: (a: V2, b: V2) V2 {
                 return a + b
             }
-            pub @_const fx same: (a: V2, b: V2) Bool {
+            pub @_const same: (a: V2, b: V2) Bool {
                 return a == b
             }
             pub DYN: Arr<Int32> = [1, 2, 3]
-            pub @_const fx firstOf: () Int32 {
+            pub @_const firstOf: () Int32 {
                 return DYN.get(0)
             }
-            pub fx seed: () Int32 {
+            pub seed: () Int32 {
                 return 4
             }
-            pub struct W {
+            pub W: Struct {
                 pub n: Int32 = seed()
             }
-            pub @_const fx mk: () Int32 {
+            pub @_const mk: () Int32 {
                 w: W = W { }
                 return w.n
             }
@@ -251,25 +251,25 @@ class ConstEligibilityPassTest {
         val p = snippet(
             """
             pub mut SEEN: Int32 = 0
-            pub @_const fx a: (v: Int32) Int32 {
+            pub @_const a: (v: Int32) Int32 {
                 if v < 0 {
                     throw "negative"
                 }
                 return v
             }
-            pub @_const fx b: (v: Int32) Int32 {
+            pub @_const b: (v: Int32) Int32 {
                 SEEN = v
                 return SEEN
             }
-            pub @_const fx c: (v: Int32) Int32 {
+            pub @_const c: (v: Int32) Int32 {
                 try {
                     return v
                 } on e: Str {
                     return 0
                 }
             }
-            pub @_const fx d: (v: Int32) Int32 {
-                f: Fx<Tuple1<Int32>, Int32> = fx(x: Int32) Int32 {
+            pub @_const d: (v: Int32) Int32 {
+                f: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
                     return x
                 }
                 return f(v)

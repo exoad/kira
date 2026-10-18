@@ -43,7 +43,7 @@ object DeclTestSupport {
             }
     }
 
-    fun module(uri: String, body: String): Src = Src(uri, "module \"$uri\"\n\n${body.trimIndent()}\n")
+    fun module(uri: String, body: String): Src = Src(uri, "${body.trimIndent()}\n")
 
     class Emitted(
         val program: TypedProgram?,
@@ -84,7 +84,7 @@ object DeclTestSupport {
         for (s in sources) {
             val path = root.resolve(s.relativePath).toString()
             val processed = KiraPreprocessor(s.text).process().processedContent
-            val bare = unit.addSource(path, processed, emptyList())
+            val bare = unit.addSource(path, processed, emptyList(), s.uri)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = unit.addSource(path, bare.content, tokens)
             KiraSourceParsers.from(ctx).parse()

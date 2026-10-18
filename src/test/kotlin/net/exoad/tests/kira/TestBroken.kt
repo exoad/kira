@@ -11,18 +11,16 @@ class TestBroken {
         assertThrows<Throwable> {
             KiraImmediateCompiler.formAST(
                 """
-                module "test:mod/submod"
-
-                class A<[T]>
+                
+                A<[T]>: Any
             """.trimIndent()
             )
         }
         assertThrows<Throwable> {
             KiraImmediateCompiler.formAST(
                 """
-                module "test:mod/submod"
-
-                class A<[T: A]>
+                
+                A<[T: A]>: Any
                 """.trimIndent()
             )
         }
@@ -34,9 +32,8 @@ class TestBroken {
         assertThrows<Throwable> {
             KiraImmediateCompiler.formAST(
                 """
-                module "test:mod/submod"
-
-                class A_T {}
+                
+                A_T: Any {}
 
                 a_b: Int32 = 123
             """.trimIndent()
@@ -48,8 +45,6 @@ class TestBroken {
     fun testUnderscoresAllowedInIntrinsincs() {
         val ast = KiraImmediateCompiler.formAST(
             """
-            module "test:mod/submod"
-
             @op_add(1, 2)
             """.trimIndent()
         )

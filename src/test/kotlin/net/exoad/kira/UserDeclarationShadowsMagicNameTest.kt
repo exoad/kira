@@ -72,15 +72,15 @@ class UserDeclarationShadowsMagicNameTest {
     private val source = TestCompileSupport.wrapModule(
         moduleUri,
         """
-        class Ref {
-            require pub id: Int32
+        Ref: Any {
+            pub id: Int32
         }
 
-        fx parseInt64: (x: Int32) Int32 {
+        parseInt64: (x: Int32) Int32 {
             return x + 1
         }
 
-        fx main: () Void {
+        main: () Void {
             r: Ref = Ref { 4 }
             trace(r.id)
             trace(parseInt64(3))
@@ -94,11 +94,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val mathNameSource = TestCompileSupport.wrapModule(
         mathNameUri,
         """
-        fx ceil: (x: Float64) Float64 {
+        ceil: (x: Float64) Float64 {
             return x + 100.0
         }
 
-        fx main: () Void {
+        main: () Void {
             trace(ceil(1.5))
         }
         """
@@ -109,11 +109,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val renamedSource = TestCompileSupport.wrapModule(
         renamedUri,
         """
-        fx min: (a: Int32, b: Int32) Int32 {
+        min: (a: Int32, b: Int32) Int32 {
             return a
         }
 
-        fx main: () Void {
+        main: () Void {
             v: Int32 = min(7, 2)
             trace(v)
         }
@@ -129,11 +129,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val stdlibBodySource = TestCompileSupport.wrapModule(
         stdlibBodyUri,
         """
-        fx min: (a: Int32, b: Int32) Int32 {
+        min: (a: Int32, b: Int32) Int32 {
             return a
         }
 
-        fx main: () Void {
+        main: () Void {
             v: Float64 = clamp(5.0, 0.0, 1.0)
             trace(v)
         }
@@ -146,16 +146,16 @@ class UserDeclarationShadowsMagicNameTest {
     /** `test:shadow.util` declares a Float64 `min` that returns 0.0, `pub` or private; main may `use` it. */
     private fun twoModuleUnit(utilIsPub: Boolean, mainUsesUtil: Boolean): CompilationUnit {
         val visibility = if (utilIsPub) "pub " else ""
-        val use = if (mainUsesUtil) "use \"$utilUri\"\n" else ""
+        val use = if (mainUsesUtil) "${utilUri.replace(':', '.')} as util\n" else ""
         return unitOf(
             utilUri to """
-                ${visibility}fx min: (a: Float64, b: Float64) Float64 {
+                ${visibility}min: (a: Float64, b: Float64) Float64 {
                     return 0.0
                 }
             """.trimIndent(),
             twoModuleMainUri to """
                 $use
-                fx main: () Void {
+                main: () Void {
                     v: Float64 = min(1.0, 2.0)
                     trace(v)
                 }
@@ -208,16 +208,16 @@ class UserDeclarationShadowsMagicNameTest {
 
     private fun libcNameUnit(utilIsPub: Boolean, mainUsesUtil: Boolean): CompilationUnit {
         val visibility = if (utilIsPub) "pub " else ""
-        val use = if (mainUsesUtil) "use \"$libcUri\"\n" else ""
+        val use = if (mainUsesUtil) "${libcUri.replace(':', '.')} as libc\n" else ""
         return unitOf(
             libcUri to """
-                ${visibility}fx floor: (x: Float64) Float64 {
+                ${visibility}floor: (x: Float64) Float64 {
                     return 0.0
                 }
             """.trimIndent(),
             libcMainUri to """
                 $use
-                fx main: () Void {
+                main: () Void {
                     v: Float64 = floor(2.7)
                     trace(v)
                 }
@@ -230,11 +230,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val ownLibcNameSource = TestCompileSupport.wrapModule(
         ownLibcNameUri,
         """
-        fx sqrt: (x: Float64) Float64 {
+        sqrt: (x: Float64) Float64 {
             return x + 100.0
         }
 
-        fx main: () Void {
+        main: () Void {
             trace(sqrt(16.0))
         }
         """
@@ -252,10 +252,10 @@ class UserDeclarationShadowsMagicNameTest {
 
     private fun scopeUnit(withClass: Boolean = true): CompilationUnit {
         val classDecl = if (!withClass) "" else """
-            class Alpha {
-                require pub id: Int32
+            Alpha: Any {
+                pub id: Int32
 
-                fx run: () Float64 {
+                run: () Float64 {
                     return min(1.0, 2.0)
                 }
             }
@@ -263,24 +263,24 @@ class UserDeclarationShadowsMagicNameTest {
         val classUse = if (!withClass) "" else "a: Alpha = Alpha { 1 }\n    trace(a.run())"
         return unitOf(
             scopeUtilUri to """
-                fx max: (a: Float64, b: Float64) Float64 {
+                max: (a: Float64, b: Float64) Float64 {
                     return 0.0
                 }
 
-                pub fx min: (a: Float64, b: Float64) Float64 {
+                pub min: (a: Float64, b: Float64) Float64 {
                     return 0.0
                 }
 
-                pub fx pick<T>: (a: Float64, b: Float64) Float64 {
+                pub pick<T>: (a: Float64, b: Float64) Float64 {
                     return max(a, b)
                 }
             """.trimIndent(),
             scopeMainUri to """
-                use "$scopeUtilUri"
+                ${scopeUtilUri.replace(':', '.')} as scopeutil
 
                 $classDecl
 
-                fx main: () Void {
+                main: () Void {
                     picked: Float64 = pick<Int32>(1.0, 2.0)
                     trace(picked)
                     larger: Float64 = max(1.0, 2.0)
@@ -308,16 +308,16 @@ class UserDeclarationShadowsMagicNameTest {
     private fun topLevelConstantUnit(): CompilationUnit {
         return unitOf(
             constUtilUri to """
-                pub fx min: (a: Float64, b: Float64) Float64 {
+                pub min: (a: Float64, b: Float64) Float64 {
                     return 0.0
                 }
             """.trimIndent(),
             constMainUri to """
-                use "$constUtilUri"
+                ${constUtilUri.replace(':', '.')} as constutil
 
                 LOWEST: Float64 = min(1.0, 2.0)
 
-                fx main: () Void {
+                main: () Void {
                     trace(LOWEST)
                 }
             """.trimIndent(),
@@ -334,14 +334,14 @@ class UserDeclarationShadowsMagicNameTest {
     private fun laterSourceConstantUnit(): CompilationUnit {
         return unitOf(
             constUtilUri to """
-                fx min: (a: Float64, b: Float64) Float64 {
+                min: (a: Float64, b: Float64) Float64 {
                     return 0.0
                 }
             """.trimIndent(),
             constMainUri to """
                 LOWEST: Float64 = min(1.0, 2.0)
 
-                fx main: () Void {
+                main: () Void {
                     trace(LOWEST)
                 }
             """.trimIndent(),
@@ -358,11 +358,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val intAbsSource = TestCompileSupport.wrapModule(
         intAbsUri,
         """
-        fx abs: (x: Int32) Int32 {
+        abs: (x: Int32) Int32 {
             return x + 100
         }
 
-        fx main: () Void {
+        main: () Void {
             v: Int32 = abs(-5)
             trace(v)
         }
@@ -373,11 +373,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val floatAbsSource = TestCompileSupport.wrapModule(
         floatAbsUri,
         """
-        fx abs: (x: Float64) Float64 {
+        abs: (x: Float64) Float64 {
             return x + 100.0
         }
 
-        fx main: () Void {
+        main: () Void {
             v: Float64 = abs(-2.5)
             trace(v)
         }
@@ -388,11 +388,11 @@ class UserDeclarationShadowsMagicNameTest {
     private val assertSource = TestCompileSupport.wrapModule(
         assertUri,
         """
-        fx assert: (c: Bool, m: Str) Void {
+        assert: (c: Bool, m: Str) Void {
             trace(m)
         }
 
-        fx main: () Void {
+        main: () Void {
             assert(false, "mine")
             trace(1)
         }
@@ -406,12 +406,12 @@ class UserDeclarationShadowsMagicNameTest {
     private fun assertOutOfScopeUnit(): CompilationUnit {
         return unitOf(
             assertUtilUri to """
-                fx assert: (c: Bool, m: Str) Void {
+                assert: (c: Bool, m: Str) Void {
                     trace(m)
                 }
             """.trimIndent(),
             assertMainUri to """
-                fx main: () Void {
+                main: () Void {
                     assert(true, "fine")
                     trace(1)
                 }

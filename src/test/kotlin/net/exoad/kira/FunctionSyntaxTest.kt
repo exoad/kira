@@ -25,7 +25,7 @@ class FunctionSyntaxTest {
     fun acceptsColonBoundSignature() {
         val result = compile(
             """
-            fx add: (a: Int32, b: Int32) Int32 {
+            add: (a: Int32, b: Int32) Int32 {
                 return a + b
             }
 
@@ -43,16 +43,16 @@ class FunctionSyntaxTest {
     fun acceptsZeroParameterAndGenericAndAbstractForms() {
         val result = compile(
             """
-            fx now: () Int64 {
+            now: () Int64 {
                 return 0
             }
 
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
 
-            pub trait Speaker {
-                pub fx speak: () Str;
+            pub Speaker: Any {
+                pub speak: () Str;
             }
             """,
             "test:fxsyntax.forms"
@@ -78,7 +78,7 @@ class FunctionSyntaxTest {
 
         // The diagnostic should teach the new shape, not just report a bad token.
         assertTrue(
-            failure.message.contains("fx name: (params) ReturnType"),
+            failure.message.contains("a function is 'name: (a: Int32) Int32 { }'"),
             "expected a migration hint, got: ${failure.message}"
         )
     }

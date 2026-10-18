@@ -34,12 +34,12 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun unknownType() {
-        val p = snippet("x: Nope = 1\nfx f: (a: Missing) Void { }")
+        val p = snippet("x: Nope = 1\nf: (a: Missing) Void { }")
         assertEquals(2, count(p, "types.type.unknown"), TyperTestSupport.render(p))
         val d = expectDiagnostic(p, "types.type.unknown")
         assertEquals(Severity.ERROR, d.severity)
         assertTrue(d.message.contains("Nope"), d.message)
-        assertEquals(3, d.position?.lineNumber, "located at the Type node")
+        assertEquals(1, d.position?.lineNumber, "located at the Type node")
         val x = p.workspaceModules.single().members["x"] as GlobalSymbol
         assertEquals(KType.Error, x.type)
     }
@@ -48,7 +48,7 @@ class TyperDeclDiagnosticsTest {
     fun unknownTypeInsideABodyIsReportedInPhaseB() {
         val p = snippet(
             """
-            fx f: () Void {
+            f: () Void {
                 local: Missing = 1
             }
             """
@@ -58,7 +58,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aliasCycle() {
-        val p = snippet("alias A as B\nalias B as A\nalias C as A")
+        val p = snippet("B as A\nA as B\nA as C")
         assertEquals(1, count(p, "types.alias.cycle"), TyperTestSupport.render(p))
         val members = p.workspaceModules.single().members
         for (name in listOf("A", "B", "C")) {
@@ -69,7 +69,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun selfRecursiveAlias() {
-        val p = snippet("alias Chain as List<Chain>")
+        val p = snippet("List<Chain> as Chain")
         assertEquals(1, count(p, "types.alias.cycle"), TyperTestSupport.render(p))
     }
 
@@ -77,47 +77,30 @@ class TyperDeclDiagnosticsTest {
     fun duplicateDeclaration() {
         val p = snippet(
             """
-            fx f: () Void { }
-            fx f: () Void { }
+            f: () Void { }
+            f: () Void { }
             LIMIT: Int32 = 1
             LIMIT: Int32 = 2
-            class Point {
-                require pub x: Int32
-                require pub x: Int32
+            Point: Any {
+                pub x: Int32
+                pub x: Int32
             }
-            enum E { A, A }
-            fx g: (a: Int32, a: Int32) Void { }
+            g: (a: Int32, a: Int32) Void { }
             """
         )
-        assertEquals(5, count(p, "types.decl.duplicate"), TyperTestSupport.render(p))
+        assertEquals(4, count(p, "types.decl.duplicate"), TyperTestSupport.render(p))
         val m = p.workspaceModules.single()
         assertEquals(2, m.declarations.count { it.name == "f" }, "both are collected; the first keeps the name")
         assertTrue(m.members["f"] === m.declarations.first { it.name == "f" })
     }
 
     @Test
-    fun enumValueOfTheWrongType() {
-        val p = snippet(
-            """
-            enum Small: Int8 { OK = 1, BIG = 300 }
-            enum Short: Int16 { LOW = -32768, OVER = 40000 }
-            """
-        )
-        assertEquals(2, count(p, "types.enum.value"), TyperTestSupport.render(p))
-        val small = p.workspaceModules.single().members["Small"] as EnumSymbol
-        assertEquals("1:Int8", small.entries[0].value.toString())
-        assertNull(small.entries[1].value)
-        val short = p.workspaceModules.single().members["Short"] as EnumSymbol
-        assertEquals("-32768:Int16", short.entries[0].value.toString())
-    }
-
-    @Test
     fun classInheritingTwoClasses() {
         val p = snippet(
             """
-            class A { }
-            class B { }
-            class C: A, B { }
+            A: Any { a: Int32 = 0 }
+            B: Any { b: Int32 = 0 }
+            C: A, B { }
             """
         )
         assertEquals(1, count(p, "types.class.multiple-superclasses"), TyperTestSupport.render(p))
@@ -132,9 +115,9 @@ class TyperDeclDiagnosticsTest {
     fun superclassMustComeFirst() {
         val p = snippet(
             """
-            trait T { fx t: () Void }
-            class A { }
-            class C: T, A { }
+            T: Any { t: () Void }
+            A: Any { a: Int32 = 0 }
+            C: T, A { }
             """
         )
         expectDiagnostic(p, "types.class.superclass-not-first")
@@ -144,10 +127,10 @@ class TyperDeclDiagnosticsTest {
     fun inheritanceCyclesAreErrors() {
         val p = snippet(
             """
-            class A: B { }
-            class B: A { }
-            trait P: Q { }
-            trait Q: P { }
+            A: B { a: Int32 = 0 }
+            B: A { b: Int32 = 0 }
+            P: Q { }
+            Q: P { }
             """
         )
         // One report per cycle: the first class found on it drops its parent, which breaks the cycle.
@@ -159,36 +142,31 @@ class TyperDeclDiagnosticsTest {
     fun badParents() {
         val p = snippet(
             """
-            enum E { X }
-            class A { }
-            class C: E { }
-            trait T: A { }
-            class D: Int32 { }
+            D: Int32 { }
             """
         )
-        assertEquals(2, count(p, "types.class.bad-parent"), TyperTestSupport.render(p))
-        assertEquals(1, count(p, "types.trait.bad-parent"), TyperTestSupport.render(p))
+        assertEquals(1, count(p, "types.class.bad-parent"), TyperTestSupport.render(p))
     }
 
     @Test
     fun anOverrideKeepsTheMutOfWhatItOverrides() {
         val p = snippet(
             """
-            pub class Stepper {
-                pub mut fx step: () Void { }
-                pub fx peek: () Int32 {
+            pub Stepper: Any {
+                pub mut step: () Void { }
+                pub peek: () Int32 {
                     return 0
                 }
             }
-            pub class Good: Stepper {
-                pub mut fx step: () Void { }
-                pub fx peek: () Int32 {
+            pub Good: Stepper {
+                pub mut step: () Void { }
+                pub peek: () Int32 {
                     return 1
                 }
             }
-            pub class Bad: Stepper {
-                pub fx step: () Void { }
-                pub mut fx peek: () Int32 {
+            pub Bad: Stepper {
+                pub step: () Void { }
+                pub mut peek: () Int32 {
                     return 1
                 }
             }
@@ -203,8 +181,8 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun nonPubTypeOfAUsedModuleIsNotVisible() {
         val p = TyperTestSupport.type(
-            module("app:lib", "class Hidden { }\npub class Shown { }"),
-            module("app:main", "use \"app:lib\"\na: Shown = Shown { }\nb: Hidden = Hidden { }"),
+            module("app:lib", "Hidden: Any { }\npub Shown: Any { }"),
+            module("app:main", "app.lib as lib\na: Shown = Shown { }\nb: Hidden = Hidden { }"),
         )
         assertEquals(2, count(p, "types.type.not-visible"), TyperTestSupport.render(p))
         val main = p.module("app:main")!!
@@ -215,7 +193,7 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aTypeFromAModuleThatIsNotUsedIsUnknown() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub class Shown { }"),
+            module("app:lib", "pub Shown: Any { }"),
             module("app:main", "a: Shown = Shown { }"),
         )
         assertEquals(2, count(p, "types.type.unknown"), TyperTestSupport.render(p))
@@ -223,16 +201,16 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun useOfAnUnknownModule() {
-        val p = snippet("use \"app:nowhere\"")
+        val p = snippet("app.nowhere as nowhere")
         expectDiagnostic(p, "types.use.unknown-module")
     }
 
     @Test
     fun ambiguousExport() {
         val p = TyperTestSupport.type(
-            module("app:one", "pub class Thing { }"),
-            module("app:two", "pub class Thing { }"),
-            module("app:main", "use \"app:one\"\nuse \"app:two\"\nt: Thing = Thing { }"),
+            module("app:one", "pub Thing: Any { }"),
+            module("app:two", "pub Thing: Any { }"),
+            module("app:main", "app.one as one\napp.two as two\nt: Thing = Thing { }"),
         )
         assertTrue(count(p, "types.type.ambiguous") >= 1, TyperTestSupport.render(p))
     }
@@ -241,11 +219,11 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aUsedProjectModuleBeatsAUsedStdlibModule() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub fx exp: (x: Float64) Float64 {\n    return x\n}\npub class Regex { }\npub IGNORE_CASE: Int32 = 7"),
+            module("app:lib", "pub exp: (x: Float64) Float64 {\n    return x\n}\npub Regex: Any { }\npub IGNORE_CASE: Int32 = 7"),
             module(
                 "app:main",
-                "use \"kira:math\"\nuse \"kira:regex\"\nuse \"app:lib\"\n" +
-                    "fx f: () Float64 {\n    r: Regex = Regex { }\n    return exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
+                "kira.math as math\nkira.regex as regex\napp.lib as lib\n" +
+                    "f: () Float64 {\n    r: Regex = Regex { }\n    return exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
             ),
         )
         TyperTestSupport.expectNoErrors(p)
@@ -260,22 +238,12 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun twoUsedProjectModulesBesideAStdlibOneAreStillAmbiguous() {
         val p = TyperTestSupport.type(
-            module("app:one", "pub fx exp: (x: Float64) Float64 {\n    return x\n}"),
-            module("app:two", "pub fx exp: (x: Float64) Float64 {\n    return x\n}"),
-            module("app:main", "use \"kira:math\"\nuse \"app:one\"\nuse \"app:two\"\nfx f: () Float64 {\n    return exp(2.0)\n}\n"),
+            module("app:one", "pub exp: (x: Float64) Float64 {\n    return x\n}"),
+            module("app:two", "pub exp: (x: Float64) Float64 {\n    return x\n}"),
+            module("app:main", "kira.math as math\napp.one as one\napp.two as two\nf: () Float64 {\n    return exp(2.0)\n}\n"),
         )
         val d = expectDiagnostic(p, "types.call.ambiguous")
         assertTrue(d.message.endsWith("module: app:one, app:two."), d.message)
-    }
-
-    @Test
-    fun twoFilesDeclaringOneModule() {
-        val p = TyperTestSupport.type(
-            TyperTestSupport.Src("a/one.kira", "module \"app:same\"\nx: Int32 = 1\n"),
-            TyperTestSupport.Src("b/two.kira", "module \"app:same\"\ny: Int32 = 2\n"),
-        )
-        expectDiagnostic(p, "types.module.duplicate")
-        assertEquals(1, p.modules.count { it.uri == "app:same" })
     }
 
     // ---- type shapes ---------------------------------------------------------------------
@@ -305,7 +273,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aValueNamedInTypePosition() {
-        val p = snippet("fx helper: () Void { }\nx: helper = 1")
+        val p = snippet("helper: () Void { }\nx: helper = 1")
         expectDiagnostic(p, "types.type.not-a-type")
     }
 
@@ -364,7 +332,7 @@ class TyperDeclDiagnosticsTest {
             pub EXACT: Arr<UInt8, THREE> = [1, 2, 3]
             pub OPEN: Arr<UInt8> = [1, 2, 3]
             pub NESTED: Arr<Arr<UInt8, TWO>, ONE> = [[1, 2, 3]]
-            pub class Frame {
+            pub Frame: Any {
                 pub head: Arr<UInt8, TWO> = [1]
             }
             """
@@ -378,7 +346,7 @@ class TyperDeclDiagnosticsTest {
         assertEquals("[1:UInt8, 2:UInt8, 3:UInt8]", (m.members["OPEN"] as GlobalSymbol).constValue.toString())
         val magic = expectDiagnostic(p, "types.const.arr-size")
         assertTrue(magic.message.contains("This literal has 3 elements, but Arr<UInt8, 4> holds exactly 4"), magic.message)
-        assertEquals(7, magic.position?.lineNumber, "located at the literal")
+        assertEquals(5, magic.position?.lineNumber, "located at the literal")
         assertTrue(
             p.diagnostics.any { it.code == "types.const.arr-size" && it.message.contains("has 1 element, but Arr<UInt8, 2>") },
             "the field default is checked too:\n" + TyperTestSupport.render(p),
@@ -401,45 +369,45 @@ class TyperDeclDiagnosticsTest {
     fun anOverrideOfAGenericMethodMapsItsTypeParameters() {
         val p = snippet(
             """
-            pub trait Mapper {
-                pub fx map<U>: (u: U) U;
-                pub fx bounded<U: Mapper>: (u: U) Void;
+            pub Mapper: Any {
+                pub map<U>: (u: U) U;
+                pub bounded<U: Mapper>: (u: U) Void;
             }
-            pub class Base {
-                pub fx map<U>: (u: U) U {
+            pub Base: Any {
+                pub map<U>: (u: U) U {
                     return u
                 }
-                pub fx pair<A, B>: (a: A, b: B) A {
+                pub pair<A, B>: (a: A, b: B) A {
                     return a
                 }
             }
-            pub class Child: Base {
-                pub fx map<V>: (v: V) V {
+            pub Child: Base {
+                pub map<V>: (v: V) V {
                     return v
                 }
-                pub fx pair<B, A>: (a: B, b: A) B {
+                pub pair<B, A>: (a: B, b: A) B {
                     return a
                 }
             }
-            pub class Impl: Mapper {
-                pub fx map<T>: (t: T) T {
+            pub Impl: Mapper {
+                pub map<T>: (t: T) T {
                     return t
                 }
-                pub fx bounded<T: Mapper>: (t: T) Void { }
+                pub bounded<T: Mapper>: (t: T) Void { }
             }
-            pub class Wrong: Base {
-                pub fx map<U>: (u: U) Int32 {
+            pub Wrong: Base {
+                pub map<U>: (u: U) Int32 {
                     return 1
                 }
-                pub fx pair<A>: (a: A, b: A) A {
+                pub pair<A>: (a: A, b: A) A {
                     return a
                 }
             }
-            pub class Loose: Mapper {
-                pub fx map<T>: (t: T) T {
+            pub Loose: Mapper {
+                pub map<T>: (t: T) T {
                     return t
                 }
-                pub fx bounded<T>: (t: T) Void { }
+                pub bounded<T>: (t: T) Void { }
             }
             """
         )

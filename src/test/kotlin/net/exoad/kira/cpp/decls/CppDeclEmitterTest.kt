@@ -66,54 +66,6 @@ class CppDeclEmitterTest {
     // ---- section 6: enums, aliases, constants -----------------------------------------------
 
     @Test
-    fun anEnumIsAnEnumClassOverItsBase() {
-        val h = header(
-            """
-            pub enum Kind: Int32 { KIND_OK = 0, KIND_ERR = 1 }
-            pub enum Narrow: Int8 { N_A = -1, N_B = 0x7F }
-            pub enum Wide: Int64 { W_A = 5000000000 }
-            """
-        )
-        assertContains(
-            h,
-            "  enum class Kind : std::int32_t\n  {\n      KIND_OK = 0,\n      KIND_ERR = 1,\n  };",
-            "  enum class Narrow : std::int8_t\n  {\n      N_A = -1,\n      N_B = 0x7F,\n  };",
-            "  enum class Wide : std::int64_t\n  {\n      W_A = 5000000000,\n  };",
-        )
-    }
-
-    @Test
-    fun aStrEnumNumbersItsEntriesAndNameOfGivesTheValue() {
-        val h = header("""pub enum Level: Str { LOW = "low", HIGH = "high" }""")
-        assertContains(h, "  enum class Level : std::int32_t\n  {\n      LOW = 0,\n      HIGH = 1,\n  };")
-        assertTrue(!h.contains("nameOf"), "nameOf is emitted only where used:\n$h")
-
-        val used = header(
-            """pub enum Level: Str { LOW = "low", HIGH = "high" }""",
-            usageOf = { ctx -> CppUsage.of(nameOf = setOf(ctx.symbol.members["Level"] as EnumSymbol)) },
-        )
-        assertContains(
-            used,
-            "  [[nodiscard]] constexpr const char* nameOf(Level v)\n  {\n      switch(v)\n      {\n          case Level::LOW:\n              return \"low\";\n          case Level::HIGH:\n              return \"high\";\n      }\n      return \"\";\n  }",
-        )
-    }
-
-    @Test
-    fun nameOfAndEnumValuesFollowTheEnumOnlyWhereUsed() {
-        val h = header(
-            "pub enum Mood: Int32 { MOOD_CALM = 0, MOOD_BUSY = 1 }",
-            usageOf = { ctx ->
-                val mood = ctx.symbol.members["Mood"] as EnumSymbol
-                CppUsage.of(nameOf = setOf(mood), enumValues = setOf(mood))
-            },
-        )
-        assertContains(
-            h,
-            "  };\n\n  [[nodiscard]] constexpr const char* nameOf(Mood v)\n  {\n      switch(v)\n      {\n          case Mood::MOOD_CALM:\n              return \"MOOD_CALM\";\n          case Mood::MOOD_BUSY:\n              return \"MOOD_BUSY\";\n      }\n      return \"\";\n  }\n\n  [[nodiscard]] constexpr std::array<Mood, 2> enum_values(Mood)\n  {\n      return {Mood::MOOD_CALM, Mood::MOOD_BUSY};\n  }",
-        )
-    }
-
-    @Test
     fun constantsKeepTheirSpellingAndTakeTheirSuffix() {
         val h = header(
             """
@@ -181,10 +133,10 @@ class CppDeclEmitterTest {
                 """
                 mut calls: Int32 = 0
                 LOCAL: Float32 = 0.10
-                fx helper: (v: Float32) Float32 { return v * LOCAL }
-                fx orphan: () Void { }
-                pub fx go: () Void { calls += 1 }
-                pub fx useIt: () Float32 { return helper(1.0) }
+                helper: (v: Float32) Float32 { return v * LOCAL }
+                orphan: () Void { }
+                pub go: () Void { calls += 1 }
+                pub useIt: () Float32 { return helper(1.0) }
                 """,
             ),
             uri = "test:main",
@@ -200,9 +152,9 @@ class CppDeclEmitterTest {
         val h = header(
             """
             pub N: Size = 32
-            pub alias Frame as Arr<UInt8, N>
-            pub alias Pair<A, B> as Tuple2<A, B>
-            pub alias Name as Str
+            pub Arr<UInt8, N> as Frame
+            pub Tuple2<A, B> as Pair<A, B>
+            pub Str as Name
             """
         )
         assertContains(
@@ -219,32 +171,31 @@ class CppDeclEmitterTest {
     fun aStructIsAnAggregateWithDefaultsRequireFieldsAndMethods() {
         val h = header(
             """
-            pub enum Kind: Int32 { KIND_EMPTY = 0 }
-            pub struct Reply {
-                pub kind: Kind = Kind.KIND_EMPTY
+            pub Reply: Struct {
+                pub kind: Int32 = 0
                 pub topic: Str = ""
-                require pub band: Int32
+                pub band: Int32
                 pub weight: Float32 = 0.25
 
-                pub fx width: () Int32;
-                pub mut fx widen: (by: Int32 = 1) Void;
-                pub @_const fx twice: () Int32;
+                pub width: () Int32;
+                pub mut widen: (by: Int32 = 1) Void;
+                pub @_const twice: () Int32;
             }
             """
         )
         assertContains(
             h,
             "  struct Reply;\n",
-            "  struct Reply\n  {\n      Kind kind = Kind::KIND_EMPTY;\n      kira::Str topic = \"\";\n      std::int32_t band{};\n      float weight = 0.25f;\n\n      [[nodiscard]] std::int32_t width() const;\n      void widen(std::int32_t by = 1);\n      [[nodiscard]] constexpr std::int32_t twice() const;\n  };",
+            "  struct Reply\n  {\n      std::int32_t kind = 0;\n      kira::Str topic = \"\";\n      std::int32_t band{};\n      float weight = 0.25f;\n\n      [[nodiscard]] std::int32_t width() const;\n      void widen(std::int32_t by = 1);\n      [[nodiscard]] constexpr std::int32_t twice() const;\n  };",
         )
     }
 
     @Test
     fun structEqualityIsDefaultedOnlyWhereTheProgramComparesIt() {
-        val plain = header("pub struct Pt { pub x: Int32 = 0 }")
+        val plain = header("pub Pt: Struct { pub x: Int32 = 0 }")
         assertTrue(!plain.contains("operator=="), plain)
         val compared = header(
-            "pub struct Pt { pub x: Int32 = 0 }",
+            "pub Pt: Struct { pub x: Int32 = 0 }",
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Pt"] as ClassSymbol)) },
         )
         assertContains(compared, "  struct Pt\n  {\n      std::int32_t x = 0;\n\n      bool operator==(const Pt&) const = default;\n  };")
@@ -254,9 +205,9 @@ class CppDeclEmitterTest {
     fun structsAreOrderedByByValueContainment() {
         val h = header(
             """
-            pub struct Outer { pub a: Inner = Inner {} pub m: Maybe<Mid> = null }
-            pub struct Mid { pub xs: Arr<Inner, 2> = [Inner {}, Inner {}] pub list: List<Outer> = List<Outer> {} }
-            pub struct Inner { pub v: Int32 = 0 }
+            pub Outer: Struct { pub a: Inner = Inner {} pub m: Maybe<Mid> = null }
+            pub Mid: Struct { pub xs: Arr<Inner, 2> = [Inner {}, Inner {}] pub list: List<Outer> = List<Outer> {} }
+            pub Inner: Struct { pub v: Int32 = 0 }
             """,
             parts = fakeBodies,
         )
@@ -271,7 +222,7 @@ class CppDeclEmitterTest {
     @Test
     fun aStructCycleIsAnError() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub struct A { pub b: Maybe<B> = null }\npub struct B { pub a: Maybe<A> = null }"),
+            DeclTestSupport.module("test:main", "pub A: Struct { pub b: Maybe<B> = null }\npub B: Struct { pub a: Maybe<A> = null }"),
             uri = "test:main",
         )
         val cycle = emitted.diagnostics.filter { it.code == CppPlacement.STRUCT_CYCLE_CODE }
@@ -288,9 +239,9 @@ class CppDeclEmitterTest {
                 "test:main",
                 """
                 pub SCALE: Int32 = 100
-                pub fx command: (verb: Str, args: Str = "", n: Int32 = SCALE) Str { return "${'$'}{verb} ${'$'}{args} ${'$'}{n}" }
-                fx isSpace: (c: Char) Bool { return c == ' ' }
-                pub fx tell: (unused: Int32, used: Int32) Void { trace(used) }
+                pub command: (verb: Str, args: Str = "", n: Int32 = SCALE) Str { return "${'$'}{verb} ${'$'}{args} ${'$'}{n}" }
+                isSpace: (c: Char) Bool { return c == ' ' }
+                pub tell: (unused: Int32, used: Int32) Void { trace(used) }
                 """,
             ),
             uri = "test:main",
@@ -313,9 +264,9 @@ class CppDeclEmitterTest {
                 "lib:units",
                 """
                 pub SCALE: Int32 = 100
-                fx clampPct: (v: Int32) Int32 { return v }
-                pub fx percent: (part: Int32, whole: Int32) Int32 { return part * whole }
-                pub @_const fx crc: (v: UInt32) UInt32 { return v }
+                clampPct: (v: Int32) Int32 { return v }
+                pub percent: (part: Int32, whole: Int32) Int32 { return part * whole }
+                pub @_const crc: (v: UInt32) UInt32 { return v }
                 """,
             ),
             uri = "lib:units",
@@ -336,9 +287,9 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub @_const fx crc32: (buf: View<UInt8>) UInt32 { return buf.size() as UInt32 }
-                pub fx id<T>: (v: T) T { return v }
-                pub fx plain: () Void { }
+                pub @_const crc32: (buf: View<UInt8>) UInt32 { return buf.size() as UInt32 }
+                pub id<T>: (v: T) T { return v }
+                pub plain: () Void { }
                 """,
             ),
             uri = "test:main",
@@ -360,10 +311,10 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub struct Pt {
+                pub Pt: Struct {
                     pub x: Int32 = 0
-                    pub fx width: () Int32 { return x }
-                    pub mut @_const fx grow: (by: Int32) Void { x += by }
+                    pub width: () Int32 { return x }
+                    pub mut @_const grow: (by: Int32) Void { x += by }
                 }
                 """,
             ),
@@ -379,7 +330,7 @@ class CppDeclEmitterTest {
     @Test
     fun fxMainIsDeclaredInTheHeaderAndWrappedByIntMain() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("programs:forward", "CREEP: Float32 = 0.10\nfx main: () Int32 { return 0 }"),
+            DeclTestSupport.module("programs:forward", "CREEP: Float32 = 0.10\nmain: () Int32 { return 0 }"),
             uri = "programs:forward",
             parts = fakeBodies,
         )
@@ -395,11 +346,11 @@ class CppDeclEmitterTest {
     @Test
     fun aModuleWithNothingForASourceEmitsNone() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("pilot:carlink", "pub enum LinkResult: Int32 { LINK_OK = 0 }\npub WRITE_WAIT_MS: Int32 = 30"),
+            DeclTestSupport.module("pilot:carlink", "pub LINK_OK: Int32 = 0\npub WRITE_WAIT_MS: Int32 = 30"),
             uri = "pilot:carlink",
         )
         assertNull(emitted.source)
-        assertContains(CppWriter.normalize(emitted.header), "  enum class LinkResult : std::int32_t\n  {\n      LINK_OK = 0,\n  };\n\n  inline constexpr std::int32_t WRITE_WAIT_MS = 30;\n}")
+        assertContains(CppWriter.normalize(emitted.header), "  inline constexpr std::int32_t LINK_OK = 0;\n  inline constexpr std::int32_t WRITE_WAIT_MS = 30;\n}")
     }
 
     // ---- includes, banner, namespace, profile, #line ---------------------------------------------
@@ -407,11 +358,11 @@ class CppDeclEmitterTest {
     @Test
     fun theHeaderIncludesTheRuntimeByProfileThenUsedModulesRelatively() {
         val units = DeclTestSupport.module("lib:units", "pub SCALE: Int32 = 100")
-        val report = DeclTestSupport.module("app:report", "use \"lib:units\"\npub LIMIT: Int32 = SCALE")
+        val report = DeclTestSupport.module("app:report", "lib.units as units\npub LIMIT: Int32 = SCALE")
         val hosted = DeclTestSupport.emitWith(units, report, uri = "app:report").first
         assertContains(
             CppWriter.normalize(hosted.header),
-            "// GENERATED by kira dev --target cpp from app:report (src/app/report.kira). Do not edit: python tools/kira_gen.py --check fails on any difference.\n#pragma once\n#include \"kira/rt.hxx\"\n#include \"../lib/units.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace report\n{\n  inline constexpr std::int32_t LIMIT = ::units::SCALE;\n}\n#include \"kira/macro_pop.hxx\"\n",
+            "// GENERATED by kira dev --target cpp from app.report (src/app/report.kira). Do not edit: python tools/kira_gen.py --check fails on any difference.\n#pragma once\n#include \"kira/rt.hxx\"\n#include \"../lib/units.kira.hxx\"\n#include \"kira/macro_push.hxx\"\nnamespace report\n{\n  inline constexpr std::int32_t LIMIT = ::units::SCALE;\n}\n#include \"kira/macro_pop.hxx\"\n",
         )
         val freestanding = DeclTestSupport.emitWith(
             units, report, uri = "app:report",
@@ -423,7 +374,7 @@ class CppDeclEmitterTest {
     @Test
     fun aKiraWrittenStdlibModuleIsHeaderOnlyUnderKiraStd() {
         val (emitted, ctx) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("app:calc", "use \"kira:math\"\nuse \"kira:bytes\"\npub ZERO: Float64 = 0.0"),
+            DeclTestSupport.module("app:calc", "kira.math as math\nkira.bytes as bytes\npub ZERO: Float64 = 0.0"),
             uri = "app:calc",
         )
         // kira:math has Kira-written functions, so it is included through the include path; kira:bytes is all magic and is not.
@@ -440,31 +391,31 @@ class CppDeclEmitterTest {
         val (emitted, _) = DeclTestSupport.emit(DeclTestSupport.module("app:calc", "pub ZERO: Float64 = 0.0"), includeStdlib = true).let { e ->
             e.module("kira:bytes") to e
         }
-        assertContains(CppWriter.normalize(emitted.header), "// GENERATED by kira dev --target cpp from kira:bytes (kira/bytes.kira). Do not edit")
+        assertContains(CppWriter.normalize(emitted.header), "// GENERATED by kira dev --target cpp from kira.bytes (kira/bytes.kira). Do not edit")
         assertContains(CppWriter.normalize(emitted.header), "#include \"kira/rt.hxx\"\n#include \"kira/macro_push.hxx\"\n#include \"kira/macro_pop.hxx\"\n")
     }
 
     @Test
     fun lineDirectivesFollowTheOption() {
-        val src = DeclTestSupport.module("test:main", "pub fx f: () Void { }")
+        val src = DeclTestSupport.module("test:main", "pub f: () Void { }")
         val off = DeclTestSupport.emitWith(src, uri = "test:main").second
         assertNull(off.lineDirective((off.symbol.members["f"] as FnSymbol).decl!!))
         val on = DeclTestSupport.emitWith(src, uri = "test:main", options = CppOptions(lineDirectives = true)).second
-        assertEquals("#line 3 \"src/test/main.kira\"", on.lineDirective((on.symbol.members["f"] as FnSymbol).decl!!))
+        assertEquals("#line 1 \"src/test/main.kira\"", on.lineDirective((on.symbol.members["f"] as FnSymbol).decl!!))
     }
 
     // ---- names -------------------------------------------------------------------------------------
 
     @Test
     fun aKeywordNameGetsATrailingUnderscore() {
-        val h = header("pub struct Box { pub new: Int32 = 0 pub fx delete: () Void; }\npub fx register: (template: Int32) Void;")
+        val h = header("pub Box: Struct { pub new: Int32 = 0 pub delete: () Void; }\npub register: (template: Int32) Void;")
         assertContains(h, "      std::int32_t new_ = 0;\n\n      void delete_() const;", "void register_(std::int32_t template_);")
     }
 
     @Test
     fun aPubNameOnTheMacroListIsWarned() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub ERROR: Int32 = 1\npub enum Level: Int32 { IN = 0, OK = 1 }\nfx OUT: () Void { }\npub fx max: (a: Int32, b: Int32) Int32;"),
+            DeclTestSupport.module("test:main", "pub ERROR: Int32 = 1\npub IN: Int32 = 0\nOUT: () Void { }\npub max: (a: Int32, b: Int32) Int32;"),
             uri = "test:main",
         )
         val warnings = emitted.diagnostics.filter { it.code == CppDeclEmitter.MACRO_NAME_CODE }
@@ -474,7 +425,7 @@ class CppDeclEmitterTest {
 
     @Test
     fun aStaticAssertGoesThroughTheExpressionPart() {
-        val h = header("pub @_const fx crc: (v: UInt32) UInt32 { return v }\n@_static_assert(crc(1) == 1, \"crc\")", parts = fakeBodies)
+        val h = header("pub @_const crc: (v: UInt32) UInt32 { return v }\n@_static_assert(crc(1) == 1, \"crc\")", parts = fakeBodies)
         assertContains(h, "  static_assert(<BinaryExpr>, \"crc\");\n}")
     }
 
@@ -484,10 +435,10 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub class Node { pub v: Int32 = 0 }
-                pub trait Shape { pub fx area: () Int32; }
-                pub fx f: () Void { }
-                pub @_extern(cpp = "bibo::openCar", header = "car.hxx") fx openCar: () Int32;
+                pub Node: Any { pub v: Int32 = 0 }
+                pub Shape: Any { pub area: () Int32; }
+                pub f: () Void { }
+                pub @_extern(cpp = "bibo::openCar", header = "car.hxx") openCar: () Int32;
                 """,
             ),
             uri = "test:main",

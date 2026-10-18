@@ -70,7 +70,7 @@ class CppOopGoldenShapeTest {
 
     /** EscapePass's verdict on `Counter.apply`'s `f` and `applyTo`'s `f`: only called, so neither escapes. */
     private fun nonEscapingApply(program: TypedProgram) {
-        val m = program.modules.single { it.uri == "lang:closures" }
+        val m = program.modules.single { it.uri == "golden.closures:lang.closures" }
         m.declarations.forEach { sym ->
             val fns = when (sym) {
                 is net.exoad.kira.compiler.analysis.types.FnSymbol -> listOf(sym)

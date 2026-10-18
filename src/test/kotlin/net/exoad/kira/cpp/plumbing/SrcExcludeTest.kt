@@ -13,12 +13,12 @@ class SrcExcludeTest {
     @Test
     fun aBuildDirectoryHoldingKiraFilesIsIgnored() {
         val root = PlumbingTestSupport.tempProject("srcexclude")
-        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
-        PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "module \"kira:core\"\n")
-        PlumbingTestSupport.write(root, "firmware/build/gen.kira", "module \"firmware:gen\"\n")
-        PlumbingTestSupport.write(root, "builder/keep.kira", "module \"app:keep\"\n")
-        PlumbingTestSupport.write(root, "viewer/assets/car.kira", "module \"viewer:car\"\n")
-        PlumbingTestSupport.write(root, "viewer/src/link.kira", "module \"viewer:link\"\n")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "")
+        PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "")
+        PlumbingTestSupport.write(root, "firmware/build/gen.kira", "")
+        PlumbingTestSupport.write(root, "builder/keep.kira", "")
+        PlumbingTestSupport.write(root, "viewer/assets/car.kira", "")
+        PlumbingTestSupport.write(root, "viewer/src/link.kira", "")
 
         val manifest = ProjectManifest(
             ProjectSpec("bibo"),
@@ -34,8 +34,8 @@ class SrcExcludeTest {
     @Test
     fun withoutExcludesEverythingUnderSrcDirIsASource() {
         val root = PlumbingTestSupport.tempProject("srcexclude-none")
-        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
-        PlumbingTestSupport.write(root, "src/build/gen.kira", "module \"app:gen\"\n")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "")
+        PlumbingTestSupport.write(root, "src/build/gen.kira", "")
         val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = "src")
         assertEquals(2, DependencyResolver.resolveProjectSources(manifest, root).size)
     }
@@ -43,8 +43,8 @@ class SrcExcludeTest {
     @Test
     fun excludesAreRelativeToTheProjectRootNotSrcDir() {
         val root = PlumbingTestSupport.tempProject("srcexclude-root")
-        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
-        PlumbingTestSupport.write(root, "src/gen/x.kira", "module \"app:x\"\n")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "")
+        PlumbingTestSupport.write(root, "src/gen/x.kira", "")
         val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = "src", srcExclude = listOf("src/gen"))
         val sources = DependencyResolver.resolveProjectSources(manifest, root)
         assertEquals(1, sources.size)
@@ -109,8 +109,8 @@ class SrcExcludeTest {
     @Test
     fun aDotSlashExcludeIsTheSameExclude() {
         val root = PlumbingTestSupport.tempProject("srcexclude-dotslash")
-        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
-        PlumbingTestSupport.write(root, "build/gen.kira", "module \"app:gen\"\n")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "")
+        PlumbingTestSupport.write(root, "build/gen.kira", "")
         val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = ".", srcExclude = listOf("./build"))
         val sources = DependencyResolver.resolveProjectSources(manifest, root)
             .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
@@ -136,8 +136,8 @@ class SrcExcludeTest {
     @Test
     fun aRootBuildDirectoryIsExcludedByTheDoubleStarPatternAlone() {
         val root = PlumbingTestSupport.tempProject("srcexclude-root-build")
-        PlumbingTestSupport.write(root, "src/app/main.kira", "module \"app:main\"\n")
-        PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "module \"kira:core\"\n")
+        PlumbingTestSupport.write(root, "src/app/main.kira", "")
+        PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "")
         val manifest = ProjectManifest(ProjectSpec("bibo"), srcDir = ".", srcExclude = listOf("**/build"))
         val sources = DependencyResolver.resolveProjectSources(manifest, root)
             .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }

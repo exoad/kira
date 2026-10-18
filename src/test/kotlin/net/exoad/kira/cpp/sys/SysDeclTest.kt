@@ -48,7 +48,7 @@ class SysDeclTest {
 
     @TestFactory
     fun everyModuleParsesAndTypesStrict(): List<DynamicTest> {
-        val program = TyperTestSupport.snippet("fx main: () Void { }")
+        val program = TyperTestSupport.snippet("main: () Void { }")
         return modules.map { name ->
             DynamicTest.dynamicTest("kira:$name") {
                 val uri = "kira:$name"
@@ -106,32 +106,32 @@ class SysDeclTest {
     fun aProgramNamingTheModulesTypesResolvesStrict() {
         val program = TyperTestSupport.snippet(
             """
-            use "kira:time"
-            use "kira:sync"
-            use "kira:os"
-            use "kira:test"
+            kira.time as time
+            kira.sync as sync
+            kira.os as os
+            kira.test as test
 
-            pub fx clock: () Int64 {
+            pub clock: () Int64 {
                 return monoNowNs() + monoNowMs() + wallNowNs()
             }
 
-            pub fx shared: (t: Thread, m: Mutex<Int32>, a: Atomic<Bool>, q: BlockingQueue<Str>) Bool {
+            pub shared: (t: Thread, m: Mutex<Int32>, a: Atomic<Bool>, q: BlockingQueue<Str>) Bool {
                 return t.stopRequested()
             }
 
-            pub fx net: (u: UdpSocket, l: TcpListener, s: TcpStream, p: Poller, d: Datagram, r: Ready) Int32 {
+            pub net: (u: UdpSocket, l: TcpListener, s: TcpStream, p: Poller, d: Datagram, r: Ready) Int32 {
                 return u.localPort() + d.port + r.events + POLL_READ
             }
 
-            pub fx devices: (port: Serial, proc: Process) Int64 {
+            pub devices: (port: Serial, proc: Process) Int64 {
                 return port.handle() + proc.stdoutHandle()
             }
 
-            pub fx files: (path: Str) Bool {
+            pub files: (path: Str) Bool {
                 return exists(path) && makeDirs(path)
             }
 
-            pub fx report: (suite: Suite) Int32 {
+            pub report: (suite: Suite) Int32 {
                 return suite.finish()
             }
             """
@@ -207,7 +207,6 @@ class SysDeclTest {
         val fields = thread.members.filterIsInstance<VariableDecl>()
         assertTrue(fields.isNotEmpty(), "Thread declares no field, so `Thread { }` would construct it")
         fields.forEach { f ->
-            assertTrue(Modifier.REQUIRE in f.modifiers, "Thread.${f.name.value} must be a require field: a Thread has no default")
             assertTrue(f.value == null, "Thread.${f.name.value} must have no default: a Thread has no default")
         }
         val fieldSignature = fields.map { it.name.value to typeText(it.type) }
@@ -225,18 +224,18 @@ class SysDeclTest {
     @Test
     fun theTyperRefusesAThreadWithoutItsRequireFields() {
         fun missingOf(body: String): List<String> {
-            val program = TyperTestSupport.snippet("use \"kira:sync\"\n\n$body")
+            val program = TyperTestSupport.snippet("kira.sync as sync\n\n$body")
             val all = program.diagnostics
             assertTrue(all.all { it.code == "types.init.missing-required" }, "only a missing require field:\n${TyperTestSupport.render(program)}")
             return all.map { it.message }
         }
-        val none = missingOf("pub fx main: () Void {\n    t: Thread = Thread { }\n}")
+        val none = missingOf("pub main: () Void {\n    t: Thread = Thread { }\n}")
         assertEquals(1, none.size, "Thread { }: $none")
         assertTrue("'name'" in none[0] && "'body'" in none[0], "Thread { } must name both require fields: ${none[0]}")
-        val nameOnly = missingOf("pub fx main: () Void {\n    t: Thread = Thread { name = \"w\" }\n}")
+        val nameOnly = missingOf("pub main: () Void {\n    t: Thread = Thread { name = \"w\" }\n}")
         assertEquals(1, nameOnly.size, "Thread { name }: $nameOnly")
         assertTrue("'body'" in nameOnly[0] && "'name'" !in nameOnly[0], "Thread { name } must name body alone: ${nameOnly[0]}")
-        val both = missingOf("pub fx main: () Void {\n    t: Thread = Thread { name = \"w\", body = fx() Void { } }\n}")
+        val both = missingOf("pub main: () Void {\n    t: Thread = Thread { name = \"w\", body = () Void { } }\n}")
         assertEquals(emptyList(), both, "Thread { name, body } types clean")
     }
 

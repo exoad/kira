@@ -17,64 +17,64 @@ import kotlin.test.assertTrue
 
 class ExclusivityPassTest {
     private val bag = """
-        pub struct Bag {
+        pub Bag: Struct {
             pub a: Int32 = 0
             pub b: Int32 = 0
             pub items: Arr<Int32> = []
-            pub mut fx absorb: (other: Bag) Void {
+            pub mut absorb: (other: Bag) Void {
                 a += other.a
             }
-            pub fx take: (mut other: Bag) Void {
+            pub take: (mut other: Bag) Void {
                 other.a = a
             }
         }
-        pub fx swap: (mut x: Int32, mut y: Int32) Void {
+        pub swap: (mut x: Int32, mut y: Int32) Void {
             t: Int32 = x
             x = y
             y = t
         }
-        pub fx put: (mut x: Int32, v: Int32) Void {
+        pub put: (mut x: Int32, v: Int32) Void {
             x = v
         }
-        pub fx grow: (mut xs: Arr<Int32>) Void {
+        pub grow: (mut xs: Arr<Int32>) Void {
             xs.set(0, 1)
         }
-        pub fx sum: (v: View<Int32>) Int32 {
+        pub sum: (v: View<Int32>) Int32 {
             return 0
         }
-        pub fx fill: (mut xs: Arr<Int32>, v: View<Int32>) Void {
+        pub fill: (mut xs: Arr<Int32>, v: View<Int32>) Void {
             xs.set(0, v[0])
         }
-        pub fx sz: (n: Size, v: Int32) Int32 {
+        pub sz: (n: Size, v: Int32) Int32 {
             return v
         }
-        pub fx pair: (a: Int32, b: Int32) Int32 {
+        pub pair: (a: Int32, b: Int32) Int32 {
             return a + b
         }
-        pub fx bump: (mut x: Int32) Int32 {
+        pub bump: (mut x: Int32) Int32 {
             x += 1
             return x
         }
-        pub struct Counter {
+        pub Counter: Struct {
             pub a: Int32 = 0
             pub items: Arr<Int32> = []
-            pub mut fx grow: () Int32 {
+            pub mut grow: () Int32 {
                 a += 1
                 return a
             }
-            pub fx peek: () Int32 {
+            pub peek: () Int32 {
                 return a
             }
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 a = 0
             }
         }
-        pub class Cache {
+        pub Cache: Any {
             pub mut items: List<Int32> = List<Int32> {}
-            pub mut fx push: (v: Int32) Void {
+            pub mut push: (v: Int32) Void {
                 items.add(v)
             }
-            pub mut fx grown: () Int32 {
+            pub mut grown: () Int32 {
                 items.add(1)
                 return 1
             }
@@ -88,7 +88,7 @@ class ExclusivityPassTest {
         expectClean(
             snippet(
                 bag + """
-                pub fx f: () Void {
+                pub f: () Void {
                     mut a: Int32 = 1
                     mut b: Int32 = 2
                     swap(mut a, mut b)
@@ -109,7 +109,7 @@ class ExclusivityPassTest {
         expectClean(
             snippet(
                 bag + """
-                pub fx f: () Void {
+                pub f: () Void {
                     mut xs: Arr<Int32> = [1, 2]
                     n: Size = xs.size()
                     put(mut xs[0], n as Int32)
@@ -125,7 +125,7 @@ class ExclusivityPassTest {
         expectClean(
             snippet(
                 bag + """
-                pub fx f: (xs: Arr<Int32>) Int32 {
+                pub f: (xs: Arr<Int32>) Int32 {
                     mut total: Int32 = 0
                     mut out: List<Int32> = List<Int32> {}
                     mut s: Bag = Bag {}
@@ -151,7 +151,7 @@ class ExclusivityPassTest {
         expectClean(
             snippet(
                 bag + """
-                pub fx f: () Int32 {
+                pub f: () Int32 {
                     mut b: Counter = Counter {}
                     mut n: Int32 = 1
                     t: Int32 = sz(b.items.size(), b.peek())
@@ -178,7 +178,7 @@ class ExclusivityPassTest {
         // operands that both write b are a place written twice by one call, which stays refused.
         val p = snippet(
             bag + """
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut b: Counter = Counter {}
                 mut n: Int32 = 1
                 t: Int32 = sz(b.items.size(), b.grow())
@@ -199,7 +199,7 @@ class ExclusivityPassTest {
     fun aMutArgumentMustNotOverlapAnotherArgument() {
         val p = snippet(
             bag + """
-            pub fx f: () Void {
+            pub f: () Void {
                 mut a: Int32 = 1
                 swap(mut a, mut a)
                 put(mut a, a)
@@ -222,7 +222,7 @@ class ExclusivityPassTest {
     fun aMutArgumentMustNotOverlapTheReceiver() {
         val p = snippet(
             bag + """
-            pub fx f: () Void {
+            pub f: () Void {
                 mut s: Bag = Bag {}
                 s.take(mut s)
                 s.absorb(s)
@@ -240,21 +240,21 @@ class ExclusivityPassTest {
         // the order rule refuses none. A MutView of arr beside arr itself in one call is D37's argument rule.
         val p = snippet(
             """
-            pub fx fill: (v: MutView<UInt8>) UInt8 {
+            pub fill: (v: MutView<UInt8>) UInt8 {
                 v.set(0, 9)
                 return 1
             }
-            pub fx pair8: (a: UInt8, b: UInt8) UInt8 {
+            pub pair8: (a: UInt8, b: UInt8) UInt8 {
                 return a
             }
-            pub fx both: (xs: Arr<UInt8, 4>, v: MutView<UInt8>) UInt8 {
+            pub both: (xs: Arr<UInt8, 4>, v: MutView<UInt8>) UInt8 {
                 v.set(0, 9)
                 return xs[0]
             }
-            pub fx viaParam: (mv: MutView<UInt8>) UInt8 {
+            pub viaParam: (mv: MutView<UInt8>) UInt8 {
                 return pair8(mv[0], fill(mv))
             }
-            pub fx f: () UInt8 {
+            pub f: () UInt8 {
                 mut arr: Arr<UInt8, 4> = [1, 2, 3, 4]
                 a: UInt8 = pair8(arr[0], fill(arr.view()))
                 c: UInt8 = arr[0] + fill(arr.view())
@@ -274,7 +274,7 @@ class ExclusivityPassTest {
         // copied first; R-A: xs.view()[0] is the place xs[0]). A mut argument the sibling writes is refused.
         val p = snippet(
             bag + """
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut xs: Arr<Int32> = [1, 2]
                 a: Int32 = pair(xs.view()[0], bump(mut xs[1]))
                 put(mut xs[0], bump(mut xs[1]))
@@ -294,33 +294,33 @@ class ExclusivityPassTest {
         // is evaluated after its value, and an interpolation is a kira::cat call.
         val p = snippet(
             bag + """
-            pub class Box {
+            pub Box: Any {
                 pub a: Int32 = 0
                 pub b: Int32 = 0
             }
-            pub struct Pt {
+            pub Pt: Struct {
                 pub a: Int32 = 0
                 pub b: Int32 = 0
             }
-            pub fx app: (mut s: Str) Size {
+            pub app: (mut s: Str) Size {
                 s = s + "x"
                 return 1 as Size
             }
-            pub fx bumpS: (mut x: Size) Size {
+            pub bumpS: (mut x: Size) Size {
                 x += 1 as Size
                 return x
             }
-            pub struct Ctr {
+            pub Ctr: Struct {
                 pub mut a: Int32 = 0
-                pub mut fx grow: () Int32 {
+                pub mut grow: () Int32 {
                     a += 1
                     return a
                 }
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return a + v
                 }
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut n: Int32 = 1
                 n += bump(mut n)
                 bx: Box = Box { n, bump(mut n) }
@@ -340,13 +340,13 @@ class ExclusivityPassTest {
                 w: Int32 = k.plus(k.grow())
                 return n + bx.a + pt.a + arr[0] + xs[0] + w
             }
-            pub class CCtr {
+            pub CCtr: Any {
                 pub mut a: Int32 = 0
-                pub mut fx grow: () Int32 {
+                pub mut grow: () Int32 {
                     a += 1
                     return a
                 }
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return a + v
                 }
             }
@@ -368,26 +368,26 @@ class ExclusivityPassTest {
         val p = snippet(
             """
             pub mut LOG: List<Int32> = List<Int32> {}
-            pub fx note: () Void {
+            pub note: () Void {
                 LOG.add(1)
             }
-            pub fx quiet: () Int32 {
+            pub quiet: () Int32 {
                 return LOG.size() as Int32
             }
-            pub fx fill: (v: MutView<Int32>) Int32 {
+            pub fill: (v: MutView<Int32>) Int32 {
                 v.set(0, 9)
                 return 1
             }
-            pub class Box {
+            pub Box: Any {
                 pub mut items: List<Int32> = List<Int32> {}
                 pub mut other: List<Int32> = List<Int32> {}
-                pub mut fx push: (v: Int32) Void {
+                pub mut push: (v: Int32) Void {
                     items.add(v)
                 }
-                pub mut fx pushOther: (v: Int32) Void {
+                pub mut pushOther: (v: Int32) Void {
                     other.add(v)
                 }
-                pub mut fx walk: () Int32 {
+                pub mut walk: () Int32 {
                     mut n: Int32 = 0
                     for z: Int32 in items {
                         pushOther(z)
@@ -402,7 +402,7 @@ class ExclusivityPassTest {
                     return n
                 }
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
                     n += quiet()
@@ -444,26 +444,26 @@ class ExclusivityPassTest {
         val p = snippet(
             """
             pub mut LOG: List<Int32> = List<Int32> {}
-            pub class A {
-                pub fx act: () Void { }
+            pub A: Any {
+                pub act: () Void { }
             }
-            pub class B: A {
-                override pub fx act: () Void {
+            pub B: A {
+                override pub act: () Void {
                     LOG.add(1)
                 }
             }
-            pub trait T {
-                pub fx act: () Void;
+            pub T: Any {
+                pub act: () Void;
             }
-            pub struct SI: T {
-                override pub fx act: () Void {
+            pub SI: Struct, T {
+                override pub act: () Void {
                     LOG.add(1)
                 }
             }
-            pub fx run: (f: Fx<Tuple0, Int32>) Int32 {
+            pub run: (f: Fx<Tuple0, Int32>) Int32 {
                 return f()
             }
-            pub fx l1: (a: A) Int32 {
+            pub l1: (a: A) Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
                     a.act()
@@ -471,7 +471,7 @@ class ExclusivityPassTest {
                 }
                 return n
             }
-            pub fx l2: (t: T) Int32 {
+            pub l2: (t: T) Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
                     t.act()
@@ -479,19 +479,19 @@ class ExclusivityPassTest {
                 }
                 return n
             }
-            pub fx l3: () Int32 {
+            pub l3: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
-                    n += run(fx() Int32 {
+                    n += run(() Int32 {
                         LOG.add(1)
                         return 1
                     })
                 }
                 return n
             }
-            pub fx l4: () Int32 {
+            pub l4: () Int32 {
                 mut n: Int32 = 0
-                g: Fx<Tuple0, Int32> = fx() Int32 {
+                g: Fx<Tuple0, Int32> = () Int32 {
                     LOG.add(1)
                     return 1
                 }
@@ -500,10 +500,10 @@ class ExclusivityPassTest {
                 }
                 return n
             }
-            pub fx ok: () Int32 {
+            pub ok: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
-                    n += run(fx() Int32 {
+                    n += run(() Int32 {
                         return 1
                     })
                 }
@@ -526,23 +526,23 @@ class ExclusivityPassTest {
         val p = snippet(
             """
             pub mut GL: List<Int32> = List<Int32> {}
-            pub fx half: (a: View<Int32>) View<Int32> {
+            pub half: (a: View<Int32>) View<Int32> {
                 return a
             }
-            pub fx set5: (mv: MutView<Int32>) Void {
+            pub set5: (mv: MutView<Int32>) Void {
                 mv[0 as Size] = 5
             }
-            pub fx poke: () Void {
+            pub poke: () Void {
                 set5(GL.view())
             }
-            pub fx l1: () Int32 {
+            pub l1: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
                 for x: Int32 in half(xs) {
                     xs.add(x)
                 }
                 return 0
             }
-            pub fx l2: () Int32 {
+            pub l2: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in GL {
                     poke()
@@ -567,29 +567,29 @@ class ExclusivityPassTest {
         // not lend it the global. g and h write a global too. What the policy reads is CallReach.confined.
         val p = snippet(
             """
-            pub struct S {
+            pub S: Struct {
                 pub a: Int32 = 0
             }
             pub mut GS: S = S {}
             pub mut GN: Int32 = 0
             pub mut GT: S = S {}
-            pub fx bumpGS: () Int32 {
+            pub bumpGS: () Int32 {
                 GS.a += 1
                 return GS.a
             }
-            pub fx f: (p: S) Int32 {
+            pub f: (p: S) Int32 {
                 n: Int32 = bumpGS()
                 return p.a + n
             }
-            pub fx g: (p: Int32) Int32 {
+            pub g: (p: Int32) Int32 {
                 GN += 1
                 return p
             }
-            pub fx h: (p: S) Int32 {
+            pub h: (p: S) Int32 {
                 GN += 1
                 return p.a
             }
-            pub fx main: () Int32 {
+            pub main: () Int32 {
                 return f(GS) + g(GN) + h(GS) + f(GT)
             }
             """,
@@ -602,7 +602,7 @@ class ExclusivityPassTest {
     fun aLoopMustNotChangeWhatItIterates() {
         val p = snippet(
             bag + """
-            pub fx f: () Void {
+            pub f: () Void {
                 mut xs: List<Int32> = List<Int32> {}
                 for x: Int32 in xs {
                     xs.add(x)
@@ -645,47 +645,47 @@ class ExclusivityPassTest {
         // below is accepted and runs on the object Kira read (W2.3's policy tests run them).
         val p = snippet(
             """
-            pub class K {
+            pub K: Any {
                 pub mut n: Int32 = 0
-                pub mut fx grow: () Int32 {
+                pub mut grow: () Int32 {
                     n += 1
                     return n
                 }
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return n + v
                 }
-                pub mut fx add: (v: Int32) Int32 {
+                pub mut add: (v: Int32) Int32 {
                     n += v
                     return n
                 }
             }
-            pub struct Holder {
+            pub Holder: Struct {
                 pub k: K
-                pub mut fx swap: () Int32 {
+                pub mut swap: () Int32 {
                     k = K { n = 9 }
                     return 1
                 }
             }
-            pub fx rebind: (mut k: K) Int32 {
+            pub rebind: (mut k: K) Int32 {
                 k = K { n = 5 }
                 return 1
             }
-            pub fx reset: (mut h: Holder) Int32 {
+            pub reset: (mut h: Holder) Int32 {
                 h = Holder { k = K {} }
                 return 1
             }
-            pub fx bumpI: (mut i: Size) Int32 {
+            pub bumpI: (mut i: Size) Int32 {
                 i += 1 as Size
                 return 1
             }
-            pub fx mk: () K {
+            pub mk: () K {
                 return K {}
             }
-            pub fx c1: () Int32 {
+            pub c1: () Int32 {
                 mut k: K = K {}
                 return k.plus(rebind(mut k))
             }
-            pub fx c3: (c: Bool) Int32 {
+            pub c3: (c: Bool) Int32 {
                 mut k: K = K {}
                 return k.plus(if c {
                     k = K { n = 5 }
@@ -694,7 +694,7 @@ class ExclusivityPassTest {
                     2
                 })
             }
-            pub fx c4: (c: Bool) Int32 {
+            pub c4: (c: Bool) Int32 {
                 mut k: K = K {}
                 return k.add(if c {
                     k = K { n = 5 }
@@ -703,13 +703,13 @@ class ExclusivityPassTest {
                     2
                 })
             }
-            pub fx c5: () Int32 {
+            pub c5: () Int32 {
                 mut st: Holder = Holder { k = K {} }
                 a: Int32 = st.k.plus(reset(mut st))
                 b: Int32 = st.k.plus(st.swap())
                 return a + b
             }
-            pub fx ok: () Int32 {
+            pub ok: () Int32 {
                 mut k: K = K {}
                 mut st: Holder = Holder { k = K {} }
                 mut ks: List<K> = List<K> {}
@@ -734,36 +734,36 @@ class ExclusivityPassTest {
         // a class object). The emitter decides that from CallReach.confined, asserted here.
         val p = snippet(
             """
-            pub class Node {
+            pub Node: Any {
                 pub mut n: Int32 = 0
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return n + v
                 }
             }
-            pub class Scene {
+            pub Scene: Any {
                 pub mut child: Node = Node {}
-                pub fx bump: () Void {
+                pub bump: () Void {
                     child.n += 1
                 }
-                pub mut fx swap: () Void {
+                pub mut swap: () Void {
                     child = Node { n = 5 }
                 }
-                pub fx read: (k: Node) Int32 {
+                pub read: (k: Node) Int32 {
                     bump()
                     return k.n
                 }
-                pub mut fx readSwapped: (k: Node) Int32 {
+                pub mut readSwapped: (k: Node) Int32 {
                     swap()
                     return k.n
                 }
-                pub mut fx go: () Int32 {
+                pub mut go: () Int32 {
                     a: Int32 = read(child)
                     b: Int32 = readSwapped(child)
                     c: Int32 = child.plus(1)
                     return a + b + c
                 }
             }
-            pub fx outside: (sc: Scene) Int32 {
+            pub outside: (sc: Scene) Int32 {
                 a: Int32 = sc.read(sc.child)
                 b: Int32 = sc.readSwapped(sc.child)
                 c: Int32 = sc.child.plus(1)
@@ -783,67 +783,67 @@ class ExclusivityPassTest {
         // 1), and readAfter(sc.k, sc) is handed a copy of sc.k because readAfter is not CONFINED.
         val p = snippet(
             """
-            pub class K {
+            pub K: Any {
                 pub mut n: Int32 = 0
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return n + v
                 }
             }
-            pub class Sc {
+            pub Sc: Any {
                 pub mut k: K = K {}
                 pub mut c: Int32 = 0
-                pub mut fx resetK: () Void {
+                pub mut resetK: () Void {
                     k = K { n = 5 }
                 }
-                pub mut fx bumpC: () Int32 {
+                pub mut bumpC: () Int32 {
                     c += 1
                     return 1
                 }
-                pub mut fx swapOut: () Int32 {
+                pub mut swapOut: () Int32 {
                     k = K { n = 5 }
                     return 1
                 }
-                pub mut fx go: () Int32 {
+                pub mut go: () Int32 {
                     return k.plus(swapOut())
                 }
             }
-            pub fx resetVia: (sc: Sc) Int32 {
+            pub resetVia: (sc: Sc) Int32 {
                 sc.resetK()
                 return 1
             }
-            pub fx resetDirect: (sc: Sc) Int32 {
+            pub resetDirect: (sc: Sc) Int32 {
                 sc.k = K { n = 5 }
                 return 1
             }
-            pub fx readAfter: (k: K, sc: Sc) Int32 {
+            pub readAfter: (k: K, sc: Sc) Int32 {
                 sc.resetK()
                 return k.n
             }
-            pub fx r1: () Int32 {
+            pub r1: () Int32 {
                 sc: Sc = Sc {}
                 return sc.k.plus(resetVia(sc))
             }
-            pub fx r2: () Int32 {
+            pub r2: () Int32 {
                 sc: Sc = Sc {}
                 return sc.k.plus(resetDirect(sc))
             }
-            pub fx r3: () Int32 {
+            pub r3: () Int32 {
                 sc: Sc = Sc {}
                 return sc.k.plus(sc.swapOut())
             }
-            pub fx r4: () Int32 {
+            pub r4: () Int32 {
                 sc: Sc = Sc {}
-                g: Fx<Tuple0, Int32> = fx() Int32 {
+                g: Fx<Tuple0, Int32> = () Int32 {
                     sc.k = K { n = 5 }
                     return 1
                 }
                 return sc.k.plus(g())
             }
-            pub fx r5: () Int32 {
+            pub r5: () Int32 {
                 sc: Sc = Sc {}
                 return readAfter(sc.k, sc)
             }
-            pub fx ok: () Int32 {
+            pub ok: () Int32 {
                 sc: Sc = Sc {}
                 a: Int32 = sc.k.plus(sc.bumpC())
                 b: Int32 = sc.k.plus(sc.k.n)
@@ -863,41 +863,41 @@ class ExclusivityPassTest {
         // the object plus runs on (unwrap_rebind.cxx: plus ran on K(-777) before clause 1 existed).
         val p = snippet(
             """
-            pub class K {
+            pub K: Any {
                 pub mut n: Int32 = 0
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return n + v
                 }
             }
-            pub fx rebindM: (mut m: Maybe<K>) Int32 {
+            pub rebindM: (mut m: Maybe<K>) Int32 {
                 m = K { n = 5 }
                 return 1
             }
-            pub fx rebindList: (mut ks: List<K>) Int32 {
+            pub rebindList: (mut ks: List<K>) Int32 {
                 ks = List<K> {}
                 return 1
             }
-            pub fx bumpI: (mut i: Size) Int32 {
+            pub bumpI: (mut i: Size) Int32 {
                 i += 1 as Size
                 return 1
             }
-            pub fx rebind: (mut k: K) Int32 {
+            pub rebind: (mut k: K) Int32 {
                 k = K { n = 5 }
                 return 1
             }
-            pub fx mk: () K {
+            pub mk: () K {
                 return K {}
             }
-            pub fx g1: () Int32 {
+            pub g1: () Int32 {
                 mut m: Maybe<K> = K {}
                 return m.unwrap().plus(rebindM(mut m))
             }
-            pub fx g2: () Int32 {
+            pub g2: () Int32 {
                 mut ks: List<K> = List<K> {}
                 ks.add(K {})
                 return ks.get(0 as Size).plus(rebindList(mut ks))
             }
-            pub fx g3: (c: Bool) Int32 {
+            pub g3: (c: Bool) Int32 {
                 mut ks: List<K> = List<K> {}
                 ks.add(K {})
                 return ks.get(0 as Size).plus(if c {
@@ -907,7 +907,7 @@ class ExclusivityPassTest {
                     2
                 })
             }
-            pub fx ok: () Int32 {
+            pub ok: () Int32 {
                 mut ks: List<K> = List<K> {}
                 ks.add(K {})
                 mut i: Size = 0
@@ -927,40 +927,40 @@ class ExclusivityPassTest {
         // first in Kira's order (50-round4 1.6), so rebinding the container no longer frees what plus runs on.
         val p = snippet(
             """
-            pub class K {
+            pub K: Any {
                 pub mut n: Int32 = 0
-                pub fx plus: (v: Int32) Int32 {
+                pub plus: (v: Int32) Int32 {
                     return n + v
                 }
             }
-            pub class Node {
+            pub Node: Any {
                 pub mut child: K = K {}
             }
-            pub struct Holder {
+            pub Holder: Struct {
                 pub mut k: K = K {}
             }
-            pub fx rebindList: (mut ks: List<Node>) Int32 {
+            pub rebindList: (mut ks: List<Node>) Int32 {
                 ks = List<Node> {}
                 return 1
             }
-            pub fx rebindM: (mut m: Maybe<Node>) Int32 {
+            pub rebindM: (mut m: Maybe<Node>) Int32 {
                 m = Node {}
                 return 1
             }
-            pub fx rebindHs: (mut hs: List<Holder>) Int32 {
+            pub rebindHs: (mut hs: List<Holder>) Int32 {
                 hs = List<Holder> {}
                 return 1
             }
-            pub fx g1: () Int32 {
+            pub g1: () Int32 {
                 mut ks: List<Node> = List<Node> {}
                 ks.add(Node {})
                 return ks.get(0 as Size).child.plus(rebindList(mut ks))
             }
-            pub fx g2: () Int32 {
+            pub g2: () Int32 {
                 mut m: Maybe<Node> = Node {}
                 return m.unwrap().child.plus(rebindM(mut m))
             }
-            pub fx g3: () Int32 {
+            pub g3: () Int32 {
                 mut hs: List<Holder> = List<Holder> {}
                 hs.add(Holder {})
                 return hs.get(0 as Size).k.plus(rebindHs(mut hs))
@@ -984,22 +984,22 @@ class ExclusivityPassTest {
             pub mut G: Int32 = 0
             pub mut S: Str = "ab"
             pub mut GL: List<Int32> = List<Int32> { values = [1, 2] }
-            pub fx bumpG: () Int32 {
+            pub bumpG: () Int32 {
                 G += 1
                 return 0
             }
-            pub fx growS: () Str {
+            pub growS: () Str {
                 S = S + "c"
                 return "a"
             }
-            pub fx bumpL: () Size {
+            pub bumpL: () Size {
                 GL.set(0, 50)
                 return 0
             }
-            pub fx add2: (x: Int32, y: Int32) Int32 {
+            pub add2: (x: Int32, y: Int32) Int32 {
                 return x + y
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut xs: Arr<Int32> = [1, 2, 3]
                 a: Int32 = add2(G, bumpG())
                 b: Int32 = G + bumpG()
@@ -1023,48 +1023,48 @@ class ExclusivityPassTest {
         pub mut ticks: Int32 = 0
         pub mut gl: List<Int32> = List<Int32> { }
         pub mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
-        pub fx next: () Int32 {
+        pub next: () Int32 {
             ticks += 1
             return ticks
         }
-        pub fx sub: (a: Int32, b: Int32) Int32 {
+        pub sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
-        pub fx inc: (mut x: Int32) Int32 {
+        pub inc: (mut x: Int32) Int32 {
             x += 1
             return x
         }
-        pub fx lenOf: (xs: List<Int32>, n: Int32) Int32 {
+        pub lenOf: (xs: List<Int32>, n: Int32) Int32 {
             return xs.size() as Int32 + n
         }
-        pub fx pushTo: (mut xs: List<Int32>) Int32 {
+        pub pushTo: (mut xs: List<Int32>) Int32 {
             xs.add(3)
             return 0
         }
-        pub fx poke: (v: MutView<Int32>) Int32 {
+        pub poke: (v: MutView<Int32>) Int32 {
             v.set(0, 9)
             return 0
         }
-        pub fx putKey: () Int32 {
+        pub putKey: () Int32 {
             gm.put(1, 99)
             return 1
         }
-        pub fx setFirst: () Size {
+        pub setFirst: () Size {
             gl.set(0, 50)
             return 0
         }
-        pub struct Acc {
+        pub Acc: Struct {
             pub n: Int32 = 1
-            pub mut fx bump: () Int32 {
+            pub mut bump: () Int32 {
                 n = 2
                 return 10
             }
-            pub fx plus: (k: Int32) Int32 {
+            pub plus: (k: Int32) Int32 {
                 return n * 100 + k
             }
         }
         pub mut ga: Acc = Acc { }
-        pub fx bumpA: () Int32 {
+        pub bumpA: () Int32 {
             ga.bump()
             return 10
         }
@@ -1077,7 +1077,7 @@ class ExclusivityPassTest {
         // its List. Also the index spelling gl[setFirst()] (Q4 already) and the spelled-out twins of 143.
         val p = snippet(
             evalorder + """
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 ticks += next()
                 mut x: Int32 = 5
                 a: Int32 = sub(x, inc(mut x))
@@ -1104,23 +1104,23 @@ class ExclusivityPassTest {
         // the call runs; W2.9.8 lowers that (99, 50, 210, 210, 210).
         val p = snippet(
             evalorder + """
-            pub struct Acc2 {
+            pub Acc2: Struct {
                 pub n: Int32 = 1
-                pub mut fx bump: () Int32 {
+                pub mut bump: () Int32 {
                     n = 2
                     return 10
                 }
-                pub fx plus: (k: Int32) Int32 {
+                pub plus: (k: Int32) Int32 {
                     return n * 100 + k
                 }
-                pub mut fx viaThis: () Int32 {
+                pub mut viaThis: () Int32 {
                     return this.plus(bump())
                 }
-                pub mut fx viaImplicit: () Int32 {
+                pub mut viaImplicit: () Int32 {
                     return plus(bump())
                 }
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 a: Int32 = gm.get(putKey()).unwrapOr(-1)
                 b: Int32 = gl.get(setFirst())
                 c: Int32 = ga.plus(bumpA())
@@ -1144,15 +1144,15 @@ class ExclusivityPassTest {
         val p = snippet(
             evalorder + """
             pub mut G: Int32 = 0
-            pub fx bumpG: () Int32 {
+            pub bumpG: () Int32 {
                 G += 1
                 return 0
             }
-            pub fx two: (mut x: Int32, y: Int32) Int32 {
+            pub two: (mut x: Int32, y: Int32) Int32 {
                 x += y
                 return x
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 mut x: Int32 = 1
                 a: Int32 = two(mut x, inc(mut x))
                 b: Int32 = two(mut G, bumpG())
@@ -1173,19 +1173,19 @@ class ExclusivityPassTest {
             evalorder + """
             pub mut S: Str = "a"
             pub mut GA: Arr<Int32, 2> = [1, 2]
-            pub fx resetL: () List<Int32> {
+            pub resetL: () List<Int32> {
                 gl = List<Int32> { }
                 return List<Int32> { values = [3] }
             }
-            pub fx resetA: () Arr<Int32, 2> {
+            pub resetA: () Arr<Int32, 2> {
                 GA = [5, 6]
                 return [1, 2]
             }
-            pub fx growS: () Str {
+            pub growS: () Str {
                 S = S + "b"
                 return "a"
             }
-            pub fx f: () Bool {
+            pub f: () Bool {
                 a: Bool = gl == resetL()
                 b: Bool = GA == resetA()
                 c: Bool = S == growS()
@@ -1202,89 +1202,25 @@ class ExclusivityPassTest {
     // ---- round 2's loop minors (w2-5 minor #2): a finally a drop runs, and two handles of one object ------
 
     @Test
-    fun aLoopWhoseBodyMayRunAnImpureFinallyIsAcceptedTheEmitterIteratesACopy() {
-        // q7 (round 2): dropping GD's Dropper runs a finally that replaces GL while GL is iterated. Round 4 deletes
-        // FinallyRuns, which existed only to keep the C++ iterators valid: the body is IMPURE, so W6 does not hold
-        // and the emitter iterates a copy of GL (W2.3). The loop rule stays D37's over named and hidden writes.
-        val p = snippet(
-            """
-            pub mut GL: List<Int32> = List<Int32> { values = [1, 2, 3] }
-            pub class Dropper {
-                pub n: Int32 = 0
-                finally {
-                    GL = List<Int32> { }
-                }
-            }
-            pub mut GD: Maybe<Dropper> = null
-            pub fx drop: () Void {
-                GD = null
-            }
-            pub fx direct: () Int32 {
-                mut s: Int32 = 0
-                for x: Int32 in GL {
-                    GD = null
-                    s += x
-                }
-                return s
-            }
-            pub fx viaCall: () Int32 {
-                mut s: Int32 = 0
-                for x: Int32 in GL {
-                    drop()
-                    s += x
-                }
-                return s
-            }
-            pub fx local: () Int32 {
-                mut s: Int32 = 0
-                xs: List<Int32> = List<Int32> { values = [1, 2] }
-                for x: Int32 in xs {
-                    GD = null
-                    s += x
-                }
-                return s
-            }
-            pub class Item {
-                pub mut labels: List<Int32> = List<Int32> { values = [1] }
-            }
-            pub fx makeItem: () Item {
-                return Item { }
-            }
-            pub fx temporary: () Int32 {
-                mut s: Int32 = 0
-                for x: Int32 in makeItem().labels {
-                    GD = null
-                    s += x
-                }
-                return s
-            }
-            """,
-        )
-        // A temporary's field (makeItem().labels) is iterated through the copy W2.3's statement part makes: not refused.
-        expectClean(p)
-        assertEquals(Effect.IMPURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "drop()")))
-    }
-
-    @Test
     fun aLoopBodyWritingTheIteratedFieldThroughAnotherHandleOfTheClassIsRefused() {
         // q6: g and h may name one object, so g.reset() replacing g.items may invalidate a loop over h.items; a write
         // of another field through g (g.bump()) is none.
         val p = snippet(
             """
-            pub class Holder {
+            pub Holder: Any {
                 pub mut items: List<Int32> = List<Int32> { values = [1, 2] }
                 pub mut n: Int32 = 0
-                pub mut fx reset: () Void {
+                pub mut reset: () Void {
                     items = List<Int32> { }
                 }
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     n += 1
                 }
             }
-            pub fx mk: () Holder {
+            pub mk: () Holder {
                 return Holder { }
             }
-            pub fx f: (h: Holder, g: Holder) Int32 {
+            pub f: (h: Holder, g: Holder) Int32 {
                 mut s: Int32 = 0
                 for x: Int32 in h.items {
                     g.reset()
@@ -1318,16 +1254,16 @@ class ExclusivityPassTest {
 
     private val hooks = """
         pub mut HOOKS: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> {}
-        pub fx runHooks: () Void {
+        pub runHooks: () Void {
             for h: Fx<Tuple0, Void> in HOOKS {
                 h()
             }
         }
-        pub fx bumpAfter: (mut x: Int32) Void {
+        pub bumpAfter: (mut x: Int32) Void {
             runHooks()
             x += 1
         }
-        pub fx inc: (mut x: Int32) Void {
+        pub inc: (mut x: Int32) Void {
             x += 1
         }
     """
@@ -1341,35 +1277,35 @@ class ExclusivityPassTest {
         // overwrite such storage in place, which is what mut means (R19), but cannot move or free it.
         val p = snippet(
             hooks + """
-            pub struct Pose {
+            pub Pose: Struct {
                 pub mut x: Int32 = 0
             }
-            pub class H {
+            pub H: Any {
                 pub mut pose: Pose = Pose {}
                 pub mut n: Int32 = 0
-                pub mut fx step: () Void {
+                pub mut step: () Void {
                     bumpAfter(mut this.n)
                     bumpAfter(mut pose.x)
                 }
             }
-            pub struct S {
+            pub S: Struct {
                 pub mut n: Int32 = 0
-                pub mut fx own: () Void {
+                pub mut own: () Void {
                     bumpAfter(mut n)
                 }
             }
-            pub fx fwd: (mut x: Int32, mut q: Pose) Void {
+            pub fwd: (mut x: Int32, mut q: Pose) Void {
                 bumpAfter(mut x)
                 bumpAfter(mut q.x)
             }
-            pub trait Poker {
-                pub mut fx poke: () Void;
-                pub fx nudge: () Void {
+            pub Poker: Any {
+                pub mut poke: () Void;
+                pub nudge: () Void {
                     runHooks()
                     poke()
                 }
             }
-            pub fx f: (p: H) Void {
+            pub f: (p: H) Void {
                 mut a: Int32 = 0
                 bumpAfter(mut a)
                 mut xs: List<Int32> = List<Int32> { values = [1] }
@@ -1393,7 +1329,7 @@ class ExclusivityPassTest {
             hooks + """
             pub mut G: Int32 = 0
             pub mut GL: List<Int32> = List<Int32> { values = [1] }
-            pub fx f: () Void {
+            pub f: () Void {
                 inc(mut G)
                 GL.add(1)
                 inc(mut GL[0])
@@ -1411,23 +1347,23 @@ class ExclusivityPassTest {
     }
 
     private val externItem = """
-        pub class Item {
-            require pub label: Str
+        pub Item: Any {
+            pub label: Str
             pub mut count: Int32 = 0
             pub mut xs: List<Int32> = List<Int32> {}
         }
-        pub class Box {
+        pub Box: Any {
             pub mut item: Item = Item { "short" }
-            pub mut fx reset: () Void {
+            pub mut reset: () Void {
                 item = Item { "other" }
             }
         }
-        pub class Wrap {
-            require pub f: Fx<Tuple0, Void>
+        pub Wrap: Any {
+            pub f: Fx<Tuple0, Void>
         }
-        pub fx bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
-        pub fx bumpList: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
-        pub fx bumpWrap: (mut n: Int32, w: Wrap) Void;
+        pub bump: (mut n: Int32, f: Fx<Tuple0, Void>) Void;
+        pub bumpList: (mut n: Int32, fs: List<Fx<Tuple0, Void>>) Void;
+        pub bumpWrap: (mut n: Int32, w: Wrap) Void;
     """
 
     @Test
@@ -1439,16 +1375,16 @@ class ExclusivityPassTest {
         // chooses (round 4's e1: a lambda that runs its own Fx parameter, handed a hook C++ kept).
         val p = snippet(
             externItem + """
-            pub fx run: (f: Fx<Tuple0, Void>) Int32 {
+            pub run: (f: Fx<Tuple0, Void>) Int32 {
                 h: Box = Box {}
                 c: Box = h
-                bump(mut h.item.count, fx() Void {
+                bump(mut h.item.count, () Void {
                     c.reset()
                 })
-                bumpList(mut h.item.count, List<Fx<Tuple0, Void>> { values = [fx() Void { c.reset() }] })
-                bumpWrap(mut h.item.count, Wrap { f = fx() Void { c.reset() } })
+                bumpList(mut h.item.count, List<Fx<Tuple0, Void>> { values = [() Void { c.reset() }] })
+                bumpWrap(mut h.item.count, Wrap { f = () Void { c.reset() } })
                 bump(mut h.item.count, f)
-                bump(mut h.item.count, fx() Void { })
+                bump(mut h.item.count, () Void { })
                 return h.item.count
             }
             """,
@@ -1465,11 +1401,11 @@ class ExclusivityPassTest {
         // may hold a List. Two locals of their own are PRIVATE with different roots and pass.
         val p = snippet(
             externItem + """
-            pub fx swapItem: (mut xs: List<Int32>, mut it: Item) Void {
+            pub swapItem: (mut xs: List<Int32>, mut it: Item) Void {
                 it = Item { "new" }
                 xs.add(1)
             }
-            pub fx f: () Void {
+            pub f: () Void {
                 g: Box = Box {}
                 h: Box = g
                 swapItem(mut g.item.xs, mut h.item)
@@ -1493,24 +1429,24 @@ class ExclusivityPassTest {
             """
             pub mut gs: Str = "old"
             pub mut gl: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
-            pub fx rewrite: () Void {
+            pub rewrite: () Void {
                 gs = "new"
                 gl = List<Str> {}
             }
-            pub fx viaFx: (s: Str, f: Fx<Tuple0, Void>) Str {
+            pub viaFx: (s: Str, f: Fx<Tuple0, Void>) Str {
                 f()
                 return s
             }
-            pub fx viaList: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
+            pub viaList: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
                 for f: Fx<Tuple0, Void> in fs {
                     f()
                 }
                 return s
             }
-            pub fx both: () Str {
+            pub both: () Str {
                 a: Str = viaFx(gs, rewrite)
                 b: Str = viaList(gl[0], List<Fx<Tuple0, Void>> { values = [rewrite] })
-                c: Str = viaFx(gs, fx() Void { })
+                c: Str = viaFx(gs, () Void { })
                 return a + b + c
             }
             """,
@@ -1523,17 +1459,17 @@ class ExclusivityPassTest {
         // CONFINED (it writes through a handle), so the element is copied at the call.
         val alb = snippet(
             """
-            pub class H {
+            pub H: Any {
                 pub mut items: List<Str> = List<Str> { values = ["a long list element, past the small buffer"] }
             }
-            pub fx pick: (h: H) H {
+            pub pick: (h: H) H {
                 return h
             }
-            pub fx readAfterH: (s: Str, h: H) Int32 {
+            pub readAfterH: (s: Str, h: H) Int32 {
                 h.items = List<Str> {}
                 return s.length() as Int32
             }
-            pub fx both: (h: H) Int32 {
+            pub both: (h: H) Int32 {
                 return readAfterH(pick(h).items.get(0), h) + readAfterH(pick(h).items[0], h)
             }
             """,
@@ -1550,45 +1486,45 @@ class ExclusivityPassTest {
         pub mut gl: List<Int32> = [1, 2, 3]
         pub mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
         pub mut hooks: List<Fx<Tuple0, Void>> = []
-        pub class Node {
+        pub Node: Any {
             pub mut name: Str = "old-text-long-enough-to-live-on-the-heap-000000"
         }
         pub mut gh: Maybe<Node> = null
-        pub fx clobber: () Void {
+        pub clobber: () Void {
             gs = "new"
             gl = [100]
             gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
             gh = Node { name = "new" }
         }
-        pub fx callIt: (g: Fx<Tuple0, Void>) Void {
+        pub callIt: (g: Fx<Tuple0, Void>) Void {
             g()
         }
-        pub fx pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+        pub pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
             f(x)
         }
-        pub class Box<T> {
-            require pub v: T
-            pub fx run: (f: Fx<Tuple1<T>, Void>) Void {
+        pub Box<T>: Any {
+            pub v: T
+            pub run: (f: Fx<Tuple1<T>, Void>) Void {
                 f(this.v)
             }
         }
-        pub @_extern(cpp = "e::callWith", header = "e.hxx") fx callWith: (f: Fx<Tuple1<Fx<Tuple0, Void>>, Void>) Void;
+        pub @_extern(cpp = "e::callWith", header = "e.hxx") callWith: (f: Fx<Tuple1<Fx<Tuple0, Void>>, Void>) Void;
     """
 
     /** The five routes round 4 lent through (each printed wrong values, with an MSVC ASan heap-use-after-free). */
     private val genRoutes = mapOf(
         // An Fx given for pass's T, run by pass through its own Fx parameter.
         "generic" to "h: Fx<Tuple0, Void> = hooks[0]\n    pass<Fx<Tuple0, Void>>(callIt, h)",
-        "genlambda" to "pass<Fx<Tuple0, Void>>(callIt, fx () Void { clobber() })",
+        "genlambda" to "pass<Fx<Tuple0, Void>>(callIt, () Void { clobber() })",
         // A lambda literal that calls its own Fx parameter, handed pass's T.
-        "genparam" to "h: Fx<Tuple0, Void> = hooks[0]\n    pass<Fx<Tuple0, Void>>(fx (g: Fx<Tuple0, Void>) Void { g() }, h)",
+        "genparam" to "h: Fx<Tuple0, Void> = hooks[0]\n    pass<Fx<Tuple0, Void>>((g: Fx<Tuple0, Void>) Void { g() }, h)",
         // A generic class method handing its T to its Fx parameter: no Fx is given for a T at this call at all.
         "box" to "b: Box<Fx<Tuple0, Void>> = Box<Fx<Tuple0, Void>> { v = hooks[0] }\n    b.run(callIt)",
         // An extern handed a CONFINED lambda, which C++ calls with the hook it kept.
-        "extern" to "callWith(fx (g: Fx<Tuple0, Void>) Void { g() })",
+        "extern" to "callWith((g: Fx<Tuple0, Void>) Void { g() })",
     )
 
-    private fun genRoute(body: String): String = "pub fx route: () Void {\n    $body\n}\n"
+    private fun genRoute(body: String): String = "pub route: () Void {\n    $body\n}\n"
 
     @Test
     fun aGenericHandingItsTToItsFxAndAnExternHandedALambdaAreNotConfinedSoEveryUseIsCopied() {
@@ -1599,11 +1535,11 @@ class ExclusivityPassTest {
         for ((name, body) in genRoutes) {
             val p = snippet(
                 genPrelude + genRoute(body) + """
-                pub fx lenAfter: (s: Str) Int32 {
+                pub lenAfter: (s: Str) Int32 {
                     route()
                     return s.length() as Int32
                 }
-                pub fx sumAfter: (xs: List<Int32>) Int32 {
+                pub sumAfter: (xs: List<Int32>) Int32 {
                     mut t: Int32 = 0
                     for x: Int32 in xs {
                         route()
@@ -1611,7 +1547,7 @@ class ExclusivityPassTest {
                     }
                     return t
                 }
-                pub fx drive: () Void {
+                pub drive: () Void {
                     trace(lenAfter(gs))
                     trace(sumAfter(gl))
                     trace(lenAfter(gh.value.name))
@@ -1640,11 +1576,11 @@ class ExclusivityPassTest {
             for (place in listOf("gls[0]", "gh.value.name")) {
                 val p = snippet(
                     genPrelude + genRoute(body) + """
-                    pub fx setAfter: (mut s: Str) Void {
+                    pub setAfter: (mut s: Str) Void {
                         route()
                         s = "written-through-the-reference-after-the-route-000"
                     }
-                    pub fx drive: () Void {
+                    pub drive: () Void {
                         setAfter(mut $place)
                     }
                     """,
@@ -1654,63 +1590,6 @@ class ExclusivityPassTest {
                 assertEquals(listOf(false), confinedCalls(p, "setAfter"), "$name $place")
             }
         }
-    }
-
-    @Test
-    fun ruleMAcceptsAnAddToAGlobalThatDropsNothingAndRefusesWhatReplacesOrRemoves() {
-        // atk/r1: with one class whose finally is IMPURE, round 4 refused both adds (it applied the drop test to every
-        // binding). add keeps a copy and drops nothing, and its lambda is CONFINED: 2.3's binding row and 2.7's third
-        // clause accept both.
-        val r1 = snippet(
-            """
-            pub mut count: Int32 = 0
-            pub class Res {
-                pub mut n: Int32 = 0
-                finally {
-                    count += 1
-                }
-            }
-            pub mut gres: List<Res> = []
-            pub mut gfx: List<Fx<Tuple0, Void>> = []
-            pub mut gn: List<Int32> = []
-            pub fx drive: () Void {
-                gres.add(Res { n = 1 })
-                gfx.add(fx () Void { trace(7) })
-                gn.add(1)
-                trace(gres.size())
-                trace(gfx.size())
-            }
-            """,
-        )
-        expectClean(r1)
-        assertEquals(listOf(true, true, true), confinedCalls(r1, "add"))
-        assertEquals(listOf(true, true), confinedCalls(r1, "size"))
-        // The controls: what replaces or removes may drop the last Res. An add handed a lambda that writes a global stays
-        // accepted (round 5b): add takes it as a T and only keeps it, and storing an Fx never runs it.
-        val controls = snippet(
-            """
-            pub mut count: Int32 = 0
-            pub class Res {
-                pub mut n: Int32 = 0
-                finally {
-                    count += 1
-                }
-            }
-            pub mut gres: List<Res> = []
-            pub mut gfx: List<Fx<Tuple0, Void>> = []
-            pub fx drive: () Void {
-                gres.set(0, Res { n = 2 })
-                gres.removeAt(0)
-                gres.clear()
-                gfx.add(fx () Void { count += 1 })
-            }
-            """,
-        )
-        expectExactly(controls, *Array(3) { "rules.exclusivity.mut" })
-        assertEquals(listOf(false), confinedCalls(controls, "set"))
-        assertEquals(listOf(false), confinedCalls(controls, "removeAt"))
-        assertEquals(listOf(false), confinedCalls(controls, "clear"))
-        assertEquals(listOf(true), confinedCalls(controls, "add"))
     }
 
     // ---- round 5b: 2.3 row 1 charges an Fx argument only where the callee can run it (design 7.1's r4d/p3 and p5) ----
@@ -1727,17 +1606,17 @@ class ExclusivityPassTest {
             pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
             pub mut gl: List<Int32> = [1, 2, 3]
             pub mut hooks: List<Fx<Tuple0, Void>> = []
-            pub fx runHooks: () Void {
+            pub runHooks: () Void {
                 items: List<Fx<Tuple0, Void>> = hooks
                 for h: Fx<Tuple0, Void> in items {
                     h()
                 }
             }
-            pub fx lenAfter: (s: Str) Int32 {
+            pub lenAfter: (s: Str) Int32 {
                 runHooks()
                 return s.length() as Int32
             }
-            pub fx sumAfter: (xs: List<Int32>) Int32 {
+            pub sumAfter: (xs: List<Int32>) Int32 {
                 mut t: Int32 = 0
                 for x: Int32 in xs {
                     runHooks()
@@ -1745,16 +1624,16 @@ class ExclusivityPassTest {
                 }
                 return t
             }
-            pub class Node {
+            pub Node: Any {
                 pub mut n: Int32 = 5
-                pub fx nAfter: () Int32 {
+                pub nAfter: () Int32 {
                     runHooks()
                     return n
                 }
             }
             pub mut gn: Maybe<Node> = null
-            pub fx drive: () Void {
-                hooks.add(fx () Void {
+            pub drive: () Void {
+                hooks.add(() Void {
                     gs = "new"
                     gl = [100]
                     gn = Node { n = 9 }
@@ -1778,24 +1657,24 @@ class ExclusivityPassTest {
         // global, D49): the value receiver gt of describe, which runs the hook.
         val p5 = snippet(
             """
-            pub struct Tag {
-                pub name: Str
-                pub n: Int32
-                pub fx describe: () Str {
+            pub Tag: Struct {
+                pub name: Str = ""
+                pub n: Int32 = 0
+                pub describe: () Str {
                     runHooks()
                     return "${'$'}{name}:${'$'}{n}"
                 }
             }
             pub mut gt: Tag = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
             pub mut hooks: List<Fx<Tuple0, Void>> = []
-            pub fx runHooks: () Void {
+            pub runHooks: () Void {
                 items: List<Fx<Tuple0, Void>> = hooks
                 for h: Fx<Tuple0, Void> in items {
                     h()
                 }
             }
-            pub fx drive: () Void {
-                hooks.add(fx () Void {
+            pub drive: () Void {
+                hooks.add(() Void {
                     gt = Tag { name = "new", n = 2 }
                 })
                 trace(gt.describe())
@@ -1810,12 +1689,12 @@ class ExclusivityPassTest {
             """
             pub mut hooks: List<Fx<Tuple0, Void>> = []
             pub mut gs: Str = "old"
-            pub fx addRun: (mut hs: List<Fx<Tuple0, Void>>, f: Fx<Tuple0, Void>) Void {
+            pub addRun: (mut hs: List<Fx<Tuple0, Void>>, f: Fx<Tuple0, Void>) Void {
                 f()
                 hs.add(f)
             }
-            pub fx drive: () Void {
-                addRun(mut hooks, fx () Void {
+            pub drive: () Void {
+                addRun(mut hooks, () Void {
                     hooks = []
                 })
             }
@@ -1834,24 +1713,24 @@ class ExclusivityPassTest {
         // lenAfter and sumAfter were CONFINED and W3 lent gs and gl: 3 for Kira's 47, 100 for 6.
         val t1 = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
 
             mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
             mut gl: List<Int32> = [1, 2, 3]
 
-            fx startAndJoin: () Void {
-                t: Thread = Thread { name = "w", body = fx () Void {
+            startAndJoin: () Void {
+                t: Thread = Thread { name = "w", body = () Void {
                     gs = "new"
                     gl = [100]
                 } }
             }
 
-            pub fx lenAfter: (s: Str) Int32 {
+            pub lenAfter: (s: Str) Int32 {
                 startAndJoin()
                 return s.length() as Int32
             }
 
-            pub fx sumAfter: (xs: List<Int32>) Int32 {
+            pub sumAfter: (xs: List<Int32>) Int32 {
                 startAndJoin()
                 mut t: Int32 = 0
                 for x: Int32 in xs {
@@ -1860,7 +1739,7 @@ class ExclusivityPassTest {
                 return t
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(lenAfter(gs))
                 gs = "old-text-long-enough-to-live-on-the-heap-000000"
                 gl = [1, 2, 3]
@@ -1876,29 +1755,29 @@ class ExclusivityPassTest {
         // setAfter(mut gls[0]) (gcc and clang exit 127, an MSVC ASan heap-use-after-free in lenAfter).
         val t2 = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
 
             mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
             mut gls: List<Str> = ["old-text-long-enough-to-live-on-the-heap-000000"]
             mut hooks: List<Fx<Tuple0, Void>> = []
 
-            fx startAndJoin: () Void {
+            startAndJoin: () Void {
                 t: Thread = Thread { name = "w", body = hooks[0] }
             }
 
-            pub fx lenAfter: (s: Str) Int32 {
+            pub lenAfter: (s: Str) Int32 {
                 startAndJoin()
                 return s.length() as Int32
             }
 
-            fx setAfter: (mut s: Str) Void {
+            setAfter: (mut s: Str) Void {
                 startAndJoin()
                 s = "written-through-the-reference-after-the-route-000"
             }
 
-            fx main: () Void {
+            main: () Void {
                 mut hs: List<Fx<Tuple0, Void>> = []
-                hs.add(fx () Void {
+                hs.add(() Void {
                     gs = "new"
                     gls = ["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j"]
                 })
@@ -1921,7 +1800,7 @@ class ExclusivityPassTest {
 
     /** gen2.py's two routes: a Thread constructed with a lambda body, and with a hook from a global List. */
     private val threadRoutes = mapOf(
-        "thread" to "t: Thread = Thread { name = \"w\", body = fx () Void { clobber() } }",
+        "thread" to "t: Thread = Thread { name = \"w\", body = () Void { clobber() } }",
         "threadhook" to "t: Thread = Thread { name = \"w\", body = hooks[0] }",
     )
 
@@ -1931,12 +1810,12 @@ class ExclusivityPassTest {
         // were accepted, gcc 139/127 and an ASan use-after-free each).
         for ((name, body) in threadRoutes) {
             val p = snippet(
-                "use \"kira:sync\"\n" + genPrelude + genRoute(body) + """
-                pub fx lenAfter: (s: Str) Int32 {
+                "kira.sync as sync\n" + genPrelude + genRoute(body) + """
+                pub lenAfter: (s: Str) Int32 {
                     route()
                     return s.length() as Int32
                 }
-                pub fx sumAfter: (xs: List<Int32>) Int32 {
+                pub sumAfter: (xs: List<Int32>) Int32 {
                     mut t: Int32 = 0
                     for x: Int32 in xs {
                         route()
@@ -1944,7 +1823,7 @@ class ExclusivityPassTest {
                     }
                     return t
                 }
-                pub fx drive: () Void {
+                pub drive: () Void {
                     trace(lenAfter(gs))
                     trace(sumAfter(gl))
                     trace(lenAfter(gh.value.name))
@@ -1958,12 +1837,12 @@ class ExclusivityPassTest {
             assertEquals(listOf(false), confinedCalls(p, "sumAfter"), name)
             for (place in listOf("gls[0]", "gh.value.name")) {
                 val m = snippet(
-                    "use \"kira:sync\"\n" + genPrelude + genRoute(body) + """
-                    pub fx setAfter: (mut s: Str) Void {
+                    "kira.sync as sync\n" + genPrelude + genRoute(body) + """
+                    pub setAfter: (mut s: Str) Void {
                         route()
                         s = "written-through-the-reference-after-the-route-000"
                     }
-                    pub fx drive: () Void {
+                    pub drive: () Void {
                         setAfter(mut $place)
                     }
                     """,
@@ -1982,25 +1861,25 @@ class ExclusivityPassTest {
         // the call that hands it in, as spawn(name, body) is.
         val p = snippet(
             """
-            use "kira:sync"
+            kira.sync as sync
             pub mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-            pub fx quiet: () Void {
-                t: Thread = Thread { name = "w", body = fx () Void {
+            pub quiet: () Void {
+                t: Thread = Thread { name = "w", body = () Void {
                     mut k: Int32 = 0
                     k += 1
                 } }
             }
-            pub fx startWith: (f: Fx<Tuple0, Void>) Void {
+            pub startWith: (f: Fx<Tuple0, Void>) Void {
                 t: Thread = Thread { name = "w", body = f }
             }
-            pub fx lenAfter: (s: Str) Int32 {
+            pub lenAfter: (s: Str) Int32 {
                 quiet()
                 return s.length() as Int32
             }
-            pub fx drive: () Void {
+            pub drive: () Void {
                 trace(lenAfter(gs))
-                startWith(fx () Void { })
-                startWith(fx () Void {
+                startWith(() Void { })
+                startWith(() Void {
                     gs = "new"
                 })
             }
@@ -2029,392 +1908,4 @@ class ExclusivityPassTest {
             CallReach.dropsMidCall(rc, p.model, rc.receiver?.let { p.model.types[it] })
         }
 
-    /** The round-6 verifier's element: a Rec whose Res runs a finally that adds to the Holder's List through a global alias. */
-    private val reentrant = """
-        pub class Res {
-            pub n: Int32 = 0
-
-            finally {
-                gh.unwrap().items.add(Rec { v = 90 + n, r = null, name = "fin-long-name-that-lives-on-the-heap-00000" })
-                trace("finally ran")
-            }
-        }
-
-        pub struct Rec {
-            pub v: Int32
-            pub r: Maybe<Res>
-            pub name: Str
-        }
-    """
-
-    @Test
-    fun ruleMRefusesAStableReceiverOfAListBindingThatDropsWhatItHeldMidOperation() {
-        // w23r6/p/f12 (W2.3's KI-20) and w25r6v2/x/m3, as their authors wrote them: items.clear() on this.items in a
-        // class mut fx, and h.items.clear() on the object behind a local handle. Both places are STABLE, and round 6
-        // accepted both: std::vector::clear runs Res's finally, whose add reallocates the buffer clear is still
-        // destroying (gcc 127, clang 139/127, MSVC 'finally ran' then 0 for Kira's two lines then 2, an ASan
-        // heap-use-after-free in vector::clear).
-        val f12 = snippet(
-            reentrant + """
-            pub class Holder {
-                pub mut items: List<Rec> = []
-
-                pub mut fx wipe: () Void {
-                    items.clear()
-                }
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2 }, name = "two-long-name-that-lives-on-the-heap-000000" }]
-                h.wipe()
-                trace(h.items.size())
-                gh = null
-            }
-            """,
-        )
-        assertEquals(listOf("items" to "clear"), dropRefusals(f12), TyperTestSupport.render(f12))
-        assertEquals(listOf("rules.exclusivity.mut"), RulesTestSupport.rules(f12))
-        assertTrue(message(f12, "rules.exclusivity.mut").startsWith("the receiver 'items' of the mut fx, storage reached through a handle, is passed to 'clear'"))
-        val m3 = snippet(
-            reentrant + """
-            pub class Holder {
-                pub mut items: List<Rec> = []
-
-                pub mut fx wipe: () Void {
-                    items.clear()
-                }
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2 }, name = "two-long-name-that-lives-on-the-heap-000000" }]
-                h.items.clear()
-                trace(h.items.size())
-                gh = null
-            }
-            """,
-        )
-        assertEquals(listOf("items" to "clear", "h.items" to "clear"), dropRefusals(m3), TyperTestSupport.render(m3))
-        assertEquals(listOf(true, true), dropsMid(m3, "clear"))
-        // w25r6v2/x/m2: removeAt, then clear, on this.items. MSVC printed finally/2/finally/0 for Kira's finally/2/finally/1.
-        val m2 = snippet(
-            reentrant + """
-            pub class Holder {
-                pub mut items: List<Rec> = []
-
-                pub mut fx dropFirst: () Void {
-                    items.removeAt(0)
-                }
-
-                pub mut fx wipe: () Void {
-                    items.clear()
-                }
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" }]
-                h.dropFirst()
-                trace(h.items.size())
-                h.items[0] = Rec { v = 3, r = Res { n = 3 }, name = "three-long-name-that-lives-on-the-heap-0000" }
-                h.wipe()
-                trace(h.items.size())
-                gh = null
-            }
-            """,
-        )
-        assertEquals(listOf("items" to "removeAt", "items" to "clear"), dropRefusals(m2), TyperTestSupport.render(m2))
-        assertEquals(listOf("rules.exclusivity.mut", "rules.exclusivity.mut"), RulesTestSupport.rules(m2))
-    }
-
-    @Test
-    fun ruleMRefusesAStableReceiverOfEveryContainerBindingThatDropsMidOperation() {
-        // w25r6v2/x/m4: Map.put, which may replace a value (Map::put assigns the element member by member), and
-        // Map.clear on the object behind a local handle; the finally replaces the Map (gcc, clang and MSVC 127, an ASan
-        // heap-use-after-free in the Tuple2 destructor).
-        val m4 = snippet(
-            """
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    gh.unwrap().m = Map<Str, Rec> { values = [] }
-                    trace("finally ran")
-                }
-            }
-
-            pub struct Rec {
-                pub v: Int32
-                pub r: Maybe<Res>
-                pub name: Str
-            }
-
-            pub class Holder {
-                pub mut m: Map<Str, Rec> = Map<Str, Rec> { values = [] }
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.m.put("a", Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" })
-                h.m.put("a", Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" })
-                trace(h.m.size())
-                h.m.put("b", Rec { v = 3, r = Res { n = 3 }, name = "three-long-name-that-lives-on-the-heap-0000" })
-                h.m.clear()
-                trace(h.m.size())
-                gh = null
-            }
-            """,
-        )
-        assertEquals(listOf("h.m" to "put", "h.m" to "put", "h.m" to "put", "h.m" to "clear"), dropRefusals(m4), TyperTestSupport.render(m4))
-        // v23r6x/atk/k_a4 (Map, Deque, Stack and Queue on a class's own fields; the finally only counts the container:
-        // every build crashed) and k_a6c (the finally only reads items.size(): 'seen 2' on all four for Kira's 'seen 0').
-        // The adds (pushBack, push, enqueue) drop nothing and stay accepted.
-        val a4 = snippet(
-            """
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    if n == 1 {
-                        trace("m ${'$'}{gh.unwrap().m.size()}")
-                    }
-                    if n == 2 {
-                        trace("d ${'$'}{gh.unwrap().d.size()}")
-                    }
-                    if n == 3 {
-                        trace("s ${'$'}{gh.unwrap().s.size()}")
-                    }
-                    if n == 4 {
-                        trace("q ${'$'}{gh.unwrap().q.size()}")
-                    }
-                }
-            }
-
-            pub struct Rec {
-                pub v: Int32
-                pub r: Maybe<Res>
-            }
-
-            pub class Holder {
-                pub mut m: Map<Int32, Rec> = Map<Int32, Rec> { }
-                pub mut d: Deque<Rec> = Deque<Rec> { }
-                pub mut s: Stack<Rec> = Stack<Rec> { }
-                pub mut q: Queue<Rec> = Queue<Rec> { }
-
-                pub mut fx fill: () Void {
-                    m.put(1, Rec { v = 1, r = Res { n = 1 } })
-                    m.put(2, Rec { v = 2, r = null })
-                    d.pushBack(Rec { v = 1, r = Res { n = 2 } })
-                    d.pushBack(Rec { v = 2, r = null })
-                    s.push(Rec { v = 1, r = Res { n = 3 } })
-                    s.push(Rec { v = 2, r = null })
-                    q.enqueue(Rec { v = 1, r = Res { n = 4 } })
-                    q.enqueue(Rec { v = 2, r = null })
-                }
-
-                pub mut fx wipeM: () Void {
-                    m.clear()
-                }
-
-                pub mut fx wipeD: () Void {
-                    d.clear()
-                }
-
-                pub mut fx wipeS: () Void {
-                    s.clear()
-                }
-
-                pub mut fx wipeQ: () Void {
-                    q.clear()
-                }
-
-                pub mut fx take: () Void {
-                    d.popFront()
-                    d.popBack()
-                    s.pop()
-                    q.dequeue()
-                    m.remove(1)
-                }
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.fill()
-                h.wipeM()
-                trace("m after ${'$'}{h.m.size()}")
-                h.wipeD()
-                trace("d after ${'$'}{h.d.size()}")
-                h.wipeS()
-                trace("s after ${'$'}{h.s.size()}")
-                h.wipeQ()
-                trace("q after ${'$'}{h.q.size()}")
-                gh = null
-            }
-            """,
-        )
-        assertEquals(
-            listOf("m" to "put", "m" to "put", "m" to "clear", "d" to "clear", "s" to "clear", "q" to "clear") +
-                listOf("d" to "popFront", "d" to "popBack", "s" to "pop", "q" to "dequeue", "m" to "remove"),
-            dropRefusals(a4),
-            TyperTestSupport.render(a4),
-        )
-        assertEquals(listOf(false, false), dropsMid(a4, "pushBack"))
-        val a6c = snippet(
-            """
-            pub class Res {
-                pub n: Int32 = 0
-                pub h: Holder
-
-                finally {
-                    if n == 2 {
-                        trace("seen ${'$'}{h.items.size()}")
-                    }
-                }
-            }
-
-            pub struct Rec {
-                pub v: Int32
-                pub r: Maybe<Res>
-                pub name: Str
-            }
-
-            pub class Holder {
-                pub mut items: List<Rec> = []
-
-                pub mut fx wipe: () Void {
-                    items.clear()
-                }
-            }
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                h.items = [Rec { v = 1, r = null, name = "one-long-name-that-lives-on-the-heap-000000" }, Rec { v = 2, r = Res { n = 2, h = h }, name = "two-long-name-that-lives-on-the-heap-000000" }]
-                h.wipe()
-                trace("after ${'$'}{h.items.size()}")
-            }
-            """,
-        )
-        assertEquals(listOf("items" to "clear"), dropRefusals(a6c), TyperTestSupport.render(a6c))
-    }
-
-    @Test
-    fun ruleMKeepsListSetAndEveryQuietDropOnAStablePlace() {
-        // w25r6v2/x/m1, the control: List.set stores first and drops the old element after (the emitter's
-        // kira::replace), so a finally that replaces the whole List meets a whole one: Kira's 3/91/fin with 0 ASan
-        // reports on round 6. It stays STABLE and accepted.
-        val m1 = snippet(
-            """
-            pub class Res {
-                pub n: Int32 = 0
-
-                finally {
-                    gh.unwrap().items = [Rec { v = 90 + n, r = null, name = "fin-long-name-that-lives-on-the-heap-00000" }, Rec { v = 80, r = null, name = "fin-long-name-that-lives-on-the-heap-00001" }, Rec { v = 70, r = null, name = "fin-long-name-that-lives-on-the-heap-00002" }]
-                    trace("finally ran")
-                }
-            }
-
-            pub struct Rec {
-                pub v: Int32
-                pub r: Maybe<Res>
-                pub name: Str
-            }
-
-            pub class Holder {
-                pub mut items: List<Rec> = []
-            }
-
-            mut gh: Maybe<Holder> = null
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                gh = h
-                h.items = [Rec { v = 1, r = Res { n = 1 }, name = "one-long-name-that-lives-on-the-heap-000000" }]
-                h.items.set(0, Rec { v = 2, r = null, name = "two-long-name-that-lives-on-the-heap-000000" })
-                trace(h.items.size())
-                trace(h.items[0].v)
-                trace(h.items[0].name)
-                gh = null
-            }
-            """,
-        )
-        expectClean(m1)
-        assertEquals(listOf(false), dropsMid(m1, "set"))
-        assertEquals(listOf(false), confinedCalls(m1, "set"), "set may drop a Res: not CONFINED, which STABLE does not need")
-        // The quiet cases: an element whose drop runs no IMPURE finally (a scalar, a Str, a value holding a class with
-        // no finally), a PRIVATE local whatever it holds (no finally can name it), a Set (keys only), the adds, and the
-        // container written whole. Each stays accepted on a STABLE place.
-        val quiet = snippet(
-            """
-            pub class Quiet {
-                pub mut n: Int32 = 0
-            }
-
-            pub class Loud {
-                pub n: Int32 = 0
-
-                finally {
-                    trace("loud")
-                }
-            }
-
-            pub struct Cell {
-                pub q: Maybe<Quiet>
-                pub name: Str
-            }
-
-            pub class Holder {
-                pub mut ints: List<Int32> = []
-                pub mut names: List<Str> = []
-                pub mut cells: List<Cell> = []
-                pub mut louds: List<Loud> = []
-                pub mut tags: Set<Str> = Set<Str> { }
-                pub mut byName: Map<Str, Cell> = Map<Str, Cell> { }
-                pub mut stack: Stack<Int32> = Stack<Int32> { }
-
-                pub mut fx churn: () Void {
-                    ints.clear()
-                    names.removeAt(0)
-                    cells.clear()
-                    tags.remove("a")
-                    tags.clear()
-                    byName.put("k", Cell { q = null, name = "x" })
-                    byName.remove("k")
-                    stack.pop()
-                    louds.add(Loud { n = 1 })
-                    louds = []
-                }
-            }
-
-            fx main: () Void {
-                h: Holder = Holder { }
-                h.ints.clear()
-                h.cells.removeAt(0)
-                h.churn()
-                mut xs: List<Loud> = [Loud { n = 2 }]
-                xs.clear()
-                mut ys: List<Loud> = [Loud { n = 3 }]
-                ys.removeAt(0)
-            }
-            """,
-        )
-        expectClean(quiet)
-        assertTrue(listOf("remove", "pop", "put").all { n -> dropsMid(quiet, n).none { it } })
-        assertEquals(listOf(false, false, false, false, true), dropsMid(quiet, "clear"), "ints, cells, tags, h.ints: quiet; xs holds a Loud but is PRIVATE")
-    }
 }

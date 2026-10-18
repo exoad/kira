@@ -38,20 +38,20 @@ class ExternDelegationTest {
     private val probe = """
         pub @_extern(c = "PROBE_LIMIT", header = "probe.h") LIMIT: Int32;
 
-        pub @_extern(cpp = "probe::name", header = "probe.hxx") fx name: () Str;
+        pub @_extern(cpp = "probe::name", header = "probe.hxx") name: () Str;
 
-        pub @_extern(cpp = "probe::take", header = "probe.hxx") fx take: (s: CStr) Void;
+        pub @_extern(cpp = "probe::take", header = "probe.hxx") take: (s: CStr) Void;
 
-        pub @_extern(cpp = "probe::count", header = "probe.hxx") fx count: () Int32;
+        pub @_extern(cpp = "probe::count", header = "probe.hxx") count: () Int32;
 
-        pub @_extern(cpp = "probe::Rec", header = "probe.hxx") struct Rec {
+        pub @_extern(cpp = "probe::Rec", header = "probe.hxx") Rec: Struct {
             pub c: Int8 = 0
             pub n: Int32 = 0
         }
 
-        pub @_extern(cpp = "probe::rec", header = "probe.hxx") fx rec: () Rec;
+        pub @_extern(cpp = "probe::rec", header = "probe.hxx") rec: () Rec;
 
-        pub fx run: (label: Str) Int32 {
+        pub run: (label: Str) Int32 {
             take(label)
             r: Rec = rec()
             if name() == "abc" {

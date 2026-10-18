@@ -57,12 +57,12 @@ class CppClassShapeTest {
     fun aTraitIsAnAbstractClassWithAVirtualDestructor() {
         val (h, s) = both(
             """
-            pub trait Behaviour {
-                pub fx id: () Str;
-                pub fx mayDrive: () Bool {
+            pub Behaviour: Any {
+                pub id: () Str;
+                pub mayDrive: () Bool {
                     return false
                 }
-                pub mut fx step: (p: Int32) Int32;
+                pub mut step: (p: Int32) Int32;
             }
             """
         )
@@ -82,11 +82,11 @@ class CppClassShapeTest {
     fun traitInheritanceIsPublicAndVirtualOnlyForADiamond() {
         val plain = header(
             """
-            pub trait A {
-                pub fx a: () Int32;
+            pub A: Any {
+                pub a: () Int32;
             }
-            pub trait B: A {
-                pub fx b: () Int32;
+            pub B: A {
+                pub b: () Int32;
             }
             """
         )
@@ -95,23 +95,23 @@ class CppClassShapeTest {
 
         val diamond = header(
             """
-            pub trait A {
-                pub fx a: () Int32;
+            pub A: Any {
+                pub a: () Int32;
             }
-            pub trait B: A {
-                pub fx b: () Int32;
+            pub B: A {
+                pub b: () Int32;
             }
-            pub trait C: A {
-                pub fx c: () Int32;
+            pub C: A {
+                pub c: () Int32;
             }
-            pub class D: B, C {
-                override pub fx a: () Int32 {
+            pub D: B, C {
+                override pub a: () Int32 {
                     return 1
                 }
-                override pub fx b: () Int32 {
+                override pub b: () Int32 {
                     return 2
                 }
-                override pub fx c: () Int32 {
+                override pub c: () Int32 {
                     return 3
                 }
             }
@@ -124,19 +124,19 @@ class CppClassShapeTest {
     fun aMethodInheritedByDominanceIsForwarded() {
         val (h, s) = both(
             """
-            pub trait Named {
-                pub fx id: (n: Int32) Str;
+            pub Named: Any {
+                pub id: (n: Int32) Str;
             }
-            pub trait Tagged: Named {
-                pub fx tag: () Str;
+            pub Tagged: Named {
+                pub tag: () Str;
             }
-            pub class Animal: Named {
-                override pub fx id: (n: Int32) Str {
+            pub Animal: Named {
+                override pub id: (n: Int32) Str {
                     return "animal"
                 }
             }
-            pub class Pup: Animal, Tagged {
-                override pub fx tag: () Str {
+            pub Pup: Animal, Tagged {
+                override pub tag: () Str {
                     return "pup"
                 }
             }
@@ -152,20 +152,20 @@ class CppClassShapeTest {
     fun aDiamondWithTwoOverridersIsRefused() {
         val messages = unsupported(
             """
-            pub trait A {
-                pub fx m: () Int32;
+            pub A: Any {
+                pub m: () Int32;
             }
-            pub trait B: A {
-                override pub fx m: () Int32 {
+            pub B: A {
+                override pub m: () Int32 {
                     return 1
                 }
             }
-            pub trait C: A {
-                override pub fx m: () Int32 {
+            pub C: A {
+                override pub m: () Int32 {
                     return 2
                 }
             }
-            pub class D: B, C {
+            pub D: B, C {
             }
             """
         )
@@ -176,14 +176,15 @@ class CppClassShapeTest {
     fun aTraitMethodRedeclaredByAChildTraitOverrides() {
         val h = header(
             """
-            pub trait A {
-                pub fx name: () Str;
+            pub A: Any {
+                pub name: () Str;
             }
-            pub trait B: A {
-                override pub fx name: () Str {
+            pub B: A {
+                override pub name: () Str {
                     return "b"
                 }
             }
+            pub C: B { }
             """
         )
         assertContains(h, "  class B : public A\n  {\n  public:\n      [[nodiscard]] kira::Str name() const override;\n  };")
@@ -193,8 +194,8 @@ class CppClassShapeTest {
     fun aTraitMethodTakesAnFxAsKiraFnSinceAVirtualCannotBeATemplate() {
         val h = header(
             """
-            pub trait Visitor {
-                pub fx each: (f: Fx<Tuple1<Int32>, Void>) Void;
+            pub Visitor: Any {
+                pub each: (f: Fx<Tuple1<Int32>, Void>) Void;
             }
             """
         )
@@ -208,21 +209,21 @@ class CppClassShapeTest {
     fun aClassHasAPublicSectionAndPrivateFieldsInDeclarationOrder() {
         val (h, s) = both(
             """
-            pub class Governor {
-                require dry: Bool
-                require pub seconds: Int32
+            pub Governor: Any {
+                dry: Bool
+                pub seconds: Int32
                 mut secondsMs: Int64 = 0
                 mut label: Str = "gov"
 
-                pub fx ms: () Int64 {
+                pub ms: () Int64 {
                     return secondsMs
                 }
 
-                fx hidden: () Bool {
+                hidden: () Bool {
                     return dry
                 }
 
-                pub fx tag: () Str {
+                pub tag: () Str {
                     return label
                 }
             }
@@ -255,21 +256,21 @@ class CppClassShapeTest {
     fun theConstructorIsExplicitForExactlyOneParameterAndDefaultedForNone() {
         val h = header(
             """
-            pub class One {
-                require k: Int32
-                pub fx get: () Int32 { return k }
+            pub One: Any {
+                k: Int32
+                pub get: () Int32 { return k }
             }
-            pub class OneDefaulted {
+            pub OneDefaulted: Any {
                 mut k: Int32 = 5
-                pub fx get: () Int32 { return k }
+                pub get: () Int32 { return k }
             }
-            pub class Two {
-                require a: Int32
-                require b: Int32
-                pub fx sum: () Int32 { return a }
+            pub Two: Any {
+                a: Int32
+                b: Int32
+                pub sum: () Int32 { return a }
             }
-            pub class Empty {
-                pub fx get: () Int32 { return 1 }
+            pub Empty: Any {
+                pub get: () Int32 { return 1 }
             }
             """
         )
@@ -280,14 +281,14 @@ class CppClassShapeTest {
     fun onlyTheTrailingDefaultsAreCppDefaultArguments() {
         val h = header(
             """
-            pub class Base {
+            pub Base: Any {
                 mut a: Int32 = 1
-                pub fx getA: () Int32 { return a }
+                pub getA: () Int32 { return a }
             }
-            pub class Leaf: Base {
-                require b: Int32
+            pub Leaf: Base {
+                b: Int32
                 mut c: Int32 = 3
-                pub fx getB: () Int32 { return b + c }
+                pub getB: () Int32 { return b + c }
             }
             """
         )
@@ -296,30 +297,26 @@ class CppClassShapeTest {
     }
 
     @Test
-    fun initiallyIsTheConstructorBodyAndFinallyTheDestructor() {
+    fun initiallyIsTheConstructorBody() {
         val (h, s) = both(
             """
-            pub class Probe {
-                require pub reason: Str
+            pub Probe: Any {
+                pub reason: Str
 
                 initially {
                     trace(reason)
                 }
-
-                finally {
-                    trace("gone")
-                }
             }
-            pub class Bare {
+            pub Bare: Any {
                 initially {
                     trace(1)
                 }
             }
             """
         )
-        assertContains(h, "      explicit Probe(kira::Str reason_);\n      Probe(const Probe&) = delete;\n      Probe& operator=(const Probe&) = delete;\n      ~Probe();\n")
+        assertContains(h, "      explicit Probe(kira::Str reason_);\n")
         assertContains(h, "      Bare();\n")
-        assertContains(s, "  Probe::Probe(kira::Str reason_)\n      : reason(std::move(reason_))\n  {\n      static_cast<void>(", "  Probe::~Probe()\n  {\n      static_cast<void>(")
+        assertContains(s, "  Probe::Probe(kira::Str reason_)\n      : reason(std::move(reason_))\n  {\n      static_cast<void>(")
         assertContains(s, "  Bare::Bare()\n  {\n      static_cast<void>(")
     }
 
@@ -327,15 +324,15 @@ class CppClassShapeTest {
     fun aSubclassTakesItsSuperclassFieldsFirstAndCallsItsConstructor() {
         val (h, s) = both(
             """
-            pub class Animal {
-                require pub name: Str
-                pub fx sound: () Str {
+            pub Animal: Any {
+                pub name: Str
+                pub sound: () Str {
                     return "..."
                 }
             }
-            pub class Dog: Animal {
+            pub Dog: Animal {
                 mut tricks: Int32 = 0
-                override pub fx sound: () Str {
+                override pub sound: () Str {
                     return "woof"
                 }
             }
@@ -352,67 +349,17 @@ class CppClassShapeTest {
     }
 
     @Test
-    fun aVirtualDestructorComesFromTheFirstClassThatNeedsOne() {
-        val h = header(
-            """
-            pub class A {
-                pub fx f: () Int32 { return 1 }
-            }
-            pub class B: A {
-                override pub fx f: () Int32 { return 2 }
-                finally {
-                    trace(2)
-                }
-            }
-            pub class C: B {
-                finally {
-                    trace(3)
-                }
-            }
-            pub trait T {
-                pub fx t: () Int32;
-            }
-            pub class D: T {
-                override pub fx t: () Int32 { return 4 }
-                finally {
-                    trace(4)
-                }
-            }
-            """
-        )
-        // A's f is virtual: A has the virtual destructor; B's and C's then override it; D's trait has one
-        assertContains(h, "      virtual ~A() = default;\n", "      ~B() override;\n", "      ~C() override;\n", "      ~D() override;\n")
-        assertContains(h, "  class B : public A\n", "  class C final : public B\n")
-
-        // a base without virtual methods stays non-polymorphic
-        val plain = header(
-            """
-            pub class Base {
-                pub fx f: () Int32 { return 1 }
-            }
-            pub class Leaf: Base {
-                finally {
-                    trace(2)
-                }
-            }
-            """
-        )
-        assertContains(plain, "  class Base\n  {\n  public:\n      Base() = default;\n      Base(const Base&) = delete;\n      Base& operator=(const Base&) = delete;\n      [[nodiscard]] std::int32_t f() const;\n  };", "      ~Leaf();\n")
-        assertLacks(plain, "virtual")
-    }
-
-    @Test
     fun aMethodIsVirtualOnlyWhenOverriddenAndConstUnlessMut() {
         val h = header(
             """
-            pub class Base {
+            pub Base: Any {
                 mut n: Int32 = 0
-                pub fx plain: () Int32 { return n }
-                pub fx replaced: () Int32 { return 1 }
-                pub mut fx bump: () Void { n = n + 1 }
+                pub plain: () Int32 { return n }
+                pub replaced: () Int32 { return 1 }
+                pub mut bump: () Void { n = n + 1 }
             }
-            pub class Leaf: Base {
-                override pub fx replaced: () Int32 { return 2 }
+            pub Leaf: Base {
+                override pub replaced: () Int32 { return 2 }
             }
             """
         )
@@ -432,23 +379,23 @@ class CppClassShapeTest {
             OopTestSupport.module(
                 uri,
                 """
-                pub fx grab: (mut v: Int32) Void {
+                pub grab: (mut v: Int32) Void {
                     v = 7
                 }
-                pub class Counter {
+                pub Counter: Any {
                     mut n: Int32 = 0
-                    pub fx bump: () Int32 {
+                    pub bump: () Int32 {
                         n += 1
                         return n
                     }
-                    pub mut fx reset: () Void {
+                    pub mut reset: () Void {
                         n = 0
                     }
-                    pub fx again: () Int32 {
+                    pub again: () Int32 {
                         reset()
                         return n
                     }
-                    pub fx viaThis: () Void {
+                    pub viaThis: () Void {
                         this.n = 3
                     }
                 }
@@ -463,85 +410,85 @@ class CppClassShapeTest {
         // its receiver (MutabilityPass has no class to judge a trait's `this` by); and a family one of those joins.
         val (h, s) = both(
             """
-            pub struct Tally {
+            pub Tally: Struct {
                 pub n: Int32 = 0
-                pub mut fx tick: () Void {
+                pub mut tick: () Void {
                     n += 1
                 }
             }
-            pub trait Poker {
-                pub mut fx poke: () Void;
-                pub fx nudge: () Void {
+            pub Poker: Any {
+                pub mut poke: () Void;
+                pub nudge: () Void {
                     poke()
                 }
             }
-            pub class Pet {
+            pub Pet: Any {
                 pub mut fed: Int32 = 0
-                pub mut fx feed: () Void {
+                pub mut feed: () Void {
                     fed += 1
                 }
             }
-            pub fx grab: (mut v: Int32) Void {
+            pub grab: (mut v: Int32) Void {
                 v = 7
             }
-            pub class Counter: Poker {
+            pub Counter: Poker {
                 mut n: Int32 = 0
                 mut tally: Tally = Tally {}
-                require pet: Pet
-                pub mut fx bump: () Int32 {
+                pet: Pet
+                pub mut bump: () Int32 {
                     n += 1
                     return n
                 }
-                pub mut fx reset: () Void {
+                pub mut reset: () Void {
                     n = 0
                 }
-                pub mut fx again: () Int32 {
+                pub mut again: () Int32 {
                     reset()
                     return n
                 }
-                pub mut fx viaThis: () Void {
+                pub mut viaThis: () Void {
                     this.n = 3
                 }
-                pub mut fx tick: () Int32 {
+                pub mut tick: () Int32 {
                     tally.tick()
                     return tally.n
                 }
-                pub mut fx take: () Int32 {
+                pub mut take: () Int32 {
                     grab(mut n)
                     return n
                 }
-                pub fx laterBump: () Fx<Tuple0, Int32> {
-                    return fx() Int32 {
+                pub laterBump: () Fx<Tuple0, Int32> {
+                    return () Int32 {
                         n += 1
                         return n
                     }
                 }
-                pub mut fx me: () Counter {
+                pub mut me: () Counter {
                     n += 1
                     return this
                 }
-                override pub mut fx poke: () Void {
+                override pub mut poke: () Void {
                     n = 9
                 }
-                pub fx peek: () Int32 {
+                pub peek: () Int32 {
                     return n
                 }
-                pub fx feedPet: () Void {
+                pub feedPet: () Void {
                     pet.feed()
                 }
-                pub fx petFed: () Int32 {
+                pub petFed: () Int32 {
                     return pet.fed
                 }
                 mut nums: List<Int32> = List<Int32> {}
-                pub fx grabIt: () Int32 {
+                pub grabIt: () Int32 {
                     grab(mut n)
                     return n
                 }
-                pub fx viewAll: () Int32 {
+                pub viewAll: () Int32 {
                     return total(nums.view())
                 }
             }
-            pub fx total: (v: View<Int32>) Int32 {
+            pub total: (v: View<Int32>) Int32 {
                 return 0
             }
             """
@@ -568,12 +515,12 @@ class CppClassShapeTest {
             OopTestSupport.module(
                 uri,
                 """
-                pub class Counter {
+                pub Counter: Any {
                     pub mut k: Int32 = 5
-                    pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                    pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                         return f(x)
                     }
-                    pub fx keep: (f: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+                    pub keep: (f: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
                         return f
                     }
                 }
@@ -601,12 +548,12 @@ class CppClassShapeTest {
     fun aSubclassMethodParameterNamedLikeABaseFieldIsRenamed() {
         val (h, s) = both(
             """
-            pub class Base {
+            pub Base: Any {
                 mut k: Int32 = 0
-                pub fx get: () Int32 { return k }
+                pub get: () Int32 { return k }
             }
-            pub class Leaf: Base {
-                pub fx scaled: (k: Int32) Int32 {
+            pub Leaf: Base {
+                pub scaled: (k: Int32) Int32 {
                     return k
                 }
             }
@@ -621,11 +568,11 @@ class CppClassShapeTest {
     fun aPrivateFieldNoBodyNamesIsMaybeUnused() {
         val h = header(
             """
-            pub class Holder {
-                require kept: Int32
-                require read: Int32
-                require pub shown: Int32
-                pub fx get: () Int32 { return read }
+            pub Holder: Any {
+                kept: Int32
+                read: Int32
+                pub shown: Int32
+                pub get: () Int32 { return read }
             }
             """
         )
@@ -636,16 +583,16 @@ class CppClassShapeTest {
     fun aPrivateClassLivesInTheSourcesAnonymousNamespace() {
         val (h, s) = both(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            class Square: Shape {
-                require side: Int32
-                override pub fx area: () Int32 {
+            Square: Shape {
+                side: Int32
+                override pub area: () Int32 {
                     return side
                 }
             }
-            pub fx make: () Shape {
+            pub make: () Shape {
                 return Square { 3 }
             }
             """
@@ -663,12 +610,12 @@ class CppClassShapeTest {
     fun aHeaderOnlyModuleDefinesTheMembersInlineInTheHeader() {
         val e = emit(
             """
-            pub class Tally {
+            pub Tally: Any {
                 mut n: Int32 = 0
-                pub mut fx add: (k: Int32) Void {
+                pub mut add: (k: Int32) Void {
                     n = n + k
                 }
-                pub fx total: () Int32 {
+                pub total: () Int32 {
                     return n
                 }
             }
@@ -686,13 +633,13 @@ class CppClassShapeTest {
     fun aGenericClassIsATemplateWhoseMembersAreInTheHeader() {
         val (h, s) = both(
             """
-            pub class Box<T> {
-                require pub value: T
-                pub fx get: () T {
+            pub Box<T>: Any {
+                pub value: T
+                pub get: () T {
                     return value
                 }
             }
-            pub fx boxed: (v: Int32) Box<Int32> {
+            pub boxed: (v: Int32) Box<Int32> {
                 return Box<Int32> { value = v }
             }
             """
@@ -711,12 +658,12 @@ class CppClassShapeTest {
     fun aSubclassOfAGenericClassSpellsTheInheritedFieldsWithItsTypeArguments() {
         val (h, s) = both(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
-            pub class IntBox: Box<Int32> {
+            pub IntBox: Box<Int32> {
                 mut hits: Int32 = 0
-                pub fx count: () Int32 { return hits }
+                pub count: () Int32 { return hits }
             }
             """
         )
@@ -728,16 +675,16 @@ class CppClassShapeTest {
     fun aGenericCallNamesItsTypeArgumentsAndATypeParameterReceiverIsDereferenced() {
         val s = both(
             """
-            pub trait Sized {
-                pub fx size: () Int32;
+            pub Sized: Any {
+                pub size: () Int32;
             }
-            pub fx sizeOf<T: Sized>: (v: T) Int32 {
+            pub sizeOf<T: Sized>: (v: T) Int32 {
                 return v.size()
             }
-            pub class Two: Sized {
-                override pub fx size: () Int32 { return 2 }
+            pub Two: Sized {
+                override pub size: () Int32 { return 2 }
             }
-            pub fx two: () Int32 {
+            pub two: () Int32 {
                 return sizeOf<Two>(Two {})
             }
             """
@@ -745,16 +692,16 @@ class CppClassShapeTest {
         assertContains(s, "  template<typename T>\n  [[nodiscard]] std::int32_t sizeOf(const T& v);", "      return kira::deref(v).size();")
         val src = emit(
             """
-            pub trait Sized {
-                pub fx size: () Int32;
+            pub Sized: Any {
+                pub size: () Int32;
             }
-            pub fx sizeOf<T: Sized>: (v: T) Int32 {
+            pub sizeOf<T: Sized>: (v: T) Int32 {
                 return v.size()
             }
-            pub class Two: Sized {
-                override pub fx size: () Int32 { return 2 }
+            pub Two: Sized {
+                override pub size: () Int32 { return 2 }
             }
-            pub fx two: () Int32 {
+            pub two: () Int32 {
                 return sizeOf<Two>(Two {})
             }
             """
@@ -768,12 +715,12 @@ class CppClassShapeTest {
     fun thisAsAValueIsSharedFromThisAndTheClassDerivesShared() {
         val (h, s) = both(
             """
-            pub class Node {
+            pub Node: Any {
                 mut hits: Int32 = 0
-                pub fx me: () Node {
+                pub me: () Node {
                     return this
                 }
-                pub mut fx touch: () Node {
+                pub mut touch: () Node {
                     hits = hits + 1
                     return this
                 }
@@ -790,14 +737,17 @@ class CppClassShapeTest {
     fun theSharedBaseIsTheRootOfTheChainAndASubclassCastsDownToItself() {
         val (h, s) = both(
             """
-            pub class Base {
-                pub fx id: () Int32 { return 1 }
+            pub Base: Any {
+                pub id: () Int32 { return 1 }
             }
-            pub class Leaf: Base {
-                pub fx me: () Leaf {
+            pub makeBase: () Base {
+                return Base { }
+            }
+            pub Leaf: Base {
+                pub me: () Leaf {
                     return this
                 }
-                pub mut fx again: () Leaf {
+                pub mut again: () Leaf {
                     return this
                 }
             }
@@ -815,9 +765,9 @@ class CppClassShapeTest {
     fun thisInAStructMethodIsTheStructItself() {
         val s = emit(
             """
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
-                pub fx copy: () Pt {
+                pub copy: () Pt {
                     return this
                 }
             }
@@ -830,17 +780,17 @@ class CppClassShapeTest {
     fun anEscapingLambdaThatCapturesTheReceiverMakesTheClassShared() {
         val h = header(
             """
-            pub class Counter {
+            pub Counter: Any {
                 pub mut k: Int32 = 5
-                pub fx multiplier: () Fx<Tuple1<Int32>, Int32> {
-                    return fx(x: Int32) Int32 {
+                pub multiplier: () Fx<Tuple1<Int32>, Int32> {
+                    return (x: Int32) Int32 {
                         return x * k
                     }
                 }
             }
-            pub class Plain {
+            pub Plain: Any {
                 pub mut k: Int32 = 5
-                pub fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                     return f(x)
                 }
             }
@@ -853,32 +803,35 @@ class CppClassShapeTest {
     fun thisInsideAnEscapingLambdaIsTheCapturedSelf() {
         val e = emit(
             """
-            pub class Node {
-                pub fx later: () Fx<Tuple0, Node> {
-                    return fx() Node {
+            pub Node: Any {
+                pub later: () Fx<Tuple0, Node> {
+                    return () Node {
                         return this
                     }
                 }
-                pub mut fx touch: () Fx<Tuple0, Node> {
-                    return fx() Node {
-                        return this
-                    }
-                }
-            }
-            pub class Base {
-                pub fx id: () Int32 { return 1 }
-            }
-            pub class Leaf: Base {
-                pub fx later: () Fx<Tuple0, Leaf> {
-                    return fx() Leaf {
+                pub mut touch: () Fx<Tuple0, Node> {
+                    return () Node {
                         return this
                     }
                 }
             }
-            pub class Cell<T> {
-                require pub value: T
-                pub mut fx later: () Fx<Tuple0, Cell<T>> {
-                    return fx() Cell<T> {
+            pub Base: Any {
+                pub id: () Int32 { return 1 }
+            }
+            pub makeBase: () Base {
+                return Base { }
+            }
+            pub Leaf: Base {
+                pub later: () Fx<Tuple0, Leaf> {
+                    return () Leaf {
+                        return this
+                    }
+                }
+            }
+            pub Cell<T>: Any {
+                pub value: T
+                pub mut later: () Fx<Tuple0, Cell<T>> {
+                    return () Cell<T> {
                         return this
                     }
                 }
@@ -916,13 +869,13 @@ class CppClassShapeTest {
     fun thisAsAValueInInitiallyIsRefused() {
         val messages = unsupported(
             """
-            pub class Node {
+            pub Node: Any {
                 mut me: Maybe<Node> = null
                 initially {
                     keep(this)
                 }
             }
-            pub fx keep: (n: Node) Void {
+            pub keep: (n: Node) Void {
             }
             """
         )
@@ -934,19 +887,16 @@ class CppClassShapeTest {
         // A C++ constructor runs the class's own version; the spec's init block (Kotlin) would
         // run the override. Reached through the class's own methods too.
         val program = """
-            pub class Base {
-                require pub name: Str
+            pub Base: Any {
+                pub name: Str
                 mut seen: Int32 = 0
                 initially {
                     setup()
                 }
-                finally {
-                    greet()
-                }
-                pub fx greet: () Str {
+                pub greet: () Str {
                     return name
                 }
-                pub mut fx setup: () Void {
+                pub mut setup: () Void {
                     seen = 1
                     greet()
                 }
@@ -954,8 +904,8 @@ class CppClassShapeTest {
             """
         val messages = unsupported(
             program + """
-            pub class Leaf: Base {
-                override pub fx greet: () Str {
+            pub Leaf: Base {
+                override pub greet: () Str {
                     return "leaf"
                 }
             }
@@ -965,10 +915,9 @@ class CppClassShapeTest {
             messages.any { it.startsWith("the call to setup in an initially or finally block of Base, which reaches Base.greet: Leaf overrides it") },
             messages.toString(),
         )
-        assertTrue(messages.any { it.startsWith("the call to greet in an initially or finally block of Base: Leaf overrides it") }, messages.toString())
         // no subclass overrides greet: the calls dispatch the same on both sides
         val (h, s) = both(program)
-        assertContains(h, "      Base(kira::Str name_, std::int32_t seen_ = 0);", "      ~Base();", "      void setup();")
+        assertContains(h, "      Base(kira::Str name_, std::int32_t seen_ = 0);", "      void setup();")
         assertContains(s, "      static_cast<void>(setup());", "      static_cast<void>(greet());")
     }
 
@@ -978,16 +927,16 @@ class CppClassShapeTest {
     fun aConstructionPassesEveryFieldInConstructorOrder() {
         val s = emit(
             """
-            pub class Band {
-                require pub lo: Int32
+            pub Band: Any {
+                pub lo: Int32
                 pub mid: Int32 = 5
-                require pub hi: Int32
+                pub hi: Int32
                 pub tail: Int32 = 9
             }
-            pub fx named: () Band {
+            pub named: () Band {
                 return Band { hi = 30, lo = 10 }
             }
-            pub fx all: () Band {
+            pub all: () Band {
                 return Band { 1, 2, 3, 4 }
             }
             """
@@ -1002,24 +951,24 @@ class CppClassShapeTest {
         // the STL (C4244): the filled-in default is typed exactly as a given literal is.
         val s = emit(
             """
-            pub class Band {
-                require pub lo: Int32
+            pub Band: Any {
+                pub lo: Int32
                 pub mid: UInt8 = 5
-                require pub hi: Int32
+                pub hi: Int32
             }
-            pub class Base {
-                require pub name: Str
+            pub Base: Any {
+                pub name: Str
                 pub level: Int8 = -1
                 pub wide: Int32 = 0
             }
-            pub class Leaf: Base {
-                require pub small: UInt8
+            pub Leaf: Base {
+                pub small: UInt8
                 pub tail: Int64 = 3
             }
-            pub fx band: () Band {
+            pub band: () Band {
                 return Band { lo = 1, hi = 2 }
             }
-            pub fx leaf: () Leaf {
+            pub leaf: () Leaf {
                 return Leaf { name = "x", small = 200 }
             }
             """
@@ -1036,19 +985,19 @@ class CppClassShapeTest {
         val s = emit(
             """
             mut calls: Int32 = 0
-            fx first: () Int32 {
+            first: () Int32 {
                 calls = calls + 1
                 return calls
             }
-            fx second: () Int32 {
+            second: () Int32 {
                 calls = calls + 10
                 return calls
             }
-            pub class Pair {
-                require pub a: Int32
-                require pub b: Int32
+            pub Pair: Any {
+                pub a: Int32
+                pub b: Int32
             }
-            pub fx make: () Pair {
+            pub make: () Pair {
                 return Pair { b = second(), a = first() }
             }
             """
@@ -1060,18 +1009,18 @@ class CppClassShapeTest {
     // ---- construction order: every operand that is not PURE, as W2.3's call hoister orders one (second-class round 2)
 
     private val renaming = """
-        pub class Named {
-            require pub mut name: Str
+        pub Named: Any {
+            pub mut name: Str
 
-            pub mut fx rename: () Int32 {
+            pub mut rename: () Int32 {
                 name = "new"
                 return 7
             }
         }
 
-        pub class Pair {
-            require pub a: Str
-            require pub n: Int32
+        pub Pair: Any {
+            pub a: Str
+            pub n: Int32
         }
     """.trimIndent()
 
@@ -1083,7 +1032,7 @@ class CppClassShapeTest {
             """
             $renaming
 
-            pub fx pairOf: (b: Named, c: Named) Pair {
+            pub pairOf: (b: Named, c: Named) Pair {
                 return Pair { b.name, c.rename() }
             }
             """
@@ -1099,7 +1048,7 @@ class CppClassShapeTest {
             """
             $renaming
 
-            pub fx later: (s: Str, h: Named) Pair {
+            pub later: (s: Str, h: Named) Pair {
                 return Pair { n = h.rename(), a = s }
             }
             """
@@ -1113,25 +1062,25 @@ class CppClassShapeTest {
         // (freed heap bytes on g++ and zig, MSVC ASan heap-use-after-free).
         val s = emit(
             """
-            pub class Pair {
-                require pub a: Str
-                require pub n: Int32
+            pub Pair: Any {
+                pub a: Str
+                pub n: Int32
             }
 
-            pub class Tree {
+            pub Tree: Any {
                 pub mut kid: Maybe<Kid> = null
 
-                pub mut fx clear: () Int32 {
+                pub mut clear: () Int32 {
                     kid = null
                     return 7
                 }
             }
 
-            pub class Kid {
-                require pub name: Str
-                require pub tree: Tree
+            pub Kid: Any {
+                pub name: Str
+                pub tree: Tree
 
-                pub fx leave: () Pair {
+                pub leave: () Pair {
                     return Pair { name, tree.clear() }
                 }
             }
@@ -1147,13 +1096,13 @@ class CppClassShapeTest {
             """
             $renaming
 
-            pub class Trio {
-                require pub a: Str
-                require pub n: Int32
-                require pub k: Int32
+            pub Trio: Any {
+                pub a: Str
+                pub n: Int32
+                pub k: Int32
             }
 
-            pub fx trio: (h: Named, k: Int32) Trio {
+            pub trio: (h: Named, k: Int32) Trio {
                 label: Str = "x"
                 return Trio { label, h.rename(), k }
             }
@@ -1167,7 +1116,7 @@ class CppClassShapeTest {
     private val counting = """
         pub mut counter: Int32 = 0
 
-        pub fx next: () Int32 {
+        pub next: () Int32 {
             counter += 1
             return counter
         }
@@ -1182,18 +1131,18 @@ class CppClassShapeTest {
             """
             pub mut seed: Int32 = 1
 
-            pub fx bumpSeed: () Int32 {
+            pub bumpSeed: () Int32 {
                 seed += 10
                 return seed
             }
 
-            pub class Duo {
-                require pub a: Int32
+            pub Duo: Any {
+                pub a: Int32
                 pub b: Int32 = seed
-                require pub c: Int32
+                pub c: Int32
             }
 
-            pub fx duo: () Duo {
+            pub duo: () Duo {
                 return Duo { a = 5, c = bumpSeed() }
             }
             """
@@ -1216,17 +1165,17 @@ class CppClassShapeTest {
             """
             $counting
 
-            pub class Two {
+            pub Two: Any {
                 pub a: Int32 = next()
                 pub b: Int32 = next()
                 pub c: Int32 = 7
             }
 
-            pub fx none: () Two {
+            pub none: () Two {
                 return Two {}
             }
 
-            pub fx middle: () Two {
+            pub middle: () Two {
                 return Two { b = 9 }
             }
             """
@@ -1249,7 +1198,7 @@ class CppClassShapeTest {
             """
             $counting
 
-            pub class Base {
+            pub Base: Any {
                 pub mut seen: Int32 = 0
 
                 initially {
@@ -1257,7 +1206,7 @@ class CppClassShapeTest {
                 }
             }
 
-            pub class Kid: Base {
+            pub Kid: Base {
                 pub k: Int32 = next()
                 pub mut after: Int32 = 0
 
@@ -1266,7 +1215,7 @@ class CppClassShapeTest {
                 }
             }
 
-            pub fx kid: () Kid {
+            pub kid: () Kid {
                 return Kid {}
             }
             """
@@ -1287,15 +1236,15 @@ class CppClassShapeTest {
             """
             $counting
 
-            pub class Low {
+            pub Low: Any {
                 pub a: Int32 = next()
             }
 
-            pub class High: Low {
+            pub High: Low {
                 pub b: Int32 = next()
             }
 
-            pub fx high: () High {
+            pub high: () High {
                 return High { a = 4 }
             }
             """
@@ -1315,16 +1264,16 @@ class CppClassShapeTest {
             """
             $counting
 
-            fx pick: () Maybe<Str> {
+            pick: () Maybe<Str> {
                 counter += 100
                 return "picked"
             }
 
-            pub class Slot {
+            pub Slot: Any {
                 pub mut item: Maybe<Str> = pick()
             }
 
-            pub fx empty: () Slot {
+            pub empty: () Slot {
                 return Slot { item = null }
             }
             """
@@ -1360,22 +1309,22 @@ class CppClassShapeTest {
         // on g++ and zig (MSVC 0xC0000409), since no kira::Rc owns an object under construction.
         val messages = unsupported(
             """
-            pub class Reg {
+            pub Reg: Any {
                 pub mut n: Int32 = 0
             }
 
-            pub fx enroll: (r: Reg, n: Node) Void {
+            pub enroll: (r: Reg, n: Node) Void {
             }
 
-            pub class Node {
-                require pub name: Str
-                require pub reg: Reg
+            pub Node: Any {
+                pub name: Str
+                pub reg: Reg
 
                 initially {
                     join()
                 }
 
-                pub fx join: () Void {
+                pub join: () Void {
                     enroll(reg, this)
                 }
             }
@@ -1385,59 +1334,28 @@ class CppClassShapeTest {
     }
 
     @Test
-    fun thisAsAValueInAMethodAFinallyReachesThroughAnotherIsRefused() {
-        // fincall2, one call further: finally calls bury, bury calls say, and say hands this on.
-        val messages = unsupported(
-            """
-            pub fx show: (n: Node) Void {
-            }
-
-            pub class Node {
-                require pub name: Str
-
-                finally {
-                    bury()
-                }
-
-                pub fx bury: () Void {
-                    say()
-                }
-
-                pub fx say: () Void {
-                    show(this)
-                }
-            }
-            """
-        )
-        assertTrue(
-            messages.any { it.startsWith("this as a value in Node.say, which the finally block of Node runs (through its call to bury): C++ has no shared_ptr to an object under destruction") },
-            messages.joinToString("\n"),
-        )
-    }
-
-    @Test
     fun anEscapingLambdaThatCapturesThisInAMethodAnInitiallyRunsIsRefused() {
         // initlam: initially calls hook, and hook stores a lambda capturing self = shared_from_this().
         val messages = unsupported(
             """
-            pub class Reg {
+            pub Reg: Any {
                 pub mut hook: Maybe<Fx<Tuple0, Str>> = null
             }
 
-            pub class Node {
-                require pub name: Str
-                require pub reg: Reg
+            pub Node: Any {
+                pub name: Str
+                pub reg: Reg
 
                 initially {
                     hook()
                 }
 
-                pub fx describe: () Str {
+                pub describe: () Str {
                     return name
                 }
 
-                pub fx hook: () Void {
-                    reg.hook = fx() Str {
+                pub hook: () Void {
+                    reg.hook = () Str {
                         return describe()
                     }
                 }
@@ -1452,25 +1370,25 @@ class CppClassShapeTest {
         // initially calls a trait default, which calls a requirement on this: C++ dispatches it to the class's own override.
         val messages = unsupported(
             """
-            pub fx keep: (n: Node) Str {
+            pub keep: (n: Node) Str {
                 return "k"
             }
 
-            pub trait Greeter {
-                pub fx id: () Str;
-                pub fx greet: () Str {
+            pub Greeter: Any {
+                pub id: () Str;
+                pub greet: () Str {
                     return id()
                 }
             }
 
-            pub class Node: Greeter {
-                require pub name: Str
+            pub Node: Greeter {
+                pub name: Str
 
                 initially {
                     greet()
                 }
 
-                override pub fx id: () Str {
+                override pub id: () Str {
                     return keep(this)
                 }
             }
@@ -1484,19 +1402,19 @@ class CppClassShapeTest {
         // Only what those blocks may run is refused: a method reading a field from initially, and this as a value elsewhere.
         val (h, s) = both(
             """
-            pub class Node {
-                require pub name: Str
+            pub Node: Any {
+                pub name: Str
                 pub mut size: Int32 = 0
 
                 initially {
                     measure()
                 }
 
-                pub mut fx measure: () Void {
+                pub mut measure: () Void {
                     size = 1
                 }
 
-                pub fx me: () Node {
+                pub me: () Node {
                     return this
                 }
             }
@@ -1510,12 +1428,12 @@ class CppClassShapeTest {
     fun aNarrowLiteralArgumentCarriesItsType() {
         val s = emit(
             """
-            pub class Cell {
-                require pub small: UInt8
-                require pub big: Int64
-                require pub plain: Int32
+            pub Cell: Any {
+                pub small: UInt8
+                pub big: Int64
+                pub plain: Int32
             }
-            pub fx make: () Cell {
+            pub make: () Cell {
                 return Cell { 200, -1, 7 }
             }
             """
@@ -1527,13 +1445,13 @@ class CppClassShapeTest {
     fun aRefIsAnRcOfABoxAndAWeakUpgradesThroughLock() {
         val (h, s) = both(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
             }
-            pub fx counter: () Ref<Int32> {
+            pub counter: () Ref<Int32> {
                 return Ref<Int32> { value = 0 }
             }
-            pub fx maybePet: (w: Weak<Pet>) Maybe<Pet> {
+            pub maybePet: (w: Weak<Pet>) Maybe<Pet> {
                 return w.upgrade()
             }
             """
@@ -1546,12 +1464,12 @@ class CppClassShapeTest {
     fun maybeOfAClassIsANullableRc() {
         val h = header(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
             }
-            pub class Owner {
+            pub Owner: Any {
                 mut pet: Maybe<Pet> = null
-                pub fx get: () Maybe<Pet> {
+                pub get: () Maybe<Pet> {
                     return pet
                 }
             }
@@ -1566,8 +1484,9 @@ class CppClassShapeTest {
     fun aBodylessClassMethodIsRefusedUnlessASubclassOverridesIt() {
         val messages = unsupported(
             """
-            pub class Handler {
-                pub fx process: (data: Str) Void;
+            pub Handler: Any {
+                pub tag: Int32 = 0
+                pub process: (data: Str) Void;
             }
             """
         )
@@ -1575,13 +1494,13 @@ class CppClassShapeTest {
 
         val (h, _) = both(
             """
-            pub class Shape {
-                pub fx area: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            pub class Square: Shape {
-                override pub fx area: () Int32 { return 4 }
+            pub Square: Shape {
+                override pub area: () Int32 { return 4 }
             }
-            pub fx make: () Shape {
+            pub make: () Shape {
                 return Square {}
             }
             """
@@ -1593,13 +1512,13 @@ class CppClassShapeTest {
     fun constructingAClassThatLeavesAMethodWithoutABodyIsRefused() {
         val messages = unsupported(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            pub class Blob: Shape {
-                pub fx other: () Int32 { return 1 }
+            pub Blob: Shape {
+                pub other: () Int32 { return 1 }
             }
-            pub fx make: () Blob {
+            pub make: () Blob {
                 return Blob {}
             }
             """
@@ -1611,14 +1530,17 @@ class CppClassShapeTest {
     fun aTraitMethodMetOnlyThroughAnUnrelatedSuperclassMethodIsRefused() {
         val messages = unsupported(
             """
-            pub class A {
-                pub fx id: () Str { return "a" }
+            pub A: Any {
+                pub id: () Str { return "a" }
             }
-            pub trait Named {
-                pub fx id: () Str;
+            pub Named: Any {
+                pub id: () Str;
             }
-            pub class B: A, Named {
-                pub fx other: () Int32 { return 1 }
+            pub B: A, Named {
+                pub other: () Int32 { return 1 }
+            }
+            pub makeA: () A {
+                return A { }
             }
             """
         )
@@ -1629,8 +1551,8 @@ class CppClassShapeTest {
     fun aGenericVirtualMethodIsRefused() {
         val messages = unsupported(
             """
-            pub trait Mapper {
-                pub fx map<U>: (u: U) U;
+            pub Mapper: Any {
+                pub map<U>: (u: U) U;
             }
             """
         )
@@ -1642,14 +1564,14 @@ class CppClassShapeTest {
         // The typer refuses it first (types.assign.struct-to-trait); the part refuses it too, in case a coercion reaches it.
         val e = emit(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
+            pub Shape: Any {
+                pub area: () Int32;
             }
-            pub struct Sq: Shape {
+            pub Sq: Struct, Shape {
                 pub side: Int32 = 2
-                override pub fx area: () Int32 { return side }
+                override pub area: () Int32 { return side }
             }
-            pub fx one: () Int32 { return 1 }
+            pub one: () Int32 { return 1 }
             """
         )
         val m = e.program.modules.single { it.uri == uri }
@@ -1667,7 +1589,7 @@ class CppClassShapeTest {
 
     @Test
     fun theGenericsPartSpellsTypeArgumentsAndTheDefaultsRefuse() {
-        val e = emit("pub fx one: () Int32 { return 1 }")
+        val e = emit("pub one: () Int32 { return 1 }")
         val m = e.program.modules.single { it.uri == uri }
         val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", CppEmitParts())
         val node = IntegerLiteral(1)
@@ -1689,29 +1611,29 @@ class CppClassShapeTest {
         // (a plain fx whose lambda writes is not const) and the receiver spelled from it.
         val e = emit(
             """
-            pub class Base {
+            pub Base: Any {
                 mut n: Int32 = 0
-                pub fx get: () Int32 { return n }
+                pub get: () Int32 { return n }
             }
-            pub class Sub: Base {
+            pub Sub: Base {
                 mut k: Int32 = 0
-                pub mut fx reset: () Void { k = 100 }
-                pub fx later: () Fx<Tuple0, Int32> {
-                    return fx() Int32 {
+                pub mut reset: () Void { k = 100 }
+                pub later: () Fx<Tuple0, Int32> {
+                    return () Int32 {
                         k += 1
                         return k
                     }
                 }
-                pub fx laterReset: () Fx<Tuple0, Int32> {
-                    return fx() Int32 {
+                pub laterReset: () Fx<Tuple0, Int32> {
+                    return () Int32 {
                         reset()
                         return k
                     }
                 }
-                pub fx peek: () Fx<Tuple0, Int32> {
-                    return fx() Int32 { return k }
+                pub peek: () Fx<Tuple0, Int32> {
+                    return () Int32 { return k }
                 }
-                pub fx me: () Sub { return this }
+                pub me: () Sub { return this }
             }
             """
         )
@@ -1755,15 +1677,15 @@ class CppClassShapeTest {
         // (types.override.signature: an override is `mut` exactly when what it overrides is).
         val (h, s) = both(
             """
-            pub trait A {
-                pub mut fx id: () Int32;
+            pub A: Any {
+                pub mut id: () Int32;
             }
-            pub trait B {
-                pub mut fx id: () Int32;
+            pub B: Any {
+                pub mut id: () Int32;
             }
-            pub class C: A, B {
+            pub C: A, B {
                 mut n: Int32 = 0
-                override pub mut fx id: () Int32 {
+                override pub mut id: () Int32 {
                     n += 1
                     return n
                 }
@@ -1786,17 +1708,17 @@ class CppClassShapeTest {
         // Tagged's pure virtual follows the family too, or Dog is abstract.
         val h = header(
             """
-            pub trait Tagged {
-                pub mut fx tag: () Int32;
+            pub Tagged: Any {
+                pub mut tag: () Int32;
             }
-            pub class Animal {
+            pub Animal: Any {
                 pub mut n: Int32 = 0
-                pub mut fx tag: () Int32 {
+                pub mut tag: () Int32 {
                     return 1
                 }
             }
-            pub class Dog: Animal, Tagged {
-                override pub mut fx tag: () Int32 {
+            pub Dog: Animal, Tagged {
+                override pub mut tag: () Int32 {
                     n += 1
                     return n
                 }
@@ -1818,19 +1740,19 @@ class CppClassShapeTest {
         // with it, while an unrelated trait method of another name keeps const.
         val h = header(
             """
-            pub trait P {
-                pub mut fx m: () Int32;
-                pub fx other: () Int32;
+            pub P: Any {
+                pub mut m: () Int32;
+                pub other: () Int32;
             }
-            pub trait T: P {
+            pub T: P {
             }
-            pub class Base: T {
+            pub Base: T {
                 pub mut n: Int32 = 0
-                override pub mut fx m: () Int32 { return n }
-                override pub fx other: () Int32 { return n }
+                override pub mut m: () Int32 { return n }
+                override pub other: () Int32 { return n }
             }
-            pub class Sub: Base {
-                override pub mut fx m: () Int32 {
+            pub Sub: Base {
+                override pub mut m: () Int32 {
                     n += 1
                     return n
                 }
@@ -1855,29 +1777,29 @@ class CppClassShapeTest {
         // need a member of the struct, so the default body is one, const as its body allows.
         val (h, s) = both(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
-                pub fx twice: () Int32 {
+            pub Shape: Any {
+                pub area: () Int32;
+                pub twice: () Int32 {
                     return area()
                 }
-                pub mut fx grow: () Void;
-                pub fx growTwice: () Void {
+                pub mut grow: () Void;
+                pub growTwice: () Void {
                     grow()
                 }
-                pub mut fx reset: () Void {
+                pub mut reset: () Void {
                     grow()
                 }
             }
-            pub struct Square: Shape {
+            pub Square: Struct, Shape {
                 pub side: Int32 = 3
-                override pub fx area: () Int32 {
+                override pub area: () Int32 {
                     return side
                 }
-                override pub mut fx grow: () Void {
+                override pub mut grow: () Void {
                     side = 4
                 }
             }
-            pub fx twiceOf<T: Shape>: (s: T) Int32 {
+            pub twiceOf<T: Shape>: (s: T) Int32 {
                 return s.twice()
             }
             """
@@ -1900,18 +1822,18 @@ class CppClassShapeTest {
     fun aStructInheritsTheNearestDefaultAndNotOneANearerTraitReabstracts() {
         val (h, s) = both(
             """
-            pub trait P {
-                pub fx a: () Int32 { return 1 }
-                pub fx b: () Int32 { return 2 }
-                pub fx c: () Int32 { return 3 }
+            pub P: Any {
+                pub a: () Int32 { return 1 }
+                pub b: () Int32 { return 2 }
+                pub c: () Int32 { return 3 }
             }
-            pub trait T: P {
-                override pub fx a: () Int32 { return 10 }
-                override pub fx b: () Int32;
+            pub T: P {
+                override pub a: () Int32 { return 10 }
+                override pub b: () Int32;
             }
-            pub struct S: T {
+            pub S: Struct, T {
                 pub x: Int32 = 0
-                override pub fx b: () Int32 { return 20 }
+                override pub b: () Int32 { return 20 }
             }
             """
         )
@@ -1924,14 +1846,14 @@ class CppClassShapeTest {
     fun aGenericStructDefinesItsInheritedDefaultInTheHeader() {
         val h = header(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
-                pub fx twice: () Int32 { return area() }
+            pub Shape: Any {
+                pub area: () Int32;
+                pub twice: () Int32 { return area() }
             }
-            pub struct Box<T>: Shape {
+            pub Box<T>: Struct, Shape {
                 pub value: T
                 pub side: Int32 = 1
-                override pub fx area: () Int32 { return side }
+                override pub area: () Int32 { return side }
             }
             """
         )
@@ -1946,13 +1868,13 @@ class CppClassShapeTest {
     fun aStructInheritingAGenericTraitsDefaultIsRefused() {
         val messages = unsupported(
             """
-            pub trait Source<T> {
-                pub fx get: () T;
-                pub fx again: () T { return get() }
+            pub Source<T>: Any {
+                pub get: () T;
+                pub again: () T { return get() }
             }
-            pub struct Five: Source<Int32> {
+            pub Five: Struct, Source<Int32> {
                 pub v: Int32 = 5
-                override pub fx get: () Int32 { return v }
+                override pub get: () Int32 { return v }
             }
             """
         )
@@ -1965,13 +1887,13 @@ class CppClassShapeTest {
             OopTestSupport.module(
                 uri,
                 """
-                pub trait Shape {
-                    pub fx area: () Int32;
-                    pub fx twice: () Int32 { return area() }
+                pub Shape: Any {
+                    pub area: () Int32;
+                    pub twice: () Int32 { return area() }
                 }
-                pub struct Square: Shape {
+                pub Square: Struct, Shape {
                     pub side: Int32 = 3
-                    override pub fx area: () Int32 { return side }
+                    override pub area: () Int32 { return side }
                 }
                 """,
             ),
@@ -1990,17 +1912,17 @@ class CppClassShapeTest {
         // meets the same default in its base.
         val s = emit(
             """
-            pub class Frame {
+            pub Frame: Any {
                 pub mut buf: Arr<UInt8, 4> = [1, 2, 3, 4]
-                require pub id: Int32
+                pub id: Int32
             }
-            pub class Tagged: Frame {
-                require pub tag: Int32
+            pub Tagged: Frame {
+                pub tag: Int32
             }
-            pub fx frame: () Frame {
+            pub frame: () Frame {
                 return Frame { id = 7 }
             }
-            pub fx tagged: () Tagged {
+            pub tagged: () Tagged {
                 return Tagged { id = 7, tag = 9 }
             }
             """
@@ -2015,11 +1937,11 @@ class CppClassShapeTest {
     // ---- one name from two traits at once ------------------------------------------------------------
 
     private val siblings = """
-        pub trait Abs {
-            pub fx f: () Int32;
+        pub Abs: Any {
+            pub f: () Int32;
         }
-        pub trait Def {
-            pub fx f: () Int32 {
+        pub Def: Any {
+            pub f: () Int32 {
                 return 7
             }
         }
@@ -2031,10 +1953,10 @@ class CppClassShapeTest {
         // so the struct takes Def's as its member (the typer resolves s.f() to it).
         val (h, s) = both(
             siblings + """
-            pub struct S: Abs, Def {
+            pub S: Struct, Abs, Def {
                 pub v: Int32 = 0
             }
-            pub fx viaAbs<T: Abs>: (s: T) Int32 {
+            pub viaAbs<T: Abs>: (s: T) Int32 {
                 return s.f()
             }
             """
@@ -2051,17 +1973,17 @@ class CppClassShapeTest {
         // satisfy a mut requirement: the two differ in mut-ness, types.member.conflict (1.3.2).
         val (h, s) = both(
             siblings + """
-            pub trait MutAbs {
-                pub mut fx g: () Int32;
+            pub MutAbs: Any {
+                pub mut g: () Int32;
             }
-            pub trait MutDef {
-                pub mut fx g: () Int32 {
+            pub MutDef: Any {
+                pub mut g: () Int32 {
                     return 8
                 }
             }
-            pub class C: Abs, Def, MutAbs, MutDef {
+            pub C: Abs, Def, MutAbs, MutDef {
             }
-            pub fx make: () C {
+            pub make: () C {
                 return C {}
             }
             """
@@ -2083,15 +2005,15 @@ class CppClassShapeTest {
     fun twoSiblingDefaultsForOneNameAreRefusedInAClassAndAStruct() {
         val messages = unsupported(
             """
-            pub trait One {
-                pub fx f: () Int32 { return 1 }
+            pub One: Any {
+                pub f: () Int32 { return 1 }
             }
-            pub trait Two {
-                pub fx f: () Int32 { return 2 }
+            pub Two: Any {
+                pub f: () Int32 { return 2 }
             }
-            pub class C: One, Two {
+            pub C: One, Two {
             }
-            pub struct S: One, Two {
+            pub S: Struct, One, Two {
                 pub v: Int32 = 0
             }
             """
@@ -2106,16 +2028,16 @@ class CppClassShapeTest {
         // copy would silently take the first path's body.
         val messages = unsupported(
             """
-            pub trait A {
-                pub fx f: () Int32 { return 1 }
+            pub A: Any {
+                pub f: () Int32 { return 1 }
             }
-            pub trait B: A {
-                override pub fx f: () Int32 { return 2 }
+            pub B: A {
+                override pub f: () Int32 { return 2 }
             }
-            pub trait C: A {
-                override pub fx f: () Int32 { return 3 }
+            pub C: A {
+                override pub f: () Int32 { return 3 }
             }
-            pub struct S: B, C {
+            pub S: Struct, B, C {
                 pub v: Int32 = 0
             }
             """
@@ -2128,15 +2050,15 @@ class CppClassShapeTest {
         // B redeclares A.m without a body: C++ holds C abstract, whatever A's body says.
         val messages = unsupported(
             """
-            pub trait A {
-                pub fx m: () Int32 { return 1 }
+            pub A: Any {
+                pub m: () Int32 { return 1 }
             }
-            pub trait B: A {
-                override pub fx m: () Int32;
+            pub B: A {
+                override pub m: () Int32;
             }
-            pub class C: B {
+            pub C: B {
             }
-            pub fx make: () C {
+            pub make: () C {
                 return C {}
             }
             """
@@ -2155,35 +2077,35 @@ class CppClassShapeTest {
             """
             FACTOR: Int32 = 3
 
-            alias Len as Int32
+            Int32 as Len
 
-            fx helper: (v: Int32) Int32 {
+            helper: (v: Int32) Int32 {
                 return v
             }
 
-            pub fx pubHelper: (v: Int32) Int32 {
+            pub pubHelper: (v: Int32) Int32 {
                 return v
             }
 
-            pub trait Shape {
-                pub fx area: () Int32;
-                pub fx scaled: () Int32 {
+            pub Shape: Any {
+                pub area: () Int32;
+                pub scaled: () Int32 {
                     return helper(area())
                 }
-                pub fx factor: () Int32 {
+                pub factor: () Int32 {
                     return FACTOR
                 }
-                pub fx len: () Int32 {
+                pub len: () Int32 {
                     return 1 as Len
                 }
-                pub fx bumped: () Int32 {
+                pub bumped: () Int32 {
                     return pubHelper(area())
                 }
             }
 
-            pub struct Local: Shape {
+            pub Local: Struct, Shape {
                 pub side: Int32 = 2
-                override pub fx area: () Int32 {
+                override pub area: () Int32 {
                     return side
                 }
             }
@@ -2192,11 +2114,11 @@ class CppClassShapeTest {
         val main = OopTestSupport.module(
             uri,
             """
-            use "test:shapes"
+            test.shapes as shapes
 
-            pub struct Square: Shape {
+            pub Square: Struct, Shape {
                 pub side: Int32 = 4
-                override pub fx area: () Int32 {
+                override pub area: () Int32 {
                     return side
                 }
             }
@@ -2225,13 +2147,13 @@ class CppClassShapeTest {
         val shapes = OopTestSupport.module(
             "test:shapes",
             """
-            pub fx pubHelper: (v: Int32) Int32 {
+            pub pubHelper: (v: Int32) Int32 {
                 return v
             }
 
-            pub trait Shape {
-                pub fx area: () Int32;
-                pub fx bumped: () Int32 {
+            pub Shape: Any {
+                pub area: () Int32;
+                pub bumped: () Int32 {
                     return pubHelper(area())
                 }
             }
@@ -2240,11 +2162,11 @@ class CppClassShapeTest {
         val main = OopTestSupport.module(
             uri,
             """
-            use "test:shapes"
+            test.shapes as shapes
 
-            pub struct Square: Shape {
+            pub Square: Struct, Shape {
                 pub side: Int32 = 4
-                override pub fx area: () Int32 {
+                override pub area: () Int32 {
                     return side
                 }
             }
@@ -2261,18 +2183,18 @@ class CppClassShapeTest {
         // The struct's copy is spelled from the same body: the refusal at hello(this) is one.
         val messages = unsupported(
             """
-            pub trait Named {
-                pub fx name: () Str;
-                pub fx greet: () Str {
+            pub Named: Any {
+                pub name: () Str;
+                pub greet: () Str {
                     return hello(this)
                 }
             }
-            pub fx hello: (n: Named) Str {
+            pub hello: (n: Named) Str {
                 return n.name()
             }
-            pub struct Cat: Named {
+            pub Cat: Struct, Named {
                 pub v: Int32 = 1
-                override pub fx name: () Str {
+                override pub name: () Str {
                     return "cat"
                 }
             }
@@ -2289,13 +2211,13 @@ class CppClassShapeTest {
         val shapes = OopTestSupport.module(
             "test:shapes",
             """
-            pub trait Named {
-                pub fx name: () Str;
-                pub fx greet: () Str {
+            pub Named: Any {
+                pub name: () Str;
+                pub greet: () Str {
                     return hello(this)
                 }
             }
-            pub fx hello: (n: Named) Str {
+            pub hello: (n: Named) Str {
                 return n.name()
             }
             """,
@@ -2303,11 +2225,11 @@ class CppClassShapeTest {
         val main = OopTestSupport.module(
             uri,
             """
-            use "test:shapes"
+            test.shapes as shapes
 
-            pub struct Cat: Named {
+            pub Cat: Struct, Named {
                 pub v: Int32 = 1
-                override pub fx name: () Str {
+                override pub name: () Str {
                     return "cat"
                 }
             }
@@ -2325,39 +2247,27 @@ class CppClassShapeTest {
     fun anOverrideOfAGenericBasesTypeParameterParameterIsSpelledAsTheBaseSpellsIt() {
         // Source<T> spells v: T as const T&; an override at Int32 spelled std::int32_t
         // overrides nothing (gcc: "marked override, but does not override"; MSVC C3668; the
-        // class stays abstract), so it says const std::int32_t&. A Bool and an enum likewise.
+        // class stays abstract), so it says const std::int32_t&. A Bool likewise.
         val (h, s) = both(
             """
-            pub enum Mode {
-                A,
-                B
+            pub Source<T>: Any {
+                pub take: (v: T) T;
+                pub keep: (mut v: T) Void;
             }
-            pub trait Source<T> {
-                pub fx take: (v: T) T;
-                pub fx keep: (mut v: T) Void;
-            }
-            pub class Five: Source<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub Five: Source<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
-                override pub fx keep: (mut v: Int32) Void {
+                override pub keep: (mut v: Int32) Void {
                     v = 1
                 }
             }
-            pub class Flag: Source<Bool> {
-                override pub fx take: (v: Bool) Bool {
+            pub Flag: Source<Bool> {
+                override pub take: (v: Bool) Bool {
                     return v
                 }
-                override pub fx keep: (mut v: Bool) Void {
+                override pub keep: (mut v: Bool) Void {
                     v = true
-                }
-            }
-            pub class Which: Source<Mode> {
-                override pub fx take: (v: Mode) Mode {
-                    return v
-                }
-                override pub fx keep: (mut v: Mode) Void {
-                    v = Mode.A
                 }
             }
             """
@@ -2367,7 +2277,6 @@ class CppClassShapeTest {
             "      [[nodiscard]] virtual T take(const T& v) const = 0;\n      virtual void keep(T& v) const = 0;",
             "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n      void keep(std::int32_t& v) const override;",
             "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
-            "      [[nodiscard]] Mode take(const Mode& v) const override;\n      void keep(Mode& v) const override;",
         )
         // The definition reads the reference as it is: its caller copies the argument unless
         // nothing can write it during the call (50-round4 1.3, invariant I; `f.take(g.n)` with
@@ -2377,7 +2286,6 @@ class CppClassShapeTest {
             "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
             "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
             "  bool Flag::take(const bool& v) const\n  {\n      return v;\n  }",
-            "  Mode Which::take(const Mode& v) const\n  {\n      return v;\n  }",
         )
         assertLacks(s, "Ref_")
     }
@@ -2389,16 +2297,16 @@ class CppClassShapeTest {
         // as it is, since the caller keeps invariant I (50-round4 1.3).
         val (h, s) = both(
             """
-            pub alias Count as Int32
-            pub trait Source<T> {
-                pub fx take: (v: T, w: T) T;
-                pub fx name: (s: Str) Str;
+            pub Int32 as Count
+            pub Source<T>: Any {
+                pub take: (v: T, w: T) T;
+                pub name: (s: Str) Str;
             }
-            pub class Five: Source<Count> {
-                override pub fx take: (v: Count, w: Count) Count {
+            pub Five: Source<Count> {
+                override pub take: (v: Count, w: Count) Count {
                     return v
                 }
-                override pub fx name: (s: Str) Str {
+                override pub name: (s: Str) Str {
                     return s
                 }
             }
@@ -2423,28 +2331,34 @@ class CppClassShapeTest {
         // Wide<U>: Source<U> at Int32.
         val (h, s) = both(
             """
-            pub trait Source<T> {
-                pub fx take: (v: T) T;
+            pub Source<T>: Any {
+                pub take: (v: T) T;
             }
-            pub class Mid: Source<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub Mid: Source<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
-            pub class Leaf: Mid {
-                override pub fx take: (v: Int32) Int32 {
+            pub Leaf: Mid {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
-            pub class Wide<U>: Source<U> {
-                override pub fx take: (v: U) U {
+            pub Wide<U>: Source<U> {
+                override pub take: (v: U) U {
                     return v
                 }
             }
-            pub class Narrow: Wide<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub Narrow: Wide<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
+            }
+            pub makeMid: () Mid {
+                return Mid { }
+            }
+            pub makeWide: () Wide<Int32> {
+                return Wide<Int32> { }
             }
             """
         )
@@ -2472,20 +2386,20 @@ class CppClassShapeTest {
         // type", MSVC C2555; measured). A kira::Fn is const& on both sides: no copy.
         val (h, s) = both(
             """
-            pub trait Each<T> {
-                pub fx each: (f: Fx<Tuple1<T>, Int32>) Int32;
+            pub Each<T>: Any {
+                pub each: (f: Fx<Tuple1<T>, Int32>) Int32;
             }
-            pub class Nums: Each<Int32> {
-                override pub fx each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+            pub Nums: Each<Int32> {
+                override pub each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
                     return f(2)
                 }
             }
-            pub trait Maker<T> {
-                pub fx make: () Fx<Tuple1<T>, Int32>;
+            pub Maker<T>: Any {
+                pub make: () Fx<Tuple1<T>, Int32>;
             }
-            pub class IntMaker: Maker<Int32> {
-                override pub fx make: () Fx<Tuple1<Int32>, Int32> {
-                    return fx(x: Int32) Int32 {
+            pub IntMaker: Maker<Int32> {
+                override pub make: () Fx<Tuple1<Int32>, Int32> {
+                    return (x: Int32) Int32 {
                         return x
                     }
                 }
@@ -2512,22 +2426,22 @@ class CppClassShapeTest {
         // Source<T>.take): beside a sibling Gen<Int32>.take it is one signature, and beside
         // Abs.take written at Int32 (std::int32_t) it is not.
         val program = """
-            pub trait Source<T> {
-                pub fx take: (v: T) Int32;
+            pub Source<T>: Any {
+                pub take: (v: T) Int32;
             }
-            pub trait Gen<T> {
-                pub fx take: (v: T) Int32;
+            pub Gen<T>: Any {
+                pub take: (v: T) Int32;
             }
-            pub trait Abs {
-                pub fx take: (v: Int32) Int32;
+            pub Abs: Any {
+                pub take: (v: Int32) Int32;
             }
-            pub class Mid: Source<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub Mid: Source<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
-            pub class Agreed: Mid, Gen<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub Agreed: Mid, Gen<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
@@ -2537,8 +2451,8 @@ class CppClassShapeTest {
         assertContains(e.header(uri), "  class Agreed final : public Mid, public Gen<std::int32_t>\n  {\n  public:\n      Agreed() = default;\n      Agreed(const Agreed&) = delete;\n      Agreed& operator=(const Agreed&) = delete;\n      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n  };")
         val refused = unsupported(
             program + """
-            pub class Mixed: Mid, Abs {
-                override pub fx take: (v: Int32) Int32 {
+            pub Mixed: Mid, Abs {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
@@ -2557,15 +2471,15 @@ class CppClassShapeTest {
         // side_p wherever the body is spelled, the trait's own definition included.
         val (h, s) = both(
             """
-            pub trait Shape {
-                pub fx area: () Int32;
-                pub fx scaled: (side: Int32) Int32 {
+            pub Shape: Any {
+                pub area: () Int32;
+                pub scaled: (side: Int32) Int32 {
                     return side
                 }
             }
-            pub struct Square: Shape {
+            pub Square: Struct, Shape {
                 pub side: Int32 = 3
-                override pub fx area: () Int32 {
+                override pub area: () Int32 {
                     return side
                 }
             }
@@ -2589,13 +2503,13 @@ class CppClassShapeTest {
         // is `std::int32_t take(const T& v)`, and IntBase's override follows it.
         val (h, s) = both(
             """
-            pub class Base<T> {
-                pub fx take: (v: T) Int32 {
+            pub Base<T>: Any {
+                pub take: (v: T) Int32 {
                     return 0
                 }
             }
-            pub class IntBase: Base<Int32> {
-                override pub fx take: (v: Int32) Int32 {
+            pub IntBase: Base<Int32> {
+                override pub take: (v: Int32) Int32 {
                     return v
                 }
             }
@@ -2616,42 +2530,42 @@ class CppClassShapeTest {
         // T is the base's T; an override of a non-generic base is spelled as written.
         val (h, _) = both(
             """
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 1
             }
-            pub trait Sink<T> {
-                pub fx put: (v: T) Int32;
-                pub fx maybe: (v: Maybe<T>) Int32;
+            pub Sink<T>: Any {
+                pub put: (v: T) Int32;
+                pub maybe: (v: Maybe<T>) Int32;
             }
-            pub class StrSink: Sink<Str> {
-                override pub fx put: (v: Str) Int32 {
+            pub StrSink: Sink<Str> {
+                override pub put: (v: Str) Int32 {
                     return 1
                 }
-                override pub fx maybe: (v: Maybe<Str>) Int32 {
+                override pub maybe: (v: Maybe<Str>) Int32 {
                     return 2
                 }
             }
-            pub class PtSink: Sink<Pt> {
-                override pub fx put: (v: Pt) Int32 {
+            pub PtSink: Sink<Pt> {
+                override pub put: (v: Pt) Int32 {
                     return 3
                 }
-                override pub fx maybe: (v: Maybe<Pt>) Int32 {
+                override pub maybe: (v: Maybe<Pt>) Int32 {
                     return 4
                 }
             }
-            pub class AnySink<T>: Sink<T> {
-                override pub fx put: (v: T) Int32 {
+            pub AnySink<T>: Sink<T> {
+                override pub put: (v: T) Int32 {
                     return 5
                 }
-                override pub fx maybe: (v: Maybe<T>) Int32 {
+                override pub maybe: (v: Maybe<T>) Int32 {
                     return 6
                 }
             }
-            pub trait Plain {
-                pub fx id: (v: Int32) Int32;
+            pub Plain: Any {
+                pub id: (v: Int32) Int32;
             }
-            pub class Id: Plain {
-                override pub fx id: (v: Int32) Int32 {
+            pub Id: Plain {
+                override pub id: (v: Int32) Int32 {
                     return v
                 }
             }
@@ -2672,16 +2586,16 @@ class CppClassShapeTest {
         // overrides one and hides the other, so the class's own override is refused.
         val messages = unsupported(
             """
-            pub trait Abs {
-                pub fx id: (v: Int32) Int32;
+            pub Abs: Any {
+                pub id: (v: Int32) Int32;
             }
-            pub trait Def<T> {
-                pub fx id: (v: T) T {
+            pub Def<T>: Any {
+                pub id: (v: T) T {
                     return v
                 }
             }
-            pub class C: Abs, Def<Int32> {
-                override pub fx id: (v: Int32) Int32 {
+            pub C: Abs, Def<Int32> {
+                override pub id: (v: Int32) Int32 {
                     return v
                 }
             }
@@ -2700,15 +2614,15 @@ class CppClassShapeTest {
         // under -Woverloaded-virtual; with the requirement generic, C stays abstract).
         val a = unsupported(
             """
-            pub trait Abs {
-                pub fx id: (v: Int32) Int32;
+            pub Abs: Any {
+                pub id: (v: Int32) Int32;
             }
-            pub trait Def<T> {
-                pub fx id: (v: T) T {
+            pub Def<T>: Any {
+                pub id: (v: T) T {
                     return v
                 }
             }
-            pub class C: Abs, Def<Int32> {
+            pub C: Abs, Def<Int32> {
             }
             """
         )
@@ -2718,17 +2632,17 @@ class CppClassShapeTest {
         )
         val b = unsupported(
             """
-            pub trait Abs<T> {
-                pub fx id: (v: T) T;
+            pub Abs<T>: Any {
+                pub id: (v: T) T;
             }
-            pub trait Def {
-                pub fx id: (v: Int32) Int32 {
+            pub Def: Any {
+                pub id: (v: Int32) Int32 {
                     return v
                 }
             }
-            pub class C: Abs<Int32>, Def {
+            pub C: Abs<Int32>, Def {
             }
-            pub struct S: Abs<Int32>, Def {
+            pub S: Struct, Abs<Int32>, Def {
                 pub k: Int32 = 0
             }
             """
@@ -2747,17 +2661,17 @@ class CppClassShapeTest {
         // body's owner, not the trait the struct names.
         val messages = unsupported(
             """
-            pub trait Abs {
-                pub fx id: (v: Int32) Int32;
+            pub Abs: Any {
+                pub id: (v: Int32) Int32;
             }
-            pub trait Def<T> {
-                pub fx id: (v: T) T {
+            pub Def<T>: Any {
+                pub id: (v: T) T {
                     return v
                 }
             }
-            pub trait Both: Abs, Def<Int32> {
+            pub Both: Abs, Def<Int32> {
             }
-            pub struct S: Both {
+            pub S: Struct, Both {
                 pub k: Int32 = 0
             }
             """
@@ -2773,23 +2687,23 @@ class CppClassShapeTest {
         // Abs re-declares Abs0's bodyless f bodyless: no base gave f a body, so nothing is
         // re-abstracted, and Def's body is the one the struct takes and the class forwards to.
         val program = """
-            pub trait Abs0 {
-                pub fx f: () Int32;
+            pub Abs0: Any {
+                pub f: () Int32;
             }
-            pub trait Abs: Abs0 {
-                override pub fx f: () Int32;
+            pub Abs: Abs0 {
+                override pub f: () Int32;
             }
-            pub trait Def {
-                pub fx f: () Int32 {
+            pub Def: Any {
+                pub f: () Int32 {
                     return 7
                 }
             }
-            pub struct S: Abs, Def {
+            pub S: Struct, Abs, Def {
                 pub v: Int32 = 0
             }
-            pub class C: Abs, Def {
+            pub C: Abs, Def {
             }
-            pub fx make: () C {
+            pub make: () C {
                 return C {}
             }
         """
@@ -2814,13 +2728,13 @@ class CppClassShapeTest {
         // written any more: a second-class type is never a type argument (decision 4b, 1.2).
         val (h, s) = both(
             """
-            pub @_opaque class Handle
-            pub fx useIt: (h: Handle) Int32;
-            pub trait Sink<T> {
-                pub fx put: (v: T) Int32;
+            pub @_opaque Handle: Any
+            pub useIt: (h: Handle) Int32;
+            pub Sink<T>: Any {
+                pub put: (v: T) Int32;
             }
-            pub class HSink: Sink<Handle> {
-                override pub fx put: (v: Handle) Int32 {
+            pub HSink: Sink<Handle> {
+                override pub put: (v: Handle) Int32 {
                     return useIt(v)
                 }
             }
@@ -2844,11 +2758,11 @@ class CppClassShapeTest {
         // name has an uppercase mark, which no synthesized name has.
         val s = emit(
             """
-            pub trait Src<T> {
-                pub fx take: (t0: T, ex: T) Int32;
+            pub Src<T>: Any {
+                pub take: (t0: T, ex: T) Int32;
             }
-            pub class C: Src<Int32> {
-                override pub fx take: (t0: Int32, ex: Int32) Int32 {
+            pub C: Src<Int32> {
+                override pub take: (t0: Int32, ex: Int32) Int32 {
                     return t0
                 }
             }
@@ -2869,10 +2783,10 @@ class CppClassShapeTest {
         // measured). 14 levels now emit in well under a second; the ceiling is generous.
         val levels = 14
         val program = buildString {
-            append("pub trait Source<T> {\n    pub fx f: (a: T, b: T, c: T) T;\n}\n")
+            append("pub Source<T>: Any {\n    pub f: (a: T, b: T, c: T) T;\n}\n")
             for (i in 1..levels) {
                 val parent = if (i == 1) "Source<Int32>" else "L${i - 1}"
-                append("pub class L$i: $parent {\n    override pub fx f: (a: Int32, b: Int32, c: Int32) Int32 {\n        return a\n    }\n}\n")
+                append("pub L$i: $parent {\n    override pub f: (a: Int32, b: Int32, c: Int32) Int32 {\n        return a\n    }\n}\n")
             }
         }
         val (h, s) = assertTimeoutPreemptively(Duration.ofSeconds(60), ThrowingSupplier { both(program) })
@@ -2887,36 +2801,27 @@ class CppClassShapeTest {
     @Test
     fun aConstructionSpillsAndFillsPointersInTheirOwnColumn() {
         // D33's temporaries are const locals of the field's own column, a pointer's const on
-        // the pointer (`const Handle*` is a handle nothing taking one accepts), and a skipped
-        // field without a default is value-initialized as a pointer can be: `Handle*{}` is no
-        // expression. The temporaries carry the classes part's mark, never a statement
+        // the pointer (`const Handle*` is a handle nothing taking one accepts). The temporaries
+        // carry the classes part's mark, never a statement
         // part's t0_ (a construction spilled inside a spilled call shadowed it; measured).
         // An opaque handle is the one pointer a field may hold: an Unsafe or CStr field cannot
         // be written (decision 4b, rules.view.type).
         val s = emit(
             """
-            pub @_opaque class Handle
-            pub fx open: () Handle;
-            pub class Holder {
-                require pub g: Handle
-                require pub h: Handle
-            }
-            pub class Loose {
+            pub @_opaque Handle: Any
+            pub open: () Handle;
+            pub Holder: Any {
+                pub g: Handle
                 pub h: Handle
-                require pub n: Int32
             }
-            pub fx make: () Holder {
+            pub make: () Holder {
                 return Holder { h = open(), g = open() }
-            }
-            pub fx loose: () Loose {
-                return Loose { n = 1 }
             }
             """
         ).source(uri)
         assertContains(
             s,
             "      return []() -> kira::Rc<Holder> { Handle* const t0_Arg_ = open(); Handle* const t1_Arg_ = open(); return std::make_shared<Holder>(t1_Arg_, t0_Arg_); }();",
-            "      return std::make_shared<Loose>(static_cast<Handle*>(nullptr), 1);",
         )
     }
 }

@@ -148,32 +148,26 @@ class LexerSuiteTest {
             "if" to Token.Type.K_IF,
             "else" to Token.Type.K_ELSE,
             "while" to Token.Type.K_WHILE,
-            "do" to Token.Type.K_DO,
             "return" to Token.Type.K_RETURN,
             "mut" to Token.Type.K_MODIFIER_MUTABLE,
             "pub" to Token.Type.K_MODIFIER_PUBLIC,
-            "require" to Token.Type.K_MODIFIER_REQUIRE,
-            "class" to Token.Type.K_CLASS,
             "for" to Token.Type.K_FOR,
-            "module" to Token.Type.K_MODULE,
-            "use" to Token.Type.K_USE,
-            "enum" to Token.Type.K_ENUM,
             "as" to Token.Type.K_AS,
             "is" to Token.Type.K_IS,
             "break" to Token.Type.K_BREAK,
             "continue" to Token.Type.K_CONTINUE,
             "with" to Token.Type.K_WITH,
-            "fx" to Token.Type.K_FX,
-            "trait" to Token.Type.K_TRAIT,
             "try" to Token.Type.K_TRY,
             "throw" to Token.Type.K_THROW,
             "on" to Token.Type.K_ON,
-            "variant" to Token.Type.K_VARIANT,
-            "alias" to Token.Type.K_ALIAS,
             "this" to Token.Type.K_THIS,
         )
         for ((word, type) in source) {
             assertLexes(word, type to word)
+        }
+        // The words the clean dialect removed are names.
+        for (word in listOf("do", "require", "class", "struct", "module", "use", "enum", "fx", "trait", "variant", "alias", "finally")) {
+            assertLexes(word, Token.Type.IDENTIFIER to word)
         }
     }
 
@@ -382,9 +376,9 @@ class LexerSuiteTest {
 
     @Test
     fun tracksLineAndColumn() {
-        val tokens = lex("module \"t\"\n\nvalue: Int32 = 5")
+        val tokens = lex("k: Str = \"t\"\n\nvalue: Int32 = 5")
         assertEquals(1 to 1, tokens[0].canonicalLocation.lineNumber to tokens[0].canonicalLocation.column)
-        assertEquals(1 to 8, tokens[1].canonicalLocation.lineNumber to tokens[1].canonicalLocation.column)
+        assertEquals(1 to 10, tokens[4].canonicalLocation.lineNumber to tokens[4].canonicalLocation.column)
         val value = tokens.first { it.content == "value" }
         assertEquals(3 to 1, value.canonicalLocation.lineNumber to value.canonicalLocation.column)
         val five = tokens.first { it.type == Token.Type.L_INTEGER }

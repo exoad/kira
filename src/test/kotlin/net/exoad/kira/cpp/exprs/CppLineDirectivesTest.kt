@@ -18,15 +18,15 @@ class CppLineDirectivesTest {
     private val module = Module(
         "lines:app",
         """
-        pub fx scale: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+        pub scale: (k: Int32) Fx<Tuple1<Int32>, Int32> {
             base: Int32 = k * 2
-            return fx(x: Int32) Int32 {
+            return (x: Int32) Int32 {
                 y: Int32 = x + base
                 return y
             }
         }
 
-        pub fx count: (n: Int32) Int32 {
+        pub count: (n: Int32) Int32 {
             mut t: Int32 = 0
             for i: Int32 in 0..n {
                 t += i
@@ -43,12 +43,12 @@ class CppLineDirectivesTest {
         val s = tree.source(module)
         val file = "src/lines/app.kira"
         listOf(
-            "      #line 4 \"$file\"\n      const std::int32_t base{k * 2};",
-            "      #line 5 \"$file\"\n      return [base](std::int32_t x) -> std::int32_t",
-            "          #line 6 \"$file\"\n          const std::int32_t y{x + base};",
-            "          #line 7 \"$file\"\n          return y;",
-            "      #line 13 \"$file\"\n      for(std::int32_t i = 0, i_end = n; i < i_end; ++i)",
-            "          #line 14 \"$file\"\n          t += i;",
+            "      #line 2 \"$file\"\n      const std::int32_t base{k * 2};",
+            "      #line 3 \"$file\"\n      return [base](std::int32_t x) -> std::int32_t",
+            "          #line 4 \"$file\"\n          const std::int32_t y{x + base};",
+            "          #line 5 \"$file\"\n          return y;",
+            "      #line 11 \"$file\"\n      for(std::int32_t i = 0, i_end = n; i < i_end; ++i)",
+            "          #line 12 \"$file\"\n          t += i;",
         ).forEach { assertTrue(s.contains(it), "missing:\n$it\n--- emitted ---\n$s") }
     }
 

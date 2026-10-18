@@ -59,7 +59,7 @@ class TyperBodyCorpusTest {
 
     @Test
     fun theStdlibBodiesTypeWithoutDiagnostics() {
-        val program = TyperTestSupport.snippet("fx main: () Void { }")
+        val program = TyperTestSupport.snippet("main: () Void { }")
         if (program.diagnostics.isNotEmpty()) {
             fail("stdlib + an empty main:\n${TyperTestSupport.render(program)}")
         }

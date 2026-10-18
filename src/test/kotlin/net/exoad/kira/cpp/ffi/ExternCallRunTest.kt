@@ -32,68 +32,68 @@ class ExternCallRunTest {
     private val calls = Module(
         "app:w",
         """
-        pub @_extern(cpp = "nat::lenAfterL", header = "nat.hxx") fx lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenAfterL", header = "nat.hxx") lenAfterL: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::lenAfterCL", header = "nat.hxx") fx lenAfterCL: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenAfterCL", header = "nat.hxx") lenAfterCL: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::lenAfterCb", header = "nat.hxx") fx lenAfterCb: (s: Str, c: Cb) Int32;
+        pub @_extern(cpp = "nat::lenAfterCb", header = "nat.hxx") lenAfterCb: (s: Str, c: Cb) Int32;
 
-        pub @_extern(cpp = "nat::lenAfterF", header = "nat.hxx") fx lenAfterF: (s: Str, f: Fx<Tuple0, Void>) Int32;
+        pub @_extern(cpp = "nat::lenAfterF", header = "nat.hxx") lenAfterF: (s: Str, f: Fx<Tuple0, Void>) Int32;
 
-        pub @_extern(cpp = "nat::appendLen", header = "nat.hxx") fx appendLen: (s: Str, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::appendLen", header = "nat.hxx") appendLen: (s: Str, mut out: Str) Int32;
 
-        pub @_extern(cpp = "nat::appendLenC", header = "nat.hxx") fx appendLenC: (s: CStr, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::appendLenC", header = "nat.hxx") appendLenC: (s: CStr, mut out: Str) Int32;
 
-        pub @_extern(cpp = "nat::appendLenI", header = "nat.hxx") fx appendLenI: (s: Str, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::appendLenI", header = "nat.hxx") appendLenI: (s: Str, mut n: Int32) Int32;
 
-        pub @_extern(cpp = "nat::sumListL", header = "nat.hxx") fx sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::sumListL", header = "nat.hxx") sumListL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::sumArrL", header = "nat.hxx") fx sumArrL: (a: Arr<Int32, 3>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::sumArrL", header = "nat.hxx") sumArrL: (a: Arr<Int32, 3>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::lenMaybeL", header = "nat.hxx") fx lenMaybeL: (m: Maybe<Str>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::lenMaybeL", header = "nat.hxx") lenMaybeL: (m: Maybe<Str>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::ptLenL", header = "nat.hxx") fx ptLenL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::ptLenL", header = "nat.hxx") ptLenL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::boxLenL", header = "nat.hxx") fx boxLenL: (b: Box, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::boxLenL", header = "nat.hxx") boxLenL: (b: Box, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::lenS", header = "nat.hxx") fx lenS: (s: Str) Int32;
+        pub @_extern(cpp = "nat::lenS", header = "nat.hxx") lenS: (s: Str) Int32;
 
-        pub @_extern(cpp = "nat::newBox", header = "nat.hxx") fx newBox: (n: Int32) Box;
+        pub @_extern(cpp = "nat::newBox", header = "nat.hxx") newBox: (n: Int32) Box;
 
-        pub @_extern(cpp = "nat::pumpWith", header = "nat.hxx") fx pumpWith: (fs: List<Fx<Tuple0, Void>>) Pump;
+        pub @_extern(cpp = "nat::pumpWith", header = "nat.hxx") pumpWith: (fs: List<Fx<Tuple0, Void>>) Pump;
 
-        pub @_extern(cpp = "nat::ptNAfterMut", header = "nat.hxx") fx ptNAfterMut: (p: Pt, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::ptNAfterMut", header = "nat.hxx") ptNAfterMut: (p: Pt, mut n: Int32) Int32;
 
-        pub @_extern(cpp = "nat::firstAfterMut", header = "nat.hxx") fx firstAfterMut: (xs: List<Int32>, mut n: Int32) Int32;
+        pub @_extern(cpp = "nat::firstAfterMut", header = "nat.hxx") firstAfterMut: (xs: List<Int32>, mut n: Int32) Int32;
 
-        pub @_extern(cpp = "nat::nameAfterMutS", header = "nat.hxx") fx nameAfterMutS: (p: Pt, mut out: Str) Int32;
+        pub @_extern(cpp = "nat::nameAfterMutS", header = "nat.hxx") nameAfterMutS: (p: Pt, mut out: Str) Int32;
 
-        pub @_extern(cpp = "nat::firstAfterMutInner", header = "nat.hxx") fx firstAfterMutInner: (ls: List<List<Int32>>, mut o: List<Int32>) Int32;
+        pub @_extern(cpp = "nat::firstAfterMutInner", header = "nat.hxx") firstAfterMutInner: (ls: List<List<Int32>>, mut o: List<Int32>) Int32;
 
-        pub @_extern(cpp = "nat::firstAfterL", header = "nat.hxx") fx firstAfterL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::firstAfterL", header = "nat.hxx") firstAfterL: (xs: List<Int32>, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::ptNAfterL", header = "nat.hxx") fx ptNAfterL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub @_extern(cpp = "nat::ptNAfterL", header = "nat.hxx") ptNAfterL: (p: Pt, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub @_extern(cpp = "nat::Box", header = "nat.hxx") class Box {
-            pub fx size: () Int32;
+        pub @_extern(cpp = "nat::Box", header = "nat.hxx") Box: Any {
+            pub size: () Int32;
         }
 
-        pub @_extern(cpp = "nat::Pump", header = "nat.hxx") class Pump {
-            pub mut fx lenAfter: (s: Str) Int32;
+        pub @_extern(cpp = "nat::Pump", header = "nat.hxx") Pump: Any {
+            pub mut lenAfter: (s: Str) Int32;
         }
 
-        pub struct Pt {
+        pub Pt: Struct {
             pub mut name: Str = ""
             pub mut n: Int32 = 0
         }
 
-        pub struct Cb {
-            require pub f: Fx<Tuple0, Void>
+        pub Cb: Struct {
+            pub f: Fx<Tuple0, Void>
         }
 
-        pub fx peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+        pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
 
-        pub fx plen: (s: CStr) Int32;
+        pub plen: (s: CStr) Int32;
 
         mut GS: Str = "$LONG"
         mut GS2: Str = "other"
@@ -109,7 +109,7 @@ class ExternCallRunTest {
         GREETING: Str = "hi"
         mut TICKS: Int32 = 0
 
-        fx reset: () Void {
+        reset: () Void {
             GS = "$LONG"
             GL = List<Int32> { values = [1, 2, 3] }
             GLL = List<List<Int32>> { values = [List<Int32> { values = [1, 2, 3] }] }
@@ -119,225 +119,225 @@ class ExternCallRunTest {
             GSTRS = List<Str> { values = ["$LONG"] }
         }
 
-        fx growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [fx () Void { GS = "$LONGER" + GS }] }
+        growGs: () List<Fx<Tuple0, Void>> {
+            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "$LONGER" + GS }] }
         }
 
-        fx growGl: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [fx () Void { GL = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7, 7] } }] }
+        growGl: () List<Fx<Tuple0, Void>> {
+            return List<Fx<Tuple0, Void>> { values = [() Void { GL = List<Int32> { values = [7, 7, 7, 7, 7, 7, 7, 7, 7] } }] }
         }
 
-        pub fx sGlobal: () Int32 {
+        pub sGlobal: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
             return lenAfterL(GS, fs)
         }
 
-        pub fx sLent: () Int32 {
+        pub sLent: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GSTRS = List<Str> { values = ["$LONGER"] } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GSTRS = List<Str> { values = ["$LONGER"] } }] }
             return lenAfterL(GSTRS[0], fs)
         }
 
-        pub fx sField: () Int32 {
+        pub sField: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GP = Pt { name = "$LONGER", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "$LONGER", n = 2 } }] }
             return lenAfterL(GP.name, fs)
         }
 
-        fx lenOfParam: (p: Str, fs: List<Fx<Tuple0, Void>>) Int32 {
+        lenOfParam: (p: Str, fs: List<Fx<Tuple0, Void>>) Int32 {
             return lenAfterL(p, fs)
         }
 
-        pub fx sParam: () Int32 {
+        pub sParam: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
             return lenOfParam(GS, fs)
         }
 
-        pub fx sLiteral: () Int32 {
+        pub sLiteral: () Int32 {
             reset()
             return lenAfterL("abc", growGs())
         }
 
-        pub fx sConstant: () Int32 {
+        pub sConstant: () Int32 {
             reset()
             return lenAfterL(GREETING, growGs())
         }
 
-        pub fx sComputed: () Int32 {
+        pub sComputed: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GS = "" }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GS = "" }] }
             return lenAfterL(GS + "!", fs)
         }
 
-        pub fx sStructFx: () Int32 {
+        pub sStructFx: () Int32 {
             reset()
-            c: Cb = Cb { f = fx () Void { GS = "$LONGER" + GS } }
+            c: Cb = Cb { f = () Void { GS = "$LONGER" + GS } }
             return lenAfterCb(GS, c)
         }
 
-        pub fx sReceiver: () Int32 {
+        pub sReceiver: () Int32 {
             reset()
             pump: Pump = pumpWith(growGs())
             return pump.lenAfter(GS)
         }
 
-        fx tick: () List<Fx<Tuple0, Void>> {
+        tick: () List<Fx<Tuple0, Void>> {
             TICKS += 1
-            return List<Fx<Tuple0, Void>> { values = [fx () Void { GS = "" }] }
+            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "" }] }
         }
 
-        pub fx sSpilled: () Int32 {
+        pub sSpilled: () Int32 {
             reset()
             return lenAfterL(GS, tick())
         }
 
-        pub fx sDirect: () Int32 {
+        pub sDirect: () Int32 {
             reset()
-            return lenAfterF(GS, fx () Void { GS = "" })
+            return lenAfterF(GS, () Void { GS = "" })
         }
 
-        pub fx cCStr: () Int32 {
+        pub cCStr: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
             return lenAfterCL(GS, fs)
         }
 
-        pub fx cList: () Int32 {
+        pub cList: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GL = List<Int32> { values = [9, 7] } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GL = List<Int32> { values = [9, 7] } }] }
             return sumListL(GL, fs)
         }
 
-        pub fx cArr: () Int32 {
+        pub cArr: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GA = [7, 7, 7] }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GA = [7, 7, 7] }] }
             return sumArrL(GA, fs)
         }
 
-        pub fx cMaybe: () Int32 {
+        pub cMaybe: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GM = null }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GM = null }] }
             return lenMaybeL(GM, fs)
         }
 
-        pub fx cStruct: () Int32 {
+        pub cStruct: () Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GP = Pt { name = "x", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "x", n = 2 } }] }
             return ptLenL(GP, fs)
         }
 
-        pub fx cClass: () Int32 {
+        pub cClass: () Int32 {
             GBOXES = List<Box> { }
             GBOXES.add(newBox(82))
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GBOXES = List<Box> { } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GBOXES = List<Box> { } }] }
             return boxLenL(GBOXES[0], fs)
         }
 
-        fx appendInto: (mut o: Str) Int32 {
+        appendInto: (mut o: Str) Int32 {
             return appendLen(GS, mut o)
         }
 
-        fx appendIntoC: (mut o: Str) Int32 {
+        appendIntoC: (mut o: Str) Int32 {
             return appendLenC(GS, mut o)
         }
 
-        pub fx mViaMut: () Int32 {
+        pub mViaMut: () Int32 {
             reset()
             return appendInto(mut GS)
         }
 
-        pub fx mCStr: () Int32 {
+        pub mCStr: () Int32 {
             reset()
             return appendIntoC(mut GS)
         }
 
-        pub fx nUnrelated: () Int32 {
+        pub nUnrelated: () Int32 {
             reset()
             mut n: Int32 = 0
             return appendLenI(GS, mut n)
         }
 
-        pub fx nNone: () Int32 {
+        pub nNone: () Int32 {
             reset()
             return lenS(GS)
         }
 
-        pub fx gPeek: () Int32 {
+        pub gPeek: () Int32 {
             ys: List<Int32> = List<Int32> { values = [10, 20] }
             mut xs: List<Int32> = List<Int32> { values = [1, 2] }
             return peek(ys.view(), xs.view())
         }
 
-        pub fx gPlen: () Int32 {
+        pub gPlen: () Int32 {
             loc: Str = "abcd"
             return plen(loc) + plen("xy") * 10
         }
 
-        fx viaN: (mut o: Int32) Int32 {
+        viaN: (mut o: Int32) Int32 {
             return ptNAfterMut(GP, mut o)
         }
 
-        fx viaL: (mut o: Int32) Int32 {
+        viaL: (mut o: Int32) Int32 {
             return firstAfterMut(GL, mut o)
         }
 
-        fx viaS: (mut o: Str) Int32 {
+        viaS: (mut o: Str) Int32 {
             return nameAfterMutS(GP, mut o)
         }
 
-        fx viaI: (mut o: List<Int32>) Int32 {
+        viaI: (mut o: List<Int32>) Int32 {
             return firstAfterMutInner(GLL, mut o)
         }
 
-        pub fx r0N: () Int32 {
+        pub r0N: () Int32 {
             reset()
             return viaN(mut GP.n)
         }
 
-        pub fx r0L: () Int32 {
+        pub r0L: () Int32 {
             reset()
             return viaL(mut GL[0])
         }
 
-        pub fx r0S: () Int32 {
+        pub r0S: () Int32 {
             reset()
             return viaS(mut GP.name)
         }
 
-        pub fx r0I: () Int32 {
+        pub r0I: () Int32 {
             reset()
             return viaI(mut GLL[0])
         }
 
-        pub fx r1S: (c: Bool) Int32 {
+        pub r1S: (c: Bool) Int32 {
             reset()
             return lenAfterL(if c { GS } else { GS2 }, growGs())
         }
 
-        pub fx r1C: (c: Bool) Int32 {
+        pub r1C: (c: Bool) Int32 {
             reset()
             return lenAfterCL(if c { GS } else { GS2 }, growGs())
         }
 
-        pub fx r1L: (c: Bool) Int32 {
+        pub r1L: (c: Bool) Int32 {
             reset()
             return sumListL(if c { GL } else { GL2 }, growGl())
         }
 
-        pub fx r1F: (c: Bool) Int32 {
+        pub r1F: (c: Bool) Int32 {
             reset()
             return firstAfterL(if c { GL } else { GL2 }, growGl())
         }
 
-        pub fx r1P: (c: Bool) Int32 {
+        pub r1P: (c: Bool) Int32 {
             reset()
-            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [fx () Void { GP = Pt { name = "x", n = 2 } }] }
+            fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = [() Void { GP = Pt { name = "x", n = 2 } }] }
             return ptNAfterL(if c { GP } else { GP2 }, fs)
         }
 
-        pub fx r1Local: (c: Bool) Int32 {
+        pub r1Local: (c: Bool) Int32 {
             reset()
             a: List<Int32> = List<Int32> { values = [1, 2, 3] }
             b: List<Int32> = List<Int32> { values = [4, 5, 6] }
@@ -471,15 +471,15 @@ class ExternCallRunTest {
     private val proto = Module(
         "proto:p",
         """
-        pub fx lenS2: (s: Str) Int32;
+        pub lenS2: (s: Str) Int32;
 
-        pub fx lenAfterP: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub lenAfterP: (s: Str, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub fx clenAfterP: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
+        pub clenAfterP: (s: CStr, fs: List<Fx<Tuple0, Void>>) Int32;
 
-        pub fx bumpP: (mut n: Int32) Void;
+        pub bumpP: (mut n: Int32) Void;
 
-        pub fx viaW: (s: Str) Int32 {
+        pub viaW: (s: Str) Int32 {
             return lenS2(s)
         }
         """,
@@ -488,36 +488,36 @@ class ExternCallRunTest {
     private val protoUse = Module(
         "proto:caller",
         """
-        use "proto:p"
+        proto.p as p
 
         mut GS: Str = "$LONG"
 
-        fx growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = [fx () Void { GS = "$LONGER" + GS }] }
+        growGs: () List<Fx<Tuple0, Void>> {
+            return List<Fx<Tuple0, Void>> { values = [() Void { GS = "$LONGER" + GS }] }
         }
 
-        pub fx t13: () Int32 {
+        pub t13: () Int32 {
             loc: Str = "abcd"
             return lenS2(loc) + lenS2("xy") * 10
         }
 
-        pub fx t13b: () Int32 {
+        pub t13b: () Int32 {
             return viaW("abcd")
         }
 
-        pub fx pCopy: () Int32 {
+        pub pCopy: () Int32 {
             GS = "$LONG"
             fs: List<Fx<Tuple0, Void>> = growGs()
             return lenAfterP(GS, fs)
         }
 
-        pub fx pCStr: () Int32 {
+        pub pCStr: () Int32 {
             GS = "$LONG"
             fs: List<Fx<Tuple0, Void>> = growGs()
             return clenAfterP(GS, fs)
         }
 
-        pub fx pMut: () Int32 {
+        pub pMut: () Int32 {
             mut n: Int32 = 1
             bumpP(mut n)
             return n

@@ -44,11 +44,11 @@ class TypedModelContractTest {
             TyperTestSupport.module(
                 "test:ids",
                 """
-                fx first: (x: Int32) Int32 {
+                first: (x: Int32) Int32 {
                     return x
                 }
 
-                fx second: (x: Str) Str {
+                second: (x: Str) Str {
                     return x
                 }
                 """

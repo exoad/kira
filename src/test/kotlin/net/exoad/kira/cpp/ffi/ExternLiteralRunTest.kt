@@ -28,231 +28,231 @@ class ExternLiteralRunTest {
 
         mut gc: Bool = true
 
-        pub @_extern(cpp = "q::w", header = "q.hxx") fx w: (x: Int64) Int32;
+        pub @_extern(cpp = "q::w", header = "q.hxx") w: (x: Int64) Int32;
 
-        pub @_extern(cpp = "q::u", header = "q.hxx") fx u: (x: UInt64) Int32;
+        pub @_extern(cpp = "q::u", header = "q.hxx") u: (x: UInt64) Int32;
 
-        pub @_extern(cpp = "q::b", header = "q.hxx") fx b: (x: Int8) Int32;
+        pub @_extern(cpp = "q::b", header = "q.hxx") b: (x: Int8) Int32;
 
-        pub @_extern(cpp = "q::ub", header = "q.hxx") fx ub: (x: UInt8) Int32;
+        pub @_extern(cpp = "q::ub", header = "q.hxx") ub: (x: UInt8) Int32;
 
-        pub @_extern(cpp = "q::h", header = "q.hxx") fx h: (x: Int16) Int32;
+        pub @_extern(cpp = "q::h", header = "q.hxx") h: (x: Int16) Int32;
 
-        pub @_extern(cpp = "q::sz", header = "q.hxx") fx sz: (x: Size) Int32;
+        pub @_extern(cpp = "q::sz", header = "q.hxx") sz: (x: Size) Int32;
 
-        pub @_extern(cpp = "q::f", header = "q.hxx") fx f: (x: Float32) Int32;
+        pub @_extern(cpp = "q::f", header = "q.hxx") f: (x: Float32) Int32;
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") fx width64: (x: Int64) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width64: (x: Int64) Int32;
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") fx width8: (x: Int8) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width8: (x: Int8) Int32;
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") fx width16: (x: UInt16) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width16: (x: UInt16) Int32;
 
-        pub @_extern(cpp = "l2::w", header = "l2.hxx") fx lw: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::w", header = "l2.hxx") lw: (x: Int64) Int32;
 
-        pub @_extern(cpp = "l2::width", header = "l2.hxx") fx lwidth64: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::width", header = "l2.hxx") lwidth64: (x: Int64) Int32;
 
-        pub @_extern(cpp = "l2::u32", header = "l2.hxx") fx u32: (x: UInt32) Int32;
+        pub @_extern(cpp = "l2::u32", header = "l2.hxx") u32: (x: UInt32) Int32;
 
-        pub @_extern(cpp = "l2::mwidth", header = "l2.hxx") fx mwidth: (m: Maybe<Int64>) Int32;
+        pub @_extern(cpp = "l2::mwidth", header = "l2.hxx") mwidth: (m: Maybe<Int64>) Int32;
 
-        pub @_extern(cpp = "l3::f", header = "l3.hxx") fx f64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::f", header = "l3.hxx") f64: (x: Float64) Int32;
 
-        pub @_extern(cpp = "l3::isF64", header = "l3.hxx") fx isF64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::isF64", header = "l3.hxx") isF64: (x: Float64) Int32;
 
-        pub @_extern(cpp = "l3::isBool", header = "l3.hxx") fx isBool: (x: Bool) Int32;
+        pub @_extern(cpp = "l3::isBool", header = "l3.hxx") isBool: (x: Bool) Int32;
 
-        pub @_extern(cpp = "l3::isChar", header = "l3.hxx") fx isChar: (x: Char) Int32;
+        pub @_extern(cpp = "l3::isChar", header = "l3.hxx") isChar: (x: Char) Int32;
 
-        pub @_extern(cpp = "l3::isCStr", header = "l3.hxx") fx isCStr: (x: CStr) Int32;
+        pub @_extern(cpp = "l3::isCStr", header = "l3.hxx") isCStr: (x: CStr) Int32;
 
-        pub @_extern(cpp = "l3::isU8", header = "l3.hxx") fx isU8: (x: UInt8) Int32;
+        pub @_extern(cpp = "l3::isU8", header = "l3.hxx") isU8: (x: UInt8) Int32;
 
-        pub @_opaque @_extern(cpp = "l3::Box", header = "l3.hxx") class Box {
-            pub fx w: (x: Int64) Int32;
-            pub fx width: (x: Int64) Int32;
+        pub @_opaque @_extern(cpp = "l3::Box", header = "l3.hxx") Box: Any {
+            pub w: (x: Int64) Int32;
+            pub width: (x: Int64) Int32;
         }
 
-        pub @_extern(cpp = "l3::newBox", header = "l3.hxx") fx newBox: () Box;
+        pub @_extern(cpp = "l3::newBox", header = "l3.hxx") newBox: () Box;
 
-        pub fx litW: () Int32 {
+        pub litW: () Int32 {
             return w(5)
         }
 
-        pub fx litU: () Int32 {
+        pub litU: () Int32 {
             return u(5)
         }
 
-        pub fx litB: () Int32 {
+        pub litB: () Int32 {
             return b(5)
         }
 
-        pub fx litUb: () Int32 {
+        pub litUb: () Int32 {
             return ub(5)
         }
 
-        pub fx litH: () Int32 {
+        pub litH: () Int32 {
             return h(5)
         }
 
-        pub fx litSz: () Int32 {
+        pub litSz: () Int32 {
             return sz(5)
         }
 
-        pub fx litF: () Int32 {
+        pub litF: () Int32 {
             return f(1.5)
         }
 
-        pub fx litWidth64: () Int32 {
+        pub litWidth64: () Int32 {
             return width64(5)
         }
 
-        pub fx litWidth8: () Int32 {
+        pub litWidth8: () Int32 {
             return width8(5)
         }
 
-        pub fx litWidth16: () Int32 {
+        pub litWidth16: () Int32 {
             return width16(5)
         }
 
-        pub fx namedW: () Int32 {
+        pub namedW: () Int32 {
             n: Int64 = 5
             return w(n)
         }
 
-        pub fx namedB: () Int32 {
+        pub namedB: () Int32 {
             x: Int8 = 3
             return b(x)
         }
 
-        pub fx sumW: () Int32 {
+        pub sumW: () Int32 {
             n: Int64 = 5
             return w(n + 1)
         }
 
-        pub fx sumB: () Int32 {
+        pub sumB: () Int32 {
             x: Int8 = 3
             y: Int8 = 4
             return b(x + y)
         }
 
-        pub fx sumUb: () Int32 {
+        pub sumUb: () Int32 {
             ux: UInt8 = 3
             return ub(ux + ux)
         }
 
-        pub fx mulH: () Int32 {
+        pub mulH: () Int32 {
             hx: Int16 = 3
             return h(hx * hx)
         }
 
-        pub fx sumWidth8: () Int32 {
+        pub sumWidth8: () Int32 {
             x: Int8 = 3
             y: Int8 = 4
             return width8(x + y)
         }
 
-        pub fx mulWidth64: () Int32 {
+        pub mulWidth64: () Int32 {
             n: Int64 = 5
             return width64(n * 2)
         }
 
-        pub fx negB: () Int32 {
+        pub negB: () Int32 {
             x: Int8 = 3
             return b(-x)
         }
 
-        pub fx negWidth8: () Int32 {
+        pub negWidth8: () Int32 {
             x: Int8 = 3
             return width8(-x)
         }
 
-        pub fx negW: () Int32 {
+        pub negW: () Int32 {
             return lw(-5)
         }
 
-        pub fx ifW: () Int32 {
+        pub ifW: () Int32 {
             return lw(if gc { 5 } else { 6 })
         }
 
-        pub fx constW: () Int32 {
+        pub constW: () Int32 {
             return lw(LIM)
         }
 
-        pub fx litU32: () Int32 {
+        pub litU32: () Int32 {
             return u32(5)
         }
 
-        pub fx wrappedWidth: () Int32 {
+        pub wrappedWidth: () Int32 {
             return mwidth(5)
         }
 
-        pub fx lit2Width64: () Int32 {
+        pub lit2Width64: () Int32 {
             return lwidth64(7)
         }
 
-        pub fx edgeUb: () Int32 {
+        pub edgeUb: () Int32 {
             return ub(255)
         }
 
-        pub fx edgeB: () Int32 {
+        pub edgeB: () Int32 {
             return b(-128) + b(127)
         }
 
-        pub fx edgeH: () Int32 {
+        pub edgeH: () Int32 {
             return h(-32768)
         }
 
-        pub fx edgeU: () Int32 {
+        pub edgeU: () Int32 {
             return u(9223372036854775807)
         }
 
-        pub fx edgeW: () Int32 {
+        pub edgeW: () Int32 {
             return w(-9223372036854775807 - 1) + w(9223372036854775807)
         }
 
-        pub fx edgeF: () Int32 {
+        pub edgeF: () Int32 {
             return f(3.4e38)
         }
 
-        pub fx edgeSz: () Int32 {
+        pub edgeSz: () Int32 {
             return sz(0)
         }
 
-        pub fx sumLitW: () Int32 {
+        pub sumLitW: () Int32 {
             return w(2 + 3)
         }
 
-        pub fx litF64: () Int32 {
+        pub litF64: () Int32 {
             return f64(1.5)
         }
 
-        pub fx litIsF64: () Int32 {
+        pub litIsF64: () Int32 {
             return isF64(2)
         }
 
-        pub fx litIsBool: () Int32 {
+        pub litIsBool: () Int32 {
             return isBool(true)
         }
 
-        pub fx litIsChar: () Int32 {
+        pub litIsChar: () Int32 {
             return isChar('a')
         }
 
-        pub fx litIsCStr: () Int32 {
+        pub litIsCStr: () Int32 {
             return isCStr("abc")
         }
 
-        pub fx litIsU8: () Int32 {
+        pub litIsU8: () Int32 {
             return isU8(200)
         }
 
-        pub fx boxW: () Int32 {
+        pub boxW: () Int32 {
             bx: Box = newBox()
             return bx.w(5)
         }
 
-        pub fx boxWidth: () Int32 {
+        pub boxWidth: () Int32 {
             bx: Box = newBox()
             return bx.width(5)
         }

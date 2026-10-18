@@ -64,7 +64,7 @@ class TyperBodyModelTest {
     fun theClosuresGoldenCapturesEachWayTheDesignTableLists() {
         val p = closures()
         expectNoErrors(p)
-        val all = lambdasIn(p, "lang:closures").map { capturesOf(p, it) }
+        val all = lambdasIn(p, "golden.closures:lang.closures").map { capturesOf(p, it) }
         assertEquals(
             listOf(
                 listOf("value k"),            // scaleBy: a free function capturing its parameter: [k]
@@ -83,9 +83,9 @@ class TyperBodyModelTest {
     fun aNestedLambdaCapturesThroughEveryLambdaInBetween() {
         val p = snippet(
             """
-            pub fx nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
-                return fx(a: Int32) Fx<Tuple1<Int32>, Int32> {
-                    return fx(b: Int32) Int32 {
+            pub nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
+                return (a: Int32) Fx<Tuple1<Int32>, Int32> {
+                    return (b: Int32) Int32 {
                         return base + a + b
                     }
                 }
@@ -102,8 +102,8 @@ class TyperBodyModelTest {
     fun aLambdaParameterAndLocalAreNotCaptures() {
         val p = snippet(
             """
-            pub fx f: () Fx<Tuple1<Int32>, Int32> {
-                return fx(x: Int32) Int32 {
+            pub f: () Fx<Tuple1<Int32>, Int32> {
+                return (x: Int32) Int32 {
                     y: Int32 = x + 1
                     return y
                 }
@@ -121,9 +121,9 @@ class TyperBodyModelTest {
     fun writingThroughARefCaptureIsNotWritingTheCapture() {
         val p = snippet(
             """
-            pub fx tally: () Fx<Tuple0, Int32> {
+            pub tally: () Fx<Tuple0, Int32> {
                 counter: Ref<Int32> = Ref<Int32> { value = 0 }
-                return fx() Int32 {
+                return () Int32 {
                     counter.value = counter.value + 1
                     return counter.value
                 }
@@ -137,10 +137,10 @@ class TyperBodyModelTest {
     fun aStructLambdaWritingAFieldWritesItsCopy() {
         val p = snippet(
             """
-            pub struct S {
+            pub S: Struct {
                 pub k: Int32 = 0
-                pub mut fx f: () Fx<Tuple0, Void> {
-                    return fx() Void {
+                pub mut f: () Fx<Tuple0, Void> {
+                    return () Void {
                         k = 1
                     }
                 }
@@ -156,7 +156,7 @@ class TyperBodyModelTest {
     fun everyIterableGetsItsLoopPlan() {
         val p = snippet(
             """
-            pub fx loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, v: View<Char>, m: Map<Str, Int32>, s: Set<Int64>, n: Int32) Void {
+            pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, v: View<Char>, m: Map<Str, Int32>, s: Set<Int64>, n: Int32) Void {
                 for i: Size in 0..4 { }
                 for x: Int32 in xs { }
                 for b: UInt8 in arr { }
@@ -190,7 +190,7 @@ class TyperBodyModelTest {
     fun anIfExpressionIsATernaryWhenEveryBranchIsOneExpression() {
         val p = snippet(
             """
-            pub fx f: (c: Bool, a: Int32) Int32 {
+            pub f: (c: Bool, a: Int32) Int32 {
                 x: Int32 = if c { 1 } else { 2 }
                 y: Int32 = if c { 1 } else if a > 0 { 2 } else { 3 }
                 z: Int32 = if c {
@@ -212,16 +212,16 @@ class TyperBodyModelTest {
 
     private val calls = """
         pub LIMIT: Int32 = 3
-        pub fx sub: (a: Int32, b: Int32) Int32 {
+        pub sub: (a: Int32, b: Int32) Int32 {
             return a - b
         }
-        pub fx command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
+        pub command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
             return verb
         }
-        pub fx bump: (mut value: Int32, by: Int32 = 1) Void {
+        pub bump: (mut value: Int32, by: Int32 = 1) Void {
             value += by
         }
-        pub fx caller: () Void {
+        pub caller: () Void {
             r1: Int32 = sub(b = 3, a = 10)
             r2: Str = command("go")
             r3: Str = command("go", retries = 5)
@@ -273,7 +273,7 @@ class TyperBodyModelTest {
     fun anInferMathCallTakesItsTypeFromTheArgumentThenTheContext() {
         val p = snippet(
             """
-            pub fx f: (x: Float32) Float32 {
+            pub f: (x: Float32) Float32 {
                 a: Float32 = sqrt(x)
                 b: Float64 = sin(1.0)
                 c: Float32 = floor(0.5)
@@ -298,10 +298,10 @@ class TyperBodyModelTest {
     fun anExplicitGenericCallRecordsItsTypeArguments() {
         val p = snippet(
             """
-            fx id<T>: (value: T) T {
+            id<T>: (value: T) T {
                 return value
             }
-            pub fx f: () Int32 {
+            pub f: () Int32 {
                 return id<Int32>(7)
             }
             """
@@ -318,15 +318,15 @@ class TyperBodyModelTest {
     fun aMethodCallRecordsItsReceiverAndAnImplicitThisCallHasNone() {
         val p = snippet(
             """
-            pub class Dog {
-                pub fx sound: () Str {
+            pub Dog: Any {
+                pub sound: () Str {
                     return "woof"
                 }
-                pub fx twice: () Str {
+                pub twice: () Str {
                     return sound() + sound()
                 }
             }
-            pub fx f: (d: Dog) Str {
+            pub f: (d: Dog) Str {
                 return d.sound()
             }
             """
@@ -369,13 +369,13 @@ class TyperBodyModelTest {
     fun anOperatorOverloadIsAnOpCall() {
         val p = snippet(
             """
-            pub struct V {
+            pub V: Struct {
                 pub x: Int32 = 0
             }
-            fx @op_add: (a: V, b: V) V {
+            @op_add: (a: V, b: V) V {
                 return V { a.x + b.x }
             }
-            pub fx f: (a: V, b: V) V {
+            pub f: (a: V, b: V) V {
                 return a + b
             }
             """
@@ -392,7 +392,7 @@ class TyperBodyModelTest {
     fun resultSuccessAndErrorTakeTheirTypeFromTheContext() {
         val p = snippet(
             """
-            pub fx f: (ok: Bool) Result<Int32, Str> {
+            pub f: (ok: Bool) Result<Int32, Str> {
                 if ok {
                     return Result.success(5)
                 }
@@ -413,7 +413,7 @@ class TyperBodyModelTest {
     fun strOfIsCalledOnTheTypeAsResultSuccessIs() {
         val p = snippet(
             """
-            pub fx f: (v: View<UInt8>, xs: List<UInt8>) Str {
+            pub f: (v: View<UInt8>, xs: List<UInt8>) Str {
                 return Str.of(v) + Str.of(xs)
             }
             """
@@ -428,7 +428,7 @@ class TyperBodyModelTest {
         assertEquals(of.fn, fromList.fn, "one FnSymbol, as Result.success has")
         val wrong = snippet(
             """
-            pub fx g: (s: Str) Str {
+            pub g: (s: Str) Str {
                 return Str.of(s) + Str.from(s)
             }
             """
@@ -442,7 +442,7 @@ class TyperBodyModelTest {
     fun jsonsConstructorsAreCalledOnTheTypeAndOfIsChosenByItsArgument() {
         val p = snippet(
             """
-            pub fx f: (b: Bool, i: Int64, d: Float64, s: Str, m: Maybe<Float64>, t: Str) Json {
+            pub f: (b: Bool, i: Int64, d: Float64, s: Str, m: Maybe<Float64>, t: Str) Json {
                 o: Json = Json.obj()
                 o.put("a", Json.of(5))
                 o.put("b", Json.of(-2.5))
@@ -484,7 +484,7 @@ class TyperBodyModelTest {
         assertEquals("Str", p.model.calls[BodyTestSupport.node<FunctionCallExpr>(p, "Json.error()")]!!.returnType.display())
         val wrong = snippet(
             """
-            pub fx g: (n: Int32, x: Float32) Void {
+            pub g: (n: Int32, x: Float32) Void {
                 a: Json = Json.of(n)
                 b: Json = Json.of(x)
                 c: Json = Json.of(null)
@@ -501,7 +501,7 @@ class TyperBodyModelTest {
         assertTrue("types.call.static" in codes, "any other call on Json is refused: $codes")
         val values = snippet(
             """
-            pub fx h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
+            pub h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
                 f: Fx<Tuple1<Str>, Json> = Json.parse
                 return xs.contains(j) || m.containsValue(j)
             }
@@ -511,7 +511,7 @@ class TyperBodyModelTest {
         assertTrue(values.diagnostics.any { it.code == "types.member.static" && it.message.contains("'Json.parse' is made by the typer") }, TyperTestSupport.render(values))
         val itself = snippet(
             """
-            pub fx k: (o: Json) Void {
+            pub k: (o: Json) Void {
                 o.put("self", o)
             }
             """
@@ -523,11 +523,11 @@ class TyperBodyModelTest {
     fun theCompilerMadeCallablesTakeNoTypeArgumentsAndBindNamedOnes() {
         val typed = snippet(
             """
-            pub fx a: (v: View<UInt8>) Str {
+            pub a: (v: View<UInt8>) Str {
                 return Str.of<Float64, Bool, Str>(v)
             }
 
-            pub fx b: () Result<Int32, Str> {
+            pub b: () Result<Int32, Str> {
                 return Result.success<Int32>(5)
             }
             """
@@ -537,11 +537,11 @@ class TyperBodyModelTest {
         assertTrue(diags.any { it.startsWith("'Result.success' takes no type arguments.") }, diags.toString())
         val named = snippet(
             """
-            pub fx c: (v: View<UInt8>) Str {
+            pub c: (v: View<UInt8>) Str {
                 return Str.of(bytes = v)
             }
 
-            pub fx d: () Result<Int32, Str> {
+            pub d: () Result<Int32, Str> {
                 return Result.success(value = 5)
             }
             """
@@ -551,7 +551,7 @@ class TyperBodyModelTest {
         assertEquals(Foreign.Magic("Str.of"), of.fn!!.foreign)
         val wrongName = snippet(
             """
-            pub fx e: (v: View<UInt8>) Str {
+            pub e: (v: View<UInt8>) Str {
                 return Str.of(text = v)
             }
             """
@@ -566,14 +566,14 @@ class TyperBodyModelTest {
     fun aConstructionListsEveryFieldInheritedFirstInDeclarationOrder() {
         val p = snippet(
             """
-            pub class Animal {
-                require pub name: Str
+            pub Animal: Any {
+                pub name: Str
                 pub mut age: Int32 = 0
             }
-            pub class Dog: Animal {
+            pub Dog: Animal {
                 pub mut tricks: Int32 = 0
             }
-            pub fx f: () Dog {
+            pub f: () Dog {
                 return Dog { "Rex", tricks = 2 }
             }
             """
@@ -595,10 +595,10 @@ class TyperBodyModelTest {
     fun aMagicContainerConstructsEmptyAndAGenericClassSubstitutes() {
         val p = snippet(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
-            pub fx f: () Box<Int32> {
+            pub f: () Box<Int32> {
                 xs: List<Str> = List<Str> { }
                 return Box<Int32> { value = 5 }
             }
@@ -631,18 +631,18 @@ class TyperBodyModelTest {
 
     @Test
     fun theThreeEntryPointsAreAcceptedAndNothingElse() {
-        listOf("fx main: () Void { }", "fx main: () Int32 {\n    return 0\n}", "fx main: (args: List<Str>) Int32 {\n    return 0\n}").forEach {
+        listOf("main: () Void { }", "main: () Int32 {\n    return 0\n}", "main: (args: List<Str>) Int32 {\n    return 0\n}").forEach {
             expectNoErrors(snippet(it))
         }
-        TyperTestSupport.expectDiagnostic(snippet("fx main: (n: Int32) Void { }"), "types.main.signature")
-        TyperTestSupport.expectDiagnostic(snippet("fx main: () Str {\n    return \"\"\n}"), "types.main.signature")
+        TyperTestSupport.expectDiagnostic(snippet("main: (n: Int32) Void { }"), "types.main.signature")
+        TyperTestSupport.expectDiagnostic(snippet("main: () Str {\n    return \"\"\n}"), "types.main.signature")
     }
 
     @Test
     fun localsAndHandlerVariablesAreDeclaredSymbols() {
         val p = snippet(
             """
-            pub fx f: () Void {
+            pub f: () Void {
                 mut a: Int32 = 1
                 try {
                     a += 1
@@ -664,9 +664,9 @@ class TyperBodyModelTest {
     fun fieldsReachedThroughTheImplicitReceiverArePlacesOfThis() {
         val p = snippet(
             """
-            pub struct P {
+            pub P: Struct {
                 pub x: Int32 = 0
-                pub mut fx bump: () Void {
+                pub mut bump: () Void {
                     x += 1
                 }
             }
@@ -683,15 +683,15 @@ class TyperBodyModelTest {
     fun anUpcastIntoAMaybeOfTheBaseIsOneWrap() {
         val p = snippet(
             """
-            pub trait B {
-                pub fx id: () Str;
+            pub B: Any {
+                pub id: () Str;
             }
-            pub class S: B {
-                override pub fx id: () Str {
+            pub S: B {
+                override pub id: () Str {
                     return "s"
                 }
             }
-            pub fx make: () Maybe<B> {
+            pub make: () Maybe<B> {
                 return S { }
             }
             """
@@ -706,7 +706,7 @@ class TyperBodyModelTest {
 
     @Test
     fun lenientModeTypesTheSameAndOnlyWarns() {
-        val p = snippet("pub fx f: (i: Int32, x: Float32) Float32 {\n    return i + x\n}", mode = TyperMode.LENIENT)
+        val p = snippet("pub f: (i: Int32, x: Float32) Float32 {\n    return i + x\n}", mode = TyperMode.LENIENT)
         val d = TyperTestSupport.expectDiagnostic(p, "types.op.mismatch")
         assertEquals(net.exoad.kira.compiler.analysis.types.Severity.WARNING, d.severity)
         assertFalse(p.hasErrors)

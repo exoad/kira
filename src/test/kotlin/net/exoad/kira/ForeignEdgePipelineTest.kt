@@ -13,13 +13,13 @@ class ForeignEdgePipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            pub @_opaque class Handle
+            pub @_opaque Handle: Any
 
-            @_extern fx foreignOpen: (name: Str) Handle
+            @_extern foreignOpen: (name: Str) Handle
 
-            @_extern fx foreignClose: (h: Handle) Void
+            @_extern foreignClose: (h: Handle) Void
 
-            fx main: () Void {
+            main: () Void {
                 h: Handle = foreignOpen("x")
                 foreignClose(h)
             }

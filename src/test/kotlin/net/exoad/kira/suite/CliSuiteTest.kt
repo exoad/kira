@@ -81,9 +81,7 @@ class CliSuiteTest {
             basicManifest(),
             mapOf(
                 "src/app/main.kira" to """
-                    module "app:main"
-
-                    fx main: () Void {
+                    main: () Void {
                         trace("cli-ok")
                     }
                 """.trimIndent(),
@@ -110,9 +108,7 @@ class CliSuiteTest {
             basicManifest(),
             mapOf(
                 "src/app/main.kira" to """
-                    module "app:main"
-
-                    fx main: () Void {
+                    main: () Void {
                         trace("from-cli")
                     }
                 """.trimIndent(),
@@ -147,9 +143,7 @@ class CliSuiteTest {
             basicManifest(),
             mapOf(
                 "src/app/main.kira" to """
-                    module "app:main"
-
-                    fx main: () Void {
+                    main: () Void {
                         x: MissingType = 1
                         trace(x)
                     }
@@ -173,9 +167,7 @@ class CliSuiteTest {
             basicManifest(),
             mapOf(
                 "src/app/main.kira" to """
-                    module "app:main"
-
-                    fx main: () Void {
+                    main: () Void {
                         s: Str = "a\0b"
                         trace(s)
                     }
@@ -187,7 +179,7 @@ class CliSuiteTest {
         assertEquals(1, result.exitCode, output)
         assertTrue(output.contains("Unknown escape sequence '\\0'"), output)
         assertTrue(output.contains("Kira knows \\n, \\t, \\r, \\\\, \\\" and \\${'$'}."), output)
-        assertTrue(output.contains("main.kira] : line 4"), output)
+        assertTrue(output.contains("main.kira] : line 2"), output)
         assertFalse(output.contains("Exception in thread"), output)
         assertFalse(output.contains("at net.exoad."), output)
         assertFalse(File(dir, "out.kira.c").exists(), "no C should be emitted on a parse error")
@@ -200,9 +192,7 @@ class CliSuiteTest {
             basicManifest().replace("target: c", "target: py"),
             mapOf(
                 "src/app/main.kira" to """
-                    module "app:main"
-
-                    fx f: (s: Maybe<Str>) Size {
+                    f: (s: Maybe<Str>) Size {
                         n: Size = s.size()
                         return n
                     }
@@ -217,12 +207,12 @@ class CliSuiteTest {
     }
 
     @Test
-    fun anEmptySourceFileIsADiagnosticNotACrash() {
+    fun anEmptySourceFileIsAnEmptyModuleNotACrash() {
+        // The file is the module, so an empty file is an empty module.
         val dir = tempProject("empty-source", basicManifest(), mapOf("src/app/main.kira" to ""))
         val result = runCli(dir)
         val output = result.stdout + result.stderr
-        assertEquals(1, result.exitCode, output)
-        assertTrue(output.contains("must be a module declaration"), output)
+        assertEquals(0, result.exitCode, output)
         assertFalse(output.contains("Exception in thread"), output)
         assertFalse(output.contains("at net.exoad."), output)
     }

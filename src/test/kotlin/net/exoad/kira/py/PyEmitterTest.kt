@@ -44,15 +44,15 @@ class PyEmitterTest {
     fun integerDivisionTruncatesAndRemainderTakesTheDividendsSign() {
         val py = python(
             """
-            pub fx q: (a: Int32, b: Int32) Int32 {
+            pub q: (a: Int32, b: Int32) Int32 {
                 return a / b
             }
 
-            pub fx r: (a: Int64, b: Int64) Int64 {
+            pub r: (a: Int64, b: Int64) Int64 {
                 return a % b
             }
 
-            pub fx u: (a: UInt32, b: UInt32) UInt32 {
+            pub u: (a: UInt32, b: UInt32) UInt32 {
                 return a / b
             }
             """
@@ -67,27 +67,27 @@ class PyEmitterTest {
     fun eachIntegerTypeWrapsOrChecksItsResult() {
         val py = python(
             """
-            pub fx a: (x: UInt8, y: UInt8) UInt8 {
+            pub a: (x: UInt8, y: UInt8) UInt8 {
                 return x + y
             }
 
-            pub fx b: (x: Int32, y: Int32) Int32 {
+            pub b: (x: Int32, y: Int32) Int32 {
                 return x * y
             }
 
-            pub fx c: (x: Int8) Int8 {
+            pub c: (x: Int8) Int8 {
                 return -x
             }
 
-            pub fx d: (x: Size) Size {
+            pub d: (x: Size) Size {
                 return x - 1
             }
 
-            pub fx e: (x: UInt16) UInt16 {
+            pub e: (x: UInt16) UInt16 {
                 return ~x
             }
 
-            pub fx f: (x: Int64) Int32 {
+            pub f: (x: Int64) Int32 {
                 return x as Int32
             }
             """
@@ -104,11 +104,11 @@ class PyEmitterTest {
     fun float64DivisionIsIeeesUnlessTheDivisorIsANonzeroConstant() {
         val py = python(
             """
-            pub fx a: (x: Float64, y: Float64) Float64 {
+            pub a: (x: Float64, y: Float64) Float64 {
                 return x / y
             }
 
-            pub fx b: (x: Float64) Float64 {
+            pub b: (x: Float64) Float64 {
                 return x / 2.0
             }
             """
@@ -121,11 +121,11 @@ class PyEmitterTest {
     fun aComparisonOperandIsParenthesizedSoPythonNeverChainsIt() {
         val py = python(
             """
-            pub fx a: (x: Int32, y: Int32, z: Bool) Bool {
+            pub a: (x: Int32, y: Int32, z: Bool) Bool {
                 return (x < y) == z
             }
 
-            pub fx b: (x: Bool, y: Bool) Bool {
+            pub b: (x: Bool, y: Bool) Bool {
                 return !x == y
             }
             """
@@ -138,9 +138,9 @@ class PyEmitterTest {
     fun aUseOfTheStdlibBindsItsMagicFunctions() {
         val py = python(
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx f: (a: Float64, b: Float64) Float64 {
+            pub f: (a: Float64, b: Float64) Float64 {
                 return max(a, min(b, 1.0))
             }
             """
@@ -153,27 +153,27 @@ class PyEmitterTest {
     fun aShiftByAConstantInsideTheWidthIsBareAndAnyOtherCountIsChecked() {
         val py = python(
             """
-            pub fx a: (x: UInt32) UInt32 {
+            pub a: (x: UInt32) UInt32 {
                 return x << 2
             }
 
-            pub fx b: (x: UInt32, n: Int64) UInt32 {
+            pub b: (x: UInt32, n: Int64) UInt32 {
                 return x >> n
             }
 
-            pub fx c: (x: UInt8, n: UInt8) UInt8 {
+            pub c: (x: UInt8, n: UInt8) UInt8 {
                 return x << n
             }
 
-            pub fx d: (x: UInt32) UInt32 {
+            pub d: (x: UInt32) UInt32 {
                 return x << 32
             }
 
-            pub fx e: (x: Int64) Int64 {
+            pub e: (x: Int64) Int64 {
                 return x >> -1
             }
 
-            pub fx g: (x: Size) Size {
+            pub g: (x: Size) Size {
                 return x << 40
             }
             """
@@ -191,27 +191,27 @@ class PyEmitterTest {
     fun aSignedLeftShiftWrapsAndUnsignedRightShiftReadsTheBitsAsUnsigned() {
         val py = python(
             """
-            pub fx a: (x: Int32, n: Int32) Int32 {
+            pub a: (x: Int32, n: Int32) Int32 {
                 return x << n
             }
 
-            pub fx b: (x: Int64) Int64 {
+            pub b: (x: Int64) Int64 {
                 return x << 63
             }
 
-            pub fx c: (x: Int8, n: Int32) Int8 {
+            pub c: (x: Int8, n: Int32) Int8 {
                 return x >>> n
             }
 
-            pub fx d: (x: Int16) Int16 {
+            pub d: (x: Int16) Int16 {
                 return x >> 3
             }
 
-            pub fx e: (x: UInt16) UInt16 {
+            pub e: (x: UInt16) UInt16 {
                 return x >>> 15
             }
 
-            pub fx g: (x: Int64) Int64 {
+            pub g: (x: Int64) Int64 {
                 return 1 << x
             }
             """
@@ -229,15 +229,15 @@ class PyEmitterTest {
     fun aShiftKeepsPythonsGroupingOfTheOtherBitwiseOperators() {
         val py = python(
             """
-            pub fx a: (x: UInt16, y: UInt16) UInt16 {
+            pub a: (x: UInt16, y: UInt16) UInt16 {
                 return (x << 4 | y >> 4) ^ (x & y) << 2
             }
 
-            pub fx b: (x: UInt32, y: UInt32) UInt32 {
+            pub b: (x: UInt32, y: UInt32) UInt32 {
                 return (x + y) >> 1
             }
 
-            pub fx c: (x: Int32) Int32 {
+            pub c: (x: Int32) Int32 {
                 return (x & 0xFF) >>> 4
             }
             """
@@ -251,7 +251,7 @@ class PyEmitterTest {
     fun aBitwiseOrShiftCompoundAssignmentIsTheOperationAssigned() {
         val py = python(
             """
-            pub fx f: (v: Int32, n: Int32) Int32 {
+            pub f: (v: Int32, n: Int32) Int32 {
                 mut x: Int32 = v
                 x &= 0x0F
                 x |= 0x30
@@ -281,24 +281,24 @@ class PyEmitterTest {
             mut at: Size = 0
             mut xs: List<UInt8> = List<UInt8> { }
 
-            fx next: () Size {
+            next: () Size {
                 at += 1
                 return at
             }
 
-            fx bit: () Int32 {
+            bit: () Int32 {
                 return 3
             }
 
-            class Flags {
+            Flags: Any {
                 pub mut bits: UInt8 = 0
 
-                pub mut fx set: (n: Int32) Void {
+                pub mut set: (n: Int32) Void {
                     bits |= 1 << n
                 }
             }
 
-            fx f: (i: Size) Void {
+            f: (i: Size) Void {
                 xs[next()] |= 0x80
                 xs[at] <<= bit()
                 xs[i] >>>= 1
@@ -317,27 +317,27 @@ class PyEmitterTest {
     fun aContainerReachedThroughACallIsLocatedBeforeTheKeyAndTheValueAndOnce() {
         val py = python(
             """
-            class Holder {
+            Holder: Any {
                 pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
                 pub mut xs: List<Int32> = List<Int32> { }
             }
 
-            fx holderOf: (h: Holder) Holder {
+            holderOf: (h: Holder) Holder {
                 trace("holder")
                 return h
             }
 
-            fx key: () Str {
+            key: () Str {
                 trace("key")
                 return "k"
             }
 
-            fx val: () Int32 {
+            val: () Int32 {
                 trace("val")
                 return 1
             }
 
-            fx f: (h: Holder) Void {
+            f: (h: Holder) Void {
                 holderOf(h).items[key()] = val()
                 holderOf(h).items[key()] = 5
                 holderOf(h).xs[0] += 5
@@ -355,9 +355,9 @@ class PyEmitterTest {
     fun fmodIsMathFmodWithCsNaNs() {
         val py = python(
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx f: (a: Float64, b: Float64) Float64 {
+            pub f: (a: Float64, b: Float64) Float64 {
                 return fmod(a, b) + fmod(a + b, 2.0)
             }
             """
@@ -370,9 +370,9 @@ class PyEmitterTest {
     fun kiraMathBindsToItsHelpersEachAFloat64AsCsIs() {
         val py = python(
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx f: (a: Float64, b: Float64) Float64 {
+            pub f: (a: Float64, b: Float64) Float64 {
                 return sqrt(a) + pow(a, b) + floor(a) + ceil(b) + round(a) + sin(a) + cos(b) + tan(a) + abs(b)
             }
             """
@@ -396,9 +396,9 @@ class PyEmitterTest {
     fun aMathHelperIsCarriedOnlyWhenUsed() {
         val py = python(
             """
-            use "kira:math"
+            kira.math as math
 
-            pub fx f: (a: Float64) Float64 {
+            pub f: (a: Float64) Float64 {
                 return abs(a)
             }
             """
@@ -413,11 +413,11 @@ class PyEmitterTest {
     fun aFloat64AsTextIsTheShortestTextStdToCharsWrites() {
         val py = python(
             """
-            pub fx a: (x: Float64) Str {
+            pub a: (x: Float64) Str {
                 return "x=${'$'}{x} m"
             }
 
-            pub fx b: (x: Float64) Str {
+            pub b: (x: Float64) Str {
                 return x as Str
             }
             """
@@ -433,11 +433,11 @@ class PyEmitterTest {
     fun fixedAndToHexBindToPrintfsFormats() {
         val py = python(
             """
-            pub fx speed: (mps: Float64) Str {
+            pub speed: (mps: Float64) Str {
                 return "${'$'}{mps.fixed(1)} m/s"
             }
 
-            pub fx ids: (build: UInt32, seq: Int16) Str {
+            pub ids: (build: UInt32, seq: Int16) Str {
                 return build.toHex() + ":" + (seq as UInt16).toHex()
             }
             """
@@ -452,23 +452,23 @@ class PyEmitterTest {
     fun theStrMethodsBindToPythonsWithKiraStrsRules() {
         val py = python(
             """
-            pub fx a: (s: Str, t: Str) Size {
+            pub a: (s: Str, t: Str) Size {
                 return s.length() + s.size() + s.find(t).unwrapOr(0)
             }
 
-            pub fx b: (s: Str, t: Str) Bool {
+            pub b: (s: Str, t: Str) Bool {
                 return s.isEmpty() || s.contains(t) || s.startsWith(t) || s.endsWith("x") || s.equals(t)
             }
 
-            pub fx c: (s: Str) Str {
+            pub c: (s: Str) Str {
                 return s.substring(1, 3) + s.charAt(0) + s.trim().toLower() + ("a" + s).toUpper()
             }
 
-            pub fx d: (s: Str) List<Str> {
+            pub d: (s: Str) List<Str> {
                 return s.split(",")
             }
 
-            pub fx e: (s: Str) Int64 {
+            pub e: (s: Str) Int64 {
                 return s.toInt64().unwrapOr(0) + s.hashCode() + (s.toFloat64().unwrapOr(0.0) as Int64)
             }
             """
@@ -486,7 +486,7 @@ class PyEmitterTest {
     fun aStrsBytesAreItsUtf8() {
         val py = python(
             """
-            fx f: (s: Str) Size {
+            f: (s: Str) Size {
                 b: List<UInt8> = s.bytes()
                 return b.size() + s.bytes().size()
             }
@@ -500,29 +500,29 @@ class PyEmitterTest {
     fun strOfReadsUtf8AsPythonsReplacingDecode() {
         val py = python(
             """
-            fx f: (v: View<UInt8>, xs: List<UInt8>) Str {
+            f: (v: View<UInt8>, xs: List<UInt8>) Str {
                 return Str.of(v) + Str.of(xs.from(1)) + Str.of(xs)
             }
             """
         )
         assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
         assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
-        assertTrue(python("fx g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
+        assertTrue(python("g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
     }
 
     @Test
     fun theKotlinNamedStrMethodsKeepKiraStrsRules() {
         val py = python(
             """
-            pub fx a: (s: Str, fill: Char) Str {
+            pub a: (s: Str, fill: Char) Str {
                 return s.padEnd(4, fill) + s.trimStart() + s.trimEnd() + s.replace("a", "")
             }
 
-            pub fx b: (s: Str) List<Str> {
+            pub b: (s: Str) List<Str> {
                 return s.splitWhitespace()
             }
 
-            pub fx c: (s: Str) Int64 {
+            pub c: (s: Str) Int64 {
                 return s.toInt64Radix(16).unwrapOr(0)
             }
             """
@@ -536,7 +536,7 @@ class PyEmitterTest {
     fun joinToStringTakesTheListBeforeTheSeparator() {
         val py = python(
             """
-            fx f: (xs: List<Str>, sep: Str) Str {
+            f: (xs: List<Str>, sep: Str) Str {
                 return xs.joinToString(sep) + "a b".splitWhitespace().joinToString(",")
             }
             """
@@ -549,7 +549,7 @@ class PyEmitterTest {
     fun aCharsTestsAreAsciisOnItsCodePoint() {
         val py = python(
             """
-            fx f: (s: Str, i: Size, c: Char) Bool {
+            f: (s: Str, i: Size, c: Char) Bool {
                 return s[i].isDigit() || c.isWhitespace() || 'x'.isLetter()
             }
             """
@@ -562,18 +562,18 @@ class PyEmitterTest {
     fun aListsSortSumMinAndMaxNameTheirElementType() {
         val py = python(
             """
-            class Bag {
+            Bag: Any {
                 pub mut fs: List<Float64> = List<Float64> { }
                 pub mut bs: List<UInt8> = List<UInt8> { }
 
-                pub mut fx tidy: () Float64 {
+                pub mut tidy: () Float64 {
                     fs.sort()
                     bs.sort()
                     return fs.sum() + (bs.sum() as Float64)
                 }
             }
 
-            fx f: (mut xs: List<Int32>, names: List<Str>) Int32 {
+            f: (mut xs: List<Int32>, names: List<Str>) Int32 {
                 xs.sort()
                 return xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
             }
@@ -590,7 +590,7 @@ class PyEmitterTest {
     fun aStrIsOrderedAsPythonOrdersIt() {
         val py = python(
             """
-            fx f: (a: Str, b: Str) Bool {
+            f: (a: Str, b: Str) Bool {
                 return a < b || a >= "m"
             }
             """
@@ -602,14 +602,14 @@ class PyEmitterTest {
     fun aJsonIsTheValueJsonLoadsGives() {
         val py = python(
             """
-            use "kira:json"
+            kira.json as json
 
-            pub class Doc {
-                pub require body: Json
+            pub Doc: Any {
+                pub body: Json
                 pub mut items: List<Json> = []
             }
 
-            pub fx build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
+            pub build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
                 d: Doc = Doc { body = Json.parse(t) }
                 o: Json = Json.obj()
                 o.put("x", Json.of(x))
@@ -645,32 +645,32 @@ class PyEmitterTest {
             """
             SEP: Char = ':'
 
-            class Cursor {
+            Cursor: Any {
                 pub mut last: Char = 'x'
-                pub mut none: Char
+                pub mut none: Char = '\0'
             }
 
-            pub fx digit: (s: Str, i: Size) Bool {
+            pub digit: (s: Str, i: Size) Bool {
                 return s[i] >= '0' && s.at(i) <= '9' && s[i] != SEP
             }
 
-            pub fx value: (c: Char) Int32 {
+            pub value: (c: Char) Int32 {
                 return (c as Int32) - ('0' as Int32)
             }
 
-            pub fx byte: (c: Char) UInt8 {
+            pub byte: (c: Char) UInt8 {
                 return c as UInt8
             }
 
-            pub fx char: (n: Int32, b: UInt8) Str {
+            pub char: (n: Int32, b: UInt8) Str {
                 return "${'$'}{n as Char}${'$'}{b as Char}${'$'}{'\n'}" + ((9 as Char) as Str)
             }
 
-            pub fx hex: (crc: UInt16) Str {
+            pub hex: (crc: UInt16) Str {
                 return "0x${'$'}{crc.toHex().padStart(4, '0')}"
             }
 
-            pub fx show: (c: Char) Void {
+            pub show: (c: Char) Void {
                 trace(c)
             }
             """
@@ -689,7 +689,7 @@ class PyEmitterTest {
     fun chrAndOrdAreNamesPythonReserves() {
         refused(
             """
-            fx ord: (c: Char) Int32 {
+            ord: (c: Char) Int32 {
                 return c as Int32
             }
             """,
@@ -701,15 +701,15 @@ class PyEmitterTest {
     fun booleanAndUnaryOperatorsKeepKirasGrouping() {
         val py = python(
             """
-            pub fx a: (x: Bool, y: Bool, z: Bool) Bool {
+            pub a: (x: Bool, y: Bool, z: Bool) Bool {
                 return (x || y) && z
             }
 
-            pub fx b: (x: Bool, y: Bool, z: Bool) Bool {
+            pub b: (x: Bool, y: Bool, z: Bool) Bool {
                 return x || y && z
             }
 
-            pub fx c: (p: Int32, q: Int32) Int32 {
+            pub c: (p: Int32, q: Int32) Int32 {
                 return -(p * q) - (p - q)
             }
             """
@@ -723,24 +723,24 @@ class PyEmitterTest {
     fun pubNamesStayAndPrivateOnesTakeAnUnderscore() {
         val py = python(
             """
-            pub class Meter {
-                require pub start: Int32
-                require scale: Int32
+            pub Meter: Any {
+                pub start: Int32
+                scale: Int32
                 pub mut reading: Int32 = 0
                 mut ticks: Int32 = 0
 
-                pub mut fx tick: () Int32 {
+                pub mut tick: () Int32 {
                     ticks += 1
                     reading = start + ticks * scale
                     return reading
                 }
 
-                fx hidden: () Int32 {
+                hidden: () Int32 {
                     return ticks
                 }
             }
 
-            fx helper: () Int32 {
+            helper: () Int32 {
                 return 1
             }
 
@@ -763,14 +763,14 @@ class PyEmitterTest {
     fun maybeIsNoneOrTheValue() {
         val py = python(
             """
-            pub fx a: (m: Maybe<Float64>) Float64 {
+            pub a: (m: Maybe<Float64>) Float64 {
                 if m.isNull() {
                     return 0.0
                 }
                 return m.value
             }
 
-            pub fx b: (x: Float64) Maybe<Float64> {
+            pub b: (x: Float64) Maybe<Float64> {
                 if x < 0.0 {
                     return null
                 }
@@ -791,12 +791,12 @@ class PyEmitterTest {
             mut at: Size = 0
             mut xs: List<Int32> = List<Int32> { }
 
-            fx bump: () Int32 {
+            bump: () Int32 {
                 at += 1
                 return 7
             }
 
-            fx f: (i: Size) Void {
+            f: (i: Size) Void {
                 xs[at] = bump()
                 xs[i] = bump()
                 xs[at] = 3
@@ -817,7 +817,7 @@ class PyEmitterTest {
             """
             mut made: Int32 = 0
 
-            class Thing {
+            Thing: Any {
                 pub mut id: Int32 = 0
 
                 initially {
@@ -836,52 +836,52 @@ class PyEmitterTest {
             """
             mut seed: List<Int32> = List<Int32> { }
 
-            class Holder {
-                require pub mut items: List<Int32>
+            Holder: Any {
+                pub mut items: List<Int32>
 
-                pub fx snapshot: () List<Int32> {
+                pub snapshot: () List<Int32> {
                     return items
                 }
 
-                pub mut fx grow: () Int32 {
+                pub mut grow: () Int32 {
                     items.add(0)
                     return 1
                 }
             }
 
-            fx size: (xs: List<Int32>) Size {
+            size: (xs: List<Int32>) Size {
                 return xs.size()
             }
 
-            fx count: (xs: List<Int32>) Size {
+            count: (xs: List<Int32>) Size {
                 seed.add(1)
                 return xs.size()
             }
 
-            fx lenOf: (xs: List<Int32>, k: Int32) Size {
+            lenOf: (xs: List<Int32>, k: Int32) Size {
                 return xs.size() + (k as Size)
             }
 
-            fx push: (mut xs: List<Int32>) Int32 {
+            push: (mut xs: List<Int32>) Int32 {
                 xs.add(1)
                 return 1
             }
 
-            fx echo: (xs: List<Int32>) List<Int32> {
+            echo: (xs: List<Int32>) List<Int32> {
                 return xs
             }
 
-            fx fresh: () List<Int32> {
+            fresh: () List<Int32> {
                 mut out: List<Int32> = List<Int32> { }
                 out.add(1)
                 return out
             }
 
-            fx pick: (c: Bool, a: List<Int32>) List<Int32> {
+            pick: (c: Bool, a: List<Int32>) List<Int32> {
                 return if c { a } else { fresh() }
             }
 
-            fx f: (h: Holder) Void {
+            f: (h: Holder) Void {
                 mut a: List<Int32> = fresh()
                 mut b: List<Int32> = a
                 mut c: List<Int32> = seed
@@ -909,20 +909,20 @@ class PyEmitterTest {
     fun aFieldIsCopiedForACalleeThatMayWriteWhatItsCallerSeesNotForOneThatOnlyPrints() {
         val py = python(
             """
-            fx show: (xs: List<Int32>) Size {
+            show: (xs: List<Int32>) Size {
                 trace(xs.size())
                 return xs.size()
             }
 
-            fx into: (xs: List<Int32>, mut out: List<Int32>) Size {
+            into: (xs: List<Int32>, mut out: List<Int32>) Size {
                 out.add(1)
                 return xs.size()
             }
 
-            class Holder {
+            Holder: Any {
                 pub mut items: List<Int32> = List<Int32> { }
 
-                pub mut fx f: () Size {
+                pub mut f: () Size {
                     mut out: List<Int32> = List<Int32> { }
                     return show(items) + into(items, mut out)
                 }
@@ -939,26 +939,26 @@ class PyEmitterTest {
             """
             mut cursor: Size = 0
 
-            fx next: () Size {
+            next: () Size {
                 cursor += 1
                 return cursor - 1
             }
 
-            fx at: (v: List<UInt8>, i: Size) UInt32 {
+            at: (v: List<UInt8>, i: Size) UInt32 {
                 return v[i] as UInt32
             }
 
-            fx fill: (p: MutView<UInt8>) Size {
+            fill: (p: MutView<UInt8>) Size {
                 p[0] = 1
                 return 0
             }
 
-            fx push: (mut xs: List<UInt8>) Size {
+            push: (mut xs: List<UInt8>) Size {
                 xs.add(1)
                 return 0
             }
 
-            fx walk: (n: Size) UInt32 {
+            walk: (n: Size) UInt32 {
                 mut buf: List<UInt8> = List<UInt8> { }
                 buf.add(5)
                 mut s: UInt32 = 0
@@ -987,11 +987,11 @@ class PyEmitterTest {
             mut k: Arr<UInt8, 2> = KEY
             KEY: Arr<UInt8, 2> = [0xAB, 0xCD]
 
-            fx total: (xs: Arr<Int32, 2>) Int32 {
+            total: (xs: Arr<Int32, 2>) Int32 {
                 return xs[0] + xs[1]
             }
 
-            fx f: () Int32 {
+            f: () Int32 {
                 return total(A) + total(B)
             }
             """
@@ -1006,22 +1006,22 @@ class PyEmitterTest {
             """
             mut seed: List<Int32> = List<Int32> { }
 
-            class Holder {
+            Holder: Any {
                 pub mut items: List<Int32> = List<Int32> { }
 
-                pub mut fx reset: (mut xs: List<Int32>) Void {
+                pub mut reset: (mut xs: List<Int32>) Void {
                     items = List<Int32> { }
                     xs.add(1)
                 }
             }
 
-            fx fill: (mut xs: List<Int32>, ys: List<Int32>) Void {
+            fill: (mut xs: List<Int32>, ys: List<Int32>) Void {
                 xs = ys
                 xs.add(2)
                 xs[0] = 3
             }
 
-            fx f: (h: Holder) Void {
+            f: (h: Holder) Void {
                 mut a: List<Int32> = List<Int32> { }
                 fill(mut a, seed)
                 fill(mut h.items, a)
@@ -1042,7 +1042,7 @@ class PyEmitterTest {
     fun listSetAndContainsBindToSetitemAndAnEqualityTest() {
         val py = python(
             """
-            fx f: (x: Float64) Bool {
+            f: (x: Float64) Bool {
                 mut xs: List<Float64> = List<Float64> { }
                 xs.add(x)
                 xs.set(0, x + 1.0)
@@ -1061,12 +1061,12 @@ class PyEmitterTest {
             """
             mut at: Int32 = 0
 
-            fx key: () Int32 {
+            key: () Int32 {
                 at += 1
                 return at
             }
 
-            fx f: (k: Str, x: Float64) Size {
+            f: (k: Str, x: Float64) Size {
                 mut m: Map<Str, Int32> = Map<Str, Int32> { }
                 m.put(k, 1)
                 m[k] = 2
@@ -1103,19 +1103,19 @@ class PyEmitterTest {
             """
             mut at: Int32 = 0
 
-            fx key: () Str {
+            key: () Str {
                 at += 1
                 return "k"
             }
 
-            class Holder {
+            Holder: Any {
                 pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
 
-                pub fx mine: () Holder {
+                pub mine: () Holder {
                     return this
                 }
 
-                pub mut fx f: (xs: List<Int32>, k: Str) Bool {
+                pub mut f: (xs: List<Int32>, k: Str) Bool {
                     items.put(k, xs[0] + 1)
                     items.put(key(), 1)
                     items.put(k + "x", xs[1])
@@ -1138,30 +1138,30 @@ class PyEmitterTest {
             """
             mut seed: Map<Str, Int32> = Map<Str, Int32> { }
 
-            class Holder {
-                require pub mut items: Map<Str, Int32>
+            Holder: Any {
+                pub mut items: Map<Str, Int32>
 
-                pub fx snapshot: () Map<Str, Int32> {
+                pub snapshot: () Map<Str, Int32> {
                     return items
                 }
 
-                pub mut fx reset: (mut xs: Map<Str, Int32>) Void {
+                pub mut reset: (mut xs: Map<Str, Int32>) Void {
                     items = Map<Str, Int32> { }
                     xs["r"] = 1
                 }
             }
 
-            fx count: (xs: Map<Str, Int32>) Size {
+            count: (xs: Map<Str, Int32>) Size {
                 seed["n"] = 1
                 return xs.size()
             }
 
-            fx fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
+            fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
                 xs = ys
                 xs["f"] = 2
             }
 
-            fx f: (h: Holder) Size {
+            f: (h: Holder) Size {
                 mut a: Map<Str, Int32> = Map<Str, Int32> { }
                 mut b: Map<Str, Int32> = a
                 fill(mut a, seed)
@@ -1186,14 +1186,14 @@ class PyEmitterTest {
     fun aListOfUInt8IsABytearrayAndAnArrAList() {
         val py = python(
             """
-            pub alias Cmd as Arr<UInt8, 4>
+            pub Arr<UInt8, 4> as Cmd
 
-            class Buf {
+            Buf: Any {
                 pub mut data: List<UInt8> = List<UInt8> { }
                 pub mut words: Arr<Int32, 3> = Arr<Int32, 3> { }
             }
 
-            fx f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
+            f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
                 mut out: List<UInt8> = [0xFF, 0xD8]
                 mut one: Arr<UInt8> = [7]
                 mut ints: List<Int32> = [1, 2]
@@ -1218,17 +1218,17 @@ class PyEmitterTest {
     fun aViewIsWhatItWasLentFromAndFromAndSliceAreCheckedMemoryviews() {
         val py = python(
             """
-            use "kira:bytes"
+            kira.bytes as bytes
 
-            class Link {
+            Link: Any {
                 pub mut buf: List<UInt8> = List<UInt8> { }
 
-                pub fx head: () UInt16 {
+                pub head: () UInt16 {
                     return readU16Le(buf, 0)
                 }
             }
 
-            fx sum: (v: View<UInt8>) UInt32 {
+            sum: (v: View<UInt8>) UInt32 {
                 mut s: UInt32 = 0
                 mut i: Size = 0
                 while i < v.size() {
@@ -1238,14 +1238,14 @@ class PyEmitterTest {
                 return s + (v.from(1).size() as UInt32) + (v.slice(0, 1).get(0) as UInt32)
             }
 
-            fx fill: (p: MutView<UInt8>, v: UInt8) Void {
+            fill: (p: MutView<UInt8>, v: UInt8) Void {
                 p[0] = v
                 p.set(1, v)
                 writeU32Le(p, 2, 0xA1B2C3D4)
                 writeF64Le(p.from(6), 0, 1.5)
             }
 
-            fx g: () UInt32 {
+            g: () UInt32 {
                 mut xs: List<UInt8> = List<UInt8> { }
                 fill(xs.view(), 1)
                 fill(xs.from(2), 1)
@@ -1270,9 +1270,9 @@ class PyEmitterTest {
     fun kiraBytesBigEndianSetIsTheLittleEndianOnesTwin() {
         val py = python(
             """
-            use "kira:bytes"
+            kira.bytes as bytes
 
-            fx f: (v: View<UInt8>, p: MutView<UInt8>) UInt64 {
+            f: (v: View<UInt8>, p: MutView<UInt8>) UInt64 {
                 writeU16Be(p, 0, readU16Be(v, 0))
                 writeU32Be(p, 2, readU32Be(v, 2))
                 writeU64Be(p, 6, readU64Be(v, 6))
@@ -1290,7 +1290,7 @@ class PyEmitterTest {
     fun aViewsToListIsANewListOfItsElements() {
         val py = python(
             """
-            fx f: (v: View<UInt8>, w: View<Int32>) Size {
+            f: (v: View<UInt8>, w: View<Int32>) Size {
                 a: List<UInt8> = v.slice(1, 2).toList()
                 b: List<Int32> = w.toList()
                 mut c: List<UInt8> = List<UInt8> { }
@@ -1309,11 +1309,11 @@ class PyEmitterTest {
     fun aMutViewOfAnotherElementIsReadAsACopiedSlice() {
         val py = python(
             """
-            fx at: (v: View<Int32>, i: Size) Int32 {
+            at: (v: View<Int32>, i: Size) Int32 {
                 return v[i]
             }
 
-            fx f: () Int32 {
+            f: () Int32 {
                 mut xs: List<Int32> = [1, 2, 3]
                 return at(xs.from(1), 0) + at(xs, 2)
             }
@@ -1326,7 +1326,7 @@ class PyEmitterTest {
     fun theRuntimeCarriesOnlyWhatTheModuleUses() {
         val py = python(
             """
-            pub fx a: (x: Float64, y: Float64) Float64 {
+            pub a: (x: Float64, y: Float64) Float64 {
                 return x / y
             }
             """
@@ -1398,16 +1398,16 @@ class PyEmitterTest {
     fun aStructsCloneAndAUseCycleNameNoBuiltinAKiraNameCouldShadow() {
         val (py, errors) = PyTestSupport.emitProgram(
             "app:main" to """
-                use "app:other"
+                app.other as other
 
                 pub globals: Int32 = 5
                 pub mut type: Int32 = 3
 
-                pub struct Pt {
+                pub Pt: Struct {
                     pub x: Int32 = 0
                 }
 
-                pub fx main: () Int32 {
+                pub main: () Int32 {
                     a: Pt = Pt { 1 }
                     mut b: Pt = a
                     b.x = type
@@ -1415,9 +1415,9 @@ class PyEmitterTest {
                 }
                 """,
             "app:other" to """
-                use "app:main"
+                app.main as main
 
-                pub fx o: () Int32 {
+                pub o: () Int32 {
                     return 1
                 }
                 """,
@@ -1440,7 +1440,7 @@ class PyEmitterTest {
                 arrayOf(File(PyTestSupport.repoRoot, "src/test/resources/py-golden/numbers/src/lang/numbers.kira").path)
             val py = python(
                 """
-                pub fx a: (x: Int32, y: Int32) Int32 {
+                pub a: (x: Int32, y: Int32) Int32 {
                     return x / y
                 }
                 """
@@ -1457,10 +1457,10 @@ class PyEmitterTest {
             """
             mut log: List<Int32> = List<Int32> { }
 
-            class Bag {
-                require pub items: List<Int32>
+            Bag: Any {
+                pub items: List<Int32>
 
-                pub fx total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                pub total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
                     mut t: Int32 = 0
                     for x: Int32 in items {
                         trace(x)
@@ -1484,7 +1484,7 @@ class PyEmitterTest {
                 }
             }
 
-            fx f: (n: Size, v: View<UInt8>) UInt32 {
+            f: (n: Size, v: View<UInt8>) UInt32 {
                 mut t: UInt32 = 0
                 for i: Size in 1..n {
                     t += i as UInt32
@@ -1513,26 +1513,26 @@ class PyEmitterTest {
             """
             pub ROW: List<Int32> = [1, 2]
 
-            class Knob {
-                require pub name: Str
+            Knob: Any {
+                pub name: Str
                 pub mut level: Int32 = 3
                 pub mut tags: List<Int32> = List<Int32> { }
                 mut hidden: Int32 = 9
             }
 
-            class Pair {
-                require pub left: Knob
+            Pair: Any {
+                pub left: Knob
             }
 
-            fx scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
+            scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
                 return x * k
             }
 
-            fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
+            total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
                 return xs.size()
             }
 
-            fx f: () Int32 {
+            f: () Int32 {
                 a: Knob = Knob { "a" }
                 b: Knob = Knob { "b", 4 }
                 return scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
@@ -1566,11 +1566,11 @@ class PyEmitterTest {
     fun inheritanceIsRefusedSoOq2NeverArises() {
         refused(
             """
-            class Base {
+            Base: Any {
                 pub mut seen: Int32 = 0
             }
 
-            class Kid: Base {
+            Kid: Base {
                 pub k: Int32 = 5
             }
             """,
@@ -1582,9 +1582,9 @@ class PyEmitterTest {
     fun aMaybeOfJsonAndAMapOfJsonAreRefusedForJsonNullIsNone() {
         refused(
             """
-            use "kira:json"
+            kira.json as json
 
-            pub fx f: (m: Maybe<Json>) Bool {
+            pub f: (m: Maybe<Json>) Bool {
                 return m.isSome()
             }
             """,
@@ -1592,9 +1592,9 @@ class PyEmitterTest {
         )
         refused(
             """
-            use "kira:json"
+            kira.json as json
 
-            pub fx f: () Size {
+            pub f: () Size {
                 m: Map<Str, Json> = Map<Str, Json> { }
                 return m.size()
             }
@@ -1607,8 +1607,8 @@ class PyEmitterTest {
     fun aTraitIsRefused() {
         refused(
             """
-            trait Shape {
-                pub fx area: () Float64;
+            Shape: Any {
+                pub area: () Float64;
             }
             """,
             "the trait Shape",
@@ -1616,40 +1616,10 @@ class PyEmitterTest {
     }
 
     @Test
-    fun anEnumIsANamespaceOfItsEntriesCppValues() {
-        val py = python(
-            """
-            pub enum Mode {
-                A,
-                B = 5,
-                C = 5
-            }
-
-            enum Tint: Str {
-                RED = "red"
-            }
-
-            fx f: (m: Mode, t: Tint) Str {
-                n: Maybe<Mode> = enumOf<Mode>(5)
-                if m == Mode.C && t != Tint.RED && n.isSome() {
-                    trace(m)
-                }
-                return "${'$'}{m} ${'$'}{t} ${'$'}{m as Int32}"
-            }
-            """
-        )
-        assertTrue(py.contains("class Mode:\n    A = 0\n    B = 5\n    C = 5\n    _k_names = {0: \"A\", 5: \"B\"}\n    _k_order = (0, 5, 5)"), py)
-        assertTrue(py.contains("class _Tint:\n    RED = 0\n    _k_names = {0: \"red\"}\n    _k_order = (0,)"), py)
-        assertTrue(py.contains("n = _k_enumof(Mode._k_order, 5)"), py)
-        assertTrue(py.contains("if m == Mode.C and t != _Tint.RED and (n is not None):\n        print(m)"), py)
-        assertTrue(py.contains("return Mode._k_names.get(m, \"\") + \" \" + _Tint._k_names.get(t, \"\") + \" \" + str(m)"), py)
-    }
-
-    @Test
     fun float32IsRefused() {
         refused(
             """
-            pub fx f: (x: Float32) Float32 {
+            pub f: (x: Float32) Float32 {
                 return x
             }
             """,
@@ -1661,8 +1631,8 @@ class PyEmitterTest {
     fun aGenericClassIsRefused() {
         refused(
             """
-            class Box<T> {
-                require pub v: T
+            Box<T>: Any {
+                pub v: T
             }
             """,
             "the generic class Box",
@@ -1673,7 +1643,7 @@ class PyEmitterTest {
     fun theLegacyForLoopIsRefused() {
         refused(
             """
-            fx f: () Void {
+            f: () Void {
                 for mut i: 0..3 {
                     trace(i)
                 }
@@ -1687,7 +1657,7 @@ class PyEmitterTest {
     fun aLoopVariableThatShadowsALocalIsRefused() {
         refused(
             """
-            fx f: () Void {
+            f: () Void {
                 i: Int32 = 0
                 if i == 0 {
                     for i: Int32 in 0..3 {
@@ -1704,20 +1674,20 @@ class PyEmitterTest {
     fun aStructIsCopiedWhereASecondNameCouldSeeAWrite() {
         val py = python(
             """
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
                 pub tags: List<Int32> = List<Int32> { }
 
-                pub fx me: () Pt {
+                pub me: () Pt {
                     return this
                 }
             }
 
-            fx move: (mut p: Pt) Void {
+            move: (mut p: Pt) Void {
                 p = Pt { 1 }
             }
 
-            fx f: (q: Pt) Int32 {
+            f: (q: Pt) Int32 {
                 mut ps: List<Pt> = List<Pt> { }
                 ps.add(q)
                 mut a: Pt = ps[0]
@@ -1739,12 +1709,12 @@ class PyEmitterTest {
     fun aListOfStructsIsCopiedThroughMapSoACopyOfATreeCostsOneFramePerLevel() {
         val py = python(
             """
-            pub struct Node {
+            pub Node: Struct {
                 pub v: Int32 = 0
                 pub kids: List<Node> = List<Node> { }
             }
 
-            fx f: (n: Node) Node {
+            f: (n: Node) Node {
                 mut q: Queue<Node> = Queue<Node> { }
                 q.enqueue(n)
                 mut more: Queue<Node> = q
@@ -1761,21 +1731,21 @@ class PyEmitterTest {
     fun aStructComparedByEqualsOrContainsHasTheMemberwiseEqCppDefaults() {
         val py = python(
             """
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
                 pub y: Int32 = 0
             }
 
-            pub struct Seg {
+            pub Seg: Struct {
                 pub a: Pt = Pt { }
                 pub tags: List<Int32> = List<Int32> { }
             }
 
-            pub struct Other {
+            pub Other: Struct {
                 pub x: Int32 = 0
             }
 
-            fx f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
+            f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
                 return xs.contains(Pt { 1 }) && s != t && o.x == 0
             }
             """
@@ -1790,18 +1760,18 @@ class PyEmitterTest {
     fun aLoopVariableIsCopiedWhereItIsReturnedAsCppCopiesItsConstReference() {
         val py = python(
             """
-            pub struct Pt {
+            pub Pt: Struct {
                 pub x: Int32 = 0
             }
 
-            fx first: (xs: List<Pt>) Pt {
+            first: (xs: List<Pt>) Pt {
                 for p: Pt in xs {
                     return p
                 }
                 return Pt { }
             }
 
-            fx row: (v: View<List<Int32>>, c: Bool) List<Int32> {
+            row: (v: View<List<Int32>>, c: Bool) List<Int32> {
                 for r: List<Int32> in v {
                     return if c { r } else { List<Int32> { } }
                 }
@@ -1819,7 +1789,7 @@ class PyEmitterTest {
     fun aMutParameterOtherThanAListAMapOrAStructIsRefused() {
         refused(
             """
-            fx f: (mut x: Int32) Void {
+            f: (mut x: Int32) Void {
                 x = 1
             }
             """,
@@ -1831,7 +1801,7 @@ class PyEmitterTest {
     fun aMutViewThatWouldWriteACopiedSliceIsRefused() {
         refused(
             """
-            fx fill: (p: MutView<Int32>) Void {
+            fill: (p: MutView<Int32>) Void {
                 p[0] = 1
             }
             """,
@@ -1839,7 +1809,7 @@ class PyEmitterTest {
         )
         refused(
             """
-            fx f: () Void {
+            f: () Void {
                 mut xs: List<Int32> = [1, 2, 3]
                 xs.from(1).set(0, 5)
             }
@@ -1852,11 +1822,11 @@ class PyEmitterTest {
     fun aViewOfCharIsRefusedAsTextIsAStr() {
         refused(
             """
-            fx n: (v: View<Char>) Size {
+            n: (v: View<Char>) Size {
                 return v.size()
             }
 
-            fx f: () Size {
+            f: () Size {
                 return n("abc")
             }
             """,
@@ -1868,7 +1838,7 @@ class PyEmitterTest {
     fun aShadowingLocalIsRefused() {
         refused(
             """
-            fx f: () Int32 {
+            f: () Int32 {
                 x: Int32 = 1
                 if x > 0 {
                     x: Int32 = 2
@@ -1885,7 +1855,7 @@ class PyEmitterTest {
     fun aNamePythonReservesIsRefused() {
         refused(
             """
-            fx f: () Int32 {
+            f: () Int32 {
                 len: Int32 = 1
                 return len
             }
@@ -1898,7 +1868,7 @@ class PyEmitterTest {
     fun theErrorsPowCatchesAreNamesPythonReserves() {
         refused(
             """
-            pub class OverflowError {
+            pub OverflowError: Any {
                 pub v: Int32 = 0
             }
             """,
@@ -1906,7 +1876,7 @@ class PyEmitterTest {
         )
         refused(
             """
-            pub fx ValueError: () Int32 {
+            pub ValueError: () Int32 {
                 return 1
             }
             """,
@@ -1918,10 +1888,10 @@ class PyEmitterTest {
     fun aValueGivenToAPrivateFieldAtAConstructionIsRefused() {
         refused(
             """
-            class Box {
+            Box: Any {
                 hidden: Int32 = 0
 
-                pub fx again: () Box {
+                pub again: () Box {
                     return Box { hidden = 3 }
                 }
             }
@@ -1934,11 +1904,11 @@ class PyEmitterTest {
     fun aLambdaIsAModuleFunctionOrAFactoryOfItsCaptures() {
         val py = python(
             """
-            fx f: (k: Int32, xs: List<Int32>) Int32 {
-                g: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 {
+            f: (k: Int32, xs: List<Int32>) Int32 {
+                g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
                     return x
                 }
-                h: Fx<Tuple1<Int32>, Int32> = fx (x: Int32) Int32 {
+                h: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
                     return x * k + xs.size() as Int32
                 }
                 return g(1) + h(2)
@@ -1954,25 +1924,25 @@ class PyEmitterTest {
     fun aCaptureIsTheClosuresOwnSoWhatItHandsOnIsACopy() {
         val py = python(
             """
-            struct Pt {
+            Pt: Struct {
                 pub x: Int32 = 0
 
-                pub fx later: () Fx<Tuple0, Int32> {
-                    return fx() Int32 {
+                pub later: () Fx<Tuple0, Int32> {
+                    return () Int32 {
                         return x
                     }
                 }
 
-                pub fx whole: () Fx<Tuple0, Pt> {
-                    return fx() Pt {
+                pub whole: () Fx<Tuple0, Pt> {
+                    return () Pt {
                         return this
                     }
                 }
             }
 
-            fx f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
-                return fx() List<Int32> {
-                    inner: Fx<Tuple0, Size> = fx() Size {
+            f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
+                return () List<Int32> {
+                    inner: Fx<Tuple0, Size> = () Size {
                         return xs.size()
                     }
                     return xs
@@ -1991,22 +1961,22 @@ class PyEmitterTest {
     fun aNamedFunctionARefAndAnFxFieldAreValuesPythonCalls() {
         val py = python(
             """
-            pub class Bank {
-                require pub onAdd: Fx<Tuple1<Int32>, Int32>
+            pub Bank: Any {
+                pub onAdd: Fx<Tuple1<Int32>, Int32>
 
-                pub fx add: (v: Int32) Int32 {
+                pub add: (v: Int32) Int32 {
                     return onAdd(v)
                 }
             }
 
-            pub fx double: (x: Int32) Int32 {
+            pub double: (x: Int32) Int32 {
                 return x * 2
             }
 
-            fx f: (b: Bank) Int32 {
+            f: (b: Bank) Int32 {
                 n: Ref<Int32> = Ref<Int32> { value = 1 }
                 n.value = n.value + b.onAdd(2)
-                fill: Fx<Tuple1<mut List<Int32>>, Void> = fx(mut out: List<Int32>) Void {
+                fill: Fx<Tuple1<mut List<Int32>>, Void> = (mut out: List<Int32>) Void {
                     out.add(n.value)
                 }
                 mut xs: List<Int32> = List<Int32> { }
@@ -2026,8 +1996,8 @@ class PyEmitterTest {
     fun anFxThatWouldWriteAScalarThroughMutIsRefused() {
         refused(
             """
-            fx f: () Void {
-                g: Fx<Tuple1<mut Int32>, Void> = fx (mut x: Int32) Void {
+            f: () Void {
+                g: Fx<Tuple1<mut Int32>, Void> = (mut x: Int32) Void {
                     x += 1
                 }
             }
@@ -2040,7 +2010,7 @@ class PyEmitterTest {
     fun float64RemainderIsTheTypersErrorNotTheTargets() {
         val e = PyTestSupport.emit(
             """
-            fx f: (x: Float64, y: Float64) Float64 {
+            f: (x: Float64, y: Float64) Float64 {
                 return x % y
             }
             """
@@ -2055,14 +2025,14 @@ class PyEmitterTest {
     fun anIntegersAbsIsADecidedRefusalThatSaysWhy() {
         decided(
             """
-            fx f: (x: Int32) Int32 {
+            f: (x: Int32) Int32 {
                 return x.abs()
             }
             """,
             "'Num.abs'",
             "an integer's abs wraps its lowest value by its width, which the binding cannot see; kira:math's abs takes a Float64",
         )
-        decided("fx f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
+        decided("f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
     }
 
     /** Num's own methods bind on py (D83) by the receiver's Kira type: golden numcalls runs them against the C++ target's output. */
@@ -2070,15 +2040,15 @@ class PyEmitterTest {
     fun numsOwnMethodsAreEqualityItsHashAndAs() {
         val py = python(
             """
-            fx f: (x: Int32, v: Float64) Float64 {
+            f: (x: Int32, v: Float64) Float64 {
                 return x.toFloat64() + v.toInt32().toFloat64() + (x.hashCode() + v.toInt64()) as Float64
             }
 
-            fx g: (x: Int32) Bool {
+            g: (x: Int32) Bool {
                 return x.equals(3)
             }
 
-            fx h: (v: Float64, n: Int64) Int64 {
+            h: (v: Float64, n: Int64) Int64 {
                 return v.hashCode() + n.toInt32().toInt64()
             }
             """
@@ -2092,16 +2062,16 @@ class PyEmitterTest {
     /** A decided call whose result type py also refuses is refused with its decision's reason. */
     @Test
     fun aDecisionIsNamedBeforeTheTypeItReturns() {
-        decided("fx f: (s: Str) Size {\n    return s.view().size()\n}", "'Str.view'", "a View<Char> (text is a Str on the py target)")
+        decided("f: (s: Str) Size {\n    return s.view().size()\n}", "'Str.view'", "a View<Char> (text is a Str on the py target)")
     }
 
     @Test
     fun kiraMathOnAFloat32IsRefused() {
         refused(
             """
-            use "kira:math"
+            kira.math as math
 
-            fx f: (x: Float32) Float32 {
+            f: (x: Float32) Float32 {
                 return sqrt(x)
             }
             """,
@@ -2113,10 +2083,10 @@ class PyEmitterTest {
     fun printPrintlnEprintAndExitAreTracesFormatOnTheirStreams() {
         val py = python(
             """
-            use "kira:io"
-            use "kira:os"
+            kira.io as io
+            kira.os as os
 
-            fx f: (ok: Bool) Void {
+            f: (ok: Bool) Void {
                 print(ok)
                 println(2.5)
                 eprint("e")
@@ -2135,7 +2105,7 @@ class PyEmitterTest {
     fun aThrowRaisesTheOneErrorClassATryCatchesAndAResultIsATuple() {
         val py = python(
             """
-            fx parse: (s: Str) Int64 {
+            parse: (s: Str) Int64 {
                 v: Maybe<Int64> = s.toInt64()
                 if v.isNone() {
                     throw "bad ${'$'}{s}"
@@ -2143,18 +2113,18 @@ class PyEmitterTest {
                 return v.unwrap()
             }
 
-            fx pick: (ok: Bool) Int32 {
+            pick: (ok: Bool) Int32 {
                 return if ok { 1 } else { throw "no" }
             }
 
-            fx check: (x: Int32) Result<Int32, Str> {
+            check: (x: Int32) Result<Int32, Str> {
                 if x < 0 {
                     return Result.error("negative")
                 }
                 return Result.success(x)
             }
 
-            fx f: () Int64 {
+            f: () Int64 {
                 try {
                     return parse("x")
                 } on e: Str {
@@ -2184,9 +2154,9 @@ class PyEmitterTest {
     fun aTupleIsAPythonTupleOfCopiesAndMapEntriesAreItsItems() {
         val py = python(
             """
-            use "kira:tuples"
+            kira.tuples as tuples
 
-            fx f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
+            f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
                 t: Tuple3<Str, List<Int32>, Int32> = Tuple3<Str, List<Int32>, Int32> { "a", xs, 2 }
                 mut inner: List<Int32> = t.second
                 inner.add(t.size())
@@ -2212,7 +2182,7 @@ class PyEmitterTest {
     fun aMapKeyedByAFloatIsRefusedAsANaNKeyDiffersBetweenTheTargets() {
         refused(
             """
-            fx f: () Size {
+            f: () Size {
                 m: Map<Float64, Int32> = Map<Float64, Int32> { }
                 return m.size()
             }
@@ -2225,11 +2195,11 @@ class PyEmitterTest {
     fun aMapKeyedByAClassIsTheTypersError() {
         val e = PyTestSupport.emit(
             """
-            class Box {
+            Box: Any {
                 pub v: Int32 = 0
             }
 
-            fx f: (m: Map<Box, Int32>) Size {
+            f: (m: Map<Box, Int32>) Size {
                 return m.size()
             }
             """
@@ -2243,7 +2213,7 @@ class PyEmitterTest {
     fun containersOfContainersAreCopiedDeeply() {
         val py = python(
             """
-            fx f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
+            f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
                 mut h: List<List<Int32>> = g
                 mut row: List<Int32> = g[0]
                 h.add(row)
@@ -2264,7 +2234,7 @@ class PyEmitterTest {
     fun aMaybeOfAMaybeIsRefusedWhereAMapOfMaybesGivesOne() {
         refused(
             """
-            fx f: (m: Map<Str, Maybe<Int32>>) Bool {
+            f: (m: Map<Str, Maybe<Int32>>) Bool {
                 return m.get("a").isSome()
             }
             """,
@@ -2276,7 +2246,7 @@ class PyEmitterTest {
     fun aSetIsADictAndAStackAListAndAQueueOrDequeACollectionsDeque() {
         val py = python(
             """
-            fx f: (q: Queue<Int32>) Int32 {
+            f: (q: Queue<Int32>) Int32 {
                 mut s: Set<Str> = Set<Str> { }
                 added: Bool = s.add("a")
                 mut st: Stack<Int32> = Stack<Int32> { }
@@ -2299,7 +2269,7 @@ class PyEmitterTest {
     fun aSetOfFloatsIsRefusedAsAMapKeyedByOneIs() {
         refused(
             """
-            fx f: (s: Set<Float64>) Size {
+            f: (s: Set<Float64>) Size {
                 return s.size()
             }
             """,
@@ -2311,14 +2281,14 @@ class PyEmitterTest {
     fun aTupleWrittenOutOfOrderWithEffectsIsRefused() {
         refused(
             """
-            use "kira:tuples"
+            kira.tuples as tuples
 
-            fx two: () Int32 {
+            two: () Int32 {
                 trace("two")
                 return 2
             }
 
-            fx f: () Int32 {
+            f: () Int32 {
                 t: Tuple2<Int32, Int32> = Tuple2<Int32, Int32> { second = two(), first = 1 }
                 return t.first
             }
@@ -2331,7 +2301,7 @@ class PyEmitterTest {
     fun aCompoundAssignmentThroughAMapIndexIsTheTypersErrorNotTheTargets() {
         val e = PyTestSupport.emit(
             """
-            fx f: () Size {
+            f: () Size {
                 mut m: Map<Str, Int32> = Map<Str, Int32> { }
                 m["a"] += 1
                 return m.size()
@@ -2347,7 +2317,7 @@ class PyEmitterTest {
     fun dictIsANamePythonReserves() {
         refused(
             """
-            fx f: () Int32 {
+            f: () Int32 {
                 dict: Int32 = 1
                 return dict
             }
@@ -2366,23 +2336,23 @@ class PyEmitterTest {
                 pub SCALE: Int32 = 10
                 pub mut calls: Int32 = 0
 
-                pub class Meter {
-                    require pub label: Str
+                pub Meter: Any {
+                    pub label: Str
 
-                    pub fx scaled: (x: Int32) Int32 {
+                    pub scaled: (x: Int32) Int32 {
                         return x * SCALE
                     }
                 }
 
-                pub fx bump: () Int32 {
+                pub bump: () Int32 {
                     calls += 1
                     return calls
                 }
                 """,
             "app:main" to """
-                use "lib:units"
+                lib.units as units
 
-                fx f: () Int32 {
+                f: () Int32 {
                     m: Meter = Meter { "a" }
                     calls = 5
                     units.calls = units.calls + 1
@@ -2409,18 +2379,18 @@ class PyEmitterTest {
     fun aModuleInAUseCycleRegistersItselfBeforeItLoadsTheOther() {
         val (py, errors) = PyTestSupport.emitProgram(
             "app:even" to """
-                use "app:odd"
+                app.odd as odd
 
                 pub K: Int32 = 2
 
-                pub fx isEven: (n: Int32) Bool {
+                pub isEven: (n: Int32) Bool {
                     return n == 0 || isOdd(n - 1)
                 }
                 """,
             "app:odd" to """
-                use "app:even"
+                app.even as even
 
-                pub fx isOdd: (n: Int32) Bool {
+                pub isOdd: (n: Int32) Bool {
                     return n != 0 && isEven(n - 1)
                 }
                 """,
@@ -2438,18 +2408,18 @@ class PyEmitterTest {
     fun aStdlibFunctionACarriedOneCallsIsCarriedToo() {
         val (py, errors) = PyTestSupport.emitProgram(
             "kira:extra" to """
-                pub fx inner: (v: Float64) Float64 {
+                pub inner: (v: Float64) Float64 {
                     return v * 2.0
                 }
 
-                pub fx outer: (v: Float64) Float64 {
+                pub outer: (v: Float64) Float64 {
                     return inner(v) + 1.0
                 }
                 """,
             "app:main" to """
-                use "kira:extra"
+                kira.extra as extra
 
-                pub fx f: (v: Float64) Float64 {
+                pub f: (v: Float64) Float64 {
                     return outer(v)
                 }
                 """,
@@ -2464,14 +2434,14 @@ class PyEmitterTest {
     fun aKiraWrittenStdlibFunctionIsCarriedByTheModuleThatCallsIt() {
         val py = python(
             """
-            use "kira:math"
-            use "kira:os"
+            kira.math as math
+            kira.os as os
 
-            fx f: (x: Float64) Float64 {
+            f: (x: Float64) Float64 {
                 return clamp(deg2rad(x), lerp(0.0, -1.0, 0.5), 1.0)
             }
 
-            fx g: () Int32 {
+            g: () Int32 {
                 return POLL_WRITE + SIGNAL_TERM
             }
             """
@@ -2498,11 +2468,11 @@ class PyEmitterTest {
     fun anExternIsAWrapperOfItsSidecarsFunctionThatChecksWhatComesBack() {
         val py = besideSidecar(
             """
-            @_extern(raises = "OSError json.JSONDecodeError") fx readText: (path: Str) Str
+            @_extern(raises = "OSError json.JSONDecodeError") readText: (path: Str) Str
 
-            pub @_extern fx globSorted: (pattern: Str) List<Str>
+            pub @_extern globSorted: (pattern: Str) List<Str>
 
-            fx f: () Size {
+            f: () Size {
                 return globSorted(readText("p")).size()
             }
             """,
@@ -2526,11 +2496,11 @@ class PyEmitterTest {
     fun aViewIsLentForTheCallAndAValueGoesOutAsACopy() {
         val py = besideSidecar(
             """
-            struct Pt {
+            Pt: Struct {
                 pub x: Int32 = 0
             }
 
-            @_extern fx send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
+            @_extern send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
             """,
             "lend",
         ).python()
@@ -2549,11 +2519,11 @@ class PyEmitterTest {
     fun anOpaqueClassIsNoPythonClassAndItsMethodIsCalledOnTheHandle() {
         val py = besideSidecar(
             """
-            pub @_opaque class Sock {
-                pub @_extern(raises = "TimeoutError") fx recv: (size: Int32) List<UInt8>
+            pub @_opaque Sock: Any {
+                pub @_extern(raises = "TimeoutError") recv: (size: Int32) List<UInt8>
             }
 
-            fx f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
+            f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
                 kept: List<Sock> = socks
                 return s.recv(4).size() + kept.size()
             }
@@ -2570,42 +2540,42 @@ class PyEmitterTest {
 
     @Test
     fun aModuleWithExternsAndNoSidecarIsAnError() {
-        val e = besideSidecar("@_extern fx f: () Int32", "lonely", sidecar = null)
+        val e = besideSidecar("@_extern f: () Int32", "lonely", sidecar = null)
         assertNull(e.text)
         assertTrue(e.errors.any { it.contains("error: py.extern: lonely.kira declares externs, whose sidecar lonely_ext.py is not beside it") }, e.errors.joinToString("\n"))
-        val raises = besideSidecar("pub @_opaque class Sock {\n    pub @_extern(raises = \"TimeoutError\") fx recv: () Int32\n}", "raising", sidecar = null)
+        val raises = besideSidecar("pub @_opaque Sock: Any {\n    pub @_extern(raises = \"TimeoutError\") recv: () Int32\n}", "raising", sidecar = null)
         assertTrue(raises.errors.any { it.contains("py.extern: raising.kira") }, "a raises = name resolves in the sidecar first:\n${raises.errors.joinToString("\n")}")
     }
 
     @Test
     fun anExternIsRefusedWhatCannotCrossToOrFromPython() {
         listOf(
-            "@_extern(cpp = \"ns::f\", header = \"f.hxx\") fx f: () Int32" to "@_extern's cpp =, header = on the extern 'f'",
-            "@_extern(\"sym\") fx f: () Int32" to "@_extern's positional symbol on the extern 'f'",
-            "@_extern(raises = \"OSError Exception\") fx f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
-            "@_extern(raises = \"KeyboardInterrupt\") fx f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
-            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern fx f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
-            "@_extern fx f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
-            "@_extern fx f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
-            "@_extern fx f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
-            "@_extern fx f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
-            "@_extern fx f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
-            "@_extern fx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
-            "@_extern fx f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
-            "pub fx f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
-            "@_extern fx f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
-            "@_extern fx f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
-            "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern fx f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
-            "@_extern fx f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
-            "@_extern fx f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
-            "@_extern fx f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
-            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern fx f: (h: Holder) Void" to
+            "@_extern(cpp = \"ns::f\", header = \"f.hxx\") f: () Int32" to "@_extern's cpp =, header = on the extern 'f'",
+            "@_extern(\"sym\") f: () Int32" to "@_extern's positional symbol on the extern 'f'",
+            "@_extern(raises = \"OSError Exception\") f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
+            "@_extern(raises = \"KeyboardInterrupt\") f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
+            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
+            "@_extern f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
+            "@_extern f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
+            "@_extern f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
+            "@_extern f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
+            "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
+            "@_extern f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
+            "pub f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
+            "@_extern f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
+            "@_extern f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
+            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
+            "@_extern f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
+            "@_extern f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
+            "Holder: Any {\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
                 "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
-            "class Holder {\n    require pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern fx f: (g: Fx<Tuple0, Holder>) Void" to
+            "Holder: Any {\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (g: Fx<Tuple0, Holder>) Void" to
                 "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
-            "struct In {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nstruct Out {\n    pub i: In = In { }\n}\n@_extern fx f: (o: Out) Void" to
+            "In: Struct {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Struct {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
-            "struct C {\n    pub c: Char = 'x'\n}\n@_extern fx f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
+            "C: Struct {\n    pub c: Char = 'x'\n}\n@_extern f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
     }
 
@@ -2613,12 +2583,12 @@ class PyEmitterTest {
     fun aClassThatHoldsItselfCrossesOnceChecked() {
         val e = besideSidecar(
             """
-            pub class Node {
+            pub Node: Any {
                 pub mut next: Maybe<Node> = null
                 pub mut items: List<Node> = List<Node> { }
             }
 
-            @_extern fx visit: (n: Node, f: Fx<Tuple0, Node>) Void
+            @_extern visit: (n: Node, f: Fx<Tuple0, Node>) Void
             """,
             "selfref",
         )
@@ -2629,13 +2599,13 @@ class PyEmitterTest {
     fun anFxHandedToTheSidecarChecksWhatPythonPassesIt() {
         val py = besideSidecar(
             """
-            @_extern fx each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
+            @_extern each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
 
-            fx size: (s: Str, n: Maybe<Int64>) List<UInt8> {
+            size: (s: Str, n: Maybe<Int64>) List<UInt8> {
                 return s.bytes()
             }
 
-            fx g: () Int32 {
+            g: () Int32 {
                 return each(["a"], size)
             }
             """,
@@ -2657,10 +2627,10 @@ class PyEmitterTest {
     fun kiraTimeAndArgsAreBoundAndMainRunsUnderKMain() {
         val py = python(
             """
-            use "kira:os"
-            use "kira:time"
+            kira.os as os
+            kira.time as time
 
-            fx main: () Void {
+            main: () Void {
                 t: Int64 = monoNowNs() + monoNowMs() + wallNowNs()
                 sleepMs(5)
                 trace(args().size())
@@ -2681,21 +2651,21 @@ class PyEmitterTest {
     fun kiraSyncIsTheRuntimesThreadMutexAtomicAndQueue() {
         val py = python(
             """
-            use "kira:sync"
+            kira.sync as sync
 
-            struct Tally {
+            Tally: Struct {
                 pub count: Int32 = 0
             }
 
-            fx f: () Int64 {
+            f: () Int64 {
                 hits: Atomic<Int32> = Atomic<Int32> { value = 0 }
                 tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
                 q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
                 mut row: List<Int32> = [1]
-                t: Thread = spawn("w", fx() Void {
+                t: Thread = spawn("w", () Void {
                     hits.add(1)
                     q.push(row)
-                    tally.lock(fx(mut s: Tally) Void {
+                    tally.lock((mut s: Tally) Void {
                         s.count += 1
                     })
                 })
@@ -2719,10 +2689,10 @@ class PyEmitterTest {
     fun onSignalSetsAnAtomicFlagFromAPythonHandler() {
         val py = python(
             """
-            use "kira:os"
-            use "kira:sync"
+            kira.os as os
+            kira.sync as sync
 
-            fx f: () Bool {
+            f: () Bool {
                 stop: Atomic<Bool> = Atomic<Bool> { value = false }
                 return onSignal(SIGNAL_INT, stop) && onSignal(SIGNAL_TERM, stop)
             }
@@ -2734,19 +2704,19 @@ class PyEmitterTest {
 
     @Test
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
-        refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
-        refused("use \"kira:sync\"\nfx f: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
-        refused("use \"kira:sync\"\nfx f: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
+        refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
+        refused("kira.sync as sync\nf: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
+        refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
     }
 
     @Test
     fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
-        val handle = "pub @_opaque class Sock {\n    pub fx id: () Int32\n}\n"
+        val handle = "pub @_opaque Sock: Any {\n    pub id: () Int32\n}\n"
         listOf(
-            "${handle}struct Peer {\n    require pub s: Sock\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
-            "${handle}struct Peer {\n    require pub s: List<Sock>\n}\nfx f: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
-            "${handle}fx f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
-            "${handle}fx f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
+            "${handle}Peer: Struct {\n    pub s: Sock\n}\nf: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}Peer: Struct {\n    pub s: List<Sock>\n}\nf: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
+            "${handle}f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
         ).forEach { (body, construct) -> refused(body, construct) }
     }
 
@@ -2756,18 +2726,18 @@ class PyEmitterTest {
     fun aSuiteIsTheRuntimesClassBuiltFromItsTitleAndItsMethodsBind() {
         val py = python(
             """
-            use "kira:test"
+            kira.test as test
 
-            class Runner {
-                require pub t: Suite
+            Runner: Any {
+                pub t: Suite
             }
 
-            fx both: (t: Suite, n: Int32) Void {
+            both: (t: Suite, n: Int32) Void {
                 t.check(n > 1, "above one")
                 t.checkStr("${'$'}{n}", "3", "reads as 3")
             }
 
-            pub fx main: () Int32 {
+            pub main: () Int32 {
                 name: Str = "suite"
                 t: Suite = Suite { title = name + "!" }
                 r: Runner = Runner { t }
@@ -2790,9 +2760,9 @@ class PyEmitterTest {
     fun kiraOsIsTheRuntimesClassesAndHelpers() {
         val py = python(
             """
-            use "kira:os"
+            kira.os as os
 
-            fx f: (path: Str) Bool {
+            f: (path: Str) Bool {
                 s: UdpSocket = UdpSocket {}
                 ok: Bool = s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0
                 out: Maybe<FileOut> = openAppend(path)
@@ -2806,7 +2776,7 @@ class PyEmitterTest {
         assertTrue(py.contains("_k_oserrkind() == \"\""), py)
         assertTrue(py.contains("\nclass _k_UdpSocket:\n") && py.contains("\nclass _k_FileOut:\n") && py.contains("\nclass _k_Ran:\n"), py)
         assertTrue(py.contains("\n_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_threading.local())\n"), py)
-        val reads = python("use \"kira:os\"\n\nfx f: (path: Str) Str {\n    return readText(path).value + lastError()\n}")
+        val reads = python("kira.os as os\n\nf: (path: Str) Str {\n    return readText(path).value + lastError()\n}")
         listOf("subprocess", "socket", "select", "shutil").forEach { assertFalse(reads.contains("import $it as"), "a module that reads a file imports no $it:\n$reads") }
     }
 
@@ -2815,13 +2785,13 @@ class PyEmitterTest {
     fun thePythonSemanticsModulesArePythonsOwnCalls() {
         val py = python(
             """
-            use "kira:path"
-            use "kira:pytext"
-            use "kira:regex"
-            use "kira:random"
-            use "kira:csv"
+            kira.path as path
+            kira.pytext as pytext
+            kira.regex as regex
+            kira.random as random
+            kira.csv as csv
 
-            fx f: (p: Str, rx: Regex) Bool {
+            f: (p: Str, rx: Regex) Bool {
                 r: Maybe<Regex> = compile("a+", IGNORE_CASE)
                 g: Random = newRandom(7)
                 rows: Maybe<CsvReader> = openCsv(joinPath(p, "x.csv"))
@@ -2832,10 +2802,10 @@ class PyEmitterTest {
         assertTrue(py.contains("    r = _k_recompile(\"a+\", 2)\n    g = _k_Random(7)\n    rows = _k_opencsv(_k_os.path.join(p, \"x.csv\"))\n"), py)
         assertTrue(py.contains("(_k_pyint(p) is not None) and _k_below(g, 3) >= 0") && py.contains("(rx.search(p) is not None) and _k_builtins.repr(p) != _k_reerror()"), py)
         assertTrue(py.contains("\n_k_Random = _k_random.Random\n") && py.contains("\nclass _k_CsvReader:\n") && py.contains("import csv as _k_csv"), py)
-        val path = python("use \"kira:path\"\n\nfx f: (p: Str) Str {\n    return slashed(normPath(p))\n}")
+        val path = python("kira.path as path\n\nf: (p: Str) Str {\n    return slashed(normPath(p))\n}")
         assertTrue(path.contains("    return _k_os.path.normpath(p).replace(_k_os.sep, \"/\")\n"), path)
         listOf("csv", "random", "re", "textwrap", "datetime", "binascii").forEach { assertFalse(path.contains("import $it as"), "a module of paths imports no $it:\n$path") }
-        val plus = python("use \"kira:math\"\nuse \"kira:bytes\"\nuse \"kira:time\"\n\nfx f: (b: List<UInt8>) Str {\n    return utcStamp(findBytes(b, b, 0) + crc16Xmodem(b, 0) as Int64) + \"${'$'}{floorMod(-1.0, 3.0)} ${'$'}{exp(1.0)}\"\n}")
+        val plus = python("kira.math as math\nkira.bytes as bytes\nkira.time as time\n\nf: (b: List<UInt8>) Str {\n    return utcStamp(findBytes(b, b, 0) + crc16Xmodem(b, 0) as Int64) + \"${'$'}{floorMod(-1.0, 3.0)} ${'$'}{exp(1.0)}\"\n}")
         assertTrue(plus.contains("_k_utcstamp(_k_i64(_k_findbytes(b, b, 0) + _k_binascii.crc_hqx(b, 0)))") && plus.contains("_k_floormod(-1.0, 3.0)") && plus.contains("_k_exp(1.0)"), plus)
     }
 
@@ -2844,14 +2814,14 @@ class PyEmitterTest {
     fun kiraHttpAndArgsAreTheRuntimesHelpersOverPythonsOwn() {
         val py = python(
             """
-            use "kira:http"
-            use "kira:args"
+            kira.http as http
+            kira.args as args
 
-            pub fx handle: (r: HttpRequest) HttpAnswer {
+            pub handle: (r: HttpRequest) HttpAnswer {
                 return HttpAnswer { status = 404 }
             }
 
-            pub fx f: (url: Str) Bool {
+            pub f: (url: Str) Bool {
                 got: Maybe<HttpReply> = httpGet(url, 500)
                 s: Maybe<HttpServer> = httpServer("127.0.0.1", 0, handle)
                 spec: ArgSpec = argSpec("tool", "what it does")
@@ -2864,7 +2834,7 @@ class PyEmitterTest {
         assertTrue(py.contains("    got = _k_httpcall(url, None, None, 500)\n    s = _k_httpbind(\"127.0.0.1\", 0, handle, None)\n    spec = _k_ArgSpec(\"tool\", \"what it does\")\n    spec.whole(\"--n\", 3, \"how many\")\n"), py)
         assertTrue(py.contains("    return _k_HttpAnswer(404, \"application/json\", bytearray(()), {})\n") && py.contains("_k_httpcall(url, b, \"text/plain\", 0)"), py)
         assertTrue(py.contains("\nclass _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):\n") && py.contains("\nclass _k_ArgSpec:\n") && py.contains("import argparse as _k_argparse"), py)
-        val split = python("use \"kira:http\"\n\nfx f: (t: Str) Str {\n    return urlPath(t).unwrapOr(\"/\") + queryFirst(urlQuery(t).unwrapOr(\"\"), \"s\").unwrapOr(\"\")\n}")
+        val split = python("kira.http as http\n\nf: (t: Str) Str {\n    return urlPath(t).unwrapOr(\"/\") + queryFirst(urlQuery(t).unwrapOr(\"\"), \"s\").unwrapOr(\"\")\n}")
         assertTrue(split.contains("_k_urlpart(t, \"path\")") && split.contains("import urllib.parse as _k_urlparse"), split)
         listOf("http.server", "http.client", "urllib.request", "argparse").forEach { assertFalse(split.contains("import $it as"), "a module that splits a URL imports no $it:\n$split") }
     }
@@ -2872,27 +2842,27 @@ class PyEmitterTest {
     /** A stdlib class that is Python's own is made only by its module's calls: Regex { } would be re.Pattern(), a TypeError. */
     @Test
     fun aStdlibClassThatIsPythonsOwnIsNeverConstructed() {
-        decided("use \"kira:regex\"\n\nfx f: () Regex {\n    return Regex { }\n}", "a construction of Regex", "Regex is Python's re.Pattern, which only its module's calls make")
-        decided("use \"kira:random\"\n\nfx f: () Random {\n    return Random { }\n}", "a construction of Random", "Random is Python's random.Random, which only its module's calls make")
+        decided("kira.regex as regex\n\nf: () Regex {\n    return Regex { }\n}", "a construction of Regex", "Regex is Python's re.Pattern, which only its module's calls make")
+        decided("kira.random as random\n\nf: () Random {\n    return Random { }\n}", "a construction of Random", "Random is Python's random.Random, which only its module's calls make")
         val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
         assertEquals("re.Match", runtime.aliasOf("_k_Match"))
         listOf("_k_CsvReader", "_k_Process", "_k_Error", "_k_reasons").forEach { assertNull(runtime.aliasOf(it), it) }
-        assertTrue(python("use \"kira:csv\"\n\nfx f: () CsvReader {\n    return CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
+        assertTrue(python("kira.csv as csv\n\nf: () CsvReader {\n    return CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
     }
 
     /** A runtime class whose __init__ needs more than its fields is made only by its module's calls: ArgSpec { } has no prog. */
     @Test
     fun aStdlibClassThatNeedsItsModulesCallIsNeverConstructed() {
-        decided("use \"kira:args\"\n\nfx f: () ArgSpec {\n    return ArgSpec { }\n}", "a construction of ArgSpec", "ArgSpec is made only by its module's calls")
-        decided("use \"kira:args\"\n\nfx f: () Parsed {\n    return Parsed { }\n}", "a construction of Parsed", "Parsed is made only by its module's calls")
+        decided("kira.args as args\n\nf: () ArgSpec {\n    return ArgSpec { }\n}", "a construction of ArgSpec", "ArgSpec is made only by its module's calls")
+        decided("kira.args as args\n\nf: () Parsed {\n    return Parsed { }\n}", "a construction of Parsed", "Parsed is made only by its module's calls")
         val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
         assertEquals(listOf(2, 2, 0, 0, 2, 1), listOf("_k_ArgSpec", "_k_Parsed", "_k_HttpServer", "_k_Serial", "_k_Thread", "_k_Suite").map { runtime.requiredArgs(it) })
-        assertTrue(python("use \"kira:http\"\n\nfx f: () HttpServer {\n    return HttpServer { }\n}").contains("    return _k_HttpServer()\n"))
+        assertTrue(python("kira.http as http\n\nf: () HttpServer {\n    return HttpServer { }\n}").contains("    return _k_HttpServer()\n"))
     }
 
     @Test
     fun aStdlibClassTheRuntimeLacksIsStillRefused() {
-        refused("fx f: (u: StrBuf<64>) Void {\n}", "the parameter 'u': the type StrBuf")
+        refused("f: (u: StrBuf<64>) Void {\n}", "the parameter 'u': the type StrBuf")
     }
 
     // ---- stdlib classes and structs on py (E1, D84) ----------------------------------------------
@@ -2901,12 +2871,12 @@ class PyEmitterTest {
     @Test
     fun aMagicClassOfAModuleWithoutACppHeaderIsTheRuntimesClassOfItsName() {
         val (py, errors) = PyTestSupport.emitProgram(
-            "kira:extra" to "pub @_magic class Suite {\n    require pub title: Str\n}",
-            "app:main" to "use \"kira:extra\"\n\nfx f: () Void {\n    t: Suite = Suite { title = \"x\" }\n}",
+            "kira:extra" to "pub @_magic Suite: Any {\n    pub title: Str\n}",
+            "app:main" to "kira.extra as extra\n\nf: () Void {\n    t: Suite = Suite { title = \"x\" }\n}",
         )
         assertEquals(emptyList(), errors)
         assertTrue(py.getValue("app:main").contains("    t = _k_Suite(\"x\")\n"), py.getValue("app:main"))
-        val ref = python("fx f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    return r.value\n}")
+        val ref = python("f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    return r.value\n}")
         assertTrue(ref.contains("    r = _k_Ref(1)\n"), "a Ref keeps its own construction:\n$ref")
     }
 
@@ -2914,13 +2884,13 @@ class PyEmitterTest {
     fun aStdlibStructIsBuiltWithItsDefaultsCopiedAndComparedAsAUserStruct() {
         val py = python(
             """
-            use "kira:os"
+            kira.os as os
 
-            struct Seen {
-                pub last: Datagram
+            Seen: Struct {
+                pub last: Datagram = Datagram { }
             }
 
-            fx f: (d: Datagram) Bool {
+            f: (d: Datagram) Bool {
                 mut e: Datagram = d
                 e.port = 2
                 r: Ready = Ready { events = POLL_READ }
@@ -2942,7 +2912,7 @@ class PyEmitterTest {
     @Test
     fun everyStdlibStructsRuntimeClassHoldsItsFieldsInOrder() {
         val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText().replace("\r\n", "\n")
-        val program = net.exoad.kira.types.TyperTestSupport.snippet("use \"kira:os\"\nuse \"kira:http\"\n")
+        val program = net.exoad.kira.types.TyperTestSupport.snippet("kira.os as os\nkira.http as http\n")
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
@@ -2960,9 +2930,9 @@ class PyEmitterTest {
     @Test
     fun aStdlibStructNeverCrossesToASidecar() {
         listOf(
-            "use \"kira:os\"\n\n@_extern fx send: (d: Datagram) Bool" to "the parameter 'd' of the extern 'send': a Datagram",
-            "use \"kira:os\"\n\nstruct Hold {\n    pub r: Ready\n}\n\n@_extern fx put: (h: Hold) Bool" to "the parameter 'h' of the extern 'put': Hold, whose field 'r' is a Ready",
-            "use \"kira:os\"\n\n@_extern fx got: () Maybe<Ready>" to "the result of the extern 'got': a Ready",
+            "kira.os as os\n\n@_extern send: (d: Datagram) Bool" to "the parameter 'd' of the extern 'send': a Datagram",
+            "kira.os as os\n\nHold: Struct {\n    pub r: Ready\n}\n\n@_extern put: (h: Hold) Bool" to "the parameter 'h' of the extern 'put': Hold, whose field 'r' is a Ready",
+            "kira.os as os\n\n@_extern got: () Maybe<Ready>" to "the result of the extern 'got': a Ready",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "stdstruct")) }
     }
 

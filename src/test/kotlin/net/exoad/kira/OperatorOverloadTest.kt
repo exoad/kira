@@ -30,24 +30,24 @@ class OperatorOverloadTest {
         TestCompileSupport.wrapModule(moduleUri, body)
 
     private val overloadModule = """
-        pub class Point {
-            require pub x: Int32
-            require pub y: Int32
+        pub Point: Any {
+            pub x: Int32
+            pub y: Int32
         }
 
-        pub fx @op_add: (a: Point, b: Point) Point {
+        pub @op_add: (a: Point, b: Point) Point {
             return Point { a.x + b.x, a.y + b.y }
         }
 
-        pub fx @op_neg: (a: Point) Point {
+        pub @op_neg: (a: Point) Point {
             return Point { -a.x, -a.y }
         }
 
-        pub fx @op_eq: (a: Point, b: Point) Bool {
+        pub @op_eq: (a: Point, b: Point) Bool {
             return a.x == b.x && a.y == b.y
         }
 
-        fx main: () Void {
+        main: () Void {
             p1: Point = Point { 1, 2 }
             p2: Point = Point { 3, 4 }
             p3: Point = p1 + p2
@@ -218,10 +218,10 @@ class OperatorOverloadTest {
         // only after a clean semantic pass" gate never trips and the C/JS emitters run anyway,
         // each calling a function named `op_add` that this declaration never defines.
         val badModule = """
-            pub class V2 {
+            pub V2: Any {
                 pub x: Float32 = 0.0
             }
-            pub fx @_op_add_: (a: V2, b: V2) V2 {
+            pub @_op_add_: (a: V2, b: V2) V2 {
                 return V2 { a.x + b.x }
             }
         """
@@ -249,10 +249,10 @@ class OperatorOverloadTest {
         // JS threw `ReferenceError: op_add is not defined`. The stub must fail here exactly like
         // the version with a body.
         val badStubModule = """
-            pub class V2 {
+            pub V2: Any {
                 pub x: Float32 = 0.0
             }
-            pub fx @_op_add_: (a: V2, b: V2) V2;
+            pub @_op_add_: (a: V2, b: V2) V2;
         """
         val result = TestCompileSupport.compileSnippet(
             source = wrap(badStubModule),

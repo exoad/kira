@@ -81,7 +81,7 @@ class ParitySuiteTest {
         // `<<` and `>>` used to be lowered as each other: 1 << 4 printed 0.
         assertBothPrint("16\n64\n-4\n2\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace(1 << 4)
                 trace(256 >> 2)
                 trace(-16 >> 2)
@@ -99,7 +99,7 @@ class ParitySuiteTest {
         // logical shift over the operand's width on both backends.
         assertBothPrint("15\n1073741820\n15\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace(-16 >>> 28)
                 trace(-16 >>> 2)
                 mut x: Int32 = -16
@@ -114,7 +114,7 @@ class ParitySuiteTest {
     fun unsignedShiftRightOnInt64UsesTheFullWidth() {
         assertCPrints("15\n1152921504606846975\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 y: Int64 = -1
                 trace(y >>> 60)
                 trace(y >>> 4)
@@ -129,7 +129,7 @@ class ParitySuiteTest {
     fun hexAndBinaryIntegerLiterals() {
         assertBothPrint("255\n31\n10\n3\n4294967295\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace(0xFF)
                 trace(0X1f)
                 trace(0b1010)
@@ -145,7 +145,7 @@ class ParitySuiteTest {
         // JS numbers stop at 2^53, so the 64-bit edge is C only.
         assertCPrints("9223372036854775807\n-1\n-9223372036854775808\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 big: Int64 = 0x7FFFFFFFFFFFFFFF
                 trace(big)
                 neg: Int64 = 0xFFFFFFFFFFFFFFFF
@@ -161,7 +161,7 @@ class ParitySuiteTest {
     fun floatLiteralsWithExponents() {
         assertBothPrint("0.001\n150\n2.5\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace(1e-3)
                 trace(1.5e2)
                 trace(2.5E6 / 1e6)
@@ -178,7 +178,7 @@ class ParitySuiteTest {
         // re-escaped the backslash so `\n` printed as a backslash and an n.
         assertBothPrint("say \"hi\"\ntab\there\nback\\slash\ndollar \$ sign\ntwo\nlines\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace("say \"hi\"")
                 trace("tab\there")
                 trace("back\\slash")
@@ -193,92 +193,19 @@ class ParitySuiteTest {
 
     @Test
     fun upperSnakeCaseNamesDoNotCollideWithGeneratedOnes() {
-        // Any `_` used to panic the lexer. Constants, fields and enum members
-        // may carry them now, and the C backend keeps them clear of the names
-        // it generates (MODE_DRIVE is what `enum Mode { DRIVE }` becomes).
-        assertBothPrint("99\n0\n5\n4\n") {
+        // Any `_` used to panic the lexer. Constants and fields may carry them now.
+        assertBothPrint("99\n5\n") {
             """
-            pub enum Mode {
-                DRIVE
-            }
-
-            pub enum Gear {
-                LOW_RANGE,
-                HIGH_RANGE = 4
-            }
-
             MODE_DRIVE: Int32 = 99
 
-            class Limits {
-                require pub MAX_X: Int32
+            Limits: Any {
+                pub MAX_X: Int32
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(MODE_DRIVE)
-                trace(Mode.DRIVE)
                 l: Limits = Limits { 5 }
                 trace(l.MAX_X)
-                trace(Gear.HIGH_RANGE)
-            }
-            """
-        }
-    }
-
-    // --- enums -----------------------------------------------------------------
-
-    @Test
-    fun enumExplicitValuesAreHonoured() {
-        // `DRIVE = 7` used to print 1: values were dropped and members renumbered.
-        assertBothPrint("0\n7\n8\n-2\nbrake\n") {
-            """
-            pub enum Mode {
-                IDLE,
-                DRIVE = 7,
-                BRAKE,
-                REVERSE = -2
-            }
-
-            fx main: () Void {
-                trace(Mode.IDLE)
-                trace(Mode.DRIVE)
-                m: Mode = Mode.BRAKE
-                trace(m)
-                trace(Mode.REVERSE)
-                if m == Mode.BRAKE {
-                    trace("brake")
-                }
-            }
-            """
-        }
-    }
-
-    @Test
-    fun enumsWithBaseTypes() {
-        assertBothPrint("5\nhigh\n100\nyes\n") {
-            """
-            pub enum Status: Int32 {
-                PENDING = 0,
-                ACTIVE = 5
-            }
-
-            pub enum Priority: Str {
-                LOW = "low",
-                HIGH = "high"
-            }
-
-            pub enum Threshold: Float64 {
-                MIN = 0.5,
-                MAX = 100.0
-            }
-
-            fx main: () Void {
-                trace(Status.ACTIVE)
-                p: Priority = Priority.HIGH
-                trace(p)
-                trace(Threshold.MAX)
-                if p == Priority.HIGH {
-                    trace("yes")
-                }
             }
             """
         }
@@ -291,7 +218,7 @@ class ParitySuiteTest {
         // `a[i]` always read as Int32, so an Arr<Str> element was a truncated pointer.
         assertBothPrint("bob\n3\n1\n6\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 names: Arr<Str> = ["ada", "bob"]
                 trace(names[1])
                 trace(names[0].length())
@@ -310,7 +237,7 @@ class ParitySuiteTest {
     fun indexReadsOfInt64Elements() {
         assertCPrints("4294967296\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 wide: Arr<Int64> = [4294967296]
                 trace(wide[0])
             }
@@ -325,7 +252,7 @@ class ParitySuiteTest {
         // The body used to run exactly once whatever the container held.
         assertBothPrint("6\nada\ngrace\n7\n3\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 xs: Arr<Int32> = [1, 2, 3]
                 mut sum: Int32 = 0
                 for mut x: xs {
@@ -368,21 +295,21 @@ class ParitySuiteTest {
         // `sub(b = 3, a = 10)` used to lower as sub(3, 10): names were ignored.
         assertBothPrint("7\n7\n7\n2\n10\n") {
             """
-            fx sub: (a: Int32, b: Int32) Int32 {
+            sub: (a: Int32, b: Int32) Int32 {
                 return a - b
             }
 
-            class Esc {
-                require pub mut pulse: Int32
-                pub fx set: (v: Int32, scale: Int32) Void {
+            Esc: Any {
+                pub mut pulse: Int32
+                pub set: (v: Int32, scale: Int32) Void {
                     pulse = v * scale
                 }
-                pub fx get: () Int32 {
+                pub get: () Int32 {
                     return pulse
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(sub(b = 3, a = 10))
                 trace(sub(10, b = 3))
                 trace(sub(a = 10, b = 3))
@@ -401,14 +328,14 @@ class ParitySuiteTest {
     fun bareReturnLeavesAVoidFunction() {
         assertBothPrint("before\nafter\n") {
             """
-            fx early: (n: Int32) Void {
+            early: (n: Int32) Void {
                 if n > 0 {
                     return
                 }
                 trace("never")
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace("before")
                 early(1)
                 trace("after")

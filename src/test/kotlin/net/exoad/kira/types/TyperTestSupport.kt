@@ -37,14 +37,14 @@ import kotlin.test.fail
  * the repository root), so every program here sees the real `kira:*` modules.
  */
 object TyperTestSupport {
-    /** One source: its logical path (`app/main.kira`) and its text. */
-    data class Src(val path: String, val text: String)
+    /** One source: its logical path (`app/main.kira`), its text, and its module's URI (null: named by its path). */
+    data class Src(val path: String, val text: String, val module: String? = null)
 
-    /** `module "<uri>"` plus [body], at the path the URI implies. */
+    /** [body] as module [uri], at the path the URI implies. */
     fun module(uri: String, body: String): Src {
         val (pkg, dotted) = uri.split(":", limit = 2)
         val path = "$pkg/${dotted.replace('.', '/')}.kira"
-        return Src(path, "module \"$uri\"\n\n${body.trimIndent()}\n")
+        return Src(path, "${body.trimIndent()}\n", uri)
     }
 
     /** Parses [sources] into one unit (plus the stdlib). A parse error fails the test. */
@@ -52,7 +52,7 @@ object TyperTestSupport {
         val cu = CompilationUnit()
         for (s in sources) {
             val processed = KiraPreprocessor(s.text).process().processedContent
-            val bare = cu.addSource(s.path, processed, emptyList())
+            val bare = cu.addSource(s.path, processed, emptyList(), s.module)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = cu.addSource(s.path, bare.content, tokens)
             KiraSourceParsers.from(ctx).parse()
@@ -80,7 +80,11 @@ object TyperTestSupport {
         require(src.isDirectory) { "no src/ in $dir" }
         val files = src.walkTopDown().filter { it.isFile && it.extension == "kira" }.sortedBy { it.path }.toList()
         require(files.isNotEmpty()) { "no .kira files under $src" }
-        val sources = files.map { Src(it.canonicalPath, it.readText()) }
+        // The project's own naming: its kira.yaml's name and srcDir, as the CLI gives them.
+        val yaml = File(dir, "kira.yaml")
+        val manifest = if (yaml.isFile) net.exoad.kira.kim.ManifestLoader.loadFromPath(yaml.toPath()) else null
+        val names = net.exoad.kira.compiler.ModuleNames.assign(manifest, dir.toPath(), emptyList(), files.map { it.canonicalPath })
+        val sources = files.map { Src(it.canonicalPath, it.readText(), names[it.canonicalPath]) }
         return type(*sources.toTypedArray(), mode = mode, options = options)
     }
 
@@ -127,7 +131,7 @@ object TyperTestSupport {
      */
     val hasDialectParser: Boolean by lazy {
         val parses = try {
-            unitOf(module("probe:dialect", "pub struct Probe { pub x: Int32 = 0 }"))
+            unitOf(module("probe:dialect", "pub Probe: Struct { pub x: Int32 = 0 }"))
             true
         } catch (_: DiagnosticsException) {
             false

@@ -38,7 +38,7 @@ object CppExprTestSupport {
                 return "src/$pkg/${dotted.replace('.', '/')}.kira"
             }
 
-        val text: String get() = "module \"$uri\"\n\n${body.trimIndent()}\n"
+        val text: String get() = "${body.trimIndent()}\n"
     }
 
     /** An emitted project: its root, what the backend reported, and each module's generated text. */
@@ -97,7 +97,7 @@ object CppExprTestSupport {
             Files.writeString(file, m.text)
             val processed = KiraPreprocessor(m.text).process().processedContent
             val canonical = file.toFile().canonicalPath
-            var ctx = unit.addSource(canonical, processed, emptyList())
+            var ctx = unit.addSource(canonical, processed, emptyList(), m.uri)
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
             KiraSourceParsers.from(ctx).parse()

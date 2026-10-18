@@ -97,8 +97,8 @@ class OutputMinifierTest {
     @Test
     fun isDeterministic() {
         val src = """
-            fx greet: (name: Str) Str { return "hi " + name }
-            fx main: () Void { trace(greet("kira")) }
+            greet: (name: Str) Str { return "hi " + name }
+            main: () Void { trace(greet("kira")) }
         """.trimIndent()
         val rename = OutputMinifier.buildRenameMap(listOf("greet", "name"), setOf("Str", "Void", "main", "trace"))
         val first = OutputMinifier.minify(MinifyLanguage.JS, src, rename)

@@ -35,7 +35,7 @@ class ExternFxRunTest {
     private val fns = Module(
         "app:fxfns",
         """
-        pub fx four: () Int32 {
+        pub four: () Int32 {
             return 4
         }
         """,
@@ -44,199 +44,199 @@ class ExternFxRunTest {
     private val module = Module(
         "app:fxr",
         """
-        use "app:fxfns"
+        app.fxfns as fxfns
 
         $EXTERNS
 
-        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") fx ptr: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<Tuple0, Int32>) Int32;
 
-        pub @_extern(cpp = "f7::fwdKind", header = "f7.hxx") fx fwdKind: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::fwdKind", header = "f7.hxx") fwdKind: (g: Fx<Tuple0, Int32>) Int32;
 
-        pub @_extern(cpp = "f7::callKind1", header = "f7.hxx") fx callKind1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
+        pub @_extern(cpp = "f7::callKind1", header = "f7.hxx") callKind1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
 
-        pub @_extern(cpp = "f7::pick1", header = "f7.hxx") fx pick1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
+        pub @_extern(cpp = "f7::pick1", header = "f7.hxx") pick1: (g: Fx<Tuple1<Int32>, Int32>) Int32;
 
-        pub @_extern(cpp = "f7::mkind", header = "f7.hxx") fx mkind: (m: Maybe<Fx<Tuple0, Int32>>) Int32;
+        pub @_extern(cpp = "f7::mkind", header = "f7.hxx") mkind: (m: Maybe<Fx<Tuple0, Int32>>) Int32;
 
-        pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") class Box {
-            pub fx kind: (g: Fx<Tuple0, Int32>) Int32;
-            pub fx pick: (g: Fx<Tuple0, Int32>) Int32;
-            pub fx get: () Int32;
+        pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") Box: Any {
+            pub kind: (g: Fx<Tuple0, Int32>) Int32;
+            pub pick: (g: Fx<Tuple0, Int32>) Int32;
+            pub get: () Int32;
         }
 
-        pub @_extern(cpp = "f7::newBox", header = "f7.hxx") fx newBox: () Box;
+        pub @_extern(cpp = "f7::newBox", header = "f7.hxx") newBox: () Box;
 
         mut gc: Bool = true
 
-        fx two: () Int32 {
+        two: () Int32 {
             return 2
         }
 
-        fx three: () Int32 {
+        three: () Int32 {
             return 3
         }
 
-        fx inc: (x: Int32) Int32 {
+        inc: (x: Int32) Int32 {
             return x + 1
         }
 
-        fx makeFx: () Fx<Tuple0, Int32> {
-            return fx () Int32 { return 6 }
+        makeFx: () Fx<Tuple0, Int32> {
+            return () Int32 { return 6 }
         }
 
-        fx relay: (g: Fx<Tuple0, Int32>) Int32 {
+        relay: (g: Fx<Tuple0, Int32>) Int32 {
             return callKind(g)
         }
 
-        pub fx aLambda: () Int32 {
-            return callKind(fx () Int32 { return 2 })
+        pub aLambda: () Int32 {
+            return callKind(() Int32 { return 2 })
         }
 
-        pub fx aLambdaFwd: () Int32 {
-            return fwdKind(fx () Int32 { return 2 })
+        pub aLambdaFwd: () Int32 {
+            return fwdKind(() Int32 { return 2 })
         }
 
-        pub fx aLambdaPick: () Int32 {
-            return pick(fx () Int32 { return 2 })
+        pub aLambdaPick: () Int32 {
+            return pick(() Int32 { return 2 })
         }
 
-        pub fx aCapture: () Int32 {
+        pub aCapture: () Int32 {
             k: Int32 = two() + 3
-            return callKind(fx () Int32 { return k })
+            return callKind(() Int32 { return k })
         }
 
-        pub fx aCapturePick: () Int32 {
+        pub aCapturePick: () Int32 {
             k: Int32 = two() + 3
-            return pick(fx () Int32 { return k })
+            return pick(() Int32 { return k })
         }
 
-        pub fx aLambda1: () Int32 {
-            return callKind1(fx (x: Int32) Int32 { return x * 2 })
+        pub aLambda1: () Int32 {
+            return callKind1((x: Int32) Int32 { return x * 2 })
         }
 
-        pub fx aLambdaPick1: () Int32 {
-            return pick1(fx (x: Int32) Int32 { return x * 2 })
+        pub aLambdaPick1: () Int32 {
+            return pick1((x: Int32) Int32 { return x * 2 })
         }
 
-        pub fx aTernary: () Int32 {
-            return callKind(if gc { fx () Int32 { return 7 } } else { fx () Int32 { return 8 } })
+        pub aTernary: () Int32 {
+            return callKind(if gc { () Int32 { return 7 } } else { () Int32 { return 8 } })
         }
 
-        pub fx aMethod: () Int32 {
+        pub aMethod: () Int32 {
             bx: Box = newBox()
-            return callKind(fx () Int32 { return bx.get() })
+            return callKind(() Int32 { return bx.get() })
         }
 
-        pub fx aMethodPick: () Int32 {
+        pub aMethodPick: () Int32 {
             bx: Box = newBox()
-            return pick(fx () Int32 { return bx.get() })
+            return pick(() Int32 { return bx.get() })
         }
 
-        pub fx boxKind: () Int32 {
+        pub boxKind: () Int32 {
             bx: Box = newBox()
-            return bx.kind(fx () Int32 { return 4 })
+            return bx.kind(() Int32 { return 4 })
         }
 
-        pub fx boxPick: () Int32 {
+        pub boxPick: () Int32 {
             bx: Box = newBox()
-            return bx.pick(fx () Int32 { return 4 })
+            return bx.pick(() Int32 { return 4 })
         }
 
-        pub fx refKind: () Int32 {
+        pub refKind: () Int32 {
             return callKind(two)
         }
 
-        pub fx refPick: () Int32 {
+        pub refPick: () Int32 {
             return pick(two)
         }
 
-        pub fx refPtr: () Int32 {
+        pub refPtr: () Int32 {
             return ptr(two)
         }
 
-        pub fx refFwd: () Int32 {
+        pub refFwd: () Int32 {
             return fwdKind(two)
         }
 
-        pub fx refModule: () Int32 {
+        pub refModule: () Int32 {
             return callKind(fxfns.four)
         }
 
-        pub fx refModulePick: () Int32 {
+        pub refModulePick: () Int32 {
             return pick(fxfns.four)
         }
 
-        pub fx ref1: () Int32 {
+        pub ref1: () Int32 {
             return callKind1(inc)
         }
 
-        pub fx refPick1: () Int32 {
+        pub refPick1: () Int32 {
             return pick1(inc)
         }
 
-        pub fx boxRefKind: () Int32 {
+        pub boxRefKind: () Int32 {
             bx: Box = newBox()
             return bx.kind(two)
         }
 
-        pub fx boxRefPick: () Int32 {
+        pub boxRefPick: () Int32 {
             bx: Box = newBox()
             return bx.pick(two)
         }
 
-        pub fx local: () Int32 {
-            g: Fx<Tuple0, Int32> = fx () Int32 { return 8 }
+        pub local: () Int32 {
+            g: Fx<Tuple0, Int32> = () Int32 { return 8 }
             return callKind(g)
         }
 
-        pub fx localPick: () Int32 {
-            g: Fx<Tuple0, Int32> = fx () Int32 { return 8 }
+        pub localPick: () Int32 {
+            g: Fx<Tuple0, Int32> = () Int32 { return 8 }
             return pick(g)
         }
 
-        pub fx viaParam: () Int32 {
-            return relay(fx () Int32 { return 1 })
+        pub viaParam: () Int32 {
+            return relay(() Int32 { return 1 })
         }
 
-        pub fx result: () Int32 {
+        pub result: () Int32 {
             return callKind(makeFx())
         }
 
-        pub fx element: () Int32 {
-            fs: List<Fx<Tuple0, Int32>> = [fx () Int32 { return 9 }]
+        pub element: () Int32 {
+            fs: List<Fx<Tuple0, Int32>> = [() Int32 { return 9 }]
             return callKind(fs[0])
         }
 
-        pub fx unwrapped: () Int32 {
-            mf: Maybe<Fx<Tuple0, Int32>> = fx () Int32 { return 4 }
+        pub unwrapped: () Int32 {
+            mf: Maybe<Fx<Tuple0, Int32>> = () Int32 { return 4 }
             return callKind(mf.unwrap())
         }
 
-        pub fx valueResult: () Int32 {
+        pub valueResult: () Int32 {
             mk: Fx<Tuple0, Fx<Tuple0, Int32>> = makeFx
             return callKind(mk())
         }
 
-        pub fx ifRefs: () Int32 {
+        pub ifRefs: () Int32 {
             return callKind(if gc { two } else { three })
         }
 
-        pub fx ifMixed: () Int32 {
-            g: Fx<Tuple0, Int32> = fx () Int32 { return 8 }
-            return callKind(if gc { g } else { fx () Int32 { return 0 } })
+        pub ifMixed: () Int32 {
+            g: Fx<Tuple0, Int32> = () Int32 { return 8 }
+            return callKind(if gc { g } else { () Int32 { return 0 } })
         }
 
-        pub fx ifStatements: () Int32 {
+        pub ifStatements: () Int32 {
             return callKind(if gc {
                 z: Int32 = two() + 3
-                fx () Int32 { return z }
+                () Int32 { return z }
             } else {
                 two
             })
         }
 
-        pub fx maybeLambda: () Int32 {
-            return mkind(fx () Int32 { return 3 })
+        pub maybeLambda: () Int32 {
+            return mkind(() Int32 { return 3 })
         }
         """,
     )
@@ -334,10 +334,10 @@ class ExternFxRunTest {
         """
         $EXTERNS
 
-        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") fx ptr: (g: Fx<Tuple0, Int32>) Int32;
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<Tuple0, Int32>) Int32;
 
-        pub fx ptrLambda: () Int32 {
-            return ptr(fx () Int32 { return 2 })
+        pub ptrLambda: () Int32 {
+            return ptr(() Int32 { return 2 })
         }
         """,
     )
@@ -366,40 +366,40 @@ class ExternFxRunTest {
         """
         $EXTERNS
 
-        pub class Counter {
+        pub Counter: Any {
             pub mut n: Int32 = 5
 
-            pub fx viaThis: () Int32 {
-                return callKind(fx () Int32 { return n })
+            pub viaThis: () Int32 {
+                return callKind(() Int32 { return n })
             }
 
-            pub fx viaThisPick: () Int32 {
-                return pick(fx () Int32 { return n })
+            pub viaThisPick: () Int32 {
+                return pick(() Int32 { return n })
             }
 
-            pub fx get: () Int32 {
+            pub get: () Int32 {
                 return n
             }
         }
 
-        pub fx kThis: () Int32 {
+        pub kThis: () Int32 {
             c: Counter = Counter { }
             return c.viaThis()
         }
 
-        pub fx kThisPick: () Int32 {
+        pub kThisPick: () Int32 {
             c: Counter = Counter { }
             return c.viaThisPick()
         }
 
-        pub fx kMethod: () Int32 {
+        pub kMethod: () Int32 {
             c: Counter = Counter { }
-            return callKind(fx () Int32 { return c.get() })
+            return callKind(() Int32 { return c.get() })
         }
 
-        pub fx kMethodPick: () Int32 {
+        pub kMethodPick: () Int32 {
             c: Counter = Counter { }
-            return pick(fx () Int32 { return c.get() })
+            return pick(() Int32 { return c.get() })
         }
         """,
     )
@@ -446,13 +446,13 @@ class ExternFxRunTest {
             """
             $EXTERNS
 
-            pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") class Box {
-                pub fx get: () Int32;
+            pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") Box: Any {
+                pub get: () Int32;
             }
 
-            pub @_extern(cpp = "f7::newBox", header = "f7.hxx") fx newBox: () Box;
+            pub @_extern(cpp = "f7::newBox", header = "f7.hxx") newBox: () Box;
 
-            pub fx mValue: () Int32 {
+            pub mValue: () Int32 {
                 bx: Box = newBox()
                 return callKind(bx.get)
             }
@@ -483,9 +483,9 @@ class ExternFxRunTest {
         val TOOLCHAINS = listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC)
 
         /** The two externs every module here declares: a2_fx's template and an overload set. */
-        const val EXTERNS = """pub @_extern(cpp = "f7::callKind", header = "f7.hxx") fx callKind: (g: Fx<Tuple0, Int32>) Int32;
+        const val EXTERNS = """pub @_extern(cpp = "f7::callKind", header = "f7.hxx") callKind: (g: Fx<Tuple0, Int32>) Int32;
 
-        pub @_extern(cpp = "f7::pick", header = "f7.hxx") fx pick: (g: Fx<Tuple0, Int32>) Int32;"""
+        pub @_extern(cpp = "f7::pick", header = "f7.hxx") pick: (g: Fx<Tuple0, Int32>) Int32;"""
 
         /**
          * Templates and overload sets that tell a std::function (the kira::Fn the check states)
