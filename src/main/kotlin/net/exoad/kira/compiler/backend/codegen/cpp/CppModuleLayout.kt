@@ -14,7 +14,8 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  * File paths, namespaces and include paths for the generated tree.
  *
  * - `beside`: `proto.kira` becomes `proto.kira.hxx` (+ `.cxx`) next to it.
- * - `tree`: `firmware:pilot.src.proto` becomes `<outDir>/firmware/pilot/src/proto.kira.hxx`.
+ * - `tree`: `firmware:pilot.src.proto` (project firmware, src/pilot/src/proto.kira) becomes
+ *   `<outDir>/pilot/src/proto.kira.hxx`: the module's path in its project.
  * - `kira:x` stdlib modules always land header-only in `<runtimeDir>/kira/std/x.kira.hxx`,
  *   in namespace `kira::x`; a nested `kira:a.b` keeps its path, `kira::a::b`,
  *   so two stdlib modules with one last segment never merge.
@@ -58,9 +59,9 @@ class CppModuleLayout(
             }
             options.layout == CppLayout.BESIDE -> absoluteSource.parent ?: projectRoot
             else -> {
-                val (pkg, path) = splitUri(uri)
-                val segments = listOf(pkg) + path.dropLast(1)
-                segments.fold(outDir) { acc, s -> acc.resolve(s) }
+                // The module's path in its project: the file's own folders under srcDir.
+                val (_, path) = splitUri(uri)
+                path.dropLast(1).fold(outDir) { acc, s -> acc.resolve(s) }
             }
         }
         val fileStem = when {

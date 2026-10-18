@@ -227,7 +227,7 @@ internal class MemberResolver(private val c: PhaseC) {
             }
             ModuleGraph.Lookup.Missing -> {}
         }
-        val module = ctx.module.imports.firstOrNull { it.pathSegments.lastOrNull() == origin.value } ?: return null
+        val module = ctx.module.importAliases[origin.value] ?: return null
         val sym = module.members[member.value]
         if (sym == null || !(sym is GlobalSymbol || sym is FnSymbol)) {
             c.report("types.member.unknown", "Module ${module.uri} has no value named '${member.value}'.", member)

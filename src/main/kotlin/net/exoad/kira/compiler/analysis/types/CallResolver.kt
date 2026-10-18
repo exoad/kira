@@ -253,7 +253,7 @@ internal class CallResolver(private val c: PhaseC) {
             )
             return KType.Error
         }
-        val module = ctx.module.imports.firstOrNull { it.pathSegments.lastOrNull() == origin.value } ?: return null
+        val module = ctx.module.importAliases[origin.value] ?: return null
         val fn = module.members[member.value] as? FnSymbol
         if (fn == null) {
             argsOnly(e, ctx, scope)
@@ -1208,7 +1208,7 @@ internal class CallResolver(private val c: PhaseC) {
         if (missing.isNotEmpty()) {
             c.report(
                 "types.init.missing-required",
-                "${t.display()} requires ${missing.joinToString(", ") { "'${it.name}'" }}: a `require` field must be given at construction.",
+                "${t.display()} requires ${missing.joinToString(", ") { "'${it.name}'" }}: a field with no value must be given at construction.",
                 e,
             )
         }

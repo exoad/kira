@@ -81,7 +81,12 @@ class KiraParser(private val context: SourceContext) {
      * Star method to call on [KiraParser] that will turn the passed in [context] into an AST.
      */
     fun parse() {
-        val statements = mutableListOf<Statement>()
+        val statements = mutableListOf<ASTNode>()
+        // The file is the module (no header): its name comes from where the file sits.
+        val uri = context.moduleName ?: net.exoad.kira.compiler.ModuleNames.loose(context.file)
+        val start = SourcePosition(1, 1)
+        val module = putOrigin(ModuleDecl(putOrigin(StringLiteral(uri), start)), start)
+        statements.add(putOrigin(Statement(module), start))
         try {
             while (!at(Token.Type.S_EOF)) {
                 statements.add(parseStatement(null))
@@ -93,15 +98,6 @@ class KiraParser(private val context: SourceContext) {
                 context = context,
                 location = here(),
                 selectorLength = max(1, peek().content.length)
-            )
-        }
-        if (statements.firstOrNull()?.expr !is ModuleDecl) {
-            Diagnostics.panic(
-                "KiraParser::parse",
-                "The first declaration of ${context.file} must be a module declaration!",
-                context = context,
-                location = SourcePosition(1, 1),
-                selectorLength = max(1, context.findCanonicalLine(1).length)
             )
         }
         context.ast = RootASTNode(statements)
@@ -183,7 +179,7 @@ class KiraParser(private val context: SourceContext) {
             if (r == Modifier.FINAL) {
                 Diagnostics.panic(
                     "parse.final",
-                    "'final' can only modify a class; it cannot be applied to a ${scopes.name.lowercase().replace('_', ' ')}.",
+                    "'final' can only modify a type; it cannot be applied to a ${scopes.name.lowercase().replace('_', ' ')}.",
                     location = modifier?.get(r),
                     selectorLength = "final".length,
                     context = context
@@ -226,7 +222,7 @@ class KiraParser(private val context: SourceContext) {
                                 }
 
                                 Token.Type.S_COLON -> {
-                                    append("Missing '(' before parameters. Function syntax is: fx name: (params) ReturnType { ... }")
+                                    append("Missing '(' before parameters. Function syntax is: name: (params) ReturnType { ... }")
                                 }
 
                                 else -> {
@@ -255,7 +251,7 @@ class KiraParser(private val context: SourceContext) {
                                 // `fx name(params): Ret` is the pre-migration form; point at
                                 // the colon-binds-the-name shape instead of the generic hint.
                                 Token.Type.S_OPEN_PARENTHESIS -> {
-                                    append("Missing ':' after the function name. Kira function syntax is: fx name: (params) ReturnType { ... } -- the colon binds the name to its signature, the same way 'value: Int32' binds a variable to its type.")
+                                    append("Missing ':' after the function name. Kira function syntax is: name: (params) ReturnType { ... } -- the colon binds the name to its signature, the same way 'value: Int32' binds a variable to its type.")
                                 }
                                 else -> {
                                     append("Missing ':' for type annotation. Variables and functions require type specifications.")
@@ -284,7 +280,7 @@ class KiraParser(private val context: SourceContext) {
                         }
 
                         Token.Type.S_OPEN_ANGLE -> {
-                            append("Missing '<' to begin generic type parameters. Syntax: Type<T, U> or fx name<T>: (params) ReturnType")
+                            append("Missing '<' to begin generic type parameters. Syntax: Type<T, U> or name<T>: (params) ReturnType")
                         }
 
                         Token.Type.S_CLOSE_ANGLE -> {
@@ -340,26 +336,10 @@ class KiraParser(private val context: SourceContext) {
     }
 
     fun parseStatement(modifier: Map<Modifier, SourcePosition>?): Statement {
-        fun parseWithModifiers(): Statement {
-            val baseLocation = here()
-            val modifiers = parseModifiers()
-            expectMarkedDeclarationFollows()
-            var expr = when (peek().type) {
-                Token.Type.K_CLASS -> parseClassDecl(modifiers)
-                Token.Type.K_STRUCT -> parseStructDecl(modifiers)
-                Token.Type.K_ENUM -> parseEnumDecl(modifiers)
-                Token.Type.K_ALIAS -> parseTypeAliasExpr(modifiers)
-                Token.Type.K_VARIANT -> parseVariantDecl(modifiers)
-                Token.Type.K_TRAIT -> parseTraitDecl(modifiers)
-                else -> parsePrimaryExpr(modifiers)
-            }
-            expr = attachIntrinsics(expr)
-            expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-            return putOrigin(Statement(expr), baseLocation)
-        }
         if (modifier != null && modifier.isNotEmpty()) {
-            return parseWithModifiers()
+            return parseDeclarationStatement()
         }
+        refuseRemovedForm()
         // If keywords were lexed as simple identifiers (e.g., 'try' or 'throw'), handle them here too
         if (peek().type == Token.Type.IDENTIFIER) {
             val txt = peek().content
@@ -376,88 +356,54 @@ class KiraParser(private val context: SourceContext) {
             Token.Type.K_RETURN -> parseReturnStatement()
             Token.Type.K_IF -> parseIfSelectionStatement()
             Token.Type.K_WHILE -> parseWhileIterationStatement()
-            Token.Type.K_DO -> parseDoWhileIterationStatement()
             Token.Type.K_FOR -> parseForIterationStatement()
             Token.Type.K_THROW -> parseThrowStatement()
             Token.Type.K_TRY -> parseTryStatement()
-            Token.Type.K_USE -> parseUseStatement()
             Token.Type.K_BREAK -> parseBreakStatement()
             Token.Type.K_CONTINUE -> parseContinueStatement()
-            // A declaration intrinsic with no keyword modifier before it (`@_extern fx f`).
-            // Callable intrinsics (@op_add, @_trace_) parse as expression statements.
+            // A declaration intrinsic with no keyword modifier before it (`@_extern f: () T`), or an
+            // operator's name (`@_op_add_: (o: T) T`). Callable intrinsics (@_trace_) are expressions.
             Token.Type.INTRINSIC_IDENTIFIER -> {
                 val raw = peek().content.removePrefix("@")
-                if (IntrinsicRegistry.isDeclMarker(raw)) {
-                    parseWithModifiers()
+                if (IntrinsicRegistry.isDeclMarker(raw) || startsDeclaration()) {
+                    parseDeclarationStatement()
                 } else {
-                    val baseLocation = here()
-                    val expr = parseExpr()
-                    expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                    putOrigin(Statement(expr), baseLocation)
+                    parseExpressionStatement()
                 }
             }
-            in Token.Type.modifiers -> parseWithModifiers()
-            Token.Type.K_CLASS -> // this part covers the case where the class decl has no modifiers on it. THIS CONDITION NEEDS TO BE UNDER THE PREVIOUS CONDITION
-            {
-                val baseLocation = here()
-                val expr = parseClassDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
+            in Token.Type.modifiers -> parseDeclarationStatement()
+            Token.Type.IDENTIFIER -> if ((atTopLevel() && startsImportOrAlias()) || startsDeclaration()) {
+                parseDeclarationStatement()
+            } else {
+                parseExpressionStatement()
             }
 
-            Token.Type.K_STRUCT -> {
-                val baseLocation = here()
-                val expr = parseStructDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
-
-            Token.Type.K_TRAIT -> {
-                val baseLocation = here()
-                val expr = parseTraitDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
-
-            Token.Type.K_ALIAS -> {
-                val baseLocation = here()
-                val expr = parseTypeAliasExpr(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
-
-            Token.Type.K_ENUM -> {
-                val baseLocation = here()
-                val expr = parseEnumDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
-
-            Token.Type.K_VARIANT -> {
-                val baseLocation = here()
-                val expr = parseVariantDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
-
-            else -> {
-                val baseLocation = here()
-                val expr = parseExpr()
-                // todo: idk wtf this panic message is for ?
-//                if(hereIs( Token.Type.L_INTEGER || hereIs( Token.Type.IDENTIFIER)
-//                {
-//                    Diagnostics.panic(
-//                        "KiraParser::parseStatement",
-//                        "Unexpected token '${peek().content}'",
-//                        location = peek().canonicalLocation,
-//                        selectorLength = peek().content.length,
-//                        context = context
-//                    )
-//                }
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
+            else -> parseExpressionStatement()
         }
+    }
+
+    private fun parseExpressionStatement(): Statement {
+        val baseLocation = here()
+        val expr = parseExpr()
+        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+        return putOrigin(Statement(expr), baseLocation)
+    }
+
+    /** `modifiers name: identity`, an import or an alias, with the modifiers and intrinsics before it. */
+    private fun parseDeclarationStatement(): Statement {
+        val baseLocation = here()
+        val modifiers = parseModifiers()
+        refuseRemovedForm()
+        expectMarkedDeclarationFollows()
+        if (atTopLevel() && startsImportOrAlias()) {
+            val node = parseImportOrAlias(modifiers, baseLocation)
+            expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+            return node
+        }
+        var expr = if (startsDeclaration()) parseDeclaration(modifiers) else parsePrimaryExpr(modifiers)
+        expr = attachIntrinsics(expr)
+        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+        return putOrigin(Statement(expr), baseLocation)
     }
 
     /**
@@ -466,24 +412,28 @@ class KiraParser(private val context: SourceContext) {
     private fun parseStatementBlock(): List<Statement> {
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val statements = mutableListOf<Statement>()
-        withNoObjectInit(false) {
-            while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-                statements.add(parseStatement(null))
+        functionDepth++
+        try {
+            withNoObjectInit(false) {
+                while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
+                    statements.add(parseStatement(null))
+                }
             }
+        } finally {
+            functionDepth--
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return statements
     }
 
+    /** How many statement blocks enclose the pointer: none at the top level and in a type body. */
+    private var functionDepth = 0
+
+    private fun atTopLevel(): Boolean = typeBodyDepth == 0 && functionDepth == 0
+
     private val declarationStarters = setOf(
-        Token.Type.K_CLASS,
-        Token.Type.K_STRUCT,
-        Token.Type.K_ENUM,
-        Token.Type.K_ALIAS,
-        Token.Type.K_VARIANT,
-        Token.Type.K_TRAIT,
-        Token.Type.K_FX,
         Token.Type.IDENTIFIER,
+        Token.Type.INTRINSIC_IDENTIFIER,
     )
 
     /**
@@ -501,11 +451,387 @@ class KiraParser(private val context: SourceContext) {
             "KiraParser::parseStatement",
             "'@${marks.last().intrinsicKey.name}' marks the declaration that follows it, but " +
                 "${EnglishUtils.prependIndefiniteArticle(peek().type.diagnosticsName())} follows instead.\n\n" +
-                "Help: put a declaration after the marker, like '@${marks.last().intrinsicKey.name} fx name: (...) Ret;'.",
+                "Help: put a declaration after the marker, like '@${marks.last().intrinsicKey.name} name: (...) Ret'.",
             location = here(),
             selectorLength = max(1, peek().content.length),
             context = context
         )
+    }
+
+    // ---- the clean dialect's declarations ------------------------------------------------------
+
+    /** The words the clean dialect removed, each with what replaces it. */
+    private val removedWords = mapOf(
+        "class" to "a type is 'Name: Parent { }', and 'Name: Any { }' with no parent",
+        "trait" to "a type is 'Name: Parent { }'; a stateless type that a type lists as a parent is a trait",
+        "struct" to "a value type is 'Name: Struct { }'",
+        "fx" to "a function is 'name: (a: Int32) Int32 { }', a lambda '(a: Int32) Int32 { }'",
+        "enum" to "enums are gone: use constants",
+        "variant" to "variants are gone",
+        "alias" to "an alias is 'Existing<A> as Name<A>'",
+        "require" to "a field with nothing after its type is given at construction: 'pub x: Int64'",
+        "module" to "there is no module header: the file is the module, named by its project and its path",
+        "use" to "a module is imported by its dotted name: 'kira.math as math'",
+        "do" to "do-while is gone: use while",
+        "finally" to "finally blocks are gone",
+    )
+
+    /** A form of the old dialect at the pointer: refused, naming the form that replaces it. */
+    private fun refuseRemovedForm() {
+        if (!at(Token.Type.IDENTIFIER)) return
+        val word = peek().content
+        val help = removedWords[word] ?: return
+        val next = peek(1).type
+        val old = when (word) {
+            "class", "trait", "struct", "enum", "variant", "alias" -> next == Token.Type.IDENTIFIER
+            "fx" -> next == Token.Type.IDENTIFIER || next == Token.Type.INTRINSIC_IDENTIFIER || startsOldLambda()
+            "require" -> next in Token.Type.modifiers || next == Token.Type.INTRINSIC_IDENTIFIER ||
+                (next == Token.Type.IDENTIFIER && peek(2).type == Token.Type.S_COLON)
+            "module", "use" -> next == Token.Type.L_STRING
+            "do", "finally" -> next == Token.Type.S_OPEN_BRACE
+            else -> false
+        }
+        if (!old) return
+        Diagnostics.panic(
+            "parse.removed",
+            "'$word' is not part of Kira any more: $help.",
+            location = here(),
+            selectorLength = word.length,
+            context = context
+        )
+    }
+
+    /** `fx(x: T) R { }` or `fx() R { }` at the pointer: the old lambda. */
+    private fun startsOldLambda(): Boolean {
+        if (peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return false
+        return when (peek(2).type) {
+            Token.Type.S_CLOSE_PARENTHESIS -> peek(3).type == Token.Type.IDENTIFIER
+            Token.Type.IDENTIFIER -> peek(3).type == Token.Type.S_COLON
+            Token.Type.K_MODIFIER_MUTABLE -> true
+            else -> false
+        }
+    }
+
+    /** `name: ...`, `name<T>: ...` or an operator's `@_op_add_: ...` at the pointer. */
+    private fun startsDeclaration(): Boolean {
+        val named = at(Token.Type.IDENTIFIER) ||
+            (at(Token.Type.INTRINSIC_IDENTIFIER) && OperatorIntrinsics.isOperatorName(peek().content))
+        if (!named) return false
+        return when (peek(1).type) {
+            Token.Type.S_COLON -> true
+            Token.Type.S_OPEN_ANGLE -> typeArgumentsEnd(1)?.let { peek(it + 1).type == Token.Type.S_COLON } ?: false
+            else -> false
+        }
+    }
+
+    /** `a.b.c as name` (an import) or `Type<A> as Name<A>` (an alias) at the pointer. */
+    private fun startsImportOrAlias(): Boolean {
+        if (!at(Token.Type.IDENTIFIER)) return false
+        var i = 0
+        while (peek(i + 1).type == Token.Type.S_DOT && peek(i + 2).type == Token.Type.IDENTIFIER) {
+            i += 2
+        }
+        return when (peek(i + 1).type) {
+            Token.Type.K_AS -> true
+            Token.Type.S_OPEN_ANGLE -> typeArgumentsEnd(i + 1)?.let { peek(it + 1).type == Token.Type.K_AS } ?: false
+            else -> false
+        }
+    }
+
+    /** A type a program writes is PascalCase: an uppercase first letter and a lowercase one after. */
+    private fun isTypeName(name: String): Boolean =
+        name.isNotEmpty() && name[0].isUpperCase() && name.any { it.isLowerCase() } && !name.contains(Symbols.UNDERSCORE.rep)
+
+    /**
+     * `kira.math as math` imports a module, `kira.math.sqrt as sqrt` one of its names (both only
+     * at the top level), and `Tuple2<A, B> as Pair<A, B>` aliases a type: the existing thing first.
+     */
+    private fun parseImportOrAlias(modifiers: Map<Modifier, SourcePosition>, origin: SourcePosition): Statement {
+        var i = 0
+        val segments = mutableListOf(peek().content)
+        while (peek(i + 1).type == Token.Type.S_DOT && peek(i + 2).type == Token.Type.IDENTIFIER) {
+            segments += peek(i + 2).content
+            i += 2
+        }
+        val generic = peek(i + 1).type == Token.Type.S_OPEN_ANGLE
+        if (segments.size == 1 || generic) {
+            if (segments.size > 1) {
+                Diagnostics.panic(
+                    "parse.alias.qualified",
+                    "An alias names a type this file sees; import '${segments.joinToString(".")}' first, then alias it.",
+                    location = here(),
+                    selectorLength = max(1, peek().content.length),
+                    context = context
+                )
+            }
+            expectModifiers(modifiers, WrappingContext.TYPE_ALIAS)
+            val target = parseType()
+            expectThenAdvance(Token.Type.K_AS)
+            val aliasLocation = here()
+            val aliasType = parseType(declaresGenerics = true)
+            expectConventionalTypeName(aliasType, aliasLocation, "Type alias")
+            val decl = TypeAliasDecl(modifiers.keys.toList(), aliasType, target)
+            attachIntrinsics(decl)
+            putOrigin(decl, origin)
+            return putOrigin(Statement(decl), origin)
+        }
+        if (modifiers.isNotEmpty() || pendingIntrinsicExprs != null) {
+            Diagnostics.panic(
+                "parse.import.modifier",
+                "An import takes no modifier: write '${segments.joinToString(".")} as ${peek(i + 2).content}'.",
+                location = origin,
+                selectorLength = 1,
+                context = context
+            )
+        }
+        val pathLocation = here()
+        advancePointer(i + 1)
+        expectThenAdvance(Token.Type.K_AS)
+        val alias = parseIdentifier()
+        return putOrigin(UseStatement(putOrigin(StringLiteral(segments.joinToString(".")), pathLocation), alias), origin)
+    }
+
+    /**
+     * One declaration, `modifiers name: identity`: a function (`name: (a: T) R { }`, body-less a
+     * slot), a variable of function type (`= value` after the signature), a type (`Name: P1, P2
+     * { }`, body-less for the host's), or a variable, field or slot (`name: T`, `name: T = v`).
+     */
+    private fun parseDeclaration(modifiers: Map<Modifier, SourcePosition>?): Expr {
+        val origin = here()
+        val marks = pendingIntrinsicExprs
+        val isOperator = at(Token.Type.INTRINSIC_IDENTIFIER)
+        val name: Expr = if (isOperator) parseIntrinsicExpr(isFunctionContext = true) else parseIdentifier()
+        val generics = mutableListOf<Type>()
+        if (at(Token.Type.S_OPEN_ANGLE)) {
+            expectThenAdvance(Token.Type.S_OPEN_ANGLE)
+            while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
+                generics.add(parseTypeParameter((name as? Identifier)?.value, declaring = true))
+                if (!at(Token.Type.S_CLOSE_ANGLE)) expectThenAdvance(Token.Type.S_COMMA)
+            }
+            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
+        }
+        expectThenAdvance(Token.Type.S_COLON)
+        if (at(Token.Type.S_OPEN_PARENTHESIS)) {
+            return parseFunctionRest(origin, name, generics, modifiers, marks)
+        }
+        val ident = name as Identifier
+        val first = parseType()
+        if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE) || (isTypeName(ident.value) && !at(Token.Type.S_EQUAL))) {
+            return parseTypeDecl(origin, ident, generics, first, modifiers, marks)
+        }
+        if (generics.isNotEmpty()) {
+            Diagnostics.panic(
+                "parse.variable.generic",
+                "'${ident.value}' is a variable, and a variable takes no type parameters.",
+                location = origin,
+                selectorLength = ident.value.length,
+                context = context
+            )
+        }
+        expectModifiers(modifiers, WrappingContext.VARIABLE)
+        var value: Expr? = null
+        if (at(Token.Type.S_EQUAL)) {
+            advancePointer()
+            value = parseExpr()
+        }
+        val decl = VariableDecl(ident, first, value, modifiers?.keys?.toList() ?: emptyList())
+        attachIntrinsics(decl)
+        return putOrigin(decl, origin)
+    }
+
+    /** After `name<T>:` at a `(`: the parameters and result, then a body, `= value`, or neither (a slot). */
+    private fun parseFunctionRest(
+        origin: SourcePosition,
+        name: Expr,
+        generics: List<Type>,
+        modifier: Map<Modifier, SourcePosition>?,
+        marks: List<IntrinsicExpr>?,
+    ): Expr {
+        val signatureAt = here()
+        val params = parseFunctionDeclParameters()
+        val returnType = parseType()
+        if (at(Token.Type.S_EQUAL) && name is Identifier && name !is IntrinsicExpr) {
+            // `cb: (x: Int32) Void = value`: a variable whose type is the function type.
+            expectModifiers(modifier, WrappingContext.VARIABLE)
+            val type = functionTypeOf(params, returnType, signatureAt)
+            advancePointer()
+            val decl = VariableDecl(name, type, parseExpr(), modifier?.keys?.toList() ?: emptyList())
+            attachIntrinsics(decl)
+            return putOrigin(decl, origin)
+        }
+        expectModifiers(modifier, WrappingContext.FUNCTION)
+        if (modifier?.containsKey(Modifier.OVERRIDE) == true && typeBodyDepth == 0) {
+            Diagnostics.panic(
+                "KiraParser::parseFunctionDecl",
+                "'override' marks a method of a type; a function outside a type body overrides nothing.",
+                location = modifier[Modifier.OVERRIDE],
+                selectorLength = "override".length,
+                context = context
+            )
+        }
+        if (name is Identifier && name !is IntrinsicExpr) {
+            expectConventionalName(name.value, origin, "Function", "camelCase")
+        }
+        val functionIntrinsics = marks ?: pendingIntrinsicExprs
+        pendingIntrinsicExprs = null
+        val body = if (at(Token.Type.S_OPEN_BRACE)) parseStatementBlock() else null
+        val decl = FunctionDecl(name, FunctionDefExpr(returnType, params, body), modifier?.keys?.toList() ?: emptyList(), generics)
+        markIntrinsics(decl, functionIntrinsics)
+        attachIntrinsics(decl)
+        return putOrigin(decl, origin)
+    }
+
+    /** `Fx<TupleN<params>, ret>` for a parameter list written as a function type. */
+    private fun functionTypeOf(params: List<FunctionDeclParameterExpr>, ret: Type, at: SourcePosition): Type {
+        params.firstOrNull { it.defaultValue != null }?.let {
+            Diagnostics.panic(
+                "parse.fxtype.default",
+                "A function type has no default values: '${it.name.value}' has one.",
+                location = context.astOrigins[it] ?: at,
+                selectorLength = it.name.value.length,
+                context = context
+            )
+        }
+        val args = params.map { p -> putOrigin(Type(p.typeSpecifier.identifier, p.typeSpecifier.constraint, p.typeSpecifier.children, Modifier.MUTABLE in p.modifiers), at) }
+        val tuple = putOrigin(Type(putOrigin(Identifier("Tuple${args.size}"), at), null, args), at)
+        return putOrigin(Type(putOrigin(Identifier("Fx"), at), null, listOf(tuple, ret)), at)
+    }
+
+    /** `(a: T, mut b: U) R` in a type position: the function type `Fx<Tuple2<T, mut U>, R>`. */
+    private fun parseFunctionType(): Type {
+        val at = here()
+        expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+        val args = mutableListOf<Type>()
+        while (!at(Token.Type.S_CLOSE_PARENTHESIS) && !at(Token.Type.S_EOF)) {
+            if (args.isNotEmpty()) {
+                expectThenAdvance(Token.Type.S_COMMA)
+            }
+            val isMut = at(Token.Type.K_MODIFIER_MUTABLE)
+            if (isMut) advancePointer()
+            parseIdentifier()
+            expectThenAdvance(Token.Type.S_COLON)
+            val t = parseType()
+            args += if (isMut) putOrigin(Type(t.identifier, t.constraint, t.children, true), context.astOrigins[t] ?: at) else t
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        val ret = parseType()
+        val tuple = putOrigin(Type(putOrigin(Identifier("Tuple${args.size}"), at), null, args), at)
+        return putOrigin(Type(putOrigin(Identifier("Fx"), at), null, listOf(tuple, ret)), at)
+    }
+
+    /**
+     * `Name<T>: P1, P2 { members }`: one kind of type. A `Struct` parent makes it a value type
+     * (a struct); `Any`, the root, names no parent. Whether a stateless type is a trait is
+     * decided once every file is read (TypeRoles): one that a type lists as a parent is.
+     */
+    private fun parseTypeDecl(
+        origin: SourcePosition,
+        name: Identifier,
+        generics: List<Type>,
+        first: Type,
+        modifier: Map<Modifier, SourcePosition>?,
+        marks: List<IntrinsicExpr>?,
+    ): Expr {
+        if (!atTopLevel()) {
+            Diagnostics.panic(
+                "parse.type.nested",
+                "'${name.value}' is a type, and a type is declared at the top level of a file.",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
+        }
+        expectModifiers(modifier, WrappingContext.CLASS)
+        expectConventionalName(name.value, origin, "Type", "PascalCase")
+        val nameType = putOrigin(Type(name, null, generics), origin)
+        val parents = mutableListOf(first)
+        while (at(Token.Type.S_COMMA)) {
+            advancePointer()
+            parents.add(parseType())
+        }
+        val typeIntrinsics = marks ?: pendingIntrinsicExprs
+        pendingIntrinsicExprs = null
+        val body = if (at(Token.Type.S_OPEN_BRACE)) parseTypeBody() else TypeBody(emptyList(), null)
+        val isStruct = parents.any { isRoot(it, STRUCT_ROOT) }
+        val named = parents.filterNot { isRoot(it, ANY_ROOT) || isRoot(it, STRUCT_ROOT) }
+        val mods = modifier?.keys?.toList() ?: emptyList()
+        val decl: Decl = if (isStruct) {
+            StructDecl(nameType, mods, body.members, named, body.initially)
+        } else {
+            ClassDecl(nameType, mods, body.members, named, body.initially, null)
+        }
+        markIntrinsics(decl, typeIntrinsics)
+        attachIntrinsics(decl)
+        return putOrigin(decl, origin)
+    }
+
+    private fun isRoot(t: Type, root: String): Boolean = (t.identifier as? Identifier)?.value == root && t.children.isEmpty()
+
+    private companion object {
+        /** The root every type has; as a parent it names none. */
+        const val ANY_ROOT = "Any"
+
+        /** The parent that makes a type a value type, a struct (until Mutable<> decides it). */
+        const val STRUCT_ROOT = "Struct"
+    }
+
+    private class TypeBody(
+        val members: List<FirstClassDecl>,
+        val initially: List<Statement>?,
+    )
+
+    /** How many type bodies enclose the pointer; `override` needs one. */
+    private var typeBodyDepth = 0
+
+    /** The `{ ... }` of a type: fields, functions and at most one `initially { }`. */
+    private fun parseTypeBody(): TypeBody {
+        expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        val members = mutableListOf<FirstClassDecl>()
+        var initially: List<Statement>? = null
+        typeBodyDepth++
+        val savedFunctionDepth = functionDepth
+        functionDepth = 0
+        try {
+            while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
+                if (at(Token.Type.K_INITIALLY)) {
+                    val keyword = peek()
+                    advancePointer()
+                    if (initially != null) {
+                        Diagnostics.panic(
+                            "KiraParser::parseTypeBody",
+                            "A type may have only one 'initially' block.",
+                            location = keyword.canonicalLocation,
+                            selectorLength = keyword.content.length,
+                            context = context
+                        )
+                    }
+                    initially = parseStatementBlock()
+                    expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                    continue
+                }
+                refuseRemovedForm()
+                val memberModifiers = parseModifiers()
+                expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
+                refuseRemovedForm()
+                if (!startsDeclaration()) {
+                    Diagnostics.panic(
+                        "KiraParser::parseTypeBody",
+                        "A type body holds fields and functions: 'name: Type', 'name: Type = value' or 'name: (a: T) R { }'.",
+                        location = peek().canonicalLocation,
+                        selectorLength = max(1, peek().content.length),
+                        context = context
+                    )
+                }
+                val member = parseDeclaration(memberModifiers)
+                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                members.add(member as FirstClassDecl)
+            }
+        } finally {
+            typeBodyDepth--
+            functionDepth = savedFunctionDepth
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        return TypeBody(members, initially)
     }
 
     fun parseReturnStatement(): Statement // y dont they just call it a return expr? lol beats me tho, just another way to represent an astnode
@@ -588,15 +914,6 @@ class KiraParser(private val context: SourceContext) {
         val origin = here()
         val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
-    }
-
-    fun parseDoWhileIterationStatement(): Statement {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_DO)
-        val statements = parseStatementBlock()
-        val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
-        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-        return putOrigin(DoWhileIterationStatement(condition, statements), origin)
     }
 
     fun parseIfSelectionStatement(): Statement {
@@ -762,7 +1079,8 @@ class KiraParser(private val context: SourceContext) {
                     )
                 }
 
-                at(Token.Type.S_OPEN_PARENTHESIS) -> {
+                // A call's '(' is on the line of what it calls: one that starts a line starts a lambda.
+                at(Token.Type.S_OPEN_PARENTHESIS) && !(startsOnNewLine() && startsLambda()) -> {
                     // function call on arbitrary expression (e.g., p.dist())
                     val params = parseFunctionCallParameter()
                     expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
@@ -877,7 +1195,6 @@ class KiraParser(private val context: SourceContext) {
             }
 
             Token.Type.K_WITH -> parseWithExpr()
-            Token.Type.K_MODULE -> parseModuleDecl()
             Token.Type.K_IF -> parseIfExpr()
             Token.Type.K_THIS -> {
                 // A fresh node per use: the typed model keys nodes by identity.
@@ -886,18 +1203,8 @@ class KiraParser(private val context: SourceContext) {
                 putOrigin(ThisExpr(), origin)
             }
 
-            Token.Type.K_FX -> {
-                // `fx (params) Ret { }` with neither a name nor modifiers is a
-                // lambda in expression position; `fx name: ...` stays a
-                // FunctionDecl (design 2.4).
-                if (peek(1).type == Token.Type.S_OPEN_PARENTHESIS && modifier.isNullOrEmpty()) {
-                    parseLambdaExpr()
-                } else {
-                    parseFunctionDecl(modifier)
-                }
-            }
-
-            Token.Type.IDENTIFIER ->
+            Token.Type.IDENTIFIER -> {
+                refuseRemovedForm()
                 when (peek(1).type) {
                     Token.Type.S_OPEN_PARENTHESIS -> {
                         if (modifier?.isNotEmpty() ?: false) {
@@ -957,9 +1264,13 @@ class KiraParser(private val context: SourceContext) {
 
                     else -> parseIdentifierExpr(modifier)
                 }
+            }
 
             Token.Type.OP_SUB, Token.Type.OP_ADD, Token.Type.S_BANG, Token.Type.S_TILDE -> parseUnaryExpr()
             Token.Type.S_OPEN_PARENTHESIS -> {
+                if (startsLambda()) {
+                    return parseLambdaExpr()
+                }
                 advancePointer()
                 val expr = withNoObjectInit(false) { parseExpr() }
                 expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -976,13 +1287,6 @@ class KiraParser(private val context: SourceContext) {
                     context = context
                 )
         }
-    }
-
-    fun parseModuleDecl(): Decl {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_MODULE)
-        val uri = parseStringLiteral()
-        return putOrigin(ModuleDecl(uri), origin)
     }
 
     /**
@@ -1015,14 +1319,26 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(IfExpr(condition, thenBranch, elseBranch), origin)
     }
 
-    /** `fx (params) Ret { body }` in expression position (design 2.4). */
+    /** `(params) Ret { body }` in expression position: a lambda. */
     private fun parseLambdaExpr(): Expr {
         val origin = here()
-        expectThenAdvance(Token.Type.K_FX)
         val params = parseFunctionDeclParameters()
         val returnType = parseType()
         val body = parseStatementBlock()
         return putOrigin(LambdaExpr(putOrigin(FunctionDefExpr(returnType, params, body), origin)), origin)
+    }
+
+    /** Whether the token at the pointer is on a later line than the one before it. */
+    private fun startsOnNewLine(): Boolean {
+        val prev = buffer.previous() ?: return true
+        return peek().canonicalLocation.lineNumber > prev.canonicalLocation.lineNumber
+    }
+
+    /** `()` or `(name:` or `(mut` at the pointer: a lambda's parameters, never a parenthesized value. */
+    private fun startsLambda(): Boolean = when (peek(1).type) {
+        Token.Type.S_CLOSE_PARENTHESIS, Token.Type.K_MODIFIER_MUTABLE -> true
+        Token.Type.IDENTIFIER -> peek(2).type == Token.Type.S_COLON
+        else -> false
     }
 
     fun parseUnaryExpr(): Expr {
@@ -1144,65 +1460,6 @@ class KiraParser(private val context: SourceContext) {
         return parameters
     }
 
-    private fun parseFunctionDecl(modifier: Map<Modifier, SourcePosition>?): FunctionDecl {
-        val origin = here()
-        // Capture @_extern before expectModifiers / nested parseModifiers clears it.
-        val functionIntrinsicsEarly = pendingIntrinsicExprs
-        expectModifiers(modifier, WrappingContext.FUNCTION)
-        if (modifier?.containsKey(Modifier.OVERRIDE) == true && typeBodyDepth == 0) {
-            Diagnostics.panic(
-                "KiraParser::parseFunctionDecl",
-                "'override' marks a method of a class or a trait; a function outside a type body overrides nothing.",
-                location = modifier[Modifier.OVERRIDE],
-                selectorLength = "override".length,
-                context = context
-            )
-        }
-        expectThenAdvance(Token.Type.K_FX)
-        var functionName: Expr = AnonymousIdentifier
-        if (at(Token.Type.INTRINSIC_IDENTIFIER)) {
-            functionName = parseIntrinsicExpr(isFunctionContext = true)
-        } else if (at(Token.Type.IDENTIFIER)) {
-            val nameLocation = here()
-            functionName = parseIdentifier()
-            expectConventionalName((functionName as Identifier).value, nameLocation, "Function", "camelCase")
-        }
-        // optional generics: fx name<T, U: Bound>: (...) Ret
-        val generics = mutableListOf<Type>()
-        if (at(Token.Type.S_OPEN_ANGLE)) {
-            expectThenAdvance(Token.Type.S_OPEN_ANGLE)
-            while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
-                val param = parseTypeParameter(declaring = true)
-                generics.add(param)
-                if (!at(Token.Type.S_CLOSE_ANGLE)) expectThenAdvance(Token.Type.S_COMMA)
-            }
-            expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
-        }
-        // `fx name: (params) Ret` -- the colon binds the name to its signature the
-        // same way `value: Int32` binds a variable to its type. Anonymous function
-        // literals have no name to bind, so they go straight to `fx (params) Ret`.
-        if (functionName !== AnonymousIdentifier) {
-            expectThenAdvance(Token.Type.S_COLON)
-        }
-        val params = parseFunctionDeclParameters()
-        val returnType = parseType()
-        val functionIntrinsics = functionIntrinsicsEarly ?: pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        var body: List<Statement>? = null
-        if (at(Token.Type.S_OPEN_BRACE)) {
-            body = parseStatementBlock()
-        }
-        val decl = FunctionDecl(
-            functionName,
-            FunctionDefExpr(returnType, params, body),
-            modifier?.keys?.toList() ?: emptyList(),
-            generics,
-        )
-        markIntrinsics(decl, functionIntrinsics)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
     private fun parseFunctionCallParameter(): Pair<List<FunctionCallNamedParameterExpr>, List<FunctionCallPositionalParameterExpr>> {
         val named = mutableListOf<FunctionCallNamedParameterExpr>()
         val positional = mutableListOf<FunctionCallPositionalParameterExpr>()
@@ -1288,7 +1545,7 @@ class KiraParser(private val context: SourceContext) {
         }
         return when (peek(1).type) {
             Token.Type.S_EQUAL -> parseAssignmentExpr()
-            Token.Type.S_COLON -> parseVariableDecl(modifier)
+            Token.Type.S_COLON -> parseDeclaration(modifier)
             else -> parseIdentifier()
         }
     }
@@ -1304,13 +1561,6 @@ class KiraParser(private val context: SourceContext) {
         Token.Type.OP_ASSIGN_BIT_OR,
         Token.Type.OP_ASSIGN_BIT_AND,
     )
-
-    fun parseUseStatement(): Statement {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_USE)
-        val uri = parseStringLiteral()
-        return putOrigin(UseStatement(uri), origin)
-    }
 
     // helper function for dealing with compound assignment operators that utilize the closing angle bracket (which is a pain to disambiguate) <-- this is a fucking word!?!?!
     fun tryCompoundAssignmentOperators(peekOffset: Int = 0): Array<Token.Type>? {
@@ -1383,438 +1633,6 @@ class KiraParser(private val context: SourceContext) {
     private fun expectConventionalTypeName(type: Type, location: SourcePosition, what: String) {
         val name = (type.identifier as? Identifier)?.value ?: return
         expectConventionalName(name, location, what, "PascalCase")
-    }
-
-    /** The base types an enum may declare (`enum Name: Base { ... }`), per the spec. */
-    private val enumIntegerBaseTypes = setOf("Int8", "Int16", "Int32", "Int64", "Int")
-    private val enumFloatBaseTypes = setOf("Float32", "Float64", "Float")
-    private val enumBaseTypes = enumIntegerBaseTypes + enumFloatBaseTypes + "Str"
-
-    /**
-     * Every member's value must fit the enum's base type. A declared base
-     * wins; without one the first explicit value decides (a string makes it
-     * a Str enum, a float a Float64 enum, otherwise Int32) -- see
-     * [EnumDecl.baseTypeName]. Only integer enums may leave values implicit.
-     */
-    private fun validateEnumMembers(enumName: Identifier, declaredBase: String?, members: List<EnumMemberExpr>) {
-        val base = declaredBase ?: EnumDecl.inferBaseTypeName(members)
-        val isInteger = base in enumIntegerBaseTypes
-        val isFloat = base in enumFloatBaseTypes
-        members.forEach { member ->
-            val value = member.value
-            val location = context.astOrigins[member] ?: SourcePosition.UNKNOWN
-            val fits = when {
-                value == null -> isInteger
-                isInteger -> value is IntegerLiteral
-                isFloat -> value is FloatLiteral || value is IntegerLiteral
-                else -> value is StringLiteral
-            }
-            if (fits) return@forEach
-            val message = if (value == null) {
-                "Enum member '${member.name.value}' needs an explicit value: '${enumName.value}' is a $base enum, which has no implied numbering."
-            } else {
-                "Enum member '${member.name.value}' must be a $base literal, like the rest of '${enumName.value}'" +
-                    if (declaredBase == null) " -- declare a base type (`enum ${enumName.value}: Str {`) to say which kind you mean." else "."
-            }
-            Diagnostics.panic(
-                "KiraParser::parseEnumDecl",
-                message,
-                location = location,
-                selectorLength = member.name.value.length,
-                context = context
-            )
-        }
-    }
-
-    fun parseEnumMemberExpr(): EnumMemberExpr {
-        val origin = here()
-        val name = parseIdentifier()
-        var value: DataLiteral<*>? = null
-        if (at(Token.Type.S_EQUAL)) {
-            expectThenAdvance(Token.Type.S_EQUAL)
-            val start = peek()
-            var parseValue = parsePrimaryOrUnaryExpr()
-            // `DOWN = -1`: fold the sign into the literal.
-            if (parseValue is UnaryExpr && (parseValue.operator == UnaryOp.NEG || parseValue.operator == UnaryOp.POS)) {
-                val negate = parseValue.operator == UnaryOp.NEG
-                val operand = parseValue.operand
-                parseValue = when (operand) {
-                    is IntegerLiteral -> putOrigin(IntegerLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
-                    is FloatLiteral -> putOrigin(FloatLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
-                    else -> parseValue
-                }
-            }
-            if (parseValue !is SimpleLiteral && parseValue !is DataLiteral<*>) {
-                Diagnostics.panic(
-                    "KiraParser::parseEnumMemberExpr",
-                    "Only simple literals are allowed as enum values. That is strings, floats, and integers.",
-                    location = start.canonicalLocation,
-                    selectorLength = start.content.length,
-                    context = context
-                )
-            }
-            value = parseValue as DataLiteral<*>
-        }
-//        if (name !is Identifier) {
-//            Diagnostics.panic(
-//                "KiraParser::parseEnumMemberExpr",
-//                "Enum members can only be named using identifiers.",
-//                context = context,
-//                location = context.astOrigins[name] ?: origin,
-//            )
-//        }
-        return putOrigin(EnumMemberExpr(name, value), origin)
-    }
-
-    fun parseEnumDecl(modifier: Map<Modifier, SourcePosition>?): EnumDecl {
-        expectModifiers(modifier, WrappingContext.ENUM)
-        advancePointer() // consume 'enum'
-        val origin = here()
-        val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
-        expectConventionalName(name.value, origin, "Enum", "PascalCase")
-        // Optional base type: `enum Status: Int32 {`. Only the spec's scalar
-        // bases are allowed; a Str or Float base makes every value mandatory.
-        var baseType: Type? = null
-        var baseTypeName: String? = null
-        if (at(Token.Type.S_COLON)) {
-            advancePointer()
-            val baseToken = peek()
-            baseType = parseType()
-            baseTypeName = (baseType.identifier as? Identifier)?.value
-            if (baseTypeName !in enumBaseTypes || baseType.children.isNotEmpty()) {
-                Diagnostics.panic(
-                    "KiraParser::parseEnumDecl",
-                    "'${baseToken.content}' cannot be the base type of an enum. " +
-                        "Use one of Int8, Int16, Int32, Int64, Float32, Float64 or Str.",
-                    location = baseToken.canonicalLocation,
-                    selectorLength = baseToken.content.length,
-                    context = context
-                )
-            }
-        }
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<EnumMemberExpr>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            members.add(parseEnumMemberExpr())
-            if (!at(Token.Type.S_CLOSE_BRACE)) {
-                expectThenAdvance(Token.Type.S_COMMA)
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        validateEnumMembers(name, baseTypeName, members)
-//        if (name !is Identifier) {
-//            Diagnostics.panic(
-//                "KiraParser::parseEnumDecl",
-//                "Enum declarations can only use identifiers for their name.",
-//                context = context,
-//                location = context.astOrigins[name] ?: origin,
-//            )
-//        }
-        val decl = EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList(), baseType)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
-    fun parseTypeAliasExpr(modifiers: Map<Modifier, SourcePosition>?): TypeAliasDecl {
-        expectModifiers(modifiers, WrappingContext.TYPE_ALIAS)
-        val origin = here()
-        expectThenAdvance(Token.Type.K_ALIAS)
-        val aliasType = parseType(declaresGenerics = true)
-        expectConventionalTypeName(aliasType, origin, "Type alias")
-        expectThenAdvance(Token.Type.K_AS)
-        val targetType = parseType()
-        val decl = TypeAliasDecl(
-            modifiers?.let { modifiers.keys.toList() } ?: emptyList(),
-            aliasType,
-            targetType
-        )
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
-
-    /** The `: A, B` list after a class, struct, variant or trait name; empty without a colon. */
-    private fun parseParentList(): List<Type> {
-        val parents = mutableListOf<Type>()
-        if (!at(Token.Type.S_COLON)) {
-            return parents
-        }
-        advancePointer()
-        while (!at(Token.Type.S_OPEN_BRACE) && !at(Token.Type.S_EOF)) {
-            parents.add(parseType())
-            if (at(Token.Type.S_COMMA)) {
-                advancePointer()
-            } else {
-                break
-            }
-        }
-        return parents
-    }
-
-    private class TypeBody(
-        val members: List<FirstClassDecl>,
-        val initially: List<Statement>?,
-        val finally: List<Statement>?,
-    )
-
-    /** How many class, struct or trait bodies enclose the pointer; `override` needs one. */
-    private var typeBodyDepth = 0
-
-    /**
-     * The `{ ... }` of a class or a struct: fields, methods, at most one
-     * `initially { }` and, where [allowFinally], at most one `finally { }`
-     * (spec Initializers and Finalizers). A struct is a value (design D1)
-     * and has no finalizer.
-     */
-    private fun parseTypeBody(kind: String, allowFinally: Boolean): TypeBody {
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<FirstClassDecl>()
-        var initially: List<Statement>? = null
-        var finally: List<Statement>? = null
-        typeBodyDepth++
-        try {
-            parseTypeBodyMembers(kind, allowFinally, members, { initially }, { initially = it }, { finally }, { finally = it })
-        } finally {
-            typeBodyDepth--
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return TypeBody(members, initially, finally)
-    }
-
-    private fun parseTypeBodyMembers(
-        kind: String,
-        allowFinally: Boolean,
-        members: MutableList<FirstClassDecl>,
-        initially: () -> List<Statement>?,
-        setInitially: (List<Statement>) -> Unit,
-        finally: () -> List<Statement>?,
-        setFinally: (List<Statement>) -> Unit,
-    ) {
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            if (at(Token.Type.K_INITIALLY) || at(Token.Type.K_FINALLY)) {
-                val keyword = peek()
-                advancePointer()
-                val isInitially = keyword.type == Token.Type.K_INITIALLY
-                if (!isInitially && !allowFinally) {
-                    Diagnostics.panic(
-                        "KiraParser::parseTypeBody",
-                        "A $kind has no 'finally' block: it is a value, not an owned object, so nothing runs when it goes away.",
-                        location = keyword.canonicalLocation,
-                        selectorLength = keyword.content.length,
-                        context = context
-                    )
-                }
-                if ((isInitially && initially() != null) || (!isInitially && finally() != null)) {
-                    Diagnostics.panic(
-                        "KiraParser::parseTypeBody",
-                        "A $kind may have only one '${keyword.content}' block.",
-                        location = keyword.canonicalLocation,
-                        selectorLength = keyword.content.length,
-                        context = context
-                    )
-                }
-                val block = parseStatementBlock()
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                if (isInitially) setInitially(block) else setFinally(block)
-                continue
-            }
-            val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
-            members.add(
-                if (at(Token.Type.S_OPEN_PARENTHESIS)) // check for simple/anonymous function literals
-                {
-                    Diagnostics.panic(
-                        "KiraParser::parseClassDecl",
-                        "Anonymous Function Literals are not allowed by themselves in a $kind.",
-                        location = peek().canonicalLocation,
-                        selectorLength = peek().content.length,
-                        context = context
-                    )
-                } else if (peek(1).type == Token.Type.S_COLON) {
-                    val valDecl = parseVariableDecl(memberModifiers)
-                    expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                    valDecl
-                } else {
-                    val funcDecl = parseFunctionDecl(memberModifiers)
-                    expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                    funcDecl
-                }
-            )
-        }
-    }
-
-    fun parseClassDecl(modifier: Map<Modifier, SourcePosition>?): ClassDecl {
-        // Capture @_opaque / @_magic before expectModifiers parses `pub` and
-        // clears pendingIntrinsics via a fresh parseModifiers path.
-        val classIntrinsicsEarly = pendingIntrinsicExprs
-        expectModifiers(modifier, WrappingContext.CLASS)
-        advancePointer() //consume the class keyword
-        val origin = here()
-        val className = parseType(declaresGenerics = true)
-        expectConventionalTypeName(className, origin, "Class")
-        val parenTypes = parseParentList()
-        if (!at(Token.Type.S_OPEN_BRACE)) {
-            val classDecl = ClassDecl(className, modifier?.keys?.toList() ?: emptyList(), emptyList(), parenTypes)
-            val marks = classIntrinsicsEarly ?: pendingIntrinsicExprs
-            if (marks != null) {
-                markIntrinsics(classDecl, marks)
-                pendingIntrinsicExprs = null
-            }
-            attachIntrinsics(classDecl)
-            return putOrigin(classDecl, origin)
-        }
-        val classIntrinsics = classIntrinsicsEarly ?: pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        val body = parseTypeBody("class", allowFinally = true)
-        val classDecl = ClassDecl(
-            className,
-            modifier?.keys?.toList() ?: emptyList(),
-            body.members,
-            parenTypes,
-            body.initially,
-            body.finally,
-        )
-        markIntrinsics(classDecl, classIntrinsics)
-        attachIntrinsics(classDecl)
-        return putOrigin(classDecl, origin)
-    }
-
-    /**
-     * `struct Name: Trait, ... { members; initially { } }` (design D1): the
-     * class body grammar, an optional trait list, no finalizer. A body-less
-     * `struct Name` declares an empty struct, as a body-less class does.
-     */
-    fun parseStructDecl(modifier: Map<Modifier, SourcePosition>?): StructDecl {
-        val structIntrinsicsEarly = pendingIntrinsicExprs
-        expectModifiers(modifier, WrappingContext.CLASS)
-        expectThenAdvance(Token.Type.K_STRUCT)
-        val origin = here()
-        val structName = parseType(declaresGenerics = true)
-        expectConventionalTypeName(structName, origin, "Struct")
-        val traits = parseParentList()
-        val structIntrinsics = structIntrinsicsEarly ?: pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        val body = if (at(Token.Type.S_OPEN_BRACE)) {
-            parseTypeBody("struct", allowFinally = false)
-        } else {
-            TypeBody(emptyList(), null, null)
-        }
-        val decl = StructDecl(structName, modifier?.keys?.toList() ?: emptyList(), body.members, traits, body.initially)
-        markIntrinsics(decl, structIntrinsics)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
-    fun parseVariantDecl(modifier: Map<Modifier, SourcePosition>?): VariantDecl {
-        expectModifiers(modifier, WrappingContext.VARIANT)
-        advancePointer() // consume 'variant'
-        val origin = here()
-        val variantName = parseType(declaresGenerics = true)
-        expectConventionalTypeName(variantName, origin, "Variant")
-        val parenTypes = parseParentList()
-        if (!at(Token.Type.S_OPEN_BRACE)) {
-            val decl = VariantDecl(
-                variantName,
-                modifier?.keys?.toList() ?: emptyList(),
-                emptyList(),
-                emptyList(),
-                parenTypes
-            )
-            attachIntrinsics(decl)
-            return putOrigin(decl, origin)
-        }
-        val variantIntrinsics = pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val variants = mutableListOf<ClassDecl>()
-        val members = mutableListOf<FirstClassDecl>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
-            if (at(Token.Type.K_CLASS)) {
-                // parse inner class which acts as a variant
-                val classDecl = parseClassDecl(memberModifiers)
-                variants.add(classDecl)
-            } else if (peek(1).type == Token.Type.S_COLON) {
-                val valDecl = parseVariableDecl(memberModifiers)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                members.add(valDecl)
-            } else {
-                val func = parseFunctionDecl(memberModifiers)
-                members.add(func)
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        val decl = VariantDecl(variantName, modifier?.keys?.toList() ?: emptyList(), variants, members, parenTypes)
-        markIntrinsics(decl, variantIntrinsics)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
-    fun parseTraitDecl(modifier: Map<Modifier, SourcePosition>?): TraitDecl {
-        expectModifiers(modifier, WrappingContext.TRAIT)
-        val baseLocation = here()
-        var seenAnonymous = false
-        expectThenAdvance(Token.Type.K_TRAIT)
-        val name = parseType(declaresGenerics = true)
-        expectConventionalTypeName(name, baseLocation, "Trait")
-        val parenTypes = parseParentList()
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val traitIntrinsics = pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        val members = mutableListOf<FunctionDecl>()
-        typeBodyDepth++
-        try {
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, WrappingContext.TRAIT_MEMBER)
-            val memberExpr = parseFunctionDecl(memberModifiers)
-            // check if we have seen an anonymous function against this member (we only permit one anonymous function)
-            if (memberExpr.isAnonymous()) {
-                if (seenAnonymous) {
-                    Diagnostics.panic(
-                        "KiraParser::parseTraitDecl",
-                        "Traits only allow 1 anonymous function. Either give this function name or remove others.",
-                        context = context,
-                        location = context.astOrigins[memberExpr],
-                        selectorLength = context.findCanonicalLine(context.astOrigins[memberExpr]!!.lineNumber).length
-                    )
-                }
-                seenAnonymous = true
-            }
-            members.add(memberExpr)
-            expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-        }
-        } finally {
-            typeBodyDepth--
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        if (members.isEmpty()) {
-            Diagnostics.Logging.warn(
-                "KiraParser::parseTraitDecl",
-                "Found trait $name with no members."
-            )
-        }
-        val traitDecl = TraitDecl(name, modifier?.keys?.toTypedArray() ?: emptyArray(), members, parenTypes)
-        markIntrinsics(traitDecl, traitIntrinsics)
-        return putOrigin(traitDecl, baseLocation)
-    }
-
-    fun parseVariableDecl(modifier: Map<Modifier, SourcePosition>?): VariableDecl {
-        expectModifiers(modifier, WrappingContext.VARIABLE)
-        val origin = here()
-        val identifier = parseIdentifier()
-        expectThenAdvance(Token.Type.S_COLON)
-        val type = parseType()
-        var value: Expr? = null
-        if (at(Token.Type.S_EQUAL)) {
-            advancePointer()
-            value = parseExpr()
-        }
-//        Diagnostics.Logging.info("LOG", "${context.file} @ $origin -> ${identifier.value}")
-        val decl = VariableDecl(identifier, type, value, modifier?.keys?.toList() ?: emptyList())
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
     }
 
 
@@ -2029,6 +1847,9 @@ class KiraParser(private val context: SourceContext) {
         if (!declaring && at(Token.Type.L_INTEGER)) {
             return putOrigin(ConstTypeArg(parseIntegerLiteral()), baseLocation)
         }
+        if (!declaring && at(Token.Type.S_OPEN_PARENTHESIS)) {
+            return parseFunctionType()
+        }
         // `mut T` inside Tuple*<...> marks an Fx parameter passed for
         // mutation (design D24); anywhere else it means nothing.
         var isMutParam = false
@@ -2087,6 +1908,9 @@ class KiraParser(private val context: SourceContext) {
      * parameters it introduces rather than arguments.
      */
     fun parseType(declaresGenerics: Boolean = false): Type {
+        if (!declaresGenerics && at(Token.Type.S_OPEN_PARENTHESIS)) {
+            return parseFunctionType()
+        }
         val baseLocation = here()
         val baseIdentifier = parseIdentifier()
         if (!at(Token.Type.S_OPEN_ANGLE)) {
@@ -2115,6 +1939,10 @@ class KiraParser(private val context: SourceContext) {
         val head = mutableListOf<HeadWord>()
         while (true) {
             when {
+                // An operator's name followed by ':' is the declaration itself (`@_op_add_: (o: T) T`).
+                at(Token.Type.INTRINSIC_IDENTIFIER) && OperatorIntrinsics.isOperatorName(peek().content) &&
+                    (peek(1).type == Token.Type.S_COLON || peek(1).type == Token.Type.S_OPEN_ANGLE) -> break
+
                 at(Token.Type.INTRINSIC_IDENTIFIER) -> {
                     val startLoc = here()
                     val startToken = peek()

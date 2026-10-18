@@ -198,13 +198,13 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 )
                 sym is ClassSymbol && c.superclass != null -> program.report(
                     "types.class.multiple-superclasses",
-                    "class ${c.name} already inherits from ${c.superclass!!.sym.name}; it cannot also inherit from ${sym.name} " +
-                        "(single inheritance: the other parents must be traits).",
+                    "${c.name} already inherits from ${c.superclass!!.sym.name}; it cannot also inherit from ${sym.name} " +
+                        "(at most one parent holds state or is constructed).",
                     node,
                 )
                 sym is ClassSymbol && i > 0 -> program.report(
                     "types.class.superclass-not-first",
-                    "The superclass ${sym.name} must come first in ${c.name}'s parent list; the parents after it are traits.",
+                    "${sym.name} holds state or is constructed, so it comes first in ${c.name}'s parent list; the parents after it hold none.",
                     node,
                 )
                 sym is ClassSymbol -> {

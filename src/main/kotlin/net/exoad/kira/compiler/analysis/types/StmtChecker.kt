@@ -463,7 +463,7 @@ internal class StmtChecker(private val c: PhaseC) {
         if (!ok) {
             c.report(
                 "types.main.signature",
-                "An entry point is `fx main: () Void`, `fx main: () Int32` or `fx main: (args: List<Str>) Int32` (D23); " +
+                "An entry point is `main: () Void`, `main: () Int32` or `main: (args: List<Str>) Int32` (D23); " +
                     "this one is (${fn.params.joinToString(", ") { it.type.display() }}) ${fn.ret.display()}.",
                 fn.decl,
             )
@@ -587,7 +587,7 @@ internal class StmtChecker(private val c: PhaseC) {
             is VariableDecl -> local(e, ctx, scope)
             is FunctionDecl -> c.report(
                 "types.decl.nested",
-                "A function is declared at module level or in a type; inside a body, write a lambda: f: Fx<...> = fx(...) R { ... }.",
+                "A function is declared at module level or in a type; inside a body, write a lambda: f: (x: T) R = (x: T) R { ... }.",
                 e,
             )
             is Decl -> c.report("types.decl.nested", "A type is declared at module level, not inside a body.", e)

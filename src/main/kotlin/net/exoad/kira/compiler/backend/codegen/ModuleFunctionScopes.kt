@@ -75,7 +75,7 @@ class ModuleFunctionScopes private constructor(
                 val module = modules.getOrPut(uri) { ModuleFunctions() }
                 statements.forEach { stmt ->
                     if (stmt is UseStatement) {
-                        module.uses.add(stmt.uri.value)
+                        module.uses.add(stmt.moduleUri)
                         return@forEach
                     }
                     val decl: Any? = when (stmt) {

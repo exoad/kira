@@ -227,8 +227,8 @@ internal class DeclarationCollector(
             // forms are told apart, before that silent mismatch can reach codegen.
             program.report(
                 "ops.member-scope",
-                "'@$name' is a method (1.3.1): declare it inside a class, e.g. 'pub fx @$name: " +
-                    "(other: T) T' in class T. It cannot be declared at module level.",
+                "'@$name' is a method (1.3.1): declare it inside a type, e.g. 'pub @$name: " +
+                    "(other: T) T' in type T. It cannot be declared at module level.",
                 decl,
             )
         }
@@ -367,7 +367,8 @@ internal class DeclarationCollector(
             decl.name.value, module, decl, owner,
             isMut = Modifier.MUTABLE in decl.modifiers,
             isPub = Modifier.PUBLIC in decl.modifiers,
-            isRequired = Modifier.REQUIRE in decl.modifiers,
+            // Nothing after the type: the construction gives it.
+            isRequired = decl.value == null,
             default = decl.value,
             index = index,
         )

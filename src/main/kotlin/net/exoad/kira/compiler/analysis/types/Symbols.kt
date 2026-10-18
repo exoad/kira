@@ -130,6 +130,12 @@ class ModuleSymbol(
     /** The raw `use` statements, in source order. */
     val uses: MutableList<UseStatement> = mutableListOf()
 
+    /** `kira.math as math`: each imported module by the name a qualified call reaches it with. */
+    val importAliases: MutableMap<String, ModuleSymbol> = linkedMapOf()
+
+    /** `a.b.Name as Alias`: each name imported alone, by the name it is seen by here. */
+    val memberImports: MutableMap<String, Symbol> = linkedMapOf()
+
     /** Top-level statements that declare nothing, such as a module-level `@_static_assert(...)`. */
     val statements: MutableList<Statement> = mutableListOf()
 

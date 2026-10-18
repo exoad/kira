@@ -94,6 +94,9 @@ class TokenBuffer(
         windowFilled = endIndex - startIndex
     }
 
+    /** The token just consumed, or null at the start. */
+    fun previous(): Token? = if (position > 0 && position - 1 < tokens.size) tokens[position - 1] else null
+
     fun isAtEnd(): Boolean {
         return position >= tokens.size
     }

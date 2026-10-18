@@ -131,7 +131,7 @@ object KiraPyBackend {
                 val relative = shown(root, source)
                 val target = targets.getValue(m)
                 val header = listOf(
-                    "$MARK $version (--target py) from $relative, module ${m.uri}.",
+                    "$MARK $version (--target py) from $relative, module ${net.exoad.kira.compiler.ModuleNames.dotted(m.uri)}.",
                     "# Do not edit: change the .kira file and run the compiler again.",
                 )
                 val emitter = PyModuleEmitter(program, m, bindings, runtime, PyImports(m, targets), usage = usage)

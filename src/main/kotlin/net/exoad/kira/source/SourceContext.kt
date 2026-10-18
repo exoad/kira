@@ -21,6 +21,9 @@ import java.util.*
  */
 class SourceContext(val content: String, val file: String, val tokens: List<Token>) {
     private val lines: List<String> = content.lines()
+
+    /** The file's module URI (`project:path.to.file`), set by whoever reads the file; the file is the module. */
+    var moduleName: String? = null
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
     lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<CompilerIntrinsic>>
@@ -78,7 +81,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     }
 
     fun with(content: String, tokens: List<Token>? = null): SourceContext {
-        return SourceContext(content, file, tokens ?: this.tokens)
+        return SourceContext(content, file, tokens ?: this.tokens).also { it.moduleName = moduleName }
     }
 
     fun <T : ASTNode> isIntrinsified(node: T): Boolean {

@@ -235,6 +235,8 @@ object KiraCppBackend {
         report: (String) -> Unit = { Diagnostics.Logging.warn("Kira", it) },
         out: (String) -> Unit = { println(it) },
     ): CppBackendResult {
+        // Imports and type roles first: the plan below reads each module's uses.
+        net.exoad.kira.compiler.DialectLink.link(unit)
         val root = projectRoot.toAbsolutePath().normalize()
         val options = buildOptions(manifest, outDirOverride)
         val manifestPath = manifestPath(root, options, outDirOverride)
@@ -248,7 +250,7 @@ object KiraCppBackend {
             if (uri == null || uri.startsWith("(unknown)")) {
                 diagnostics += CppDiagnostic(
                     "cpp.no-module",
-                    "${source.file} declares no module; every C++ module needs `module \"pkg:path\"`",
+                    "${source.file} has no module: the file is the module, named by its project and path",
                     file = source.file,
                 )
                 return@forEach

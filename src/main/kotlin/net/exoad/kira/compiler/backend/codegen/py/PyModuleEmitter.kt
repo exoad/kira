@@ -141,7 +141,7 @@ class PyModuleEmitter(
     /** The module's text, [header] lines first, or null when anything was refused. */
     fun emit(header: List<String>): String? {
         module.uses.forEach { use ->
-            val target = program.module(use.uri.value) ?: return@forEach
+            val target = program.module(use.moduleUri) ?: return@forEach
             if (!target.isStdlib && target !== module) {
                 alias(target, use)
             }

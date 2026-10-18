@@ -117,7 +117,7 @@ object FrontendService {
         }
 
         val sources = (stdlib + workspace).distinct().sorted()
-        return compileSources(sources, overlays, root, manifest, diagnostics)
+        return compileSources(sources, overlays, root, manifest, diagnostics, ModuleNames.assign(manifest, root, stdlib, workspace))
     }
 
     /**
@@ -130,6 +130,7 @@ object FrontendService {
         projectRoot: Path? = null,
         manifest: ProjectManifest? = null,
         seedDiagnostics: MutableList<Diagnostic> = mutableListOf(),
+        moduleNames: Map<String, String> = emptyMap(),
     ): FrontendResult {
         val diagnostics = seedDiagnostics
         val compilationUnit = CompilationUnit()
@@ -149,7 +150,7 @@ object FrontendService {
                 continue
             }
             try {
-                parseOne(compilationUnit, canonical, text)
+                parseOne(compilationUnit, canonical, text, moduleNames[canonical])
             } catch (e: DiagnosticsException) {
                 diagnostics += fromException(e)
             } catch (e: IllegalStateException) {
@@ -178,7 +179,7 @@ object FrontendService {
             if (path in known) continue
             if (!path.endsWith(".kira")) continue
             try {
-                parseOne(compilationUnit, path, text)
+                parseOne(compilationUnit, path, text, moduleNames[path])
             } catch (e: DiagnosticsException) {
                 diagnostics += fromException(e)
             } catch (e: IllegalStateException) {
@@ -221,9 +222,9 @@ object FrontendService {
         return FrontendResult(compilationUnit, diagnostics.toList(), projectRoot, manifest)
     }
 
-    private fun parseOne(cu: CompilationUnit, path: String, text: String) {
+    private fun parseOne(cu: CompilationUnit, path: String, text: String, moduleName: String? = null) {
         val processed = KiraPreprocessor(text).process().processedContent
-        var ctx = cu.addSource(path, processed, emptyList())
+        var ctx = cu.addSource(path, processed, emptyList(), moduleName)
         val tokens = KiraLexer(ctx).tokenize()
         ctx = cu.addSource(path, ctx.content, tokens)
         KiraSourceParsers.from(ctx).parse()

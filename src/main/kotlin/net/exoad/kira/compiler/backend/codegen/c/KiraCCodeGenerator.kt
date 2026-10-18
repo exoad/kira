@@ -699,6 +699,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         emitSpecializedClassBodies()
         emitTraitStructs()
         emitEnumBodies()
+        emitGlobalDeclarations()
         emitFunctionPrototypes()
         emitTraitTables()
         emitSpecializedFunctionBodies()
@@ -1276,6 +1277,24 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
             stmt.accept(this)
         }
+    }
+
+    /** Each user module-level binding declared before any body: a body may read one a later module defines. */
+    private fun emitGlobalDeclarations() {
+        var any = false
+        emittableSources().filterNot { shouldSkipSource(it) }.forEach { source ->
+            source.ast.statements.forEach { stmt ->
+                val decl = ((stmt as? Statement)?.expr ?: stmt) as? VariableDecl ?: return@forEach
+                if (isMagicDecl(decl)) return@forEach
+                buffer.append("extern ")
+                decl.type.accept(this)
+                buffer.append(" ")
+                decl.name.accept(this)
+                buffer.appendLine(";")
+                any = true
+            }
+        }
+        if (any) buffer.appendLine()
     }
 
     private fun emitFunctionPrototypes() {
@@ -2435,7 +2454,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitUseStatement(useStatement: UseStatement) {
-        appendIndentedLine("/* use ${useStatement.uri.value} */")
+        appendIndentedLine("/* use ${useStatement.moduleUri} */")
     }
 
     override fun visitBreakStatement(breakStatement: BreakStatement) {

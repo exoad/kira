@@ -72,8 +72,8 @@ internal class ProfilePass : RulePass {
     private fun module(r: Rules, m: ModuleSymbol) {
         val model = r.model
         for (use in m.uses) {
-            if (use.uri.value in hosted) {
-                r.report("rules.profile.module", "${use.uri.value} is hosted (threads, sockets, clocks): a freestanding module cannot use it.", use)
+            if (use.moduleUri in hosted) {
+                r.report("rules.profile.module", "${use.moduleUri} is hosted (threads, sockets, clocks): a freestanding module cannot use it.", use)
             }
         }
         // The Type nodes that spell a parameter's type, by their parameter (an Fx there is a template parameter unless it escapes).
@@ -137,7 +137,8 @@ internal class ProfilePass : RulePass {
     }
 
     private fun hostedSymbol(r: Rules, sym: Symbol?, at: ASTNode) {
-        if (sym == null || sym.module.uri !in hosted) {
+        // An import's own name is the use, refused above.
+        if (sym == null || sym is net.exoad.kira.compiler.analysis.types.ModuleSymbol || sym.module.uri !in hosted) {
             return
         }
         r.report("rules.profile.module", "'${sym.name}' is from ${sym.module.uri}, which is hosted (threads, sockets, clocks): not available freestanding.", at)

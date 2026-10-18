@@ -102,6 +102,7 @@ object SourceGlob {
      */
     fun <V> lookupUri(map: Map<String, V>, uri: String): V? {
         map[uri]?.let { return it }
+        map.entries.firstOrNull { (k, _) -> !isGlob(k) && dotted(k) == dotted(uri) }?.let { return it.value }
         return map.entries
             .filter { (pattern, _) -> isGlob(pattern) && matchesUri(pattern, uri) }
             .sortedWith(compareByDescending<Map.Entry<String, V>> { literalLength(it.key) }
@@ -118,13 +119,16 @@ object SourceGlob {
         return pattern.count { it != '*' && it != '?' && it != '{' && it != '}' && it != ',' }
     }
 
-    /** A module URI glob against a whole URI. */
+    /** A module URI glob against a whole URI, both read as the dotted name a program writes. */
     fun matchesUri(pattern: String, uri: String): Boolean {
-        if (pattern == uri) {
+        if (pattern == uri || dotted(pattern) == dotted(uri)) {
             return true
         }
-        return toRegex(pattern, '.').matches(uri)
+        return toRegex(dotted(pattern), '.').matches(dotted(uri))
     }
+
+    /** A module's name as a program writes it: `project.path`, its URI's ':' a '.'. */
+    private fun dotted(uri: String): String = uri.replace(':', '.')
 
     /**
      * A path glob against a `/`-separated path relative to the project root.

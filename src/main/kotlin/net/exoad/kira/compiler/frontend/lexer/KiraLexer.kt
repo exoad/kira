@@ -14,7 +14,11 @@ import kotlin.properties.Delegates
  *
  * It passes this list of symbols onto the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  */
-class KiraLexer(private val context: SourceContext) {
+class KiraLexer(
+    private val context: SourceContext,
+    // The keyword table: the clean dialect's, or Keywords.legacy for the converter's old reader.
+    private val keywords: Map<String, Token.Type> = Keywords.reserved,
+) {
     private val buffer = CharacterBuffer(context.content)
 
     // it is ill-advised to modify any of these on their owns
@@ -264,7 +268,7 @@ class KiraLexer(private val context: SourceContext) {
             advancePointer()
         }
         val text = context.content.substring(start, pointer)
-        if (text.contains(Symbols.UNDERSCORE.rep) && !upperSnakeCase.matches(text)) {
+        if (text.contains(Symbols.UNDERSCORE.rep) && !upperSnakeCase.matches(text) && !onImportLine(start)) {
             Diagnostics.panic(
                 "KiraLexer::lexIdentifier",
                 "Underscores are not allowed in '$text'. Only UPPER_SNAKE_CASE constants (MAX_SIZE) and " +
@@ -275,6 +279,16 @@ class KiraLexer(private val context: SourceContext) {
             )
         }
         return Token.Raw(Token.Type.IDENTIFIER, text, start, startLoc)
+    }
+
+    /** `a.b_c.d as name`: a module path names files, and a file's name may be snake_case. */
+    private val importLine = Regex("""\s*[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+\s+as\s+[A-Za-z][A-Za-z0-9_]*\s*;?\s*""")
+
+    private fun onImportLine(at: Int): Boolean {
+        if (keywords !== Keywords.reserved) return false
+        val from = context.content.lastIndexOf('\n', at - 1) + 1
+        val to = context.content.indexOf('\n', at).let { if (it < 0) context.content.length else it }
+        return importLine.matches(context.content.substring(from, to).trimEnd('\r'))
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
@@ -310,7 +324,7 @@ class KiraLexer(private val context: SourceContext) {
             val startLoc = SourcePosition(lineNumber, column)
             if (char.isLetter()) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
-                val keywordTokenType = Keywords.reserved[identifier.content]
+                val keywordTokenType = keywords[identifier.content]
                 if (keywordTokenType != null) {
                     return Token.Raw(
                         keywordTokenType,

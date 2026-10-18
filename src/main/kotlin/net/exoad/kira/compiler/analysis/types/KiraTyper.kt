@@ -62,6 +62,7 @@ object KiraTyper {
      * and whatever the failing step was resolving stays [KType.Error].
      */
     fun run(unit: CompilationUnit, mode: TyperMode, options: TyperOptions = TyperOptions()): TypedProgram {
+        net.exoad.kira.compiler.DialectLink.link(unit)
         val modules = mutableListOf<ModuleSymbol>()
         val program = TypedProgram(unit, modules, TypedModel(), mode)
         program.options = options

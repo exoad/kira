@@ -1,5 +1,7 @@
 package net.exoad.kira.compiler.analysis.types
 
+import net.exoad.kira.compiler.ModuleNames
+
 /**
  * Phase A, second half: resolves each module's `use` statements to [ModuleSymbol]s, applies
  * the [TyperOptions] globs (profile, header-only, C++ namespace), and answers the scope
@@ -29,21 +31,40 @@ class ModuleGraph(private val program: TypedProgram) {
         val options = program.options
         for (m in program.modules) {
             for (use in m.uses) {
-                val uri = use.uri.value
+                val uri = use.moduleUri
                 val target = program.module(uri)
+                val member = use.member
                 when {
                     target == null -> program.report(
                         "types.use.unknown-module",
-                        "No module named '$uri' is part of this compilation.",
+                        "No module named '${use.uri.value}' is part of this compilation.",
                         use,
                     )
+                    member != null -> {
+                        // `a.b.Name as Alias`: one pub name of the module, seen here as Alias.
+                        val sym = target.members[member]
+                        when {
+                            sym == null -> program.report("types.use.unknown-member", "Module '${ModuleNames.dotted(target.uri)}' has no member '$member'.", use)
+                            !isPub(sym) -> program.report("types.use.not-visible", "'$member' is not pub in module '${ModuleNames.dotted(target.uri)}'.", use)
+                            else -> {
+                                m.memberImports[use.alias!!.value] = sym
+                                program.model.refs[use.alias] = sym
+                            }
+                        }
+                    }
                     target === m -> program.report(
                         "types.use.self",
                         "Module '$uri' uses itself.",
                         use,
                         Severity.WARNING,
                     )
-                    target !in m.imports -> m.imports.add(target)
+                    target !in m.imports -> {
+                        m.imports.add(target)
+                        use.alias?.let {
+                            m.importAliases.putIfAbsent(it.value, target)
+                            program.model.refs[it] = target
+                        }
+                    }
                 }
             }
             m.profile = if (options.freestanding.any { ModuleGlob.matches(it, m.uri) }) Profile.FREESTANDING else Profile.HOSTED
@@ -73,6 +94,7 @@ class ModuleGraph(private val program: TypedProgram) {
     /** [name] as seen from [module], among the symbols [accept] takes. */
     fun lookup(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): Lookup {
         module.members[name]?.takeIf(accept)?.let { return Lookup.Found(it, module) }
+        module.memberImports[name]?.takeIf(accept)?.let { return Lookup.Found(it, it.module) }
         val exported = mutableListOf<Lookup.Found>()
         for (used in module.imports) {
             val s = used.members[name]?.takeIf { accept(it) && isPub(it) } ?: continue

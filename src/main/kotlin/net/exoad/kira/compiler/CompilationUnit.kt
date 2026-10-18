@@ -35,7 +35,7 @@ class CompilationUnit {
                     .forEach { sourceFile ->
                         val pre = KiraPreprocessor(sourceFile.readText())
                         val processed = pre.process()
-                        val ctx = addSource(sourceFile.canonicalPath, processed.processedContent, emptyList())
+                        val ctx = addSource(sourceFile.canonicalPath, processed.processedContent, emptyList(), ModuleNames.stdlib(sourceFile.path))
                         val lexer = KiraLexer(ctx)
                         val tokens = lexer.tokenize()
                         addSource(sourceFile.canonicalPath, ctx.content, tokens)
@@ -47,8 +47,10 @@ class CompilationUnit {
         }
     }
 
-    fun addSource(file: String, content: String, tokens: List<Token>): SourceContext {
+    /** A source of [file]; a [moduleName] given once is kept when the file is added again with its tokens. */
+    fun addSource(file: String, content: String, tokens: List<Token>, moduleName: String? = null): SourceContext {
         val ctx = SourceContext(content, file, tokens)
+        ctx.moduleName = moduleName ?: sources[file]?.moduleName
         sources[file] = ctx
         return ctx
     }

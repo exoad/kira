@@ -964,7 +964,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitUseStatement(useStatement: UseStatement) {
-        appendIndentedLine("// use \"${useStatement.uri.value}\"")
+        appendIndentedLine("// use \"${useStatement.moduleUri}\"")
     }
 
     override fun visitBreakStatement(breakStatement: BreakStatement) {
@@ -1670,12 +1670,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val className = typeNameOf(classDecl.name)
         val fields = classDecl.members.filterIsInstance<VariableDecl>()
         val methods = classDecl.members.filterIsInstance<FunctionDecl>()
-        val requireFields = fields.filter { field ->
-            field.modifiers.any { it == Modifier.REQUIRE }
-        }
-        val defaultFields = fields.filter { field ->
-            field.modifiers.none { it == Modifier.REQUIRE } && field.value != null
-        }
+        // A field with no value is given at construction; one with a value defaults to it.
+        val requireFields = fields.filter { field -> field.value == null }
+        val defaultFields = fields.filter { field -> field.value != null }
         userSymbols.add(className)
         methods.forEach { userSymbols.add(functionLikeName(it.name)) }
 

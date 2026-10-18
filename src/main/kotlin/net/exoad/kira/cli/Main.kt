@@ -2,6 +2,7 @@ package net.exoad.kira.cli
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.ModuleNames
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
@@ -162,6 +163,8 @@ fun main(args: Array<String>) {
             Diagnostics.panic("No source files to compile. Add .kira files to 'src' or configure 'kira.yaml'.")
         }
         val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *workspaceSources)
+        // The file is the module: each one's name is its project's and its path's.
+        val moduleNames = ModuleNames.assign(manifest, projectRoot, Public.Builtin.intrinsicalStandardLibrarySources.toList(), workspaceSources.toList())
         Diagnostics.Logging.info("Kira", "Parser: kotlin-native (KiraLexer + KiraParser)")
         dumpSB?.appendLine(
             "----------- Kira Processed Symbols Dump File -----------\nGenerated: ${Chronos.formatTimestamp()}\nTotal Source Files: ${sources.size}\nSources List: \n${
@@ -184,7 +187,8 @@ fun main(args: Array<String>) {
             var srcContext = compilationUnit.addSource(
                 file.canonicalPath,
                 preprocessingResult.processedContent,
-                emptyList()
+                emptyList(),
+                moduleNames[file.canonicalPath],
             )
             val (_, duration) = measureTimedValue {
                 val lexer = KiraLexer(srcContext)

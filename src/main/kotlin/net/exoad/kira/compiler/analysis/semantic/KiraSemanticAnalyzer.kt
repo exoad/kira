@@ -76,6 +76,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     fun validateAST(): SemanticAnalyzerResults {
+        net.exoad.kira.compiler.DialectLink.link(compilationUnit)
         try {
             // Callable signatures first, so a named-argument call can bind
             // against a function declared later or in another source.
@@ -109,7 +110,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     // UseStatement is itself a Statement; root lists hold them directly.
                     val use = node as? UseStatement ?: return@forEach
                     val foreign = compilationUnit.symbolTable.findScope(
-                        SemanticScope.Module(use.uri.value)
+                        SemanticScope.Module(use.moduleUri)
                     ) ?: return@forEach
                     foreign.symbols.values
                         .filter {
@@ -277,7 +278,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     override fun visitUseStatement(useStatement: UseStatement) {
         // Import public type symbols from the named module into the current module scope.
         // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS / enums that were marked relativelyVisible.
-        val uri = useStatement.uri.value
+        val uri = useStatement.moduleUri
         val foreignModule = compilationUnit.symbolTable.findScope(SemanticScope.Module(uri))
         if (foreignModule == null) {
             // Module may not have been analyzed yet (source order). Soft-skip:
@@ -761,7 +762,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 Diagnostics.Logging.warn(
                     "ops.free-form",
                     "the free @$opName form is deprecated: declare " +
-                        "pub fx @$memberName: $signature in class T.",
+                        "pub @$memberName: $signature in type T.",
                 )
             } else if (OperatorIntrinsics.isMemberOperatorName(opName)) {
                 // `@_op_add_` (1.3.1's *member* spelling) names a method, not the deprecated
@@ -774,7 +775,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 // semantic pass, so `Main.kt` skips backend emit instead of producing that.
                 pump(
                     "'@$opName' is a method (1.3.1): declare it inside a class, as " +
-                        "'pub fx @$opName: (other: T) T' in class T. It cannot be declared at " +
+                        "'pub @$opName: (other: T) T' in type T. It cannot be declared at " +
                         "module level.",
                     context.astOrigins[declName] ?: SourcePosition.UNKNOWN,
                     selectorLength = opName.length + 1,
@@ -856,48 +857,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
-    private val moduleUriMatcher = Regex("""^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*$""")
-
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
-        // Run intrinsics attached to the module declaration
+        // The file is the module: its name comes from its path, so there is nothing to check.
         runIntrinsicsIfPresent(moduleDecl)
-        val uri = moduleDecl.uri.value
-        val originPos = context.astOrigins[moduleDecl.name] ?: SourcePosition.UNKNOWN
-        pumpOnTrue(
-            !uri.matches(moduleUriMatcher),
-            "A module URI must be in the format 'package:folder1.folder2.file' using [a-zA-Z0-9_] tokens.",
-            originPos.offsetBy(0, 1),
-            selectorLength = uri.length,
-            help = "Expected: <package>:<dot.separated.path.to.file> where the last segment is the source file name (without .kira)."
-        )
-        if (uri.matches(moduleUriMatcher)) {
-            val (pkg, dotted) = uri.split(":", limit = 2)
-            val segments = dotted.split(".")
-            if (segments.isEmpty()) {
-                pump(
-                    "Module URI must contain at least a file name after the ':'",
-                    originPos,
-                    selectorLength = uri.length
-                )
-                return
-            }
-            val expectedSuffix = buildString {
-                append(pkg)
-                append("/")
-                append(segments.joinToString("/"))
-                append(".kira")
-            }
-            val actualPath = context.file.replace('\\', '/') // normalize separators
-            if (!actualPath.endsWith(expectedSuffix)) {
-                pumpOnTrue(
-                    true,
-                    "Module URI '$uri' does not match the source file location. Expected path ending with '$expectedSuffix' but found '$actualPath'.",
-                    originPos.offsetBy(0, 1),
-                    selectorLength = uri.length,
-                    help = "The module path segments map to folders under the package name; the final segment must be the source file name without the '.kira' extension."
-                )
-            }
-        }
     }
 
     override fun visitEnumDecl(enumDecl: EnumDecl) {
