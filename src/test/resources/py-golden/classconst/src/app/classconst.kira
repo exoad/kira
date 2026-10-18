@@ -1,0 +1,24 @@
+module "app:classconst"
+
+// A module constant of a class that runs no initially block, built once when the module loads.
+
+pub class Crc {
+    pub poly: Int64 = 4129
+    pub seed: Int64 = 0
+
+    pub fx twice: () Int64 {
+        return poly * 2
+    }
+}
+
+pub CRC: Crc = Crc { }
+pub WIDE: Crc = Crc { 7, 1 }
+
+fx same: (a: Crc, b: Crc) Bool {
+    return a.poly == b.poly
+}
+
+pub fx main: () Int32 {
+    trace("${CRC.poly} ${CRC.twice()} ${WIDE.poly} ${WIDE.seed} ${same(CRC, CRC)} ${same(CRC, WIDE)}")
+    return 0
+}

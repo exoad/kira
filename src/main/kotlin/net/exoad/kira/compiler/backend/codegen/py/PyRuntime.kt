@@ -269,7 +269,10 @@ object PyNames {
     fun refusal(name: String): String? = when {
         name in KEYWORDS -> "'$name', a Python keyword,"
         name in RESERVED -> "'$name', which generated Python uses,"
-        name.startsWith("_") || name.startsWith("k_") -> "'$name', which starts with '_' or 'k_' as the py target's private names and runtime do,"
-        else -> null
+        else -> privateRefusal(name)
     }
+
+    /** Why [name] cannot be even a local's: the prefixes of the py target's private names, runtime and renamed locals. */
+    fun privateRefusal(name: String): String? =
+        if (name.startsWith("_") || name.startsWith("k_")) "'$name', which starts with '_' or 'k_' as the py target's private names and runtime do," else null
 }

@@ -204,7 +204,7 @@ internal class StmtChecker(private val c: PhaseC) {
      * held to the same rule. Reading another run-time global anywhere in there would depend
      * on the order the C++ runtime picks, so `DYN.clone()`, `Bag { n = BAG.n }` and a
      * `W2 { }` whose `n` defaults to `DYN.size()` are refused as `DYN.size()` is. A class
-     * construction runs its `initially` block, which may read anything: refused.
+     * is built as a struct is, unless it or a parent has an `initially` block, which may read anything.
      */
     private fun notConstantInit(init: Expr, type: KType): String? {
         if (facts.isLiteralType(type)) {
@@ -215,7 +215,8 @@ internal class StmtChecker(private val c: PhaseC) {
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
-                if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC) {
+                val runs = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.any { it.initially != null }
+                if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC && (cls.kind != ClassKind.CLASS || runs)) {
                     return NO_REASON
                 }
                 ri.fields.firstNotNullOfOrNull { f ->

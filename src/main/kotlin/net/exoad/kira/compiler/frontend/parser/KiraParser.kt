@@ -1911,8 +1911,8 @@ class KiraParser(private val context: SourceContext) {
     /**
      * Turn the lexer's raw string body into the characters it denotes. The
      * literal holds real characters from here on; each backend re-escapes
-     * them for its own language. The escapes are the spec's: `\n \t \r \\ \"`
-     * and `\$` (a literal dollar).
+     * them for its own language. The escapes are the spec's: `\n \t \r \\ \"`,
+     * `\$` (a literal dollar) and `\uXXXX`.
      */
     private fun decodeStringEscapes(token: Token): String {
         val raw = token.content
@@ -1929,6 +1929,22 @@ class KiraParser(private val context: SourceContext) {
                 continue
             }
             val next = raw.getOrNull(i + 1)
+            if (next == 'u') {
+                // `\uXXXX`: one code point of the Basic Multilingual Plane, never half a surrogate pair.
+                val code = raw.substring(i + 2, minOf(i + 6, raw.length)).takeIf { it.length == 4 }?.toIntOrNull(16)
+                if (code == null || code in 0xD800..0xDFFF) {
+                    Diagnostics.panic(
+                        "KiraParser::parseStringLiteral",
+                        "The escape '\\u' in a string literal takes four hex digits of a code point outside D800..DFFF, as in \\u00e9.",
+                        location = token.canonicalLocation,
+                        selectorLength = raw.length + 2,
+                        context = context
+                    )
+                }
+                sb.append(code.toChar())
+                i += 6
+                continue
+            }
             val decoded = when (next) {
                 'n' -> '\n'
                 't' -> '\t'
@@ -1939,7 +1955,7 @@ class KiraParser(private val context: SourceContext) {
                 else -> Diagnostics.panic(
                     "KiraParser::parseStringLiteral",
                     "Unknown escape sequence '\\${next ?: ""}' in string literal. " +
-                        "Kira knows \\n, \\t, \\r, \\\\, \\\" and \\$.",
+                        "Kira knows \\n, \\t, \\r, \\\\, \\\", \\$ and \\uXXXX.",
                     location = token.canonicalLocation,
                     selectorLength = raw.length + 2,
                     context = context

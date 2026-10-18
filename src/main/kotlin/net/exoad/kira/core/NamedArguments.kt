@@ -14,12 +14,13 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
  *
  * Rules: positional arguments fill the leading parameters; each named
  * argument must name a parameter the callee declares, that parameter must
- * not already be filled, and every parameter must end up filled (there are
- * no default parameters yet). A call without named arguments always binds.
+ * not already be filled, and every parameter must end up filled unless
+ * [bind]'s `defaulted` says it has a default (the typer binds that call
+ * fully). A call without named arguments always binds.
  */
 object NamedArguments {
     sealed class Binding {
-        /** Arguments in the callee's parameter order. */
+        /** Arguments in the callee's parameter order; a defaulted parameter left out has none. */
         class Ordered(val arguments: List<Expr>) : Binding()
 
         /** Why the call cannot be bound; a diagnostic message. */
@@ -30,7 +31,7 @@ object NamedArguments {
      * [parameterNames] is null when the callee could not be resolved, which
      * is an error only if the call actually uses names.
      */
-    fun bind(call: FunctionCallExpr, calleeName: String, parameterNames: List<String>?): Binding {
+    fun bind(call: FunctionCallExpr, calleeName: String, parameterNames: List<String>?, defaulted: (String) -> Boolean = { false }): Binding {
         val positional = call.positionalParameters.map { it.value }
         if (call.namedParameters.isEmpty()) {
             return Binding.Ordered(positional)
@@ -63,12 +64,12 @@ object NamedArguments {
             }
             slots[index] = named.value
         }
-        val missing = parameterNames.filterIndexed { index, _ -> slots[index] == null }
+        val missing = parameterNames.filterIndexed { index, name -> slots[index] == null && !defaulted(name) }
         if (missing.isNotEmpty()) {
             return Binding.Unbound(
                 "Call to '$calleeName' leaves parameter(s) without an argument: ${missing.joinToString(", ")}."
             )
         }
-        return Binding.Ordered(slots.map { it!! })
+        return Binding.Ordered(slots.filterNotNull())
     }
 }

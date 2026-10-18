@@ -1,0 +1,44 @@
+module "app:classmutex"
+
+use "kira:sync"
+
+// A Mutex holding a class, and a mut parameter of one: the object itself, changed in place.
+
+class Box {
+    pub mut n: Int64 = 0
+    pub mut seen: List<Int64> = List<Int64> { }
+}
+
+fx bump: (mut b: Box, by: Int64) Void {
+    b.n += by
+    b.seen.add(b.n)
+}
+
+pub fx main: () Int32 {
+    m: Mutex<Box> = Mutex<Box> { value = Box { } }
+    m.lock(fx(mut b: Box) Void {
+        b.n = 5
+        bump(mut b, 2)
+    })
+    mut workers: List<Thread> = List<Thread> { }
+    mut k: Int32 = 0
+    while k < 4 {
+        workers.add(spawn("worker", fx() Void {
+            mut i: Int32 = 0
+            while i < 100 {
+                m.lock(fx(mut b: Box) Void {
+                    b.n += 1
+                })
+                i += 1
+            }
+        }))
+        k += 1
+    }
+    for t: Thread in workers {
+        t.join()
+    }
+    m.lock(fx(mut b: Box) Void {
+        trace("${b.n} ${b.seen.size()} ${b.seen[0]}")
+    })
+    return 0
+}

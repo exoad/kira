@@ -1823,7 +1823,7 @@ class PyEmitterTest {
                 x = 1
             }
             """,
-            "the mut parameter 'x': Int32 (only a List, a Map or a struct is passed by reference)",
+            "the mut parameter 'x': Int32 (only a List, a Map, a struct or a class is passed by reference)",
         )
     }
 
@@ -1882,16 +1882,16 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aNamePythonReservesIsRefused() {
-        refused(
+    fun aLocalNamedAsPythonReservesIsRenamed() {
+        val py = python(
             """
-            fx f: () Int32 {
+            fx f: (from: Int32) Int32 {
                 len: Int32 = 1
-                return len
+                return len + from
             }
-            """,
-            "the name 'len', which generated Python uses, is not supported",
+            """
         )
+        assertTrue(py.contains("def _f(k_from):") && py.contains("k_len = 1") && py.contains("k_len + k_from"), py)
     }
 
     @Test
@@ -2032,7 +2032,7 @@ class PyEmitterTest {
                 }
             }
             """,
-            "an Fx taking a mut Int32 (only a List, a Map or a struct is passed by reference)",
+            "an Fx taking a mut Int32 (only a List, a Map, a struct or a class is passed by reference)",
         )
     }
 
@@ -2347,9 +2347,8 @@ class PyEmitterTest {
     fun dictIsANamePythonReserves() {
         refused(
             """
-            fx f: () Int32 {
-                dict: Int32 = 1
-                return dict
+            pub fx dict: () Int32 {
+                return 1
             }
             """,
             "the name 'dict', which generated Python uses, is not supported",
@@ -2587,7 +2586,7 @@ class PyEmitterTest {
             "struct Pt {\n    pub x: Int32 = 0\n}\n@_extern fx f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern fx f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
             "@_extern fx f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
-            "@_extern fx f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
+            "@_extern fx f: (s: List<Set<Int32>>) Void" to "the parameter 's' of the extern 'f': a Set<Int32> inside a value (a Set crosses as a parameter or a result)",
             "@_extern fx f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
             "@_extern fx f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
             "@_extern fx f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
@@ -2733,8 +2732,25 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aMutClassParameterGivenANewObjectIsRefused() {
+        refused(
+            """
+            class Box {
+                pub mut n: Int64 = 0
+            }
+
+            fx reset: (mut b: Box) Void {
+                b.n = 1
+                b = Box { }
+            }
+            """,
+            "a new Box assigned to the mut parameter 'b'",
+        )
+    }
+
+    @Test
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
-        refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
+        refused("use \"kira:sync\"\nfx f: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map, a struct or a class)")
         refused("use \"kira:sync\"\nfx f: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
         refused("use \"kira:sync\"\nfx f: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
     }

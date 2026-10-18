@@ -1,0 +1,20 @@
+module "app:setx"
+
+// A Set crosses into a sidecar as a Python set, a copy, and back from a set or a frozenset into Kira's Set.
+
+pub @_extern fx count: (s: Set<Int64>) Int64
+pub @_extern fx evens: (upTo: Int64) Set<Int64>
+pub @_extern fx words: (text: Str) Set<Str>
+
+pub fx main: () Int32 {
+    mut s: Set<Int64> = Set<Int64> { }
+    s.add(3)
+    s.add(4)
+    trace(count(s))
+    trace(s.size())
+    e: Set<Int64> = evens(6)
+    trace("${e.size()} ${e.contains(4)} ${e.contains(5)}")
+    w: Set<Str> = words("a b a c")
+    trace("${w.size()} ${w.contains("b")}")
+    return 0
+}

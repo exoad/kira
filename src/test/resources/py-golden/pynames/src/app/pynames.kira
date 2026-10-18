@@ -1,0 +1,58 @@
+module "app:pynames"
+
+// Locals and parameters named as Python's keywords and builtins and as the module's own functions:
+// the py target spells each k_<name> (py only; C++ has its own keywords).
+
+pub fx score: (n: Int32) Int32 {
+    return n * 2
+}
+
+EMPTY: List<Int32> = List<Int32> { }
+
+fx span: (from: Int32, to: Int32 = 10, list: List<Int32> = EMPTY) Int32 {
+    return to - from + (list.size() as Int32)
+}
+
+fx total: (bytes: List<UInt8>) Int32 {
+    mut sum: Int32 = 0
+    for int: UInt8 in bytes {
+        sum += int as Int32
+    }
+    return sum
+}
+
+fx grow: (mut list: List<Int32>, object: Int32) Void {
+    list.add(object)
+}
+
+fx apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    return f(x)
+}
+
+pub fx main: () Int32 {
+    from: Int32 = 3
+    mut list: List<Int32> = List<Int32> { }
+    grow(mut list, from)
+    grow(object = 4, list = mut list)
+    trace("${list.size()} ${list[0]} ${list[1]}")
+    mut bytes: List<UInt8> = List<UInt8> { }
+    bytes.add(7)
+    bytes.add(8)
+    trace(total(bytes))
+    trace(span(from))
+    trace(span(to = 4, from = 1))
+    trace(span(from, list = list))
+    mut score: Int32 = 5
+    score += 1
+    trace(score)
+    lambda: Int32 = apply(fx(int: Int32) Int32 {
+        return int + from
+    }, 2)
+    trace(lambda)
+    try {
+        throw "raised ${from}"
+    } on str: Str {
+        trace(str)
+    }
+    return 0
+}

@@ -326,14 +326,16 @@ class PyModuleEmitter(
         val frame = Frame(cls, fn)
         val params = fn.params.map { p ->
             val node: ASTNode = p.decl ?: at
-            checkName(p.name, node)
-            checkLocalName(p.name, node)
+            checkLocal(p.name, node)
             checkType(p.type, node, "the parameter '${p.name}'")
-            if (p.byRef && !isValue(p.type) && !isStruct(p.type)) {
-                refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List, a Map or a struct is passed by reference)")
+            if (p.byRef && !byReference(p.type)) {
+                refuse(node, "the mut parameter '${p.name}': ${p.type.display()} (only a List, a Map, a struct or a class is passed by reference)")
+            }
+            if (p.byRef && isClassRef(p.type) && rebinds(fn.body.orEmpty(), p)) {
+                refuse(node, "a new ${p.type.display()} assigned to the mut parameter '${p.name}' (Python cannot give the caller's variable another object)")
             }
             frame.scopes.first().add(p.name)
-            pyDefault(p)?.let { "${p.name}=$it" } ?: p.name
+            pyDefault(p)?.let { "${local(p.name)}=$it" } ?: local(p.name)
         }
         val head = "def ${pyName(fn)}(${(listOfNotNull(if (cls != null) "self" else null) + params).joinToString(", ")}):"
         val body = mutableListOf<String>()
@@ -368,8 +370,9 @@ class PyModuleEmitter(
         c.fields.forEach { f ->
             val node: ASTNode = f.decl ?: at
             checkName(f.name, node)
-            if (isPositional(f) || isKeyword(f)) {
-                checkLocalName(f.name, node)
+            // A field given at construction is a parameter of __init__, which would hide the module's own.
+            if ((isPositional(f) || isKeyword(f)) && f.name in topNames) {
+                refuse(node, "a field named like the module's own '${f.name}'")
             }
             checkType(f.type, node, "the field '${f.name}'")
             val given = if (holdsValue(f.type)) copyOf(Py(f.name, PyPrec.ATOM), f.type).text else f.name
@@ -497,7 +500,7 @@ class PyModuleEmitter(
         checkName(fn.name, at)
         externChecks(fn, at, "the extern '${fn.name}'")
         sidecarNames += fn.name to fn.params.size
-        val head = "def ${pyName(fn)}(${fn.params.joinToString(", ") { it.name }}):"
+        val head = "def ${pyName(fn)}(${fn.params.joinToString(", ") { local(it.name) }}):"
         return boundary(head, "_k_x.${fn.name}", fn, "$sidecarStem.${fn.name}", at)
     }
 
@@ -518,7 +521,7 @@ class PyModuleEmitter(
             if (out.isNotEmpty()) {
                 out += listOf("", "")
             }
-            val head = "def ${opaqueWrapper(c, m)}(${(listOf("_k_o") + m.params.map { it.name }).joinToString(", ")}):"
+            val head = "def ${opaqueWrapper(c, m)}(${(listOf("_k_o") + m.params.map { local(it.name) }).joinToString(", ")}):"
             out += boundary(head, "_k_o.${m.name}", m, "${c.name}.${m.name}", node)
         }
         return out
@@ -536,8 +539,7 @@ class PyModuleEmitter(
         }
         fn.params.forEach { p ->
             val node: ASTNode = p.decl ?: at
-            checkName(p.name, node)
-            checkLocalName(p.name, node)
+            checkLocal(p.name, node)
             when {
                 p.default != null -> refuse(node, "a default on the parameter '${p.name}' of $what")
                 p.byRef -> refuse(node, "the mut parameter '${p.name}' of $what (Python writes only into a MutView<UInt8> it is lent)")
@@ -567,21 +569,22 @@ class PyModuleEmitter(
             when {
                 // The call is the Fx's owner while it runs: a throw from it on this thread reaches Kira's try (D76).
                 t is KType.Fn -> "_k_f$i".also {
-                    lends += "${call("_k_fx", p.name, fxSpecs(t, at), pyString("the Fx ${p.name} given to $where")).text} as $it"
+                    lends += "${call("_k_fx", local(p.name), fxSpecs(t, at), pyString("the Fx ${p.name} given to $where")).text} as $it"
                 }
-                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${p.name}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
-                isJson(t) -> p.name
-                isBytes(t) -> "bytes(${p.name})"
-                isList(t) && element != null && !mayHold(element) -> "list(${p.name})"
-                mayHold(t) -> call("_k_out", p.name).text
-                else -> p.name
+                isView(t) -> "_k_v$i".also { lends += "${helper("_k_lend")}(${local(p.name)}, ${if (magicName(t) == "MutView") "True" else "False"}) as $it" }
+                isJson(t) -> local(p.name)
+                isBytes(t) -> "bytes(${local(p.name)})"
+                isSet(t) -> "${helper("_k_builtins")}.set(${local(p.name)})"
+                isList(t) && element != null && !mayHold(element) -> "list(${local(p.name)})"
+                mayHold(t) -> call("_k_out", local(p.name)).text
+                else -> local(p.name)
             }
         }
         val called = "$callee(${args.joinToString(", ")})"
         val names = raisesOf(fn, at)
         // A Json goes as itself, so what Python wrote into it is checked as a result is.
         val written = fn.params.filter { isJson(it.type) }.map {
-            call("_k_check", it.name, "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
+            call("_k_check", local(it.name), "(\"J\",)", pyString("$where's argument ${it.name}"), "\"Json\"").text
         }
         val checked = { r: String -> "return ${call("_k_check", r, spec(fn.ret, at) ?: "None", pyString(where), pyString(fn.ret.display())).text}" }
         if (names.isEmpty() && lends.isEmpty() && written.isEmpty()) {
@@ -621,6 +624,8 @@ class PyModuleEmitter(
             isMaybe(t) -> crossing(args[0], back, false, seen)
             isList(t) -> if (back && magicName(t) == "Arr") "${article(t.display())} (a List comes back)" else crossing(args[0], back, false, seen)
             isMap(t) -> crossing(args[0], back, false, seen) ?: crossing(args[1], back, false, seen)
+            // A Set goes out as a Python set and comes back from any set: one only a parameter or a result is.
+            isSet(t) -> if (top) crossing(args[0], back, false, seen) else "${article(t.display())} inside a value (a Set crosses as a parameter or a result)"
             isTuple(t) -> args.firstNotNullOfOrNull { crossing(it, back, false, seen) }
             // An Fx parameter goes out wrapped (D75): Python's arguments come back to Kira, its result goes out.
             t is KType.Fn -> when {
@@ -662,6 +667,7 @@ class PyModuleEmitter(
             isBytes(t) -> of("Y")
             isList(t) -> spec(args[0], at)?.let { of("L", it) }
             isMap(t) -> of("D", spec(args[0], at) ?: return null, spec(args[1], at) ?: return null)
+            isSet(t) -> spec(args[0], at)?.let { of("Z", it) }
             isTuple(t) -> of("T", *args.map { spec(it, at) ?: return null }.toTypedArray())
             isEnum(t) -> ref((t as KType.Nominal).sym as EnumSymbol, at)?.let { of("E", "$it._k_order") }
             isJson(t) -> of("J")
@@ -761,8 +767,7 @@ class PyModuleEmitter(
             refuse(fe, "the legacy `for mut ${v.name}: ...` loop (D17: write `for ${v.name}: T in ...`)")
             return emptyList()
         }
-        checkName(v.name, fe)
-        checkLocalName(v.name, fe)
+        checkLocal(v.name, fe)
         checkType(v.type, fe, "the loop variable '${v.name}'")
         if (f.scopes.any { v.name in it }) {
             refuse(fe, "a loop variable '${v.name}' that shadows a local of its name (Python has one scope per function; rename it)")
@@ -793,7 +798,7 @@ class PyModuleEmitter(
         f.scopes.addLast(hashSetOf(v.name))
         val body = block(s.body, f)
         f.scopes.removeLast()
-        return listOf("for ${v.name} in $over:") + indent(body)
+        return listOf("for ${local(v.name)} in $over:") + indent(body)
     }
 
     /** C++ walks a copy of a List the body may write: so does Python, unless nothing but the body could write it. */
@@ -854,8 +859,7 @@ class PyModuleEmitter(
             out += indent(block(e.handlerBlock, f))
             return out
         }
-        checkName(name.value, name)
-        checkLocalName(name.value, name)
+        checkLocal(name.value, name)
         if (f.scopes.any { name.value in it }) {
             refuse(name, "an error '${name.value}' that shadows a local of its name (Python has one scope per function; rename it)")
         }
@@ -863,7 +867,7 @@ class PyModuleEmitter(
         val caught = f.fresh()
         out += "except $err as $caught:"
         f.scopes.addLast(hashSetOf(name.value))
-        out += indent(listOf("${name.value} = $caught.args[0]") + block(e.handlerBlock, f))
+        out += indent(listOf("${local(name.value)} = $caught.args[0]") + block(e.handlerBlock, f))
         f.scopes.removeLast()
         return out
     }
@@ -874,15 +878,14 @@ class PyModuleEmitter(
             refuse(decl, "the local '${decl.name.value}' (no symbol was recorded)")
             return emptyList()
         }
-        checkName(sym.name, decl)
-        checkLocalName(sym.name, decl)
+        checkLocal(sym.name, decl)
         checkType(sym.type, decl, "the local '${sym.name}'")
         if (f.scopes.any { sym.name in it }) {
             refuse(decl, "a local '${sym.name}' that shadows another of its name (Python has one scope per function; rename it)")
         }
         f.scopes.last().add(sym.name)
         val init = decl.value?.let { asValue(it, f, Use.STORE).text } ?: zeroValue(sym.type, decl)
-        return listOf("${sym.name} = $init")
+        return listOf("${local(sym.name)} = $init")
     }
 
     /**
@@ -920,7 +923,7 @@ class PyModuleEmitter(
     private fun placeText(target: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String? {
         return when (target) {
             is Identifier -> when (val sym = model.symbolOf(target)) {
-                is LocalSymbol, is ParamSymbol -> sym.name
+                is LocalSymbol, is ParamSymbol -> local(sym.name)
                 is FieldSymbol -> fieldOfThis(sym, target, f)
                 is GlobalSymbol -> ref(sym, target)
                 else -> refuseText(target, "an assignment to '${target.value}'")
@@ -958,7 +961,7 @@ class PyModuleEmitter(
     /** A handle C++ reads before the value runs (D33). */
     private fun objectPlace(origin: Expr, f: Frame, spill: Boolean, pre: MutableList<String>): String = when {
         origin is ThisExpr -> "self"
-        origin is Identifier && model.symbolOf(origin).let { it is LocalSymbol || it is ParamSymbol } -> origin.value
+        origin is Identifier && model.symbolOf(origin).let { it is LocalSymbol || it is ParamSymbol } -> local(origin.value)
         spill -> {
             val t = f.fresh()
             pre += "$t = ${expr(origin, f).text}"
@@ -1231,9 +1234,10 @@ class PyModuleEmitter(
                 is Capture.Value -> {
                     val sym = c.symbol
                     val t = (sym as? LocalSymbol)?.type ?: (sym as? ParamSymbol)?.type ?: return refusePy(l, "a capture of '${sym.name}'")
-                    names += sym.name
-                    values += if (sym in f.captured || !holdsValue(t)) sym.name else copyOf(Py(sym.name, PyPrec.ATOM), t).text
+                    names += local(sym.name)
+                    values += if (sym in f.captured || !holdsValue(t)) local(sym.name) else copyOf(Py(local(sym.name), PyPrec.ATOM), t).text
                     inner.captured += sym
+                    inner.scopes.first().add(sym.name)
                 }
                 is Capture.Field -> if (!copyThis) {
                     val outer = f.fieldNames[c.field]
@@ -1255,14 +1259,16 @@ class PyModuleEmitter(
             val name = p.name.value
             val sym = model.declSymbol(p) as? ParamSymbol
             val t = sym?.type ?: fnType.params.getOrNull(i)?.type ?: KType.Error
-            checkName(name, p)
-            checkLocalName(name, p)
+            checkLocal(name, p)
             checkType(t, p, "the parameter '$name'")
-            if (sym?.byRef == true && !isValue(t) && !isStruct(t)) {
-                refuse(p, "the mut parameter '$name': ${t.display()} (only a List, a Map or a struct is passed by reference)")
+            if (sym?.byRef == true && !byReference(t)) {
+                refuse(p, "the mut parameter '$name': ${t.display()} (only a List, a Map, a struct or a class is passed by reference)")
+            }
+            if (sym?.byRef == true && isClassRef(t) && rebinds(l.def.body.orEmpty(), sym)) {
+                refuse(p, "a new ${t.display()} assigned to the mut parameter '$name' (Python cannot give the caller's variable another object)")
             }
             inner.scopes.first().add(name)
-            name
+            local(name)
         }
         checkType(fnType.ret, l, "the return type of a lambda")
         val index = shared.lambdas.size
@@ -1307,7 +1313,7 @@ class PyModuleEmitter(
     }
 
     private fun identifier(id: Identifier, f: Frame): Py = when (val sym = model.symbolOf(id)) {
-        is LocalSymbol, is ParamSymbol -> Py(sym.name, PyPrec.ATOM)
+        is LocalSymbol, is ParamSymbol -> Py(local(sym.name), PyPrec.ATOM)
         is FieldSymbol -> fieldOfThis(sym, id, f)?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
         is GlobalSymbol -> globalRead(sym, id)
         is FnSymbol -> fnValue(sym, id)
@@ -1382,7 +1388,7 @@ class PyModuleEmitter(
      */
     private fun listPlace(e: Expr, f: Frame): String? = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
-            is LocalSymbol, is ParamSymbol -> sym.name
+            is LocalSymbol, is ParamSymbol -> local(sym.name)
             is FieldSymbol -> fieldOfThis(sym, e, f)
             is GlobalSymbol -> ref(sym, e)
             else -> refuseText(e, "this List")
@@ -1407,8 +1413,8 @@ class PyModuleEmitter(
         val userCall = (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) && fn != null && fn.foreign == null && fn.body != null
         val paramType = { i: Int -> if (rc.kind == CallKind.FN_VALUE) (rc.args[i] as? ArgBinding.Given)?.expr?.let { model.typeOrNull(it) } else fn?.params?.getOrNull(i)?.type }
         rc.args.forEachIndexed { i, a ->
-            if (a is ArgBinding.Given && a.byRef && !((userCall || rc.kind == CallKind.FN_VALUE) && paramType(i)?.let { isValue(it) || isStruct(it) } == true)) {
-                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List, a Map or a struct given to a Kira function is passed by reference)")
+            if (a is ArgBinding.Given && a.byRef && !((userCall || rc.kind == CallKind.FN_VALUE) && paramType(i)?.let { byReference(it) } == true)) {
+                return refusePy(c, "a mut argument to '${fn?.name ?: c.name}' (only a List, a Map, a struct or a class given to a Kira function is passed by reference)")
             }
         }
         return when (rc.kind) {
@@ -1476,7 +1482,7 @@ class PyModuleEmitter(
             }
             if (b.expr in named) {
                 sawNamed = true
-                parts += "${fn.params[k].name}=$text"
+                parts += "${local(fn.params[k].name)}=$text"
             } else {
                 if (sawNamed) {
                     refuse(b.expr, "a positional argument after a named one")
@@ -1487,7 +1493,7 @@ class PyModuleEmitter(
         rc.args.filterIsInstance<ArgBinding.Default>().forEach { d ->
             val value = d.param.default
             if (value != null && pyDefault(d.param) == null) {
-                parts += "${d.param.name}=${wrap(asValue(value, f, Use.ARG, emptyList(), false), PyPrec.TERNARY)}"
+                parts += "${local(d.param.name)}=${wrap(asValue(value, f, Use.ARG, emptyList(), false), PyPrec.TERNARY)}"
             }
         }
         return parts.joinToString(", ")
@@ -1995,6 +2001,31 @@ class PyModuleEmitter(
 
     private fun isStruct(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.STRUCT && hasFields(it) } == true
 
+    /** A user class's value is one shared object, so a `mut` one goes as itself while nothing assigns it another. */
+    private fun isClassRef(t: KType?): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.CLASS && isUserClass(it) } == true
+
+    /** What Python writes in place, so a `mut` parameter or a Mutex can hold it. */
+    private fun byReference(t: KType): Boolean = isValue(t) || isStruct(t) || isClassRef(t)
+
+    /** Whether [body] assigns [sym] itself, not one of its fields. */
+    private fun rebinds(body: List<ASTNode>, sym: Symbol): Boolean {
+        var found = false
+        body.forEach { s ->
+            AstTree.walk(s) { n ->
+                val target = when (n) {
+                    is AssignmentExpr -> n.target
+                    is CompoundAssignmentExpr -> n.left
+                    is PlaceAssignmentExpr -> n.target
+                    else -> null
+                }
+                if (target is Identifier && model.symbolOf(target) === sym) {
+                    found = true
+                }
+            }
+        }
+        return found
+    }
+
     /** A stdlib magic class as the runtime's `_k_<Name>` (D80), whether or not C++ has a header for it (E1); null where the runtime has none. */
     private fun runtimeClass(s: ClassSymbol): String? =
         "_k_${s.name}".takeIf { s.kind == ClassKind.MAGIC && s.module.isStdlib && it in runtime.names }
@@ -2080,8 +2111,8 @@ class PyModuleEmitter(
             else -> "the type ${t.display()}"
         }
         is KType.Fn -> t.params.firstNotNullOfOrNull { p ->
-            unsupportedType(p.type) ?: if (p.byRef && !isValue(p.type) && !isStruct(p.type)) {
-                "an Fx taking a mut ${p.type.display()} (only a List, a Map or a struct is passed by reference)"
+            unsupportedType(p.type) ?: if (p.byRef && !byReference(p.type)) {
+                "an Fx taking a mut ${p.type.display()} (only a List, a Map, a struct or a class is passed by reference)"
             } else {
                 null
             }
@@ -2132,7 +2163,7 @@ class PyModuleEmitter(
                 a == null -> "a Mutex without its type"
                 unsupportedType(a) != null -> unsupportedType(a)
                 // Python cannot hand the body an Int32 by reference: the value is one Python writes in place.
-                !isValue(a) && !isStruct(a) -> "${article(t.display())} (a Mutex on py holds a List, a Map or a struct)"
+                !byReference(a) -> "${article(t.display())} (a Mutex on py holds a List, a Map, a struct or a class)"
                 else -> null
             }
             "Atomic" -> if (a?.prim?.let { it == Prim.BOOL || it == Prim.FLOAT64 || it.isInteger } == true) null else "${article(t.display())} (an Atomic holds a Bool, an integer or a Float64)"
@@ -2160,12 +2191,14 @@ class PyModuleEmitter(
         PyNames.refusal(name)?.let { refuse(at, "the name $it") }
     }
 
-    /** A local or parameter that takes a module declaration's Python name would hide it from the whole function. */
-    private fun checkLocalName(name: String, at: ASTNode) {
-        if (name in topNames) {
-            refuse(at, "a local or parameter named like the module's own '$name'")
-        }
+    /** A local or parameter takes any Kira name but the py target's private ones; [local] renames the rest. */
+    private fun checkLocal(name: String, at: ASTNode) {
+        PyNames.privateRefusal(name)?.let { refuse(at, "the name $it") }
     }
+
+    /** A local's Python name: one Python reserves, or a module declaration's, which it would hide from the whole function, is `k_<name>`. */
+    private fun local(name: String): String =
+        if (name in PyNames.KEYWORDS || name in PyNames.RESERVED || name in topNames) "k_$name" else name
 
     /** A Kira-written stdlib function is `_k_kira_math_clamp`: every module that calls one carries its own copy. */
     private fun pyName(sym: Symbol): String {

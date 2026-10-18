@@ -353,6 +353,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
      */
     private val methodParameterNames = mutableMapOf<String, MutableSet<List<String>>>()
 
+    /** `callee.parameter` for each parameter with a default, which a call may leave out. */
+    private val defaultedParameters = HashSet<String>()
+
     /**
      * Named arguments (`sub(b = 3, a = 10)`) bind to the callee's parameter
      * names. Expression types are not inferred here, so a method callee is
@@ -408,7 +411,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 parameterNames = null
             }
         }
-        val binding = NamedArguments.bind(call, calleeName, parameterNames)
+        val binding = NamedArguments.bind(call, calleeName, parameterNames) { "$calleeName.$it" in defaultedParameters }
         if (binding is NamedArguments.Binding.Unbound) {
             pump(
                 binding.message,
@@ -417,6 +420,10 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 help = "Named arguments bind to the callee's parameter names; positional arguments come first."
             )
         }
+    }
+
+    private fun noteDefaults(name: String, fn: FunctionDecl) {
+        fn.def.parameters.filter { it.defaultValue != null }.forEach { defaultedParameters += "$name.${it.name.value}" }
     }
 
     private fun collectCallableSignatures() {
@@ -433,6 +440,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     is FunctionDecl -> {
                         val name = (decl.name as? Identifier)?.value ?: return@forEach
                         functionParameterNames.putIfAbsent(name, decl.def.parameters.map { it.name.value })
+                        noteDefaults(name, decl)
                     }
                     is ClassDecl -> {
                         if (isMagic(decl)) return@forEach
@@ -440,6 +448,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                             val name = (method.name as? Identifier)?.value ?: return@forEach
                             methodParameterNames.getOrPut(name) { linkedSetOf() }
                                 .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
                         }
                     }
                     is TraitDecl -> {
@@ -448,6 +457,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                             val name = (method.name as? Identifier)?.value ?: return@forEach
                             methodParameterNames.getOrPut(name) { linkedSetOf() }
                                 .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
                         }
                     }
                     // A struct's methods bind named arguments exactly like a class's.
@@ -457,6 +467,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                             val name = (method.name as? Identifier)?.value ?: return@forEach
                             methodParameterNames.getOrPut(name) { linkedSetOf() }
                                 .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
                         }
                     }
                 }

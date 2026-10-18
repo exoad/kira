@@ -193,6 +193,17 @@ class TyperBodyNegativeTest {
     }
 
     @Test
+    fun aClassConstantIsBuiltAsAStructIsUnlessItRunsAnInitially() {
+        val p = snippet("pub class Crc {\n    pub poly: Int64 = 4129\n}\npub CRC: Crc = Crc { }\npub WIDE: Crc = Crc { 7 }")
+        TyperTestSupport.expectNoErrors(p)
+        val q = snippet(
+            "pub class Base {\n    pub mut n: Int32 = 1\n\n    initially {\n        n = 2\n    }\n}\n" +
+                "pub class Leaf: Base {\n    pub m: Int32 = 0\n}\npub K: Leaf = Leaf { }",
+        )
+        assertEquals(listOf("types.const.not-constant"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
+    }
+
+    @Test
     fun aMutGlobalWhoseDefaultedFieldReadsAnotherModulesRunTimeGlobalIsRefused() {
         // The D49 hazard itself: two TUs, and `inline W2 G = W2{};` in one reads DYN in the
         // other during static initialization, in whichever order the C++ runtime picks.
@@ -348,7 +359,7 @@ class TyperBodyNegativeTest {
     fun anEmptyContainerConstructionStartsAMutGlobalLikeAnArrayLiteral() {
         val p = snippet(
             "pub mut XS: List<Int32> = List<Int32> { }\npub mut YS: List<Int32> = []\npub mut M: Map<Str, Int32> = Map<Str, Int32> { }\n" +
-                "pub mut S: Set<Int32> = Set<Int32> { }\npub class C {\n    pub n: Int32 = 0\n}\npub mut OBJ: C = C { }",
+                "pub mut S: Set<Int32> = Set<Int32> { }\npub class C {\n    pub mut n: Int32 = 0\n\n    initially {\n        n = 1\n    }\n}\npub mut OBJ: C = C { }",
         )
         assertEquals(listOf("types.global.mut-init"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
         assertTrue(p.diagnostics.single().message.contains("'OBJ' starts from C { }."), p.diagnostics.single().message)
