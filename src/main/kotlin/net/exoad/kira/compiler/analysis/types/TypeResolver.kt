@@ -111,7 +111,7 @@ class TypeResolver(private val program: TypedProgram) {
             )
             return symbolType(notVisible.symbol, t, id, scope)
         }
-        val value = program.graph.lookup(scope.module, name) { it !is ClassSymbol && it !is TraitSymbol && it !is EnumSymbol && it !is AliasSymbol }
+        val value = program.graph.lookup(scope.module, name) { it !is ClassSymbol && it !is TraitSymbol && it !is AliasSymbol }
         if (value is ModuleGraph.Lookup.Found) {
             program.report("types.type.not-a-type", "'$name' is a ${kindOf(value.symbol)}, not a type.", t)
             return KType.Error
@@ -148,7 +148,7 @@ class TypeResolver(private val program: TypedProgram) {
         else -> s.javaClass.simpleName.removeSuffix("Symbol").lowercase()
     }
 
-    private fun isTypeLike(s: Symbol): Boolean = s is ClassSymbol || s is TraitSymbol || s is EnumSymbol || s is AliasSymbol
+    private fun isTypeLike(s: Symbol): Boolean = s is ClassSymbol || s is TraitSymbol || s is AliasSymbol
 
     private fun symbolType(sym: Symbol, t: Type, id: Identifier, scope: TypeScope): KType {
         if (sym is ClassSymbol && sym.kind == ClassKind.MAGIC && Builtins.isBuiltinName(sym.name)) {
@@ -159,7 +159,6 @@ class TypeResolver(private val program: TypedProgram) {
             is AliasSymbol -> expandAlias(sym, t, scope)
             is ClassSymbol -> nominal(sym, sym.typeParams.size, t, scope)
             is TraitSymbol -> nominal(sym, sym.typeParams.size, t, scope)
-            is EnumSymbol -> nominal(sym, 0, t, scope)
             else -> {
                 program.report("types.type.not-a-type", "'${sym.name}' is not a type.", t)
                 KType.Error
@@ -188,7 +187,7 @@ class TypeResolver(private val program: TypedProgram) {
             return true
         }
         val what = if (sym.name == "Map") "A Map's key" else "A Set's element"
-        program.report("types.type.key", "$what is a scalar, a Str or an enum; ${key.display()} is none of these.", t.children[0])
+        program.report("types.type.key", "$what is a scalar or a Str; ${key.display()} is neither.", t.children[0])
         return false
     }
 

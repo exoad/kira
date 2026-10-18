@@ -93,7 +93,6 @@ internal class PhaseC(val program: TypedProgram) {
             owner.selfType
         }
         is TraitSymbol -> KType.Nominal(owner, owner.typeParams.map { TypeArg.Ty(KType.Param(it)) })
-        is EnumSymbol -> KType.Nominal(owner)
     }
 
     /**
@@ -318,7 +317,7 @@ internal class ExprTyper(private val c: PhaseC) {
                 moduleValue(id, found.first.symbol)
             }
             ModuleGraph.Lookup.Missing -> {
-                val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol || it is EnumSymbol || it is AliasSymbol }
+                val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol || it is AliasSymbol }
                 if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
                     c.report("types.name.type-as-value", "'$name' is a type, not a value.", id)
                 } else {
@@ -406,7 +405,7 @@ internal class ExprTyper(private val c: PhaseC) {
                 if (!t.containsError() && !facts.isShowable(t)) {
                     c.report(
                         "types.interp.not-showable",
-                        "\${...} takes a value with a text form (a number, Char, Bool, Str or an enum); this is ${t.display()}.",
+                        "\${...} takes a value with a text form (a number, Char, Bool or Str); this is ${t.display()}.",
                         part.expr,
                     )
                 }
@@ -668,9 +667,9 @@ internal class ExprTyper(private val c: PhaseC) {
 
     private fun refLike(t: KType.Nominal): Boolean = facts.isClass(t) || facts.isTrait(t)
 
-    /** Types with `==` (R16): scalars, Str, enums, classes (identity), views, and structs whose fields all have it (D27). */
+    /** Types with `==` (R16): scalars, Str, classes (identity), views, and structs whose fields all have it (D27). */
     private fun equatable(t: KType, seen: MutableSet<ClassSymbol> = HashSet()): Boolean = when {
-        t is KType.Scalar || t == KType.Str || facts.isEnum(t) || facts.isClass(t) || facts.isTrait(t) -> true
+        t is KType.Scalar || t == KType.Str || facts.isClass(t) || facts.isTrait(t) -> true
         facts.isView(t) || facts.isMutView(t) || facts.isArr(t) || facts.isList(t) -> facts.elementOf(t)?.let { equatable(it, seen) } ?: false
         Builtins.tupleArity(facts.magicName(t) ?: "") != null -> (t as KType.Nominal).typeArgs().all { equatable(it, seen) }
         facts.isStruct(t) -> {

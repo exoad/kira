@@ -12,8 +12,8 @@ import kotlin.test.fail
  * `py: { unsupported: "<why>" }` decision, so a gap is a choice the refusal names, never one nobody made.
  */
 class StdlibPyBindingsTest {
-    /** Lowered by the emitter itself: `enumOf<E>(raw)` needs E's Python class, which no template names. */
-    private val emitterLowered = setOf("enumOf")
+    /** Lowered by the emitter itself, past any template: none now. */
+    private val emitterLowered = emptySet<String>()
 
     private val allowedPyKeys = setOf("expr", "place", "statement", "unsupported", "float")
 

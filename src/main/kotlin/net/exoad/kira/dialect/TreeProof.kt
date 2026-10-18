@@ -132,13 +132,13 @@ object TreeProof {
                 is TraitDecl -> {}
             }
             fun parts(d: ASTNode): List<Any?> = when (d) {
-                is ClassDecl -> listOf(d.name, d.modifiers, d.members, d.parents, d.initially, d.finally)
-                is TraitDecl -> listOf(d.name, d.modifiers.toList(), d.members, d.parents, null, null)
+                is ClassDecl -> listOf(d.name, d.modifiers, d.members, d.parents, d.initially)
+                is TraitDecl -> listOf(d.name, d.modifiers.toList(), d.members, d.parents, null)
                 else -> error("not a type")
             }
             val op = parts(o)
             val np = parts(n)
-            val names = listOf("name", "modifiers", "members", "parents", "initially", "finally")
+            val names = listOf("name", "modifiers", "members", "parents", "initially")
             for (i in op.indices) value("$path.${names[i]}", op[i], np[i])?.let { return it }
             return null
         }

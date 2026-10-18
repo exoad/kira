@@ -27,7 +27,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
@@ -50,7 +49,7 @@ internal object KiraBodyTyper : BodyTyper {
 
 /**
  * Declarations and statements: every function, method and trait default body, every class's
- * `initially` and `finally`, every field and parameter default, every module-level
+ * `initially`, every field and parameter default, every module-level
  * initializer, and the module-level `@_static_assert`s.
  *
  * - **Module initializers.** A constant (a global without `mut`) is a compile-time value; a Str
@@ -121,17 +120,9 @@ internal class StmtChecker(private val c: PhaseC) {
             is ClassSymbol -> {
                 val initCtx = BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s initializer block")
                 s.initially?.let { body(it, initCtx, Scope.root()) }
-                s.finally?.let { body(it, BodyContext(s.module, null, s, KType.Void, null, true, "${s.name}'s finally block"), Scope.root()) }
                 s.methods.forEach { m -> KiraTyper.guard(c.program, "typing ${m.qualifiedName}", m.decl) { function(m) } }
             }
             is TraitSymbol -> s.methods.forEach { m -> KiraTyper.guard(c.program, "typing ${m.qualifiedName}", m.decl) { function(m) } }
-            is EnumSymbol -> s.decl?.members?.forEach { member ->
-                // Phase B folded each value against the base type; the value expression has that type.
-                val v = member.value ?: return@forEach
-                if (model.consts[v]?.type == s.base) {
-                    model.types[v] = s.base
-                }
-            }
             else -> {}
         }
     }
@@ -204,8 +195,7 @@ internal class StmtChecker(private val c: PhaseC) {
      * held to the same rule. Reading another run-time global anywhere in there would depend
      * on the order the C++ runtime picks, so `DYN.clone()`, `Bag { n = BAG.n }` and a
      * `W2 { }` whose `n` defaults to `DYN.size()` are refused as `DYN.size()` is. A class
-     * is built as a struct is, unless it or a parent has an `initially` block, which may read anything, or a
-     * `finally`, which C++ would run during static destruction.
+     * is built as a struct is, unless it or a parent has an `initially` block, which may read anything.
      */
     private fun notConstantInit(init: Expr, type: KType): String? {
         if (facts.isLiteralType(type)) {
@@ -216,7 +206,7 @@ internal class StmtChecker(private val c: PhaseC) {
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
-                val runs = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.any { it.initially != null || it.finally != null }
+                val runs = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.any { it.initially != null }
                 if (cls.kind != ClassKind.STRUCT && cls.kind != ClassKind.MAGIC && (cls.kind != ClassKind.CLASS || runs)) {
                     return NO_REASON
                 }
@@ -234,7 +224,7 @@ internal class StmtChecker(private val c: PhaseC) {
     /**
      * An expression C++ can evaluate in a constant expression on the gcc 11.4 floor: it
      * folded, or it is built with builtin operators, indexing and field access from literals,
-     * enum entries, module constants of literal types (a `Str` constant is its folded `const
+     * module constants of literal types (a `Str` constant is its folded `const
      * char*`), constructions of literal types (a struct of literal fields, `Arr<T, N>`, a
      * tuple), `@_const` calls and magic calls whose cpp binding is `constexpr: true`
      * ([MagicBindings]) - and every value on the way is of a literal type
@@ -275,7 +265,6 @@ internal class StmtChecker(private val c: PhaseC) {
             is TypeCastExpr -> notConstant(e.value)
             is Identifier -> constantGlobal(model.refs[e] as? GlobalSymbol)
             is MemberAccessExpr -> when (val m = model.members[e]) {
-                is MemberRef.EnumEntry -> null
                 is MemberRef.Field -> notConstant(e.origin)
                 is MemberRef.ModuleMember -> constantGlobal(m.symbol as? GlobalSymbol)
                 null -> (e.member as? FunctionCallExpr)?.let { notConstant(it) } ?: NO_REASON
@@ -507,18 +496,17 @@ internal class StmtChecker(private val c: PhaseC) {
         }
     }
 
-    /** D48: a literal (signed or not), `true`/`false`/`null`, a constant, or an enum entry. */
+    /** D48: a literal (signed or not), `true`/`false`/`null`, or a constant. */
     private fun isDefaultShape(d: Expr): Boolean = when (d) {
         is Identifier -> (model.refs[d] as? GlobalSymbol)?.isConstant == true
-        is MemberAccessExpr -> model.members[d] is MemberRef.EnumEntry || (model.members[d] as? MemberRef.ModuleMember)?.symbol.let { it is GlobalSymbol && it.isConstant }
+        is MemberAccessExpr -> (model.members[d] as? MemberRef.ModuleMember)?.symbol.let { it is GlobalSymbol && it.isConstant }
         is UnaryExpr -> c.literals.isBareLiteral(d)
         else -> c.literals.isBareLiteral(d) || d is StringLiteral || d is net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
     }
 
-    /** The non-pub constant or enum a default names, if any. */
+    /** The non-pub constant a default names, if any. */
     private fun privateConstant(d: Expr): Symbol? = when (d) {
         is Identifier -> (model.refs[d] as? GlobalSymbol)?.takeIf { !it.isPub && !it.module.isStdlib }
-        is MemberAccessExpr -> (model.members[d] as? MemberRef.EnumEntry)?.entry?.owner?.takeIf { !it.isPub && !it.module.isStdlib }
         else -> null
     }
 
@@ -552,10 +540,6 @@ internal class StmtChecker(private val c: PhaseC) {
             is WhileIterationStatement -> {
                 c.exprs.check(s.condition, KType.BOOL, ctx, scope, "a while condition")
                 loopBody(s.statements, ctx, scope.child())
-            }
-            is DoWhileIterationStatement -> {
-                loopBody(s.statements, ctx, scope.child())
-                c.exprs.check(s.condition, KType.BOOL, ctx, scope, "a do-while condition")
             }
             is ForIterationStatement -> forLoop(s, ctx, scope)
             is BreakStatement, is ContinueStatement -> {

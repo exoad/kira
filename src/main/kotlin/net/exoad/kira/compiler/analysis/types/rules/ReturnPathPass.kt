@@ -15,7 +15,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
@@ -88,8 +87,6 @@ internal class ReturnPathPass : RulePass {
             hasElse && all
         }
         is WhileIterationStatement -> isTrue(r, s.condition) && !breaks(s.statements)
-        is DoWhileIterationStatement ->
-            (ends(r, s.statements) && !breaks(s.statements) && !continues(s.statements)) || (isTrue(r, s.condition) && !breaks(s.statements))
         is ForIterationStatement -> false
         else -> endsExpr(r, s.expr)
     }
@@ -108,7 +105,7 @@ internal class ReturnPathPass : RulePass {
 
     private fun breaks(n: ASTNode): Boolean = when (n) {
         is BreakStatement -> true
-        is WhileIterationStatement, is DoWhileIterationStatement, is ForIterationStatement -> false
+        is WhileIterationStatement, is ForIterationStatement -> false
         is LambdaExpr -> false
         else -> AstTree.children(n).any { breaks(it) }
     }
@@ -118,7 +115,7 @@ internal class ReturnPathPass : RulePass {
 
     private fun continues(n: ASTNode): Boolean = when (n) {
         is ContinueStatement -> true
-        is WhileIterationStatement, is DoWhileIterationStatement, is ForIterationStatement -> false
+        is WhileIterationStatement, is ForIterationStatement -> false
         is LambdaExpr -> false
         else -> AstTree.children(n).any { continues(it) }
     }

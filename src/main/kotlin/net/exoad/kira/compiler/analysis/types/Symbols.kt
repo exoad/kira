@@ -2,13 +2,11 @@ package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleLayout
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.EnumMemberExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
@@ -26,7 +24,7 @@ import net.exoad.kira.source.SourceContext
  * Fields marked `var` are filled by a later phase:
  * - phase B: every `type`/`ret`/`target`/`base`, parents, [FnSymbol.isVirtual],
  *   [FnSymbol.overrides], [ClassSymbol.isSubclassed], [TraitSymbol.flatMethods],
- *   [GlobalSymbol.constValue], [EnumEntrySymbol.value];
+ *   [GlobalSymbol.constValue];
  * - the rule passes (W2.5): [ClassSymbol.thisEscapes].
  */
 sealed class Symbol {
@@ -182,7 +180,6 @@ class ClassSymbol(
     val fields: MutableList<FieldSymbol> = mutableListOf(),
     val methods: MutableList<FnSymbol> = mutableListOf(),
     var initially: List<Statement>? = null,
-    var finally: List<Statement>? = null,
     var foreign: Foreign? = null,
     /** Some class in the program names this one as its superclass (so it is not `final`). */
     var isSubclassed: Boolean = false,
@@ -229,34 +226,6 @@ class TraitSymbol(
     val flatMethods: MutableList<FnSymbol> = mutableListOf()
 
     fun method(name: String): FnSymbol? = flatMethods.firstOrNull { it.name == name } ?: methods.firstOrNull { it.name == name }
-}
-
-class EnumSymbol(
-    override val name: String,
-    override val module: ModuleSymbol,
-    override val decl: EnumDecl?,
-    /** The base type: an integer or float [KType.Scalar], or [KType.Str]. */
-    var base: KType = KType.Error,
-    val entries: MutableList<EnumEntrySymbol> = mutableListOf(),
-) : Symbol(), TypeSymbol {
-    override val typeParams: List<TypeParamSymbol> get() = emptyList()
-    override var isPub: Boolean = false
-    var foreign: Foreign? = null
-    val markers: MutableList<Marker> = mutableListOf()
-
-    fun entry(name: String): EnumEntrySymbol? = entries.firstOrNull { it.name == name }
-}
-
-class EnumEntrySymbol(
-    override val name: String,
-    val owner: EnumSymbol,
-    val index: Int,
-    override val decl: EnumMemberExpr?,
-    /** The entry's value in the enum's base type (implied values included), once phase B ran. */
-    var value: ConstValue? = null,
-) : Symbol() {
-    override val module: ModuleSymbol get() = owner.module
-    override val qualifiedName: String get() = "${owner.name}.$name"
 }
 
 class AliasSymbol(

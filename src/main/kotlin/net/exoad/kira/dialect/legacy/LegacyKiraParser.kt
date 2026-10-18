@@ -337,6 +337,15 @@ class LegacyKiraParser(private val context: SourceContext) {
         }
     }
 
+    /** An enum, a variant, a do-while or a finally: forms the clean dialect removed, refused so the converter names the file. */
+    private fun removedForm(what: String): Nothing = Diagnostics.panic(
+        "legacy.removed",
+        "cannot convert $what, which the clean dialect removes",
+        location = here(),
+        selectorLength = max(1, peek().content.length),
+        context = context
+    )
+
     fun parseStatement(modifier: Map<Modifier, SourcePosition>?): Statement {
         fun parseWithModifiers(): Statement {
             val baseLocation = here()
@@ -345,9 +354,9 @@ class LegacyKiraParser(private val context: SourceContext) {
             var expr = when (peek().type) {
                 Token.Type.K_CLASS -> parseClassDecl(modifiers)
                 Token.Type.K_STRUCT -> parseStructDecl(modifiers)
-                Token.Type.K_ENUM -> parseEnumDecl(modifiers)
+                Token.Type.K_ENUM -> removedForm("an enum")
                 Token.Type.K_ALIAS -> parseTypeAliasExpr(modifiers)
-                Token.Type.K_VARIANT -> parseVariantDecl(modifiers)
+                Token.Type.K_VARIANT -> removedForm("a variant")
                 Token.Type.K_TRAIT -> parseTraitDecl(modifiers)
                 else -> parsePrimaryExpr(modifiers)
             }
@@ -374,7 +383,7 @@ class LegacyKiraParser(private val context: SourceContext) {
             Token.Type.K_RETURN -> parseReturnStatement()
             Token.Type.K_IF -> parseIfSelectionStatement()
             Token.Type.K_WHILE -> parseWhileIterationStatement()
-            Token.Type.K_DO -> parseDoWhileIterationStatement()
+            Token.Type.K_DO -> removedForm("a do-while loop")
             Token.Type.K_FOR -> parseForIterationStatement()
             Token.Type.K_THROW -> parseThrowStatement()
             Token.Type.K_TRY -> parseTryStatement()
@@ -424,19 +433,9 @@ class LegacyKiraParser(private val context: SourceContext) {
                 return putOrigin(Statement(expr), baseLocation)
             }
 
-            Token.Type.K_ENUM -> {
-                val baseLocation = here()
-                val expr = parseEnumDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
+            Token.Type.K_ENUM -> removedForm("an enum")
 
-            Token.Type.K_VARIANT -> {
-                val baseLocation = here()
-                val expr = parseVariantDecl(null)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                return putOrigin(Statement(expr), baseLocation)
-            }
+            Token.Type.K_VARIANT -> removedForm("a variant")
 
             else -> {
                 val baseLocation = here()
@@ -586,15 +585,6 @@ class LegacyKiraParser(private val context: SourceContext) {
         val origin = here()
         val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
-    }
-
-    fun parseDoWhileIterationStatement(): Statement {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_DO)
-        val statements = parseStatementBlock()
-        val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
-        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-        return putOrigin(DoWhileIterationStatement(condition, statements), origin)
     }
 
     fun parseIfSelectionStatement(): Statement {
@@ -1383,136 +1373,6 @@ class LegacyKiraParser(private val context: SourceContext) {
         expectConventionalName(name, location, what, "PascalCase")
     }
 
-    /** The base types an enum may declare (`enum Name: Base { ... }`), per the spec. */
-    private val enumIntegerBaseTypes = setOf("Int8", "Int16", "Int32", "Int64", "Int")
-    private val enumFloatBaseTypes = setOf("Float32", "Float64", "Float")
-    private val enumBaseTypes = enumIntegerBaseTypes + enumFloatBaseTypes + "Str"
-
-    /**
-     * Every member's value must fit the enum's base type. A declared base
-     * wins; without one the first explicit value decides (a string makes it
-     * a Str enum, a float a Float64 enum, otherwise Int32) -- see
-     * [EnumDecl.baseTypeName]. Only integer enums may leave values implicit.
-     */
-    private fun validateEnumMembers(enumName: Identifier, declaredBase: String?, members: List<EnumMemberExpr>) {
-        val base = declaredBase ?: EnumDecl.inferBaseTypeName(members)
-        val isInteger = base in enumIntegerBaseTypes
-        val isFloat = base in enumFloatBaseTypes
-        members.forEach { member ->
-            val value = member.value
-            val location = context.astOrigins[member] ?: SourcePosition.UNKNOWN
-            val fits = when {
-                value == null -> isInteger
-                isInteger -> value is IntegerLiteral
-                isFloat -> value is FloatLiteral || value is IntegerLiteral
-                else -> value is StringLiteral
-            }
-            if (fits) return@forEach
-            val message = if (value == null) {
-                "Enum member '${member.name.value}' needs an explicit value: '${enumName.value}' is a $base enum, which has no implied numbering."
-            } else {
-                "Enum member '${member.name.value}' must be a $base literal, like the rest of '${enumName.value}'" +
-                    if (declaredBase == null) " -- declare a base type (`enum ${enumName.value}: Str {`) to say which kind you mean." else "."
-            }
-            Diagnostics.panic(
-                "LegacyKiraParser::parseEnumDecl",
-                message,
-                location = location,
-                selectorLength = member.name.value.length,
-                context = context
-            )
-        }
-    }
-
-    fun parseEnumMemberExpr(): EnumMemberExpr {
-        val origin = here()
-        val name = parseIdentifier()
-        var value: DataLiteral<*>? = null
-        if (at(Token.Type.S_EQUAL)) {
-            expectThenAdvance(Token.Type.S_EQUAL)
-            val start = peek()
-            var parseValue = parsePrimaryOrUnaryExpr()
-            // `DOWN = -1`: fold the sign into the literal.
-            if (parseValue is UnaryExpr && (parseValue.operator == UnaryOp.NEG || parseValue.operator == UnaryOp.POS)) {
-                val negate = parseValue.operator == UnaryOp.NEG
-                val operand = parseValue.operand
-                parseValue = when (operand) {
-                    is IntegerLiteral -> putOrigin(IntegerLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
-                    is FloatLiteral -> putOrigin(FloatLiteral(if (negate) -operand.value else operand.value), start.canonicalLocation)
-                    else -> parseValue
-                }
-            }
-            if (parseValue !is SimpleLiteral && parseValue !is DataLiteral<*>) {
-                Diagnostics.panic(
-                    "LegacyKiraParser::parseEnumMemberExpr",
-                    "Only simple literals are allowed as enum values. That is strings, floats, and integers.",
-                    location = start.canonicalLocation,
-                    selectorLength = start.content.length,
-                    context = context
-                )
-            }
-            value = parseValue as DataLiteral<*>
-        }
-//        if (name !is Identifier) {
-//            Diagnostics.panic(
-//                "LegacyKiraParser::parseEnumMemberExpr",
-//                "Enum members can only be named using identifiers.",
-//                context = context,
-//                location = context.astOrigins[name] ?: origin,
-//            )
-//        }
-        return putOrigin(EnumMemberExpr(name, value), origin)
-    }
-
-    fun parseEnumDecl(modifier: Map<Modifier, SourcePosition>?): EnumDecl {
-        expectModifiers(modifier, WrappingContext.ENUM)
-        advancePointer() // consume 'enum'
-        val origin = here()
-        val name = parseIdentifier() // we only allow simple names, not complex names on enums, cuz there is no point
-        expectConventionalName(name.value, origin, "Enum", "PascalCase")
-        // Optional base type: `enum Status: Int32 {`. Only the spec's scalar
-        // bases are allowed; a Str or Float base makes every value mandatory.
-        var baseType: Type? = null
-        var baseTypeName: String? = null
-        if (at(Token.Type.S_COLON)) {
-            advancePointer()
-            val baseToken = peek()
-            baseType = parseType()
-            baseTypeName = (baseType.identifier as? Identifier)?.value
-            if (baseTypeName !in enumBaseTypes || baseType.children.isNotEmpty()) {
-                Diagnostics.panic(
-                    "LegacyKiraParser::parseEnumDecl",
-                    "'${baseToken.content}' cannot be the base type of an enum. " +
-                        "Use one of Int8, Int16, Int32, Int64, Float32, Float64 or Str.",
-                    location = baseToken.canonicalLocation,
-                    selectorLength = baseToken.content.length,
-                    context = context
-                )
-            }
-        }
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<EnumMemberExpr>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            members.add(parseEnumMemberExpr())
-            if (!at(Token.Type.S_CLOSE_BRACE)) {
-                expectThenAdvance(Token.Type.S_COMMA)
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        validateEnumMembers(name, baseTypeName, members)
-//        if (name !is Identifier) {
-//            Diagnostics.panic(
-//                "LegacyKiraParser::parseEnumDecl",
-//                "Enum declarations can only use identifiers for their name.",
-//                context = context,
-//                location = context.astOrigins[name] ?: origin,
-//            )
-//        }
-        val decl = EnumDecl(name, members.toTypedArray(), modifier?.keys?.toList() ?: emptyList(), baseType)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
     fun parseTypeAliasExpr(modifiers: Map<Modifier, SourcePosition>?): TypeAliasDecl {
         expectModifiers(modifiers, WrappingContext.TYPE_ALIAS)
         val origin = here()
@@ -1552,57 +1412,43 @@ class LegacyKiraParser(private val context: SourceContext) {
     private class TypeBody(
         val members: List<FirstClassDecl>,
         val initially: List<Statement>?,
-        val finally: List<Statement>?,
     )
 
     /** How many class, struct or trait bodies enclose the pointer; `override` needs one. */
     private var typeBodyDepth = 0
 
     /**
-     * The `{ ... }` of a class or a struct: fields, methods, at most one
-     * `initially { }` and, where [allowFinally], at most one `finally { }`
-     * (spec Initializers and Finalizers). A struct is a value (design D1)
-     * and has no finalizer.
+     * The `{ ... }` of a class or a struct: fields, methods and at most one `initially { }`
+     * (spec Initializers); a `finally { }` is a form the clean dialect removed.
      */
-    private fun parseTypeBody(kind: String, allowFinally: Boolean): TypeBody {
+    private fun parseTypeBody(kind: String): TypeBody {
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<FirstClassDecl>()
         var initially: List<Statement>? = null
-        var finally: List<Statement>? = null
         typeBodyDepth++
         try {
-            parseTypeBodyMembers(kind, allowFinally, members, { initially }, { initially = it }, { finally }, { finally = it })
+            parseTypeBodyMembers(kind, members, { initially }, { initially = it })
         } finally {
             typeBodyDepth--
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return TypeBody(members, initially, finally)
+        return TypeBody(members, initially)
     }
 
     private fun parseTypeBodyMembers(
         kind: String,
-        allowFinally: Boolean,
         members: MutableList<FirstClassDecl>,
         initially: () -> List<Statement>?,
         setInitially: (List<Statement>) -> Unit,
-        finally: () -> List<Statement>?,
-        setFinally: (List<Statement>) -> Unit,
     ) {
         while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            if (at(Token.Type.K_INITIALLY) || at(Token.Type.K_FINALLY)) {
+            if (at(Token.Type.K_FINALLY)) {
+                removedForm("a 'finally' block")
+            }
+            if (at(Token.Type.K_INITIALLY)) {
                 val keyword = peek()
                 advancePointer()
-                val isInitially = keyword.type == Token.Type.K_INITIALLY
-                if (!isInitially && !allowFinally) {
-                    Diagnostics.panic(
-                        "LegacyKiraParser::parseTypeBody",
-                        "A $kind has no 'finally' block: it is a value, not an owned object, so nothing runs when it goes away.",
-                        location = keyword.canonicalLocation,
-                        selectorLength = keyword.content.length,
-                        context = context
-                    )
-                }
-                if ((isInitially && initially() != null) || (!isInitially && finally() != null)) {
+                if (initially() != null) {
                     Diagnostics.panic(
                         "LegacyKiraParser::parseTypeBody",
                         "A $kind may have only one '${keyword.content}' block.",
@@ -1613,7 +1459,7 @@ class LegacyKiraParser(private val context: SourceContext) {
                 }
                 val block = parseStatementBlock()
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                if (isInitially) setInitially(block) else setFinally(block)
+                setInitially(block)
                 continue
             }
             val memberModifiers = parseModifiers()
@@ -1663,14 +1509,13 @@ class LegacyKiraParser(private val context: SourceContext) {
         }
         val classIntrinsics = classIntrinsicsEarly ?: pendingIntrinsicExprs
         pendingIntrinsicExprs = null
-        val body = parseTypeBody("class", allowFinally = true)
+        val body = parseTypeBody("class")
         val classDecl = ClassDecl(
             className,
             modifier?.keys?.toList() ?: emptyList(),
             body.members,
             parenTypes,
             body.initially,
-            body.finally,
         )
         markIntrinsics(classDecl, classIntrinsics)
         attachIntrinsics(classDecl)
@@ -1693,58 +1538,12 @@ class LegacyKiraParser(private val context: SourceContext) {
         val structIntrinsics = structIntrinsicsEarly ?: pendingIntrinsicExprs
         pendingIntrinsicExprs = null
         val body = if (at(Token.Type.S_OPEN_BRACE)) {
-            parseTypeBody("struct", allowFinally = false)
+            parseTypeBody("struct")
         } else {
-            TypeBody(emptyList(), null, null)
+            TypeBody(emptyList(), null)
         }
         val decl = StructDecl(structName, modifier?.keys?.toList() ?: emptyList(), body.members, traits, body.initially)
         markIntrinsics(decl, structIntrinsics)
-        attachIntrinsics(decl)
-        return putOrigin(decl, origin)
-    }
-
-    fun parseVariantDecl(modifier: Map<Modifier, SourcePosition>?): VariantDecl {
-        expectModifiers(modifier, WrappingContext.VARIANT)
-        advancePointer() // consume 'variant'
-        val origin = here()
-        val variantName = parseType(declaresGenerics = true)
-        expectConventionalTypeName(variantName, origin, "Variant")
-        val parenTypes = parseParentList()
-        if (!at(Token.Type.S_OPEN_BRACE)) {
-            val decl = VariantDecl(
-                variantName,
-                modifier?.keys?.toList() ?: emptyList(),
-                emptyList(),
-                emptyList(),
-                parenTypes
-            )
-            attachIntrinsics(decl)
-            return putOrigin(decl, origin)
-        }
-        val variantIntrinsics = pendingIntrinsicExprs
-        pendingIntrinsicExprs = null
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val variants = mutableListOf<ClassDecl>()
-        val members = mutableListOf<FirstClassDecl>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            val memberModifiers = parseModifiers()
-            expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
-            if (at(Token.Type.K_CLASS)) {
-                // parse inner class which acts as a variant
-                val classDecl = parseClassDecl(memberModifiers)
-                variants.add(classDecl)
-            } else if (peek(1).type == Token.Type.S_COLON) {
-                val valDecl = parseVariableDecl(memberModifiers)
-                expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-                members.add(valDecl)
-            } else {
-                val func = parseFunctionDecl(memberModifiers)
-                members.add(func)
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        val decl = VariantDecl(variantName, modifier?.keys?.toList() ?: emptyList(), variants, members, parenTypes)
-        markIntrinsics(decl, variantIntrinsics)
         attachIntrinsics(decl)
         return putOrigin(decl, origin)
     }

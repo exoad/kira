@@ -2,7 +2,6 @@ package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FirstClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
@@ -10,7 +9,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariantDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.AnonymousIdentifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
@@ -24,7 +22,7 @@ import net.exoad.kira.source.SourceContext
 
 /**
  * Phase A: one [ModuleSymbol] per module URI, and a symbol for every declaration in it and
- * every member of its classes, structs, traits and enums, with types left unresolved.
+ * every member of its classes, structs and traits, with types left unresolved.
  *
  * The stdlib (`kira:*`) and its `@_magic` declarations are collected like any module. Markers
  * are read from `SourceContext.astIntrinsicMarked`, the way `KiraCCodeGenerator.isMagicDecl`
@@ -33,7 +31,7 @@ import net.exoad.kira.source.SourceContext
  * arguments verbatim; `@_const` sets [FnSymbol.isConst]. Every marker is also kept, as the
  * parser saw it, in the symbol's `markers`.
  *
- * A declaration whose name is already taken in its module (or its class, trait or enum) is a
+ * A declaration whose name is already taken in its module (or its class or trait) is a
  * `types.decl.duplicate` error; the first declaration keeps the name.
  */
 internal class DeclarationCollector(
@@ -105,9 +103,7 @@ internal class DeclarationCollector(
                 is ClassDecl -> guarded(e) { topLevel(module, classLike(module, source, e)) }
                 is StructDecl -> guarded(e) { topLevel(module, struct(module, source, e)) }
                 is TraitDecl -> guarded(e) { topLevel(module, trait(module, source, e)) }
-                is EnumDecl -> guarded(e) { topLevel(module, enum(module, source, e)) }
                 is TypeAliasDecl -> guarded(e) { topLevel(module, alias(module, source, e)) }
-                is VariantDecl -> guarded(e) { topLevel(module, variant(module, source, e)) }
                 else -> module.statements.add(stmt)
             }
         }
@@ -299,7 +295,6 @@ internal class DeclarationCollector(
         val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
         cls.isFinal = Modifier.FINAL in decl.modifiers
         cls.initially = decl.initially
-        cls.finally = decl.finally
         members(module, source, cls, decl.members)
         return cls
     }
@@ -308,18 +303,6 @@ internal class DeclarationCollector(
         val markers = markersOf(source, decl)
         val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.STRUCT), markers, Modifier.PUBLIC in decl.modifiers)
         cls.initially = decl.initially
-        members(module, source, cls, decl.members)
-        return cls
-    }
-
-    private fun variant(module: ModuleSymbol, source: SourceContext, decl: VariantDecl): ClassSymbol {
-        program.report(
-            "types.variant.unsupported",
-            "variant '${declaredName(decl.name)?.value ?: decl.name}' has no typed lowering yet (deferred, design D43).",
-            decl,
-        )
-        val markers = markersOf(source, decl)
-        val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
         members(module, source, cls, decl.members)
         return cls
     }
@@ -404,28 +387,6 @@ internal class DeclarationCollector(
             }
         }
         return t
-    }
-
-    private fun enum(module: ModuleSymbol, source: SourceContext, decl: EnumDecl): EnumSymbol {
-        val markers = markersOf(source, decl)
-        val e = EnumSymbol(decl.name.value, module, decl)
-        e.isPub = Modifier.PUBLIC in decl.modifiers
-        e.markers.addAll(markers)
-        e.foreign = foreignOf(markers, e.name)
-        model.declSyms[decl] = e
-        model.refs[decl.name] = e
-        val names = HashMap<String, EnumEntrySymbol>()
-        decl.members.forEachIndexed { i, member ->
-            val entry = EnumEntrySymbol(member.name.value, e, i, member)
-            e.entries.add(entry)
-            model.declSyms[member] = entry
-            model.refs[member.name] = entry
-            val prev = names.putIfAbsent(entry.name, entry)
-            if (prev != null) {
-                duplicate(entry, prev, "enum ${e.name}")
-            }
-        }
-        return e
     }
 
     private fun alias(module: ModuleSymbol, source: SourceContext, decl: TypeAliasDecl): AliasSymbol {

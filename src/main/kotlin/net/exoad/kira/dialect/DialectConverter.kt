@@ -11,7 +11,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
@@ -52,11 +51,15 @@ object DialectConverter {
             LegacyKiraParser(ctx).parse()
             ctx to null
         } catch (e: DiagnosticsException) {
-            null to (e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString())
+            val at = e.location?.let { " at ${it.lineNumber}:${it.column}" } ?: ""
+            null to ((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + at)
         } catch (e: Exception) {
             null to (e.message ?: e.toString())
         }
     }
+
+    /** Whether a legacy parse error is one of the forms the clean dialect removed (an enum, a variant, a do-while, a finally). */
+    fun isRemovedForm(error: String?): Boolean = error?.startsWith("cannot convert ") == true
 
     /**
      * [zerolessRequired]: a field the old dialect value-initialized whose type has no literal
@@ -107,14 +110,8 @@ object DialectConverter {
                     is UseStatement -> use(n)
                     is TypeAliasDecl -> alias(n)
                     is StructDecl -> typeDecl(n, keywordBeforeName = true, root = "Struct", hasParents = n.traits.isNotEmpty())
-                    is ClassDecl -> {
-                        if (n.finally != null) problem(n, "a 'finally' block, which the clean dialect removes")
-                        typeDecl(n, keywordBeforeName = true, root = "Any", hasParents = n.parents.isNotEmpty())
-                    }
+                    is ClassDecl -> typeDecl(n, keywordBeforeName = true, root = "Any", hasParents = n.parents.isNotEmpty())
                     is TraitDecl -> typeDecl(n, keywordBeforeName = false, root = "Any", hasParents = n.parents.isNotEmpty())
-                    is EnumDecl -> problem(n, "an enum, which the clean dialect removes")
-                    is VariantDecl -> problem(n, "a variant, which the clean dialect removes")
-                    is DoWhileIterationStatement -> problem(n, "a do-while loop, which the clean dialect removes")
                     is FunctionDecl -> function(n)
                     is LambdaExpr -> lambda(n)
                     is VariableDecl -> variable(n, typeOwners[n], topLevel.containsKey(n))

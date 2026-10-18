@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.ConversionKind
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -522,7 +521,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * `this` as a value in a class method: `shared_from_this()` (the class derives
      * `kira::Shared<C>`, D11), or the `self` an escaping lambda captured, cast to the class and
      * from `const` as W2.4's `CppClassesPart.thisValue` spells it (which also refuses it where an
-     * `initially` or `finally` may run the method: no `kira::Rc` owns the object there).
+     * `initially` may run the method: no `kira::Rc` owns the object there).
      */
     fun classThis(e: ThisExpr): CppEx = CppEx(ctx.parts.classes.thisValue(ctx, e), CppPrec.POSTFIX)
 
@@ -614,14 +613,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     private fun memberAccess(e: MemberAccessExpr): CppEx {
         (e.member as? FunctionCallExpr)?.let { if (model.call(it) != null) return call(it) }
         return when (val m = model.member(e)) {
-            is MemberRef.EnumEntry -> CppEx(ctx.entry(m.entry), CppPrec.POSTFIX)
             is MemberRef.ModuleMember -> CppEx(nameOfSymbol(m.symbol, e) ?: return internal(e, "a module member that is not a value"), CppPrec.PRIMARY)
             is MemberRef.Field -> field(e.origin, m.field)
             is MemberRef.Method -> unsupported(e, "a method used as a value")
-            null -> {
-                (model.const(e) as? ConstValue.EnumConst)?.let { return CppEx(ctx.entry(it.entry), CppPrec.POSTFIX) }
-                internal(e, "no member was recorded for this access")
-            }
+            null -> internal(e, "no member was recorded for this access")
         }
     }
 
@@ -652,12 +647,12 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /**
      * Whether C++ holds a value of type [t] by reference where Kira reads it (design 5.1: a
      * `const&` parameter): a `Str`, a struct, a container, a `Maybe`, a tuple, an `Fx` value,
-     * a type parameter. A scalar, a `Char`, a `Bool`, an enum, a view, an `Unsafe` and a class
+     * a type parameter. A scalar, a `Char`, a `Bool`, a view, an `Unsafe` and a class
      * or trait handle are held by value, and a copy of one is the value itself.
      */
     fun heldByReference(t: KType): Boolean = when (t) {
         KType.Str, is KType.Param, is KType.Fn -> true
-        is KType.Nominal -> t.sym !is EnumSymbol && !isPointerLike(t) && !isView(t)
+        is KType.Nominal -> !isPointerLike(t) && !isView(t)
         else -> false
     }
 
@@ -786,13 +781,6 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * only as a prvalue (W1) or a PRIVATE place under another root (W2), and copied otherwise,
      * `T(e)`, before the target is written. A `WrapSome` is no prvalue here
      * ([CppHoister.Use.direct]: `m = m.unwrap().kids[0]` assigns the payload from the element).
-     *
-     * Kira stores the new value, then drops the old one. Where that drop may run an IMPURE
-     * `finally` ([CppCopyPolicy.dropsOnWrite]), the write is `kira::replace(place) = value`: the
-     * old value is moved out, the place takes the new one, and the old value dies after the
-     * store is whole. A plain `operator=` would run the `finally` partway through the write,
-     * which may free the place's storage (`gl[0] = v` while the `finally` replaces `gl`) or
-     * rewrite it half-written.
      */
     private fun assignment(target: Expr, value: Expr, node: Expr): CppEx {
         val tt = typeOf(target)
@@ -807,10 +795,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val ops = listOf(placeOperand(target), valueOp)
         val consumer = CppHoister.Consumer(confined = false, mutOperands = listOf(CppHoister.MutOperand(model.readPlace(target), tt)))
-        val replace = policy.dropsOnWrite(tt)
         return hoister.lower(ops, model.typeOrNull(node) ?: KType.Void, consumer = consumer) { (l, r) ->
-            val place = if (replace) "kira::replace(${wrap(l, CppPrec.ASSIGN)})" else wrap(l, CppPrec.UNARY)
-            CppEx("$place = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
+            CppEx("${wrap(l, CppPrec.UNARY)} = ${wrap(r, CppPrec.ASSIGN)}", CppPrec.ASSIGN, "=")
         }
     }
 
@@ -1144,7 +1130,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val target = ctx.spell(to, Pos.VALUE, e)
         val v = emit(e.value, CppPrec.ASSIGN)
         return when (kind) {
-            ConversionKind.INT_WRAP, ConversionKind.INT_TO_FLOAT, ConversionKind.FLOAT_RESIZE, ConversionKind.ENUM_TO_BASE,
+            ConversionKind.INT_WRAP, ConversionKind.INT_TO_FLOAT, ConversionKind.FLOAT_RESIZE,
             ConversionKind.INT_TO_CHAR -> CppEx("static_cast<$target>($v)", CppPrec.POSTFIX)
             ConversionKind.FLOAT_TO_INT_SAT -> CppEx("kira::as<$target>($v)", CppPrec.POSTFIX)
             ConversionKind.CHAR_TO_INT -> CppEx("static_cast<$target>(static_cast<unsigned char>($v))", CppPrec.POSTFIX)
@@ -1661,8 +1647,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return CppEx("/* ${CppEmitContextImpl.describe(e)} */", CppPrec.PRIMARY)
         }
         val original = found.second
-        // A write over an element whose drop may run an IMPURE `finally` stores first (CppCopyPolicy.dropsOnWrite).
-        val binding = replacing(original, fn, rc)
+        val binding = original
         if (isLiteralView(rc)) {
             // `"abc".view()` views the literal's static storage, as the implicit conversion does
             // (kira::lit): kira::str::view("abc") would view a temporary kira::Str.
@@ -1737,21 +1722,6 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             }
             bindingEx(text)
         }
-    }
-
-    /**
-     * [binding], or, when its expression is a write `PLACE = {n}` (`List.set`, `Arr.set`,
-     * `MutView.set`) over an element whose drop may run an IMPURE `finally`
-     * ([CppCopyPolicy.dropsOnWrite]), the same write as `kira::replace(PLACE) = {n}`, which stores
-     * first and drops the old element after, as [assignment] spells `xs[i] = v`.
-     */
-    private fun replacing(binding: CppBinding, fn: FnSymbol, rc: ResolvedCall): CppBinding {
-        val m = WRITE_TEMPLATE.matchEntire(binding.expr) ?: return binding
-        val element = fn.params.getOrNull(m.groupValues[2].toInt())?.type?.substitute(rc.substitution)
-        if (!policy.dropsOnWrite(element)) {
-            return binding
-        }
-        return binding.copy(expr = "kira::replace(${m.groupValues[1]}) = {${m.groupValues[2]}}")
     }
 
     /** Whether [rc] is `Str.view` on a string literal: a view of static storage (`kira::lit`), no temporary. */
@@ -1985,7 +1955,6 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         private val LENDERS = setOf("from", "slice", "view")
 
         /** A binding whose expression writes its argument `{n}` over a place: `kira::at({self}, {0}) = {1}`. */
-        private val WRITE_TEMPLATE = Regex("(.+) = \\{([0-9]+)}")
 
         val ARITH_OR_BITS = setOf(
             BinaryOp.ADD, BinaryOp.SUB, BinaryOp.MUL, BinaryOp.DIV, BinaryOp.MOD,

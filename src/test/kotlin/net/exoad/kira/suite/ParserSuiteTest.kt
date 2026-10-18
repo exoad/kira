@@ -5,7 +5,6 @@ import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl

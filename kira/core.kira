@@ -131,11 +131,6 @@ pub Float32 as Float
 // argument must have `T`'s width.
 pub @_magic bitCast<T>: (value: Any) T;
 
-// The entry of the integer enum `E` whose value is `raw`, or none (D25): an
-// enum has no methods, so this is the free intrinsic. The typer special-cases
-// the call: `E` is the explicit type argument and `raw` is an integer.
-pub @_magic enumOf<E>: (raw: Any) Maybe<E>;
-
 // A fixed-capacity text buffer, `StrBuf<N>` (design section 10): N chars and no
 // heap, so a freestanding module builds text in one. The typer takes exactly one
 // constant argument, the capacity. Appends past N are dropped. `add` and `set`

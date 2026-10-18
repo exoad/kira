@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 
 /**
  * Members: which field or method a name reaches on a receiver type, with the receiver's type
- * arguments substituted, and the value form `a.b` (fields, enum entries, a module's members).
+ * arguments substituted, and the value form `a.b` (fields, a module's members).
  *
  * Lookup walks the receiver's type and then its parents, nearest first: a class, then its
  * superclass chain, then the traits (whose default bodies a class inherits); a trait, then its
@@ -163,7 +163,7 @@ internal class MemberResolver(private val c: PhaseC) {
     val maybeApi = MAYBE_API
 
     /**
-     * `a.b` as a value: an enum entry, a module's member, or a field. A method named without a
+     * `a.b` as a value: a module's member, or a field. A method named without a
      * call is an error (bind it in a lambda); a member call `a.m()` of the parser's
      * CONJUNCTIVE_DOT shape goes to [CallResolver].
      */
@@ -189,9 +189,9 @@ internal class MemberResolver(private val c: PhaseC) {
         return fieldAccess(e, receiver, member as Identifier)
     }
 
-    /** `E.ENTRY` and `module.member`: the origin names a type or a module, not a value. */
+    /** `module.member`: the origin names a module, or a type (refused), not a value. */
     private fun staticAccess(e: MemberAccessExpr, origin: Identifier, member: Identifier, ctx: BodyContext): KType? {
-        when (val found = c.program.graph.lookup(ctx.module, origin.value) { it is EnumSymbol || it is ClassSymbol || it is TraitSymbol }) {
+        when (val found = c.program.graph.lookup(ctx.module, origin.value) { it is ClassSymbol || it is TraitSymbol }) {
             is ModuleGraph.Lookup.Found, is ModuleGraph.Lookup.NotVisible, is ModuleGraph.Lookup.Ambiguous -> {
                 val sym = when (found) {
                     is ModuleGraph.Lookup.Found -> found.symbol
@@ -200,19 +200,6 @@ internal class MemberResolver(private val c: PhaseC) {
                     else -> null
                 }!!
                 model.refs[origin] = sym
-                if (sym is EnumSymbol) {
-                    val entry = sym.entry(member.value)
-                    if (entry == null) {
-                        c.report(
-                            "types.enum.unknown-entry",
-                            "enum ${sym.name} has no entry '${member.value}'. Its entries are: ${sym.entries.joinToString(", ") { it.name }}.",
-                            member,
-                        )
-                        return KType.Error
-                    }
-                    model.members[e] = MemberRef.EnumEntry(entry)
-                    return KType.Nominal(sym)
-                }
                 val called = "${origin.value}.${member.value}"
                 c.report(
                     "types.member.static",

@@ -160,13 +160,6 @@ def _k_map(f, xs):
     return _k_builtins.map(f, xs)
 
 
-def _k_enumof(order, raw):
-    for v in order:
-        if v == raw:
-            return v
-    return None
-
-
 # A throw (D41) is this class's exception, one class for every generated module so that one
 # catches what another throws; a panic is a RuntimeError, which no Kira try catches.
 def _k_errors():

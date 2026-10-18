@@ -139,7 +139,6 @@ class ModuleGraph(private val program: TypedProgram) {
         fun isPub(symbol: Symbol): Boolean = when (symbol) {
             is ClassSymbol -> symbol.isPub
             is TraitSymbol -> symbol.isPub
-            is EnumSymbol -> symbol.isPub
             is AliasSymbol -> symbol.isPub
             is GlobalSymbol -> symbol.isPub
             is FnSymbol -> symbol.isPub

@@ -3,7 +3,6 @@ package net.exoad.kira.compiler.analysis.types.rules
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
@@ -23,8 +22,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParam
  * The spec's naming conventions (Identifiers and Naming Conventions), as **warnings**:
  * `rules.naming.function` and `.variable` (camelCase: functions, methods, parameters,
  * locals, fields, `mut` globals, which may also be UPPER_SNAKE_CASE), `.type` (PascalCase:
- * classes, structs, traits, enums, aliases, type parameters), `.constant` (UPPER_SNAKE_CASE:
- * module constants and enum entries). Only the modules the user wrote are checked; extern
+ * classes, structs, traits, aliases, type parameters), `.constant` (UPPER_SNAKE_CASE:
+ * module constants). Only the modules the user wrote are checked; extern
  * and magic declarations keep their foreign names; operator overloads have no name to check.
  */
 internal class NamingPass : RulePass {
@@ -73,14 +72,6 @@ internal class NamingPass : RulePass {
                 type(r, "Trait", s.name, s.decl)
                 s.typeParams.forEach { typeParam(r, it) }
                 s.methods.forEach { function(r, it) }
-            }
-            is EnumSymbol -> if (s.foreign == null) {
-                type(r, "Enum", s.name, s.decl)
-                s.entries.forEach { e ->
-                    if (!upper.matches(e.name)) {
-                        warn(r, "constant", "Enum entry '${e.name}' does not conform to UPPER_SNAKE_CASE; did you mean '${toUpperSnake(e.name)}'?", e.decl)
-                    }
-                }
             }
             is AliasSymbol -> {
                 type(r, "Alias", s.name, s.decl)

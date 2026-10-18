@@ -3,7 +3,7 @@ package net.exoad.kira.compiler.analysis.types
 import java.math.BigInteger
 
 /**
- * A compile-time value: what ConstEval folds a global initializer, an enum entry or a
+ * A compile-time value: what ConstEval folds a global initializer or a
  * default to, and what TypedModel.consts records per expression.
  */
 sealed interface ConstValue {
@@ -69,11 +69,6 @@ sealed interface ConstValue {
     data class StrConst(val value: String) : ConstValue {
         override val type: KType get() = KType.Str
         override fun toString(): String = "\"" + value.replace("\\", "\\\\").replace("\n", "\\n").replace("\"", "\\\"") + "\""
-    }
-
-    data class EnumConst(val entry: EnumEntrySymbol) : ConstValue {
-        override val type: KType get() = KType.Nominal(entry.owner)
-        override fun toString(): String = "${entry.owner.name}.${entry.name}"
     }
 
     /**

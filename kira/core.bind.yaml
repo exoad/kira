@@ -128,7 +128,6 @@ Char.isWhitespace: { cpp: { expr: "kira::isWhitespace({self})", pure: true, cons
 Char.isLetter:     { cpp: { expr: "kira::isLetter({self})", pure: true, constexpr: true }, py: { expr: "({self} in _k_letters)" } }
 
 bitCast:       { cpp: { expr: "kira::bitCast<{T0}>({0})", pure: true, constexpr: true }, py: { unsupported: "a bit cast (writeF64Le then readU64Le gives a Float64's bits)" } }
-enumOf:        { cpp: { expr: "kira::enumOf<{T0}>({0})", pure: true, constexpr: true } }
 
 # kira::StrBuf<N> (core.hxx) is a literal type, so every entry is constexpr. An
 # interpolation passed to StrBuf.set / StrBuf.add is typed View<Char> and never

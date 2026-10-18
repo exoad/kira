@@ -10,8 +10,6 @@ import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.ConversionKind
 import net.exoad.kira.compiler.analysis.types.Effect
-import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -151,7 +149,7 @@ class PyModuleEmitter(
         }
         module.declarations.forEach { sym ->
             when (sym) {
-                is FnSymbol, is ClassSymbol, is GlobalSymbol, is EnumSymbol -> topNames.add(pyName(sym))
+                is FnSymbol, is ClassSymbol, is GlobalSymbol -> topNames.add(pyName(sym))
                 else -> {}
             }
         }
@@ -176,7 +174,6 @@ class PyModuleEmitter(
                 }
                 is ClassSymbol -> classDecl(sym).takeIf { it.isNotEmpty() }?.let { definitions.add(it) }
                 is AliasSymbol -> {}
-                is EnumSymbol -> definitions += enumDecl(sym)
                 is TraitSymbol -> refuse(sym.decl ?: module.source.ast, "the trait ${sym.name}")
                 else -> refuse(sym.decl ?: module.source.ast, "the declaration ${sym.name}")
             }
@@ -355,7 +352,6 @@ class PyModuleEmitter(
             c.typeParams.isNotEmpty() -> refuse(at, "the generic class ${c.name}")
             c.superclass != null -> refuse(at, "the subclass ${c.name} (class inheritance)")
             c.traits.isNotEmpty() -> refuse(at, "the class ${c.name} implementing a trait")
-            c.finally != null -> refuse(at, "the finally block of ${c.name}")
             c.foreign != null -> refuse(at, "the foreign class ${c.name}")
         }
         val out = mutableListOf("class ${pyName(c)}:")
@@ -426,37 +422,6 @@ class PyModuleEmitter(
     private fun isPositional(f: FieldSymbol): Boolean = f.isRequired && f.default == null
 
     private fun isKeyword(f: FieldSymbol): Boolean = !isPositional(f) && f.isPub
-
-    /** A Str or float enum's entries are their indices, as C++ numbers them. */
-    private fun enumDecl(e: EnumSymbol): List<String> {
-        val at: ASTNode = e.decl ?: module.source.ast
-        checkName(e.name, at)
-        if (e.foreign != null) {
-            refuse(at, "the foreign enum ${e.name}")
-        }
-        val body = mutableListOf<String>()
-        val names = LinkedHashMap<BigInteger, String>()
-        e.entries.forEach { entry ->
-            if (entry.name in PyNames.KEYWORDS || entry.name.startsWith("_")) {
-                refuse(entry.decl ?: at, "the enum entry '${entry.name}', which Python cannot name")
-            }
-            val v = enumValue(entry)
-            body += "${entry.name} = $v"
-            names.putIfAbsent(v, if (e.base == KType.Str) (entry.value as? ConstValue.StrConst)?.value ?: entry.name else entry.name)
-        }
-        body += "_k_names = {${names.entries.joinToString(", ") { "${it.key}: ${pyString(it.value)}" }}}"
-        body += "_k_order = (${e.entries.joinToString(", ") { enumValue(it).toString() }}${if (e.entries.size == 1) "," else ""})"
-        return listOf("class ${pyName(e)}:") + indent(body)
-    }
-
-    private fun enumValue(entry: EnumEntrySymbol): BigInteger = when {
-        entry.owner.base == KType.Str || entry.owner.base.prim?.isFloat == true -> BigInteger.valueOf(entry.index.toLong())
-        else -> (entry.value as? ConstValue.IntConst)?.value
-            ?: (entry.decl?.value as? IntegerLiteral)?.let { BigInteger.valueOf(it.value) }
-            ?: BigInteger.valueOf(entry.index.toLong())
-    }
-
-    private fun isEnum(t: KType?): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
 
     /**
      * `main: (args: List<Str>) Int32` is handed the program's arguments, as C++'s runMain hands it argv. `_k_run()` returns
@@ -611,11 +576,9 @@ class PyModuleEmitter(
         unsupportedType(t)?.let { return it }
         val prim = t.prim
         val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
-        val enum = (t as? KType.Nominal)?.sym as? EnumSymbol
         return when {
             prim == Prim.CHAR -> "a Char (a one-character Str crosses)"
             prim != null || t == KType.Str || t == KType.Void || isJson(t) || isOpaque(t) -> null
-            enum != null -> if (enum.base == KType.Str || enum.base.prim?.isFloat == true) "the enum ${enum.name}, whose py value is an index" else null
             isView(t) -> when {
                 back -> "${article(t.display())} (Python is lent a view, never gives one)"
                 args.firstOrNull() == KType.UINT8 -> null
@@ -669,7 +632,6 @@ class PyModuleEmitter(
             isMap(t) -> of("D", spec(args[0], at) ?: return null, spec(args[1], at) ?: return null)
             isSet(t) -> spec(args[0], at)?.let { of("Z", it) }
             isTuple(t) -> of("T", *args.map { spec(it, at) ?: return null }.toTypedArray())
-            isEnum(t) -> ref((t as KType.Nominal).sym as EnumSymbol, at)?.let { of("E", "$it._k_order") }
             isJson(t) -> of("J")
             isOpaque(t) -> of("O")
             else -> null
@@ -747,7 +709,6 @@ class PyModuleEmitter(
         else -> {
             if (s.javaClass != Statement::class.java) {
                 val what = when (s.javaClass.simpleName) {
-                    "DoWhileIterationStatement" -> "a do-while loop"
                     "UseStatement" -> "a use statement inside a body"
                     else -> "the statement ${s.javaClass.simpleName}"
                 }
@@ -1354,7 +1315,6 @@ class PyModuleEmitter(
                 is FnSymbol -> fnValue(sym, e)
                 else -> refusePy(e, "the name '${sym.name}'")
             }
-            is MemberRef.EnumEntry -> ref(m.entry.owner, e)?.let { Py("$it.${m.entry.name}", PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
             is MemberRef.Field -> {
                 val ot = typeOf(e.origin) ?: return Py("None", PyPrec.ATOM)
                 when {
@@ -1518,11 +1478,6 @@ class PyModuleEmitter(
             val v = (rc.args.singleOrNull() as? ArgBinding.Given)?.expr ?: return refusePy(c, "$key without its value")
             return Py("(${if (key == "Result.success") "True" else "False"}, ${wrap(asValue(v, f, Use.STORE), PyPrec.TERNARY)})", PyPrec.ATOM)
         }
-        if (fn.name == "enumOf" && fn.module.uri == "kira:core") {
-            val e = (rc.typeArgs.firstOrNull() as? KType.Nominal)?.sym as? EnumSymbol ?: return refusePy(c, "enumOf of no enum")
-            val raw = (rc.args.singleOrNull() as? ArgBinding.Given)?.expr ?: return refusePy(c, "enumOf without its value")
-            return call("_k_enumof", "${ref(e, c) ?: "None"}._k_order", wrap(expr(raw, f), PyPrec.TERNARY))
-        }
         val receiver = rc.receiver
         if (fn.name == "add" && syncClass(receiver?.let { model.typeOrNull(it) }) == "Atomic" && (model.typeOrNull(receiver!!) as KType.Nominal).typeArgs().first().prim == Prim.BOOL) {
             return refusePy(c, "Atomic<Bool>.add (C++'s Atomic has none)")
@@ -1596,7 +1551,7 @@ class PyModuleEmitter(
         val v = expr(arg, f)
         val prim = t.prim
         val text = when {
-            t == KType.Str || prim?.isInteger == true || isEnum(t) -> v.text
+            t == KType.Str || prim?.isInteger == true -> v.text
             prim == Prim.CHAR -> call("chr", v.text).text
             prim == Prim.BOOL -> "1 if ${wrap(v, PyPrec.OR)} else 0"
             prim == Prim.FLOAT64 -> call("_k_gtext", v.text).text
@@ -1770,12 +1725,12 @@ class PyModuleEmitter(
         }
     }
 
-    /** A comparison of numbers, Bools, Strs or enums, or `==` and `!=` of two structs (their `__eq__`, C++'s defaulted operator==). */
+    /** A comparison of numbers, Bools or Strs, or `==` and `!=` of two structs (their `__eq__`, C++'s defaulted operator==). */
     private fun comparison(e: BinaryExpr, f: Frame): Py {
         val lt = typeOf(e.leftExpr) ?: return Py("None", PyPrec.ATOM)
         val rt = typeOf(e.rightExpr) ?: return Py("None", PyPrec.ATOM)
         val structs = isStruct(lt) && isStruct(rt) && (e.operator == BinaryOp.EQUALS || e.operator == BinaryOp.NOT_EQUAL)
-        if (!structs && ((lt != KType.Str && lt !is KType.Scalar && !isEnum(lt)) || (rt != KType.Str && rt !is KType.Scalar && !isEnum(rt)))) {
+        if (!structs && ((lt != KType.Str && lt !is KType.Scalar) || (rt != KType.Str && rt !is KType.Scalar))) {
             return refusePy(e, "a comparison of ${lt.display()} and ${rt.display()}")
         }
         if (structs && holdsHandle(lt)) {
@@ -1901,7 +1856,6 @@ class PyModuleEmitter(
             ConversionKind.CHAR_TO_INT -> if (tp!!.bits >= 32) v else call(AS_HELPERS.getValue(tp), v.text)
             ConversionKind.INT_TO_CHAR -> if (fp != null && fits(fp, Prim.UINT8)) v else call("_k_u8", v.text)
             ConversionKind.TO_STR -> text(e.value, from, v) ?: Py("None", PyPrec.ATOM)
-            ConversionKind.ENUM_TO_BASE -> v
             else -> refusePy(e, "the conversion ${from.display()} as ${to.display()}")
         }
     }
@@ -1924,7 +1878,6 @@ class PyModuleEmitter(
             prim == Prim.CHAR -> call("chr", v.text)
             prim == Prim.BOOL -> call("_k_btext", v.text)
             prim == Prim.FLOAT64 -> call("_k_ftext", v.text)
-            isEnum(t) -> ref((t as KType.Nominal).sym as EnumSymbol, e)?.let { Py("$it._k_names.get(${v.text}, \"\")", PyPrec.POSTFIX) }
             else -> {
                 refuse(e, "${article(t.display())} as text")
                 null
@@ -2105,7 +2058,6 @@ class PyModuleEmitter(
                 isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"
             }
-            is EnumSymbol -> if (s.module.isStdlib || s.foreign != null) "the enum ${s.name}" else null
             is TraitSymbol -> "the trait ${s.name}"
             else -> "the type ${t.display()}"
         }
@@ -2132,11 +2084,11 @@ class PyModuleEmitter(
 
     private fun keyRefusal(k: KType, t: KType): String? {
         val kp = k.prim
-        val keyed = k == KType.Str || isEnum(k) || (kp != null && (kp.isInteger || kp == Prim.BOOL || kp == Prim.CHAR))
+        val keyed = k == KType.Str || (kp != null && (kp.isInteger || kp == Prim.BOOL || kp == Prim.CHAR))
         return when {
             kp == Prim.FLOAT64 || kp == Prim.FLOAT32 -> "${article(t.display())} (a float key: a NaN key differs between kira::Map and a dict)"
             unsupportedType(k) != null -> unsupportedType(k)
-            !keyed -> "${article(t.display())} (a Map's key is a Str, an integer, a Bool, a Char or an enum)"
+            !keyed -> "${article(t.display())} (a Map's key is a Str, an integer, a Bool or a Char)"
             else -> null
         }
     }
@@ -2217,7 +2169,6 @@ class PyModuleEmitter(
         val pub = when (sym) {
             is FnSymbol -> sym.isPub
             is ClassSymbol -> sym.isPub
-            is EnumSymbol -> sym.isPub
             is GlobalSymbol -> sym.isPub
             is FieldSymbol -> sym.isPub
             else -> true
@@ -2238,7 +2189,7 @@ class PyModuleEmitter(
         return when {
             prim == Prim.BOOL -> "False"
             prim == Prim.FLOAT64 -> "0.0"
-            prim?.isInteger == true || prim == Prim.CHAR || isEnum(t) -> "0"
+            prim?.isInteger == true || prim == Prim.CHAR -> "0"
             t == KType.Str -> "\"\""
             isMaybe(t) -> "None"
             magicName(t) == "Result" -> "(False, ${zeroValue((t as KType.Nominal).typeArgs()[1], at)})"
@@ -2268,7 +2219,6 @@ class PyModuleEmitter(
         is ConstValue.BoolConst -> if (c.value) "True" else "False"
         is ConstValue.StrConst -> pyString(c.value)
         is ConstValue.CharConst -> c.value.toString()
-        is ConstValue.EnumConst -> enumValue(c.entry).toString()
         is ConstValue.NullConst -> "None"
         else -> null
     }

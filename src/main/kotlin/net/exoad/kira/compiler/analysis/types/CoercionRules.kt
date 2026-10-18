@@ -65,8 +65,6 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     fun isStruct(t: KType): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.kind == ClassKind.STRUCT
 
-    fun isEnum(t: KType): Boolean = (t as? KType.Nominal)?.sym is EnumSymbol
-
     /**
      * A value whose copies share one object: a class or trait reference, a `Ref<T>` (D46), a
      * `Weak<T>`, an `Unsafe<T>`, a stdlib module's class (kira:sync's Atomic, an `Rc` as the
@@ -108,7 +106,7 @@ internal class TypeFacts(private val builtins: Builtins) {
     /**
      * A literal type (C++ [basic.types]) on the gcc 11.4 floor, so a constant of it is
      * `inline constexpr` and a value of it can take part in a constant expression: the
-     * scalars, `Bool`, `Char`, an enum, `Arr<T, N>` (std::array), a tuple or a `Maybe` of
+     * scalars, `Bool`, `Char`, `Arr<T, N>` (std::array), a tuple or a `Maybe` of
      * literal types, `View`, `MutView`, `Unsafe`, and a struct whose fields are all literal.
      * Not `Str` (std::string), not `Arr<T>` or `List<T>` (std::vector: constexpr only from GCC
      * 12), not a Map, Set, Deque, StrBuf, class, trait or Fx: a global of one of those is
@@ -128,7 +126,6 @@ internal class TypeFacts(private val builtins: Builtins) {
     private fun isLiteral(t: KType, path: MutableSet<KType>): Boolean = when (t) {
         is KType.Scalar -> true
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> true
             is ClassSymbol -> when {
                 sym.kind == ClassKind.MAGIC -> when {
                     sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteral(it, path) }
@@ -161,9 +158,9 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     /**
      * A type that `"${e}"`, `e as Str` and the print family can format (D42): every scalar,
-     * `Char`, `Bool`, `Str` and an enum.
+     * `Char`, `Bool` and `Str`.
      */
-    fun isShowable(t: KType): Boolean = t is KType.Scalar || t == KType.Str || isEnum(t)
+    fun isShowable(t: KType): Boolean = t is KType.Scalar || t == KType.Str
 
     /**
      * Every direct parent of [t] with [t]'s type arguments substituted: a class's superclass and

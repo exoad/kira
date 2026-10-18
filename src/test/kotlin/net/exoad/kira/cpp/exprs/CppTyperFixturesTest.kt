@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 /**
  * W2.1's positive typer fixtures (`src/test/resources/typer/body/positive`) hold one of
  * nearly every body shape the typer accepts: calls with named arguments, defaults and `mut`,
- * the `@_infer` math family, conversions, `bitCast` and `enumOf`, lambdas of every capture
+ * the `@_infer` math family, conversions, `bitCast`, lambdas of every capture
  * kind but a class's, literals of every width, operators, statements, views and StrBuf.
  * Emitted together, every one must compile under the warning contract on gcc, clang, msvc and
  * zig-aarch64 (design 8.2), which proves the lowering of shapes no row of [CppExprRowsTest]

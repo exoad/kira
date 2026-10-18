@@ -68,12 +68,12 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
 }
 
 /**
- * Where a body is: the module, the function or method (null for a class's `initially` and
- * `finally`, a default, a global initializer or a static assert), the type whose members
+ * Where a body is: the module, the function or method (null for a class's `initially`, a
+ * default, a global initializer or a static assert), the type whose members
  * are reachable without a receiver ([owner]), and what a `return` must produce.
  *
  * @property thisMutable the implicit receiver may be written: a struct's `mut fx`, and any
- *   class method or class `initially`/`finally` (a class is a reference, D29).
+ *   class method or class `initially` (a class is a reference, D29).
  * @property what the body in words, for messages: "function 'read'".
  */
 internal class BodyContext(

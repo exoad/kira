@@ -123,11 +123,6 @@ namespace
       MOOD_BUSY = 5,
       MOOD_LOST = -2,
   };
-  // What the emitter writes beside an enum used with enumOf, and with text.
-  [[nodiscard]] constexpr std::array<Mood, 3> enum_values(Mood)
-  {
-      return {Mood::MOOD_CALM, Mood::MOOD_BUSY, Mood::MOOD_LOST};
-  }
   [[nodiscard]] constexpr const char* nameOf(Mood v)
   {
       switch(v)
@@ -283,8 +278,6 @@ namespace
                 "addFixed: a negative zero, the least subnormal, and 5e-10 just above its half");
   static_assert(fixedIs(4503599627370497.0, 0, "4503599627370497") && fixedIs(1.8e18, 1, "1800000000000000000.0"),
                 "addFixed: the integers a double holds, below the saturation");
-  static_assert(kira::enumOf<Mood>(5).value() == Mood::MOOD_BUSY && kira::enumOf<Mood>(-2).value() == Mood::MOOD_LOST);
-  static_assert(!kira::enumOf<Mood>(std::uint64_t{65535}).has_value() && !kira::enumOf<Mood>(1).has_value());
   static_assert(kira::unwrapOr(kira::Maybe<std::int64_t>(kira::none), 4) == 4);
   static_assert(kira::unwrap(kira::Maybe<std::int32_t>(9)) == 9);
   static_assert(kira::Tuple2<std::int32_t, bool>{.first = 1, .second = true} == kira::Tuple2<std::int32_t, bool>{1, true});
@@ -446,8 +439,6 @@ namespace
       check(someNone && !kira::isSome(nested) && !kira::isSome(outer) && nested == outer, "Maybe<Maybe<T>>: Some(None) is not None");
       nested = some;
       check(kira::unwrap(kira::unwrap(nested)) == 3 && nested != outer, "Maybe<Maybe<T>>: Some(Some)");
-      check(kira::unwrap(kira::enumOf<Mood>(opaque(std::int32_t{0}))) == Mood::MOOD_CALM, "enumOf finds an entry");
-      check(!kira::enumOf<Mood>(opaque(std::int64_t{70000})).has_value(), "enumOf: no entry is none");
       const kira::Tuple3<std::int32_t, float, bool> t{.first = 1, .second = 2.5f, .third = true};
       check(t.second == 2.5f && t == kira::Tuple3<std::int32_t, float, bool>{1, 2.5f, true}, "Tuple3");
   }

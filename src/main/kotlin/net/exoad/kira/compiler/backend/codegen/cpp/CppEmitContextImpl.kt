@@ -4,8 +4,6 @@ import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
-import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -61,8 +59,8 @@ interface CppStmtPart {
     fun emit(ctx: CppEmitContextImpl, s: Statement, w: CppWriter)
 
     /**
-     * The whole body of [fn] ([statements]; [fn] is null for a class's `initially` or
-     * `finally` block) into [w], already inside the function's braces.
+     * The whole body of [fn] ([statements]; [fn] is null for a class's `initially` block) into
+     * [w], already inside the function's braces.
      */
     fun body(ctx: CppEmitContextImpl, fn: FnSymbol?, statements: List<Statement>, w: CppWriter) {
         statements.forEach { emit(ctx, it, w) }
@@ -76,7 +74,7 @@ interface CppStmtPart {
 
         override fun body(ctx: CppEmitContextImpl, fn: FnSymbol?, statements: List<Statement>, w: CppWriter) {
             val at: ASTNode = fn?.decl ?: statements.firstOrNull() ?: return
-            val what = if (fn != null) "the body of '${fn.name}'" else "an initially/finally block"
+            val what = if (fn != null) "the body of '${fn.name}'" else "an initially block"
             ctx.unsupported(at, what)
             w.line("/* $what */")
         }
@@ -729,9 +727,6 @@ class CppEmitContextImpl(
         return symbol.members.containsKey(p.name)
     }
 
-    /** `E::ENTRY`, qualified as [qualified] qualifies the enum. */
-    fun entry(entry: EnumEntrySymbol): String = "${qualified(entry.owner)}::${names.escape(entry.name)}"
-
     /** `fx main` is the program's entry (D23): declared in the header whatever its modifiers say. */
     fun isMain(fn: FnSymbol): Boolean = fn.owner == null && fn.name == "main" && fn.foreign == null
 
@@ -744,7 +739,6 @@ class CppEmitContextImpl(
         is FnSymbol -> sym.foreign is Foreign.Magic
         is GlobalSymbol -> sym.foreign is Foreign.Magic
         is TraitSymbol -> sym.foreign is Foreign.Magic
-        is EnumSymbol -> sym.foreign is Foreign.Magic
         else -> false
     }
 

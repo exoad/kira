@@ -1,7 +1,6 @@
 package net.exoad.kira.cpp.decls
 
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.TypeArg

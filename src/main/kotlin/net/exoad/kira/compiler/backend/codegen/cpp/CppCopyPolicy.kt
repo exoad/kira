@@ -66,8 +66,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.Use
  *    place or lie in it) lends; a `for` range lends under W6 ([rangeLends]);
  * 6. anything else is copied ([copy]): `T(e)`, which is `kira::Rc<C>(h)->m(...)` for a class
  *    handle receiver (it holds the object for the call, W5) and `kira::Fn<...>(f)(...)` for an
- *    `Fx` value's callee. A copied handle receiver whose drop may run an IMPURE `finally` is
- *    spilled into an IIFE of its call alone ([dropsOnCopy], E-DROP).
+ *    `Fx` value's callee.
  *
  * A binding result is no prvalue here, so one that returns a reference the `LEND` pin does not
  * know (`List.first: kira::at({self}, 0)`) is copied, never lent: the pin is a spelling and
@@ -167,32 +166,6 @@ class CppCopyPolicy(private val lower: CppLowering) {
         consumer.mutOperands.forEach { m -> m.place?.root()?.takeUnless { it is Place.Field && it.receiver == null }?.let { out += it } }
         return out
     }
-
-    /**
-     * E-DROP (2.5): whether a class handle receiver among [ops] is copied and may be the last
-     * handle of an object whose `finally` is IMPURE. Its copy is a C++ temporary, released at
-     * the end of the full-expression, where Kira releases it as the call returns; spilled into
-     * its call's own IIFE, the `finally` runs before any sibling after the call.
-     */
-    fun dropsOnCopy(ops: List<Operand>, named: Set<Place>, consumer: Consumer?): Boolean = ops.any { op ->
-        val use = op.use
-        use != null && use.handle && model.dropsImpureFinally(use.type) && !lends(op, use, ops, named, consumer)
-    }
-
-    /**
-     * Whether a write of a new value over an old one of [t] (an assignment, `xs[i] = v`,
-     * `m[k] = v`, and the bindings `PLACE = {n}`: `List.set`, `Arr.set`, `MutView.set`) is spelled
-     * `kira::replace(place) = value`, which stores first and drops the old value after, Kira's
-     * order. C++'s `operator=` drops the old value while it writes the new one, so an IMPURE
-     * `finally` that drop runs (`Drops.mayDrop`) would free the place's storage or rewrite it
-     * half-written. That holds for a class or trait handle and a `Maybe` of one too, a
-     * `std::shared_ptr`: its order is the library's, and libstdc++'s copy-assignment releases the
-     * old count before it stores the new one, so the old object's `finally` meets the new pointer
-     * beside its own dying count (v23r6x/atk hx1, hx2: the object destroyed twice, a store into
-     * freed memory). Only a `Weak` is written in place: releasing a `std::weak_ptr` never
-     * destroys its object, so it runs no `finally`.
-     */
-    fun dropsOnWrite(t: KType?): Boolean = model.dropsImpureFinally(t) && CppBindingTable.magicName(t) != "Weak"
 
     // ---- the words of 2.0 ----------------------------------------------------------------------
 
@@ -380,9 +353,8 @@ class CppCopyPolicy(private val lower: CppLowering) {
      * prvalue the loop's reference keeps alive. A range that is no place lends only as a
      * prvalue. A place lends when no named write of the loop (range and [body], outside
      * lambdas) overlaps it or a prefix of it, its root is no temporary (which dies with the
-     * range-init), and either it is PRIVATE (written only by name) or EffectsPass ranks the body,
-     * the loop variable's drop included, at most READS (it writes only locals and runs no IMPURE
-     * `finally`).
+     * range-init), and either it is PRIVATE (written only by name) or EffectsPass ranks the body
+     * at most READS (it writes only locals).
      */
     fun rangeLends(target: Expr, body: List<Statement>, element: KType): Boolean {
         val p = model.readPlace(target) ?: return isPrvalue(target)
@@ -393,10 +365,10 @@ class CppCopyPolicy(private val lower: CppLowering) {
         if (lower.hoister.writtenPlaces(listOf<ASTNode>(target) + body).any { it.overlaps(p) }) {
             return false
         }
-        return isPrivate(p) || (!model.dropsImpureFinally(element) && atMostReads(body))
+        return isPrivate(p) || atMostReads(body)
     }
 
-    /** Whether EffectsPass ranks every expression of [body] at most READS, and no local it declares may drop an IMPURE `finally`. */
+    /** Whether EffectsPass ranks every expression of [body] at most READS. */
     private fun atMostReads(body: List<Statement>): Boolean {
         val stack = ArrayDeque<ASTNode>()
         body.forEach { stack.addLast(it) }
@@ -406,7 +378,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
                 is Type -> {}
                 is VariableDecl -> {
                     val local = model.declSymbol(n) as? LocalSymbol
-                    if (local == null || model.dropsImpureFinally(local.type)) {
+                    if (local == null) {
                         return false
                     }
                     n.value?.let { stack.addLast(it) }
@@ -416,12 +388,6 @@ class CppCopyPolicy(private val lower: CppLowering) {
                     return false
                 }
                 else -> {
-                    if (n is ForIterationStatement) {
-                        val v = model.loop(n)?.variable as? LocalSymbol
-                        if (v != null && model.dropsImpureFinally(v.type)) {
-                            return false
-                        }
-                    }
                     AstTree.children(n).forEach { stack.addLast(it) }
                 }
             }

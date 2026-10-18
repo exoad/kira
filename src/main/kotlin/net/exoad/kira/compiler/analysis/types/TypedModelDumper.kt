@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.EnumMemberExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -46,7 +45,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
@@ -105,7 +103,7 @@ object TypedModelDumper {
     }
 
     private fun isDumpable(node: Expr): Boolean = when (node) {
-        is Decl, is Type, is FunctionDefExpr, is FunctionDeclParameterExpr, is ModuleDecl, is EnumMemberExpr,
+        is Decl, is Type, is FunctionDefExpr, is FunctionDeclParameterExpr, is ModuleDecl,
         is FunctionCallPositionalParameterExpr, is FunctionCallNamedParameterExpr, is WithExprMember,
         is ForIterationExpr, is NoExpr -> false
         else -> true
@@ -134,7 +132,6 @@ object TypedModelDumper {
     fun memberText(ref: MemberRef): String = when (ref) {
         is MemberRef.Field -> "Field(${ref.field.qualifiedName}: ${ref.type.display()})"
         is MemberRef.Method -> "Method(${ref.fn.qualifiedName})"
-        is MemberRef.EnumEntry -> "Enum(${ref.entry.qualifiedName})"
         is MemberRef.ModuleMember -> "Module(${ref.module.uri}.${ref.symbol.name})"
     }
 
@@ -169,7 +166,6 @@ object TypedModelDumper {
                 is Decl -> names[node.name] = true
                 is FunctionDeclParameterExpr -> names[node.name] = true
                 is ForIterationExpr -> names[node.initializer] = true
-                is EnumMemberExpr -> names[node.name] = true
                 is FunctionCallNamedParameterExpr -> names[node.name] = true
                 is WithExprMember -> names[node.name] = true
                 is TryExpr -> node.exceptionName?.let { names[it] = true }
@@ -224,10 +220,6 @@ object TypedModelDumper {
             when (s) {
                 is ClassSymbol -> classLine(indent, s)
                 is TraitSymbol -> traitLine(indent, s)
-                is EnumSymbol -> {
-                    line(indent, "enum ${s.name}: ${s.base.display()}", common(s.isPub, s.markers, s.foreign))
-                    s.entries.forEach { e -> line(indent + 1, "entry ${e.name} = ${e.value ?: "?"}", listOf("#${e.index}")) }
-                }
                 is AliasSymbol -> line(indent, "alias ${s.name}${typeParams(s.typeParams)} = ${s.target.display()}", common(s.isPub, s.markers, null))
                 is GlobalSymbol -> {
                     val flags = common(s.isPub, s.markers, s.foreign)
@@ -248,7 +240,6 @@ object TypedModelDumper {
             val flags = common(c.isPub, c.markers, c.foreign)
             if (c.isSubclassed) flags.add("subclassed")
             if (c.initially != null) flags.add("initially")
-            if (c.finally != null) flags.add("finally")
             line(indent, head, flags)
             c.fields.forEach { f ->
                 val ff = mutableListOf<String>()
@@ -427,7 +418,6 @@ object KiraUnparser {
         is UseStatement -> "${s.uri.value} as ${s.alias?.value}"
         is IfSelectionStatement -> "if ${expr(s.expr, 0)} { ... }"
         is WhileIterationStatement -> "while ${expr(s.condition, 0)} { ... }"
-        is DoWhileIterationStatement -> "do { ... } while ${expr(s.condition, 0)}"
         is ForIterationStatement -> "for ${expr(s.forIterationExpr, 0)} { ... }"
         else -> expr(s.expr, 0)
     }

@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.EnumMemberExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationTargetExpr
@@ -84,7 +83,6 @@ class TyperBodyCorpusTest {
                     notValues[n.identifier] = true
                 }
                 is Type -> notValues[n.identifier] = true
-                is EnumMemberExpr -> notValues[n.name] = true
                 is net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement -> notValues[n.uri] = true
                 is FunctionCallExpr -> {
                     val name = n.name
@@ -119,7 +117,7 @@ class TyperBodyCorpusTest {
             if (n !is Expr || notValues.containsKey(n)) {
                 return@walk
             }
-            if (n is Decl || n is Type || n is FunctionDefExpr || n is FunctionDeclParameterExpr || n is EnumMemberExpr ||
+            if (n is Decl || n is Type || n is FunctionDefExpr || n is FunctionDeclParameterExpr ||
                 n is FunctionCallPositionalParameterExpr || n is FunctionCallNamedParameterExpr || n is ForIterationExpr || n === NoExpr
             ) {
                 return@walk

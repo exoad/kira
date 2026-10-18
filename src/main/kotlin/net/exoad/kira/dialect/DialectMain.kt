@@ -52,16 +52,16 @@ object DialectMain {
     }
 
     /** One .kira file: its old text, its module's old URI and the new one. */
-    class Unit(val file: File, val text: String, val old: SourceContext?, val oldUri: String?, val newUri: String, val group: String)
+    class Unit(val file: File, val text: String, val old: SourceContext?, val oldUri: String?, val newUri: String, val group: String, val oldError: String? = null)
 
     fun convertKira(paths: List<String>, check: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
         val units = files.map { f ->
             val text = f.readText()
-            val (ctx, _) = DialectConverter.parseOld(text, f.path)
+            val (ctx, err) = DialectConverter.parseOld(text, f.path)
             val oldUri = ctx?.ast?.statements?.firstNotNullOfOrNull { (it as? Statement)?.expr as? ModuleDecl }?.uri?.value
             val (uri, group) = newUriOf(f)
-            Unit(f, text, ctx, oldUri, uri, group)
+            Unit(f, text, ctx, oldUri, uri, group, err)
         }
         // A module's old URI names its new module within its own project (or the stdlib).
         val stdlib = units.filter { it.newUri.startsWith("${ModuleNames.STDLIB}:") && it.oldUri != null }.associate { it.oldUri!! to ModuleNames.dotted(it.newUri) }
@@ -73,6 +73,11 @@ object DialectMain {
         var proved = 0
         val converted = mutableListOf<Pair<Unit, SourceContext>>()
         for (u in units) {
+            if (u.old == null && DialectConverter.isRemovedForm(u.oldError)) {
+                bad++
+                println("PROBLEM ${u.file}: ${u.oldError}")
+                continue
+            }
             if (u.old == null) {
                 println("SKIP ${u.file}: the old parser refuses it (already converted?)")
                 continue

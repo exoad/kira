@@ -38,7 +38,7 @@ import java.nio.file.Files
  *     bodies are skipped; their types already live in the prelude
  *
  * Formatting follows Jack's C style guide: Allman braces, PascalCase types,
- * camelCase functions, SCREAMING_SNAKE enum members prefixed by type name.
+ * camelCase functions.
  */
 class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCodeGenerator(compilationUnit) {
     companion object {
@@ -136,8 +136,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
-    /** Enum type names in the current unit -- int-like, keep direct operators. */
-    private val enumTypeNames = mutableSetOf<String>()
     /**
      * Simple name -> Kira type arguments of a container-typed value
      * (`entries: Map<Str, Int32>` records `[Str, Int32]`).
@@ -689,16 +687,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
         // Layer 2 -- user program
         // 1) Forward-declare structs (concrete + specialized)
-        // 2) Emit full struct + enum bodies (complete types before prototypes)
+        // 2) Emit full struct bodies (complete types before prototypes)
         // 3) Trait interface + vtable structs
         // 4) Forward-declare free functions + methods (+ specialized generics)
         // 5) Trait trampolines + static vtables (needs registered methods)
-        // 6) Emit everything else -- classes/enums/specialized already emitted
+        // 6) Emit everything else -- classes/specialized already emitted
         emitStructForwardDecls()
         emitStructBodies()
         emitSpecializedClassBodies()
         emitTraitStructs()
-        emitEnumBodies()
         emitGlobalDeclarations()
         emitFunctionPrototypes()
         emitTraitTables()
@@ -995,10 +992,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 walkExprs(node.condition, visit)
                 node.statements.forEach { walkExprs(it, visit) }
             }
-            is DoWhileIterationStatement -> {
-                node.statements.forEach { walkExprs(it, visit) }
-                walkExprs(node.condition, visit)
-            }
             is ForIterationStatement -> {
                 walkExprs(node.forIterationExpr, visit)
                 node.body.forEach { walkExprs(it, visit) }
@@ -1244,35 +1237,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         typeSubst = prev
     }
 
-    private fun eachEnumDecl(action: (EnumDecl) -> Unit) {
-        compilationUnit.allSources().forEach { source ->
-            if (shouldSkipSource(source)) return@forEach
-            source.ast.statements.forEach { stmt ->
-                val expr: Any? = when (stmt) {
-                    is EnumDecl -> stmt
-                    is Statement -> stmt.expr
-                    else -> null
-                }
-                if (expr is EnumDecl && !isMagicDecl(expr)) {
-                    action(expr)
-                }
-            }
-        }
-    }
-
-    private fun emitEnumBodies() {
-        eachEnumDecl { visitEnumDecl(it) }
-    }
-
     private fun visitRootASTNodeSkippingTypes(node: RootASTNode) {
         node.statements.forEach { stmt ->
             val expr: Any? = when (stmt) {
-                is ClassDecl, is EnumDecl -> stmt
+                is ClassDecl -> stmt
                 is Statement -> stmt.expr
                 else -> stmt
             }
-            if (expr is ClassDecl || expr is EnumDecl) {
-                // Already emitted in emitStructBodies / emitEnumBodies
+            if (expr is ClassDecl) {
+                // Already emitted in emitStructBodies
                 return@forEach
             }
             stmt.accept(this)
@@ -2002,9 +1975,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
-            is EnumDecl -> decl.name.value
             is TraitDecl -> baseTypeNameOf(decl.name)
-            is VariantDecl -> baseTypeNameOf(decl.name)
             is TypeAliasDecl -> when (val id = decl.alias.identifier) {
                 is Identifier -> id.value
             else -> null
@@ -2076,25 +2047,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return if (kiraName in cReservedFunctionNames) "${kiraName}_user" else kiraName
     }
 
-    private fun toScreamingSnake(name: String): String {
-        if (name.isEmpty()) return name
-        val sb = StringBuilder()
-        name.forEachIndexed { index, c ->
-            if (c.isUpperCase() && index > 0) {
-                sb.append('_')
-            }
-            sb.append(c.uppercaseChar())
-        }
-        return sb.toString()
-    }
-
     fun clean() {
         buffer.clear()
         userSymbols.clear()
         requiredIncludes.clear()
         knownValueTypes.clear()
-        enumTypeNames.clear()
-        enumBaseTypes.clear()
         methodReturnTypes.clear()
         methodsBySimpleName.clear()
         fieldTypes.clear()
@@ -2158,11 +2115,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 knownValueTypes[expr.value] ?: fieldTypes[expr.value]
             }
             is MemberAccessExpr -> {
-                // `Mode.DRIVE` is a value of the enum type.
-                val origin = expr.origin
-                if (origin is Identifier && origin.value in enumTypeNames) {
-                    return origin.value
-                }
                 // nested.field -- look up field type if known
                 val memberName = (expr.member as? Identifier)?.value
                 memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName]
@@ -2192,7 +2144,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     /**
      * Types that keep direct C operators: scalars, bools, strings, and the
-     * Any/Num roots. Anything else statically known (user classes, enums,
+     * Any/Num roots. Anything else statically known (user classes,
      * opaque handles, containers) is a candidate for an `@op_*` overload.
      */
     private val primitiveTypeNames = setOf(
@@ -2203,9 +2155,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
         val t = receiverTypeOf(expr) ?: return false
-        // Enum types are int-like value types: direct C operators (==, <, ...)
-        // work and no @op_* definition is ever emitted for them.
-        return t !in primitiveTypeNames && t !in enumTypeNames
+        return t !in primitiveTypeNames
     }
 
     /**
@@ -2256,8 +2206,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         when (val expr = statement.expr) {
             is NoExpr -> return
             // Decls and try manage their own terminators / newlines.
-            is ClassDecl, is FunctionDecl, is ModuleDecl, is EnumDecl,
-            is TraitDecl, is VariantDecl, is TypeAliasDecl, is VariableDecl,
+            is ClassDecl, is FunctionDecl, is ModuleDecl,
+            is TraitDecl, is TypeAliasDecl, is VariableDecl,
             is TryExpr -> {
                 expr.accept(this)
                 if (buffer.isNotEmpty() && buffer.last() != '\n') {
@@ -2329,19 +2279,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         popArcScope(terminated = endsWithReturn(whileIterationStatement.statements))
         indentLevel--
         appendIndentedLine("}")
-    }
-
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        appendIndentedLine("do")
-        appendIndentedLine("{")
-        indentLevel++
-        pushArcScope()
-        doWhileIterationStatement.statements.forEach { it.accept(this) }
-        popArcScope(terminated = endsWithReturn(doWhileIterationStatement.statements))
-        indentLevel--
-        appendIndented("} while(")
-        doWhileIterationStatement.condition.accept(this)
-        buffer.appendLine(");")
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
@@ -2612,11 +2549,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 }
             }
             is MemberAccessExpr -> {
-                val origin = expr.origin
-                if (origin is Identifier && origin.value in enumTypeNames) {
-                    // `Mode.DRIVE` prints as the enum's base type.
-                    return formatForTypeName(origin.value)
-                }
                 val memberName = (expr.member as? Identifier)?.value
                 formatForTypeName(memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName])
             }
@@ -2631,11 +2563,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun formatForTypeName(typeName: String?): String {
-        // An enum prints as its base type: %d for the usual Int32 enum,
-        // %s for `enum Priority: Str`.
-        enumBaseTypes[typeName]?.let { base ->
-            if (base != typeName) return formatForTypeName(base)
-        }
         return when (typeName) {
             null -> "%d"
             "Str", "String" -> "%s"
@@ -2934,20 +2861,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
-        // Enum member access Color.RED -> COLOR_RED (if left is type-ish identifier)
         val origin = memberAccessExpr.origin
         val member = memberAccessExpr.member
-        if (origin is Identifier && member is Identifier) {
-            // Heuristic: PascalCase origin + SCREAMING member => enum constant
-            if (origin.value.firstOrNull()?.isUpperCase() == true &&
-                member.value.all { it.isUpperCase() || it == '_' || it.isDigit() }
-            ) {
-                buffer.append(toScreamingSnake(origin.value))
-                buffer.append("_")
-                buffer.append(cName(member.value))
-                return
-            }
-        }
         origin.accept(this)
         // ARC user classes are heap pointers: member access uses "->".
         // Magic collections / value types stay on ".".
@@ -3035,11 +2950,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitTryExpr(tryExpr: TryExpr) {
         appendIndentedLine("/* try/on: baseline backend lowers try-block only */")
         tryExpr.tryBlock.forEach { it.accept(this) }
-    }
-
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        // Member name alone; prefix applied by visitEnumDecl
-        enumMemberExpr.name.accept(this)
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
@@ -3380,8 +3290,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
-        if (classDecl.initially != null || classDecl.finally != null) {
-            throw UnsupportedConstruct(classDecl, "a class with an 'initially' or 'finally' block", TARGET_NAME)
+        if (classDecl.initially != null) {
+            throw UnsupportedConstruct(classDecl, "a class with an 'initially' block", TARGET_NAME)
         }
         if (isMagicDecl(classDecl)) {
             return
@@ -3551,89 +3461,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         appendIndentedLine("/* module ${moduleDecl.uri.value} */")
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        if (isMagicDecl(enumDecl)) {
-            return
-        }
-        val typeName = enumDecl.name.value
-        val prefix = toScreamingSnake(typeName)
-        val baseType = enumDecl.baseTypeName()
-        userSymbols.add(typeName)
-        enumTypeNames.add(typeName)
-        enumBaseTypes[typeName] = baseType
-        val values = enumDecl.memberValues()
-
-        if (baseType !in enumIntegerBases) {
-            // A C enum holds ints only. A Str / Float enum is an alias of its
-            // base type with one file-scope constant per member.
-            val cBase = mapTypeName(baseType)
-            appendIndented("typedef ")
-            buffer.append(cBase)
-            buffer.append(" ")
-            buffer.append(typeName)
-            buffer.appendLine(";")
-            enumDecl.members.forEach { member ->
-                val memberName = cName(member.name.value)
-                userSymbols.add("${prefix}_$memberName")
-                appendIndented("static const ")
-                buffer.append(cBase)
-                buffer.append(" ")
-                buffer.append(prefix)
-                buffer.append("_")
-                buffer.append(memberName)
-                buffer.append(" = ")
-                member.value!!.accept(this)
-                buffer.appendLine(";")
-            }
-            buffer.appendLine()
-            return
-        }
-
-        appendIndented("typedef enum ")
-        buffer.append(typeName)
-        buffer.appendLine()
-        appendIndentedLine("{")
-        indentLevel++
-        enumDecl.members.forEachIndexed { index, member ->
-            val memberName = cName(member.name.value)
-            userSymbols.add("${prefix}_$memberName")
-            appendIndented("")
-            buffer.append(prefix)
-            buffer.append("_")
-            buffer.append(memberName)
-            // Explicit values are written out; C numbers the rest from the
-            // previous enumerator exactly as EnumDecl.memberValues does.
-            if (member.value != null) {
-                buffer.append(" = ")
-                buffer.append(values[index])
-            }
-            if (index < enumDecl.members.size - 1) {
-                buffer.append(",")
-            }
-            buffer.appendLine()
-        }
-        indentLevel--
-        appendIndented("} ")
-        buffer.append(typeName)
-        buffer.appendLine(";")
-        buffer.appendLine()
-    }
-
-    private val enumIntegerBases = setOf("Int8", "Int16", "Int32", "Int64", "Int")
-
-    /** Enum type name -> its base type (`Int32` when undeclared). */
-    private val enumBaseTypes = mutableMapOf<String, String>()
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Traits are lowered structurally in emitTraitStructs / emitTraitTables.
         // Nothing to emit at the statement site.
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        if (isMagicDecl(variantDecl)) {
-            return
-        }
-        appendIndentedLine("/* variant ${typeNameOf(variantDecl.name)}: no C lowering in baseline backend */")
     }
 
     override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {

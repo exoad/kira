@@ -132,17 +132,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        node("DoWhileIterationStatement") {
-            node("Condition") {
-                doWhileIterationStatement.condition.accept(this)
-            }
-            node("Body") {
-                doWhileIterationStatement.statements.forEach { it.accept(this) }
-            }
-        }
-    }
-
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
         node("ReturnStatement") {
             returnStatement.expr.accept(this)
@@ -337,18 +326,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        node(
-            "EnumDecl", """modifiers="${
-                enumDecl.modifiers.joinToString(",") { it.name }
-            }""""
-        ) {
-            enumDecl.name.accept(this)
-            enumDecl.baseType?.let { base -> node("BaseType") { base.accept(this) } }
-            enumDecl.members.forEach { it.accept(this) }
-        }
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"") {
             traitDecl.name.accept(this)
@@ -359,18 +336,6 @@ object XMLASTVisitorKira :
             }
             node("Members") {
                 traitDecl.members.forEach { it.accept(this) }
-            }
-        }
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        node("VariantDecl", "modifiers=\"${variantDecl.modifiers.joinToString(",") { it.name }}\"") {
-            variantDecl.name.accept(this)
-            node("Variants") {
-                variantDecl.variants.forEach { it.accept(this) }
-            }
-            node("Members") {
-                variantDecl.members.forEach { it.accept(this) }
             }
         }
     }
@@ -510,14 +475,6 @@ object XMLASTVisitorKira :
                 tryExpr.exceptionType?.accept(this)
                 tryExpr.handlerBlock.forEach { it.accept(this) }
             }
-        }
-    }
-
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        node("EnumMember")
-        {
-            enumMemberExpr.name.accept(this)
-            enumMemberExpr.value?.accept(this)
         }
     }
 

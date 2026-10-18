@@ -329,6 +329,24 @@ class DialectFixTest {
         TyperTestSupport.unitOf(module("test:main", "net.exoad.bibo.dash.webdrive_fake as webdriveFake"))
     }
 
+    // ---- 12. the removed forms: refused, never lowered ----------------------------------------------
+
+    @Test
+    fun theConverterNamesAFileHoldingARemovedForm() {
+        val root = fresh("dialect-removed")
+        val stdlib = File("kira").absolutePath.replace('\\', '/')
+        project(
+            root, "p", stdlib, "",
+            "src/a.kira" to "module \"p:a\"\n\nenum Kind { A, B }\n",
+            "src/b.kira" to "module \"p:b\"\n\npub class C {\n    pub x: Int32 = 1\n    finally {\n        trace(1)\n    }\n}\n",
+        )
+        val (code, out) = captured { DialectMain.convertKira(listOf(root.path), check = true) }
+        assertEquals(1, code, out)
+        assertTrue(out.contains("cannot convert an enum, which the clean dialect removes at 3:1"), out)
+        assertTrue(out.contains("cannot convert a 'finally' block, which the clean dialect removes at 5:5"), out)
+        assertTrue(out.contains("2 not converted"), out)
+    }
+
     // ---- helpers ------------------------------------------------------------------------------------
 
     private fun fresh(name: String): File = File("build/tmp/$name").absoluteFile.also { it.deleteRecursively(); it.mkdirs() }

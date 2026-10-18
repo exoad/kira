@@ -66,10 +66,9 @@ import java.util.WeakHashMap
  *   trait-dispatched method or an `Fx` value, calls a function that does any of these, calls
  *   a magic binding without `pure: true` (or a pure one that runs a user type's operators or
  *   is given an `Fx`), constructs an object whose `initially` or field defaults are not pure
- *   or that runs an `Fx` field as it is made (a `Thread` starts its `body`),
+ *   or that runs an `Fx` field as it is made (a `Thread` starts its `body`), or
  *   may throw (a `throw` is caught by a `try` around the call, so which operand ran first
- *   decides what a sibling's print or write left behind), or may drop the last handle of an
- *   object whose `finally` is IMPURE ([Drops]);
+ *   decides what a sibling's print or write left behind);
  * - READS when it has no effect but reads shared state ([Rules.isSharedPlace]): a `mut`
  *   global, a `mut` parameter, a parameter C++ passes by `const&` (a struct, a `Str`, a
  *   container: design 5.1, so the callee reads the caller's storage, which a sibling's
@@ -90,9 +89,8 @@ import java.util.WeakHashMap
  * say.
  *
  * A function's effect is the join of its body's (its lambdas aside, which run only when
- * called) and of every handle it may drop. The computation starts from "every function is
- * PURE and no `finally` is IMPURE" and raises both until nothing changes, so mutually
- * recursive functions that do nothing impure stay pure. "Pure" never licenses dropping a
+ * called). The computation starts from "every function is PURE" and raises it until nothing
+ * changes, so mutually recursive functions that do nothing impure stay pure. "Pure" never licenses dropping a
  * call: the emitter spills or emits it in place, and only that.
  */
 internal class EffectsPass : RulePass {
@@ -102,21 +100,12 @@ internal class EffectsPass : RulePass {
         val r = Rules(program)
         val bodies = Bodies.of(program)
         val fnBodies = bodies.filter { it.fn != null }
-        val finallies = bodies.filter { it.kind == BodyKind.FINALLY }
         val fns = IdentityHashMap<FnSymbol, Effect>()
         fnBodies.forEach { fns[it.fn!!] = Effect.PURE }
-        val drops = Drops(r, assumeEveryFinally = false)
-        val effects = Effects(r, fns, drops)
+        val effects = Effects(r, fns)
         var changed = true
         while (changed) {
             changed = false
-            for (b in finallies) {
-                val cls = b.owner as? ClassSymbol ?: continue
-                if (cls !in drops.impure && effects.body(b) == Effect.IMPURE) {
-                    drops.add(cls)
-                    changed = true
-                }
-            }
             for (b in fnBodies) {
                 val fn = b.fn!!
                 val was = fns[fn]!!
@@ -151,8 +140,7 @@ internal class EffectsPass : RulePass {
                 }
             }
         }
-        synchronized(finals) { finals[program] = drops.impure }
-        Confinement(r, effects, drops).solve(bodies)
+        Confinement(r, effects).solve(bodies)
         val exprs = ExprEffects(effects)
         for (b in bodies) {
             b.roots.forEach { root -> AstTree.walk(root) { n -> if (n is Expr && n !is Type) exprs.of(n) } }
@@ -160,19 +148,11 @@ internal class EffectsPass : RulePass {
     }
 
     companion object {
-        /** Per program, the classes whose `finally` this pass found IMPURE. */
-        private val finals = WeakHashMap<TypedProgram, Set<ClassSymbol>>()
-
         /**
          * The effect of single nodes of [r]'s program after this pass ran (ViewPass: decision 4b's
-         * "any impure call"). Run without it, every function is IMPURE and so is every `finally`.
+         * "any impure call"). Run without it, every function is IMPURE.
          */
-        fun of(r: Rules): Effects {
-            val impure = synchronized(finals) { finals[r.program] }
-            val drops = Drops(r, assumeEveryFinally = impure == null)
-            impure?.forEach { drops.add(it) }
-            return Effects(r, r.model.fnEffects, drops)
-        }
+        fun of(r: Rules): Effects = Effects(r, r.model.fnEffects)
     }
 
     /** Per-expression effect, bottom-up: the join of the node's own effect and every child expression's. */
@@ -204,7 +184,7 @@ internal class EffectsPass : RulePass {
 
         /** A non-expression child (a statement of an if-expression): the join of everything under it, a local it declares included. */
         private fun childrenEffect(n: ASTNode): Effect {
-            var out = effects.declared(n)
+            var out = Effect.PURE
             for (k in AstTree.children(n)) {
                 if (out == Effect.IMPURE) {
                     break
@@ -217,65 +197,24 @@ internal class EffectsPass : RulePass {
 }
 
 /**
- * The effect of a body or of one node, under the functions' effects [fns] so far and the
- * classes [drops] knows to have an IMPURE `finally`.
+ * The effect of a body or of one node, under the functions' effects [fns] so far.
  */
-internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, private val drops: Drops) {
+internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>) {
     private val model = r.model
 
     /** Constructions whose defaults are being walked: a class whose default builds itself adds nothing new. */
     private val constructing: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())
 
-    /** The join of every node of [b] (outside its lambdas, which run only when called), with the parameters and locals it drops. */
+    /** The join of every node of [b] (outside its lambdas, which run only when called). */
     fun body(b: Body): Effect {
-        // A by-value parameter is destroyed in the callee (MSVC) and may be the last handle a temporary argument had.
-        if (b.fn?.params?.any { !it.byRef && drops.mayDrop(it.type) } == true) {
-            return Effect.IMPURE
-        }
         var e = Effect.PURE
         AstScan.walk(b.roots) { n, lambdas ->
             if (e == Effect.IMPURE || lambdas.isNotEmpty()) {
                 return@walk
             }
-            e = maxOf(e, node(n), declared(n))
+            e = maxOf(e, node(n))
         }
         return e
-    }
-
-    /** Whether some class of the program has an IMPURE `finally` (without one, nothing [dropsHere]). */
-    val anyImpureFinally: Boolean get() = drops.impure.isNotEmpty()
-
-    /** A value of [t] may be the last handle of an object whose `finally` is IMPURE. */
-    fun mayDrop(t: KType?): Boolean = drops.mayDrop(t)
-
-    /**
-     * [n] itself (its children and callees aside) may drop the last handle of an object whose
-     * `finally` is IMPURE: a local it declares, the value an assignment replaces, a temporary
-     * call result, construction or array literal, what a closure captures. A `finally` may write
-     * anything its object reaches, so ExclusivityPass counts it as a write of every shared place.
-     */
-    fun dropsHere(n: ASTNode): Boolean {
-        if (declared(n) == Effect.IMPURE) {
-            return true
-        }
-        return when (n) {
-            is AssignmentExpr -> drops.mayDrop(model.types[n.target] ?: (model.places[n.target] as? Place.Local)?.sym?.type)
-            is CompoundAssignmentExpr -> drops.mayDrop(model.types[n.left])
-            is PlaceAssignmentExpr -> drops.mayDrop(model.types[n.target])
-            is FunctionCallExpr -> drops.mayDrop(model.types[n] ?: model.calls[n]?.returnType)
-            is ObjectInitExpr -> drops.mayDrop(model.inits[n]?.type)
-            is ArrayLiteral -> drops.mayDrop(model.types[n])
-            is LambdaExpr -> closure(n) == Effect.IMPURE
-            else -> false
-        }
-    }
-
-    /** A local declared at [n] (a `val`, a loop variable) is dropped at the end of its scope: IMPURE when that may run an IMPURE `finally`. */
-    fun declared(n: ASTNode): Effect {
-        val t = (model.declSyms[n] as? LocalSymbol)?.type
-            ?: ((n as? ForIterationStatement)?.let { model.loops[it]?.variable } as? LocalSymbol)?.type
-            ?: return Effect.PURE
-        return if (drops.mayDrop(t)) Effect.IMPURE else Effect.PURE
     }
 
     /** The effect of [n] itself (its children aside). */
@@ -290,17 +229,14 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
             is FunctionCallExpr -> call(model.calls[n], model.types[n])
             is IntrinsicExpr -> if (n.intrinsicKey.name != "_static_assert") Effect.IMPURE else Effect.PURE
             is ThrowExpr -> Effect.IMPURE
-            is AssignmentExpr -> write(model.places[n.target], model.types[n.target])
-            is CompoundAssignmentExpr -> write(model.places[n.left], model.types[n.left])
-            is PlaceAssignmentExpr -> write(model.places[n.target], model.types[n.target])
+            is AssignmentExpr -> write(model.places[n.target])
+            is CompoundAssignmentExpr -> write(model.places[n.left])
+            is PlaceAssignmentExpr -> write(model.places[n.target])
             is ObjectInitExpr -> {
                 val ri = model.inits[n] ?: return Effect.IMPURE
                 val given = ri.fields.filterIsInstance<FieldInit.Given>().mapTo(HashSet()) { it.field }
                 construction(ri.cls, given, ri.type, ri.fields.map { it.field })
             }
-            // A temporary array of handles is dropped at the end of its full-expression.
-            is ArrayLiteral -> if (drops.mayDrop(model.types[n])) Effect.IMPURE else Effect.PURE
-            is LambdaExpr -> closure(n)
             else -> Effect.PURE
         }
         return maxOf(out, own)
@@ -330,8 +266,7 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
      * A call's effect: its callee's, joined with READS when its receiver is a view or a
      * reference (the callee reads the storage those borrow or share, which a sibling could
      * change; a struct or container receiver is read as the place the receiver expression
-     * is), and with every defaulted parameter's default. A [result] that may hold the last
-     * handle of an object with an IMPURE `finally` is a temporary the caller drops: IMPURE.
+     * is), and with every defaulted parameter's default.
      */
     private fun call(rc: ResolvedCall?, result: KType?): Effect {
         if (rc == null) {
@@ -355,9 +290,6 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         }
         if (rc.kind == CallKind.CTOR) {
             e = maxOf(e, construction((rc.returnType as? KType.Nominal)?.sym as? ClassSymbol, emptySet(), rc.returnType))
-        }
-        if (drops.mayDrop(result ?: rc.returnType)) {
-            return Effect.IMPURE
         }
         val receiverType = rc.receiver?.let { model.types[it] }
         if (receiverType != null && (r.isView(receiverType) || r.isReference(receiverType))) {
@@ -397,13 +329,11 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
     /**
      * A construction: IMPURE when its class or a superclass has an `initially`, when it runs an
      * `Fx` field as it makes the object (`CallReach.runsAtConstruction`: `Thread { name, body }`
-     * starts `body`, as an `Fx` value call would), or when the object may be the last handle of
-     * one with an IMPURE `finally` (a temporary is dropped at the end of its full-expression, a
-     * by-value argument in the callee); else the join of the defaults of the fields it leaves
-     * out ([given] are written at the construction).
+     * starts `body`, as an `Fx` value call would); else the join of the defaults of the fields
+     * it leaves out ([given] are written at the construction).
      */
     private fun construction(cls: ClassSymbol?, given: Set<FieldSymbol>, type: KType?, listed: List<FieldSymbol> = emptyList()): Effect {
-        if (drops.mayDrop(type) || CallReach.runsAtConstruction(cls).isNotEmpty()) {
+        if (CallReach.runsAtConstruction(cls).isNotEmpty()) {
             return Effect.IMPURE
         }
         if (cls != null && !constructing.add(cls)) {
@@ -435,18 +365,6 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         }
     }
 
-    /** A closure copies what it captures; dropping the copy may be the last handle. */
-    private fun closure(l: LambdaExpr): Effect {
-        val held = model.captures[l].orEmpty().any { cap ->
-            when (cap) {
-                is Capture.Value -> drops.mayDrop(typeOf(cap.symbol))
-                is Capture.Field -> drops.mayDrop(selfOf(cap.field.owner)) || drops.mayDrop(cap.field.type)
-                is Capture.This -> drops.mayDrop(selfOf(cap.owner))
-            }
-        }
-        return if (held) Effect.IMPURE else Effect.PURE
-    }
-
     private fun typeOf(s: net.exoad.kira.compiler.analysis.types.Symbol): KType? = when (s) {
         is LocalSymbol -> s.type
         is ParamSymbol -> s.type
@@ -460,21 +378,15 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
         else -> null
     }
 
-    /** A write: PURE only to the writer's own storage, and only when the value it replaces cannot be the last handle of an object with an IMPURE `finally`. */
-    private fun write(p: Place?, type: KType?): Effect {
-        val t = type ?: when (p) {
-            is Place.Local -> p.sym.type
-            else -> null
-        }
-        return if (localWrite(p) && !drops.mayDrop(t)) Effect.PURE else Effect.IMPURE
-    }
+    /** A write: PURE only to the writer's own storage. */
+    private fun write(p: Place?): Effect = if (localWrite(p)) Effect.PURE else Effect.IMPURE
 
     /** The join of every node of [e] (lambda bodies aside). */
     private fun tree(e: Expr): Effect {
         var out = Effect.PURE
         AstScan.walk(listOf(e)) { n, lambdas ->
             if (out != Effect.IMPURE && lambdas.isEmpty()) {
-                out = maxOf(out, node(n), declared(n))
+                out = maxOf(out, node(n))
             }
         }
         return out
@@ -500,123 +412,11 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>, pri
 }
 
 /**
- * The classes whose `finally` is IMPURE ([impure], raised by EffectsPass's fixpoint), and which
- * values may hold the last handle of such an object, so that dropping them may run it
- * ([mayDrop]). A class's object runs its own `finally` and its superclasses', and drops its
- * fields; a class-typed value may be any subclass; a trait-typed value, a type parameter, an
- * `Fx` (a closure holds what it captured) and a stdlib handle may be any class at all. When
- * [assumeEveryFinally], every class with a `finally` counts (the answer without EffectsPass).
- */
-internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
-    val impure: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())
-    private val subclasses = IdentityHashMap<ClassSymbol, MutableList<ClassSymbol>>()
-    private val memo = HashMap<KType, Boolean>()
-
-    init {
-        for (m in r.program.modules) {
-            for (s in m.declarations) {
-                val cls = s as? ClassSymbol ?: continue
-                (cls.superclass?.sym as? ClassSymbol)?.let { subclasses.getOrPut(it) { ArrayList() }.add(cls) }
-                if (assumeEveryFinally && cls.finally != null) {
-                    impure.add(cls)
-                }
-            }
-        }
-    }
-
-    fun add(cls: ClassSymbol) {
-        if (impure.add(cls)) {
-            memo.clear()
-        }
-    }
-
-    /** Dropping a value of [t] may run an IMPURE `finally`; an unknown type may. */
-    fun mayDrop(t: KType?): Boolean {
-        if (impure.isEmpty()) {
-            return false
-        }
-        if (t == null) {
-            return true
-        }
-        return memo.getOrPut(t) { holds(t, HashSet()) }
-    }
-
-    /**
-     * [path]: the objects being expanded on the way down, each under its substitution, so a
-     * class that holds itself adds nothing; a sibling field or type argument is expanded afresh
-     * (round 2's minor: one shared `seen` set judged `PairAB { a: Box<Int32>, b: Box<Dropper> }`
-     * unable to hold a Dropper because Box had been seen under `T = Int32`).
-     */
-    private fun holds(t: KType, path: MutableSet<Pair<ClassSymbol, Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?>>): Boolean = when (t) {
-        is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
-        is KType.Param, is KType.Fn, KType.Error -> true
-        is KType.Nominal -> when (val sym = t.sym) {
-            is TraitSymbol -> true
-            is ClassSymbol -> when (sym.kind) {
-                // A container, Maybe, tuple, Ref or Weak holds its type arguments; a handle without any (a Thread) may hold a closure.
-                ClassKind.MAGIC -> t.typeArgs().any { holds(it, path) } || (t.typeArgs().isEmpty() && r.isReference(t))
-                // C++ owns an opaque object: its destructor is not a Kira finally (the FFI contract).
-                ClassKind.OPAQUE -> false
-                else -> {
-                    val sub = sym.typeParams.zip(t.typeArgs()).toMap()
-                    family(sym).any { c -> objectHolds(c, if (c === sym) sub else null, path) }
-                }
-            }
-            else -> false
-        }
-    }
-
-    /** An object of exactly [c] (its superclasses' parts included) runs an IMPURE `finally` or holds a value that may. */
-    private fun objectHolds(
-        c: ClassSymbol,
-        sub: Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?,
-        path: MutableSet<Pair<ClassSymbol, Map<net.exoad.kira.compiler.analysis.types.TypeParamSymbol, KType>?>>,
-    ): Boolean {
-        val key = c to sub
-        if (!path.add(key)) {
-            return false
-        }
-        try {
-            var k: ClassSymbol? = c
-            val chain = HashSet<ClassSymbol>()
-            while (k != null && chain.add(k)) {
-                if (k in impure) {
-                    return true
-                }
-                // A field of a subclass or a superclass is judged over its own type parameters: a type parameter may be anything.
-                if (k.fields.any { f -> holds(if (k === c && sub != null) f.type.substitute(sub) else f.type, path) }) {
-                    return true
-                }
-                k = k.superclass?.sym as? ClassSymbol
-            }
-            return false
-        } finally {
-            path.remove(key)
-        }
-    }
-
-    /** [c] and every class below it. */
-    private fun family(c: ClassSymbol): List<ClassSymbol> {
-        val out = ArrayList<ClassSymbol>()
-        val stack = ArrayDeque<ClassSymbol>().apply { add(c) }
-        val seen = java.util.Collections.newSetFromMap(IdentityHashMap<ClassSymbol, Boolean>())
-        while (stack.isNotEmpty()) {
-            val k = stack.removeLast()
-            if (seen.add(k)) {
-                out.add(k)
-                subclasses[k]?.let { stack.addAll(it) }
-            }
-        }
-        return out
-    }
-}
-
-/**
  * CONFINED (50-round4 2.3), EffectsPass's second fixpoint: which bodies, run, write nothing
  * their caller can see but through their own `mut` operands, and run no code the checker does
  * not see. It fills `TypedModel.fnConfined` (every function with a body), `lambdaConfined`
- * (every lambda literal's body) and `defaultConfined` (every field default), and sets
- * `dropsImpureFinally`; `CallReach.confined` reads them, and nothing else answers the question.
+ * (every lambda literal's body) and `defaultConfined` (every field default);
+ * `CallReach.confined` reads them, and nothing else answers the question.
  *
  * A body is CONFINED when every node outside its lambdas (which run only where they are handed
  * over, and are charged there) is one of: a read (PURE or READS), a throw, a write whose place
@@ -626,13 +426,12 @@ internal class Drops(private val r: Rules, assumeEveryFinally: Boolean) {
  * call of one of its own `Fx` parameters (the call site that handed the `Fx` in charged it)
  * whose arguments row 1 passes (a `T` argument never does: it may be an `Fx` no call site saw),
  * or a CONFINED construction ([CallReach.construction], which charges an `Fx` field the
- * construction runs, a `Thread`'s `body`, as the call site of a lambda it runs would); and nothing
- * in it, a by-value parameter included, may drop the
- * last handle of an object whose `finally` is IMPURE. The computation starts from "every body
+ * construction runs, a `Thread`'s `body`, as the call site of a lambda it runs would). The
+ * computation starts from "every body
  * is CONFINED" and lowers until nothing changes, so mutually recursive functions that write
  * only their own storage stay CONFINED.
  */
-internal class Confinement(private val r: Rules, private val effects: Effects, private val drops: Drops) {
+internal class Confinement(private val r: Rules, private val effects: Effects) {
     private val model = r.model
     private val fns = IdentityHashMap<FnSymbol, Boolean>()
     private val lambdas = IdentityHashMap<LambdaExpr, Boolean>()
@@ -645,7 +444,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects, p
      * the type of an implicit `this` ([selfType]).
      */
     private inner class Frame(val body: Body, val params: Set<ParamSymbol>, val locals: Set<LocalSymbol>?, val valueThis: Boolean, val selfType: KType?) {
-        val known = CallReach.Known({ fns[it] == true }, { lambdas[it] == true }, { defaults[it] == true }, { drops.mayDrop(it) }, params.filterTo(HashSet()) { it.type is KType.Fn && !it.byRef })
+        val known = CallReach.Known({ fns[it] == true }, { lambdas[it] == true }, { defaults[it] == true }, params.filterTo(HashSet()) { it.type is KType.Fn && !it.byRef })
     }
 
     fun solve(bodies: List<Body>) {
@@ -678,7 +477,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects, p
             changed = false
             for ((b, f) in fnFrames) {
                 val fn = b.fn!!
-                if (fns[fn] == true && (fn.params.any { !it.byRef && drops.mayDrop(it.type) } || !runs(b.roots, f))) {
+                if (fns[fn] == true && !runs(b.roots, f)) {
                     fns[fn] = false
                     changed = true
                 }
@@ -699,7 +498,6 @@ internal class Confinement(private val r: Rules, private val effects: Effects, p
         model.fnConfined.putAll(fns)
         model.lambdaConfined.putAll(lambdas)
         model.defaultConfined.putAll(defaults)
-        model.dropsImpureFinally = { drops.mayDrop(it) }
     }
 
     private fun functionFrame(b: Body): Frame {
@@ -730,9 +528,6 @@ internal class Confinement(private val r: Rules, private val effects: Effects, p
     }
 
     private fun node(n: ASTNode, f: Frame): Boolean {
-        if (effects.dropsHere(n)) {
-            return false
-        }
         val e = n as? Expr ?: return true
         model.opCalls[e]?.let { rc -> if (!call(rc, null, f)) return false }
         return when (e) {

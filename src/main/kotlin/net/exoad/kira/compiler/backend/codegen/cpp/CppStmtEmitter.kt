@@ -4,7 +4,6 @@ import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.display
@@ -33,7 +32,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.DoWhileIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
@@ -48,7 +46,7 @@ import java.util.IdentityHashMap
 /**
  * Statements and function bodies (design 5.4).
  *
- * - A scalar or enum local is brace-initialized (`const std::int32_t x{e};`), so a narrowing
+ * - A scalar local is brace-initialized (`const std::int32_t x{e};`), so a narrowing
  *   mistake is a hard error on every compiler [A-M5]; anything else is copy-initialized
  *   (`const Reply r = e;`), which avoids the `initializer_list` trap. A local without `mut` is
  *   `const`.
@@ -109,7 +107,6 @@ class CppStmtEmitter : CppStmtPart {
             is ReturnStatement -> returnStatement(ctx, s)
             is IfSelectionStatement -> ifStatement(ctx, s)
             is WhileIterationStatement -> listOf(CppWriter.whileHead(cond(ctx, s.condition))) + block(ctx, s.statements)
-            is DoWhileIterationStatement -> listOf("do") + block(ctx, s.statements) + "while(${cond(ctx, s.condition)});"
             is ForIterationStatement -> forStatement(ctx, s)
             is BreakStatement -> listOf("break;")
             is ContinueStatement -> listOf("continue;")
@@ -273,7 +270,7 @@ class CppStmtEmitter : CppStmtPart {
     }
 
     /**
-     * A local (5.4): brace-init for a scalar or enum, copy-init otherwise, `const` without
+     * A local (5.4): brace-init for a scalar, copy-init otherwise, `const` without
      * `mut`, `[[maybe_unused]]` when nothing reads it.
      */
     private fun local(ctx: CppEmitContextImpl, decl: VariableDecl): String {
@@ -295,7 +292,7 @@ class CppStmtEmitter : CppStmtPart {
             lower.hoister.internalView(decl, "the local '${decl.name.value}' holds a view, a ${t.display()}", if (CppHoister.isSecondClass(t)) "local" else "type")
         }
         val init = decl.value ?: return "$unused$declarator{};"
-        val scalar = t is KType.Scalar || (t is KType.Nominal && t.sym is EnumSymbol)
+        val scalar = t is KType.Scalar
         return when {
             scalar -> "$unused$declarator{${lower.emit(init, CppPrec.ASSIGN)}};"
             init is ArrayLiteral && ctx.model.coercion(init) == null -> "$unused$declarator = ${lower.bracedElements(init)};"
@@ -371,7 +368,6 @@ class CppStmtEmitter : CppStmtPart {
                     is ReturnStatement -> s
                     is BreakStatement, is ContinueStatement -> if (inLoop) null else s
                     is WhileIterationStatement -> scan(s.statements, true)
-                    is DoWhileIterationStatement -> scan(s.statements, true)
                     is ForIterationStatement -> scan(s.body, true)
                     is IfSelectionStatement -> scan(s.thenStatements, inLoop) ?: s.elseBranches.firstNotNullOfOrNull { b ->
                         when (b) {

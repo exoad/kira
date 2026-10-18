@@ -272,10 +272,7 @@ fun main(args: Array<String>) {
                             is SemanticScope.Module -> "Module"
                             is SemanticScope.Class -> "Class"
                             is SemanticScope.Function -> "Function"
-                            is SemanticScope.Enum -> "Enum"
                             is SemanticScope.Trait -> "Trait"
-                            is SemanticScope.Variant -> "Variant"
-                            is SemanticScope.VariantMember -> "VariantMember"
                             else -> frame.kind.toString()
                         }
                     }, Name=${
@@ -283,10 +280,7 @@ fun main(args: Array<String>) {
                             is SemanticScope.Module -> frame.kind.name
                             is SemanticScope.Class -> frame.kind.name
                             is SemanticScope.Function -> frame.kind.name
-                            is SemanticScope.Enum -> frame.kind.name
                             is SemanticScope.Trait -> frame.kind.name
-                            is SemanticScope.Variant -> frame.kind.name
-                            is SemanticScope.VariantMember -> frame.kind.name
                             is SemanticScope.Global -> "(global)"
                             else -> "(unknown)"
                         }

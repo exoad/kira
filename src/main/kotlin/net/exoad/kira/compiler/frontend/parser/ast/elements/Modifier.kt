@@ -28,8 +28,6 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
-            WrappingContext.ENUM,
-            WrappingContext.ENUM_MEMBER,
             WrappingContext.TRAIT_MEMBER,
             WrappingContext.TRAIT,
             WrappingContext.TYPE_ALIAS

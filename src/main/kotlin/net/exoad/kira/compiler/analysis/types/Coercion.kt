@@ -44,9 +44,6 @@ enum class ConversionKind {
     /** An integer to `Char`. */
     INT_TO_CHAR,
 
-    /** An enum to its base type. */
-    ENUM_TO_BASE,
-
     /** Anything showable to `Str` (`kira::text`). */
     TO_STR,
 }

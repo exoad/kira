@@ -879,7 +879,7 @@ class CppClassShapeTest {
             }
             """
         )
-        assertTrue(messages.any { it.contains("this captured or used as a value in an initially or finally block of Node") }, messages.toString())
+        assertTrue(messages.any { it.contains("this captured or used as a value in the initially block of Node") }, messages.toString())
     }
 
     @Test
@@ -912,7 +912,7 @@ class CppClassShapeTest {
             """
         )
         assertTrue(
-            messages.any { it.startsWith("the call to setup in an initially or finally block of Base, which reaches Base.greet: Leaf overrides it") },
+            messages.any { it.startsWith("the call to setup in the initially block of Base, which reaches Base.greet: Leaf overrides it") },
             messages.toString(),
         )
         // no subclass overrides greet: the calls dispatch the same on both sides
@@ -1301,7 +1301,7 @@ class CppClassShapeTest {
         assertTrue(seen >= 4, "found $seen constructor defaults")
     }
 
-    // ---- this under construction or destruction (second-class round 2) --------------------------------------
+    // ---- this under construction (second-class round 2) --------------------------------------
 
     @Test
     fun thisAsAValueInAMethodAnInitiallyRunsIsRefused() {

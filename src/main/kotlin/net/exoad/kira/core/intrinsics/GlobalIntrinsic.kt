@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.analysis.semantic.SemanticSymbolKind
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
@@ -23,7 +22,6 @@ object GlobalIntrinsic : CompilerIntrinsic(
         FunctionDecl::class,
         ClassDecl::class,
         TraitDecl::class,
-        EnumDecl::class,
         VariableDecl::class,
         TypeAliasDecl::class
     )

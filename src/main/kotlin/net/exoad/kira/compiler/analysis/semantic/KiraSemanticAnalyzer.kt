@@ -263,10 +263,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
         // TODO("Not yet implemented")
     }
@@ -277,7 +273,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitUseStatement(useStatement: UseStatement) {
         // Import public type symbols from the named module into the current module scope.
-        // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS / enums that were marked relativelyVisible.
+        // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS that were marked relativelyVisible.
         val uri = useStatement.moduleUri
         val foreignModule = compilationUnit.symbolTable.findScope(SemanticScope.Module(uri))
         if (foreignModule == null) {
@@ -567,10 +563,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
         arrayIndexExpr.originExpr.accept(this)
         arrayIndexExpr.indexExpr.accept(this)
-    }
-
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        // TODO("Not yet implemented")
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
@@ -873,25 +865,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         runIntrinsicsIfPresent(moduleDecl)
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        // Run intrinsics for enum declarations
-        runIntrinsicsIfPresent(enumDecl)
-        val typeName = enumDecl.name.value
-        val symbol = SemanticSymbol(
-            typeName,
-            SemanticSymbolKind.TYPE_SPECIFIER,
-            Token.Type.K_ENUM,
-            SourceLocation.fromPosition(
-                context.astOrigins[enumDecl] ?: SourcePosition.UNKNOWN,
-                context.file
-            ),
-            relativelyVisible = enumDecl.modifiers.contains(Modifier.PUBLIC)
-        )
-
-        expectTypeNotDeclaredInModule(typeName, context.astOrigins[enumDecl])
-        compilationUnit.symbolTable.declare(typeName, symbol)
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Run intrinsics for trait declarations
         runIntrinsicsIfPresent(traitDecl)
@@ -913,33 +886,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
                 registerGenericTypeParameters(traitDecl.name)
                 traitDecl.members.forEach { it.accept(this) }
-                compilationUnit.symbolTable.exit()
-            }
-        }
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        // Run intrinsics for variants
-        runIntrinsicsIfPresent(variantDecl)
-        if (variantDecl.name.identifier is Identifier) {
-            val typeName = (variantDecl.name.identifier as Identifier).value
-            val symbol = SemanticSymbol(
-                typeName,
-                SemanticSymbolKind.TYPE_SPECIFIER,
-                Token.Type.K_VARIANT,
-                SourceLocation.fromPosition(
-                    context.astOrigins[variantDecl] ?: SourcePosition.UNKNOWN,
-                    context.file
-                ),
-                relativelyVisible = variantDecl.modifiers.contains(Modifier.PUBLIC)
-            )
-            expectTypeNotDeclaredInModule(typeName, context.astOrigins[variantDecl])
-            compilationUnit.symbolTable.declare(typeName, symbol)
-            if (variantDecl.variants.isNotEmpty() || variantDecl.members.isNotEmpty()) {
-                compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
-                registerGenericTypeParameters(variantDecl.name)
-                variantDecl.variants.forEach { it.accept(this) }
-                variantDecl.members.forEach { it.accept(this) }
                 compilationUnit.symbolTable.exit()
             }
         }

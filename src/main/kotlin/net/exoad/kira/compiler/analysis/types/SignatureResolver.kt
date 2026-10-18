@@ -2,13 +2,11 @@ package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariantDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
@@ -24,12 +22,11 @@ import java.util.IdentityHashMap
  * 2. alias targets (TypeResolver checks for cycles);
  * 3. parents: a class's first parent may be a class, the rest must be traits; a struct's and
  *    a trait's parents are all traits; inheritance cycles are errors;
- * 4. enum base types and values ([EnumDecl.memberValues], range-checked against the base);
- * 5. global, field, parameter and return types, with the default-order rule;
- * 6. flattened trait methods;
- * 7. overrides: [FnSymbol.overrides], [FnSymbol.isVirtual], [ClassSymbol.isSubclassed];
- * 8. every Type node inside bodies, initializers and defaults (so phase C only reads typeRefs);
- * 9. constants (ConstEval).
+ * 4. global, field, parameter and return types, with the default-order rule;
+ * 5. flattened trait methods;
+ * 6. overrides: [FnSymbol.overrides], [FnSymbol.isVirtual], [ClassSymbol.isSubclassed];
+ * 7. every Type node inside bodies, initializers and defaults (so phase C only reads typeRefs);
+ * 8. constants (ConstEval).
  *
  * Each declaration is resolved under its own guard: an internal failure leaves that
  * declaration's types as [KType.Error] with a `types.internal` diagnostic, and the rest of
@@ -42,7 +39,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
 
     private val classes = mutableListOf<ClassSymbol>()
     private val traits = mutableListOf<TraitSymbol>()
-    private val enums = mutableListOf<EnumSymbol>()
     private val aliases = mutableListOf<AliasSymbol>()
     private val globals = mutableListOf<GlobalSymbol>()
     private val functions = mutableListOf<FnSymbol>()
@@ -53,7 +49,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 when (s) {
                     is ClassSymbol -> classes.add(s)
                     is TraitSymbol -> traits.add(s)
-                    is EnumSymbol -> enums.add(s)
                     is AliasSymbol -> aliases.add(s)
                     is GlobalSymbol -> globals.add(s)
                     is FnSymbol -> functions.add(s)
@@ -66,7 +61,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
         classes.forEach { c -> each(c) { classParents(c) } }
         traits.forEach { t -> each(t) { traitParents(t) } }
         step("inheritance cycles") { inheritanceCycles() }
-        enums.forEach { e -> each(e) { enumValues(e) } }
         globals.forEach { g -> each(g) { constEval.globalType(g) } }
         classes.forEach { c -> each(c) { members(c) } }
         traits.forEach { t -> t.methods.forEach { m -> each(m) { signature(m, fnScope(m)) } } }
@@ -99,7 +93,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
             }
             is GlobalSymbol -> symbol.type = KType.Error
             is AliasSymbol -> symbol.target = KType.Error
-            is EnumSymbol -> symbol.base = KType.Error
             is ClassSymbol -> symbol.fields.forEach { it.type = KType.Error }
             else -> {}
         }
@@ -147,7 +140,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
     private fun nameType(c: ClassSymbol): Type? = when (val d = c.decl) {
         is ClassDecl -> d.name
         is StructDecl -> d.name
-        is VariantDecl -> d.name
         else -> null
     }
 
@@ -172,7 +164,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
     private fun parentTypes(c: ClassSymbol): List<Type> = when (val d = c.decl) {
         is ClassDecl -> d.parents
         is StructDecl -> d.traits
-        is VariantDecl -> d.parents
         else -> emptyList()
     }
 
@@ -298,70 +289,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
         }
         return false
     }
-
-    // ---- 4. enums --------------------------------------------------------------------------
-
-    private fun enumValues(e: EnumSymbol) {
-        val decl = e.decl ?: return
-        val base = decl.baseType?.let { resolver.resolve(it, TypeScope(e.module)) }
-            ?: when (EnumDecl.inferBaseTypeName(decl.members.toList())) {
-                "Str" -> KType.Str
-                "Float64" -> KType.FLOAT64
-                else -> KType.INT32
-            }
-        val prim = base.prim
-        val valid = base == KType.Str || (prim != null && (prim.isInteger || prim.isFloat))
-        if (!valid) {
-            if (base != KType.Error) {
-                program.report(
-                    "types.enum.base",
-                    "enum ${e.name}'s base type must be an integer, a float or Str, not ${base.display()}.",
-                    decl.baseType ?: decl,
-                )
-            }
-            e.base = KType.Error
-            return
-        }
-        e.base = base
-        val values = decl.memberValues()
-        e.entries.forEachIndexed { i, entry ->
-            val raw = values.getOrNull(i) ?: return@forEachIndexed
-            val member = decl.members[i]
-            val value = enumValue(raw, base)
-            if (value == null) {
-                program.report(
-                    "types.enum.value",
-                    if (prim != null && prim.isInteger && raw is Long) {
-                        "${e.name}.${entry.name} = ${render(raw)} does not fit the base type ${base.display()}, " +
-                            "which holds ${prim.minValue}..${prim.maxValue}."
-                    } else {
-                        "${e.name}.${entry.name} = ${render(raw)} is not a value of the base type ${base.display()}."
-                    },
-                    member.value ?: member,
-                )
-                return@forEachIndexed
-            }
-            entry.value = value
-            member.value?.let { model.consts[it] = value }
-        }
-    }
-
-    private fun render(raw: Any): String = if (raw is String) "\"$raw\"" else raw.toString()
-
-    private fun enumValue(raw: Any, base: KType): ConstValue? {
-        if (base == KType.Str) {
-            return (raw as? String)?.let { ConstValue.StrConst(it) }
-        }
-        val prim = base.prim ?: return null
-        return when {
-            prim.isInteger && raw is Long -> BigInteger.valueOf(raw).takeIf { prim.fits(it) }?.let { ConstValue.IntConst.of(it, prim) }
-            prim.isFloat && raw is Long -> ConstValue.FloatConst(roundTo(raw.toDouble(), prim), prim)
-            prim.isFloat && raw is Double -> ConstValue.FloatConst(roundTo(raw, prim), prim)
-            else -> null
-        }
-    }
-
-    private fun roundTo(v: Double, prim: Prim): Double = if (prim == Prim.FLOAT32) v.toFloat().toDouble() else v
 
     // ---- 5. members and signatures ---------------------------------------------------------
 
@@ -879,7 +806,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
                             val scope = classScope(s)
                             s.fields.forEach { f -> f.default?.let { walkTypes(it, scope) } }
                             s.initially?.forEach { walkTypes(it, scope) }
-                            s.finally?.forEach { walkTypes(it, scope) }
                             s.methods.forEach { fnBodyTypes(it) }
                         }
                         is TraitSymbol -> s.methods.forEach { fnBodyTypes(it) }

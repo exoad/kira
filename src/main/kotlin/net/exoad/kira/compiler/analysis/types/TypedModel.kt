@@ -154,7 +154,7 @@ enum class PlaceKind {
  * Every table here is a [java.util.IdentityHashMap].
  *
  * Who fills what: phase B (W1.2) fills [typeRefs], [aliasRefs], [declSyms], [refs] for
- * declared names and type names, and [consts] for folded module-level initializers, enum
+ * declared names and type names, and [consts] for folded module-level initializers,
  * values and defaults. Phase C (W2.1) fills every table but [lentPlaces], [effects],
  * [fnEffects], [fnConfined], [lambdaConfined], [defaultConfined], [fxEscapes] and
  * [viewOrigins], which the rule passes (W2.5) fill.
@@ -225,12 +225,6 @@ class TypedModel {
 
     /** Whether evaluating a field's default is CONFINED (EffectsPass), for a construction that leaves the field out. An absent entry means not. */
     val defaultConfined: IdentityHashMap<FieldSymbol, Boolean> = IdentityHashMap()
-
-    /**
-     * Whether dropping a value of a type may run an IMPURE `finally` (EffectsPass sets it to its
-     * `Drops`; before that pass runs, any value may).
-     */
-    var dropsImpureFinally: (KType?) -> Boolean = { true }
 
     /** The symbol each declaring node introduces (declarations, fields, parameters, entries, type parameters). */
     val declSyms: IdentityHashMap<ASTNode, Symbol> = IdentityHashMap()

@@ -21,7 +21,7 @@ import java.util.IdentityHashMap
 
 /**
  * Phase B constant folding: module-level initializers ([GlobalSymbol.constValue]), parameter
- * and field defaults, and the enum values. Each expression that folds gets a
+ * and field defaults. Each expression that folds gets a
  * `TypedModel.consts` entry.
  *
  * It folds integer, float, bool, char and string literals; `null`; references to other
@@ -33,7 +33,7 @@ import java.util.IdentityHashMap
  * What it reports, because nothing later would: signed overflow and division by zero while
  * folding (`types.const.overflow`, `types.const.div-by-zero`), and an Arr literal whose
  * element count is not the N of its `Arr<T, N>` (`types.const.arr-size`), in every place it
- * folds: globals, field and parameter defaults, enum values. What it leaves to phase C (W2.1):
+ * folds: globals, field and parameter defaults. What it leaves to phase C (W2.1):
  * a literal out of range for its declared type, a non-constant initializer, a Str constant
  * that is not a literal, and the element count of an Arr literal inside a body (a local's
  * initializer, an argument), which never reaches this class. Those simply do not fold here
@@ -124,7 +124,6 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         is Identifier -> identifier(e, expected, module)
         is UnaryExpr -> unary(e, expected, module)
         is BinaryExpr -> binary(e, expected, module)
-        is MemberAccessExpr -> enumEntry(e, module)
         is TypeCastExpr -> cast(e, module)
         is ArrayLiteral -> array(e, expected, module)
         else -> null
@@ -345,8 +344,6 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
                 if (l.value == r.value) 0 else 1
             l is ConstValue.StrConst && r is ConstValue.StrConst && (op == BinaryOp.EQUALS || op == BinaryOp.NOT_EQUAL) ->
                 if (l.value == r.value) 0 else 1
-            l is ConstValue.EnumConst && r is ConstValue.EnumConst && (op == BinaryOp.EQUALS || op == BinaryOp.NOT_EQUAL) ->
-                if (l.entry === r.entry) 0 else 1
             else -> return null
         }
         return ConstValue.BoolConst(
@@ -359,20 +356,6 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
                 else -> c >= 0
             }
         )
-    }
-
-    private fun enumEntry(e: MemberAccessExpr, module: ModuleSymbol): ConstValue? {
-        val owner = e.origin as? Identifier ?: return null
-        val member = e.member as? Identifier ?: return null
-        val found = program.graph.lookup(module, owner.value) { it is EnumSymbol }
-        val enum = when (found) {
-            is ModuleGraph.Lookup.Found -> found.symbol as EnumSymbol
-            is ModuleGraph.Lookup.NotVisible -> found.symbol as EnumSymbol
-            is ModuleGraph.Lookup.Ambiguous -> found.first.symbol as EnumSymbol
-            ModuleGraph.Lookup.Missing -> return null
-        }
-        val entry = enum.entry(member.value) ?: return null
-        return ConstValue.EnumConst(entry)
     }
 
     /** `x as T` between numeric prims, per the conversion table (R13, D9). */
@@ -392,10 +375,6 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
                 else -> null
             }
             is ConstValue.CharConst -> if (target.isInteger) wrap(BigInteger.valueOf(v.value.toLong()), target) else null
-            is ConstValue.EnumConst -> {
-                val base = v.entry.value
-                if (base is ConstValue.IntConst && target.isInteger) wrap(base.value, target) else null
-            }
             else -> null
         }
     }

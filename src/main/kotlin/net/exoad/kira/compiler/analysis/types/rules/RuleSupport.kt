@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -50,15 +49,15 @@ import java.nio.file.Path
 import java.util.IdentityHashMap
 
 /** What a [Body] is, for messages and for the passes that care (a static assert has no locals to speak of). */
-internal enum class BodyKind { FUNCTION, INITIALLY, FINALLY, FIELD_DEFAULT, PARAM_DEFAULT, GLOBAL_INIT, STATIC_ASSERT }
+internal enum class BodyKind { FUNCTION, INITIALLY, FIELD_DEFAULT, PARAM_DEFAULT, GLOBAL_INIT, STATIC_ASSERT }
 
 /**
  * One typed body the rule passes walk: a function, method or trait default body, a class's
- * `initially`/`finally`, a field or parameter default, a global's initializer or a module
+ * `initially`, a field or parameter default, a global's initializer or a module
  * statement. [fn] is null for everything but a function body; [owner] is the type whose
  * members are reachable without a receiver; [thisMutable] is whether the receiver's own
- * state may be written: a `mut fx` of a struct or a class, and a class's `initially` and
- * `finally`. A plain `fx` of a class modifies no instance state (the spec's rule for `mut
+ * state may be written: a `mut fx` of a struct or a class, and a class's `initially`. A plain
+ * `fx` of a class modifies no instance state (the spec's rule for `mut
  * fx`; design 5.5 makes it `const`, and W2.4 drops the `const` only where the typer let a
  * write through); phase C's BodyContext is looser (any class body), and MutabilityPass is
  * where the rule is reported, with a lambda's captured `this` exempt.
@@ -88,7 +87,6 @@ internal object Bodies {
                     }
                     is ClassSymbol -> {
                         s.initially?.let { out.add(Body(BodyKind.INITIALLY, m, null, s, it, true, "${s.name}'s initializer block", s.decl)) }
-                        s.finally?.let { out.add(Body(BodyKind.FINALLY, m, null, s, it, true, "${s.name}'s finally block", s.decl)) }
                         s.fields.forEach { f ->
                             f.default?.let { out.add(Body(BodyKind.FIELD_DEFAULT, m, null, null, listOf(it), false, "the default of field '${f.name}'", f.decl)) }
                         }
@@ -253,14 +251,13 @@ internal class Rules(val program: TypedProgram) {
      * Whether a parameter of type [t] without `mut` is passed by `const T&` (design 5.1), so
      * the callee reads the caller's storage, not a copy: a `Str`, a container, a `Maybe`, a
      * tuple, a struct, a class or trait reference, an `Fx` value, a type parameter. The
-     * scalars, `Bool`, `Char`, an enum, a `View`/`MutView`, an `Unsafe`, a `CStr` and an
+     * scalars, `Bool`, `Char`, a `View`/`MutView`, an `Unsafe`, a `CStr` and an
      * opaque handle are copied. This is the C++ emitter's own `byValue` rule, negated; the
      * two must agree.
      */
     fun aliasesCaller(t: KType): Boolean = when (t) {
         is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> false
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> false
             is ClassSymbol -> when (sym.kind) {
                 ClassKind.OPAQUE -> false
                 ClassKind.MAGIC -> sym.name !in BY_VALUE_MAGIC
@@ -400,7 +397,7 @@ internal class Rules(val program: TypedProgram) {
      * move that storage (30-second-class 3.2): a container, a `Str` or `StrBuf`, a reference
      * (which a write may drop), a closure (which holds what it captured), a type parameter or
      * anything unknown; a struct, a `Maybe`, a `Result` or a tuple when a part does. A scalar,
-     * a `Bool`, a `Char` and an enum reallocate nothing.
+     * a `Bool` and a `Char` reallocate nothing.
      */
     fun mayHoldStorage(t: KType?): Boolean = holdsStorage(t, HashSet())
 
@@ -409,7 +406,6 @@ internal class Rules(val program: TypedProgram) {
         is KType.Scalar, KType.Void, KType.Never, KType.NullT -> false
         KType.Str, is KType.Param, is KType.Fn -> true
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> false
             is ClassSymbol -> when (sym.kind) {
                 ClassKind.STRUCT -> path.add(t) && run {
                     val sub = sym.typeParams.zip(t.typeArgs()).toMap()
@@ -842,7 +838,7 @@ object CallReach {
      * a container, `Maybe`, `Result`, tuple, `View`, `MutView` or `Unsafe` whose type argument
      * may (a `View<Fx<...>>` hands the callee the closures it views; a `View<UInt8>` holds
      * none); a struct with a field that may, under its type arguments (a cycle adds nothing).
-     * False for scalars, enums (payload-free), `Str`, `StrBuf` and `CStr`.
+     * False for scalars, `Str`, `StrBuf` and `CStr`.
      */
     fun mayHoldFx(t: KType?): Boolean = holds(t, HashSet())
 
@@ -850,7 +846,6 @@ object CallReach {
         null, KType.Error, is KType.Fn, is KType.Param -> true
         is KType.Scalar, KType.Str, KType.Void, KType.Never, KType.NullT -> false
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> false
             is TraitSymbol -> true
             is ClassSymbol -> when (sym.kind) {
                 ClassKind.CLASS, ClassKind.OPAQUE -> true
@@ -937,8 +932,7 @@ object CallReach {
      * handed), or run code the checker does not see: an `Fx` it is not handed as a lambda
      * literal or a named function whose body is CONFINED, a dispatched method, an `Fx` value, an
      * extern given what may hold an `Fx`, a system handle's method, a stdlib binding that runs a
-     * user type's operators or replaces or removes what may be the last handle of an object whose
-     * `finally` is IMPURE, or a construction's `initially`, impure default or an `Fx` field it runs
+     * user type's operators, or a construction's `initially`, impure default or an `Fx` field it runs
      * ([runsAtConstruction]: a `Thread`'s `body`). By callee kind:
      *
      * - an argument for a parameter declared `Fx` (given, or the parameter's default): a lambda
@@ -953,10 +947,8 @@ object CallReach {
      *   starts `body`), and [construction] charges those fields by this row;
      * - a Kira function with a body called statically (`FREE`, `METHOD`, `OP_OVERLOAD`, `CTOR`):
      *   `TypedModel.fnConfined`, EffectsPass's fixpoint;
-     * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, no method of a system
-     *   handle (`Thread`, `Mutex`, `Suite`, a socket: a join or a spawn runs code later), and,
-     *   when it replaces or removes what it holds ([dropsHeld]: `set`, `clear`, `removeAt`,
-     *   `pop`, `put`; not `add`), no receiver or argument whose drop may run an IMPURE `finally`;
+     * - a stdlib binding: not one of [RUNS_OPERATORS] over a user type, and no method of a system
+     *   handle (`Thread`, `Mutex`, `Suite`, a socket: a join or a spawn runs code later);
      * - `trace`, `print`: no argument whose type [holdsUserType];
      * - what C++ supplies (an extern, a bodiless `pub` prototype, an `@_opaque` method):
      *   `!`[mayRunAnything], contract 5.4.2-5.4.3: it runs Kira code only through what it is
@@ -1015,7 +1007,7 @@ object CallReach {
     /**
      * What [confined] reads, as EffectsPass's fixpoint sees it while it runs (the model's tables
      * afterwards): [fn] for a Kira body, [lambda] for a lambda literal's, [default] for a field's
-     * default, [drops] for a value's drop, and [ownFx], the `Fx` parameters of the body being
+     * default, and [ownFx], the `Fx` parameters of the body being
      * judged, whose calls the call site that handed them in has charged already (not a `mut`
      * one, which the body may have reassigned to anything).
      */
@@ -1023,7 +1015,6 @@ object CallReach {
         val fn: (FnSymbol) -> Boolean,
         val lambda: (LambdaExpr) -> Boolean,
         val default: (FieldSymbol) -> Boolean,
-        val drops: (KType?) -> Boolean,
         val ownFx: Set<ParamSymbol> = emptySet(),
     ) {
         companion object {
@@ -1031,7 +1022,6 @@ object CallReach {
                 { model.fnConfined[it] == true },
                 { model.lambdaConfined[it] == true },
                 { model.defaultConfined[it] == true },
-                model.dropsImpureFinally,
             )
         }
     }
@@ -1086,57 +1076,6 @@ object CallReach {
         return ((e as? Identifier)?.let { model.refs[it] } as? ParamSymbol)?.let { it in k.ownFx } == true
     }
 
-    /** The stdlib mutators that only add to their receiver: they keep a copy of what they are given and drop nothing. */
-    val ADDS_ONLY: Set<String> = setOf("List.add", "List.addAll", "Set.add", "Stack.push", "Queue.enqueue", "Deque.pushFront", "Deque.pushBack")
-
-    /**
-     * A stdlib binding that may replace or remove what it holds, and so drop the last handle to it: a
-     * method that writes its receiver (a `mut fx`, or `MutView.set`, which writes the element it views)
-     * and is not one of [ADDS_ONLY], or a free binding. A method that only reads its receiver drops nothing.
-     */
-    fun dropsHeld(rc: ResolvedCall, fn: FnSymbol): Boolean {
-        val key = (fn.foreign as? Foreign.Magic)?.key
-        if (key in ADDS_ONLY) {
-            return false
-        }
-        return rc.receiver == null && !rc.implicitThis || fn.isMutMethod || key == "MutView.set"
-    }
-
-    /**
-     * The [dropsHeld] bindings whose C++ is a write `PLACE = {n}`. The emitter spells each one
-     * `kira::replace(PLACE) = {n}` whenever the old value's drop may run an IMPURE `finally` (W2.3,
-     * `CppCopyPolicy.dropsOnWrite`), a class or trait handle's included. So the
-     * new value is stored first and the old one dropped last, after the binding has finished with the
-     * container, so a `finally` that re-enters the container meets a whole one (w25r6v2/x/m1: 3/91/fin).
-     */
-    val STORES_FIRST: Set<String> = setOf("List.set", "Arr.set", "MutView.set")
-
-    /**
-     * A stdlib binding that may drop, partway through its own C++, the last handle of an object whose
-     * `finally` is IMPURE. It is a [dropsHeld] binding, not one of [STORES_FIRST], with a receiver or
-     * argument that may hold such an object: `clear`, `removeAt`, `put`, `remove`, `pop`, `dequeue`,
-     * `popFront` and `popBack` on `List`, `Map`, `Deque`, `Stack` and `Queue`. Their C++
-     * (`std::vector::clear`, `erase`, `Map::put`'s element assignment) keeps pointers into the
-     * container's buffer across that drop, and none of it is reentrant. A `finally` that reaches the
-     * same container through an alias would add, replace or read it mid-operation: a use-after-free,
-     * or a size Kira never has (KI-20: w23r6/p/f12, w25r6v2/x/m2-m4, v23r6x/atk/k_a4 and k_a6c).
-     * A `Set` holds only keys, which drop nothing. It is [magic]'s drop condition, less [STORES_FIRST],
-     * and rule M's STABLE bullet does not cover such a call.
-     */
-    fun dropsMidCall(rc: ResolvedCall, model: TypedModel, receiverType: KType?): Boolean {
-        val fn = rc.fn ?: return false
-        val binding = rc.kind == CallKind.MAGIC || fn.foreign is Foreign.Magic && fn.body == null && !fn.suppliedByCpp
-        if (!binding || (fn.foreign as? Foreign.Magic)?.key in STORES_FIRST || !dropsHeld(rc, fn)) {
-            return false
-        }
-        return heldMayDrop(rc, model, receiverType, model.dropsImpureFinally)
-    }
-
-    /** The receiver of [rc] (when it has one) or one of its given arguments may hold the last handle of an object whose `finally` is IMPURE, under [drops]. */
-    private fun heldMayDrop(rc: ResolvedCall, model: TypedModel, receiverType: KType?, drops: (KType?) -> Boolean): Boolean =
-        (rc.receiver != null || rc.implicitThis) && drops(receiverType) ||
-            rc.args.any { a -> (a as? ArgBinding.Given)?.let { drops(model.types[it.expr]) } == true }
-
     private fun magic(rc: ResolvedCall, fn: FnSymbol, model: TypedModel, receiverType: KType?, k: Known): Boolean {
         if ((fn.foreign as? Foreign.Magic)?.key in RUNS_OPERATORS) {
             val typeArgs = rc.substitution.values + ((receiverType as? KType.Nominal)?.typeArgs() ?: emptyList())
@@ -1149,8 +1088,7 @@ object CallReach {
         if (recvSym != null && recvSym.kind == ClassKind.MAGIC && recvSym.name !in Builtins.NOMINAL_PARAMS) {
             return false
         }
-        // A mutator that replaces or removes may drop what it held (`xs.clear()`, `xs.set(0, v)`, `m.remove(k)`); `xs.add(v)` drops nothing.
-        return !dropsHeld(rc, fn) || !heldMayDrop(rc, model, receiverType, k.drops)
+        return true
     }
 
     internal fun construction(cls: ClassSymbol?, given: Map<FieldSymbol, Expr>, model: TypedModel, k: Known): Boolean {

@@ -4,7 +4,6 @@ import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FnParam
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
@@ -284,7 +283,6 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
                 else -> "kira::Rc<${externName(sym) ?: ctx.qualified(sym)}$targs>"
             }
             is TraitSymbol -> "kira::Rc<${ctx.qualified(sym)}$targs>"
-            is EnumSymbol -> ctx.qualified(sym)
             is AliasSymbol -> if (isCoreAlias(sym)) base(sym.target) else ctx.qualified(sym) + targs
             else -> ctx.qualified(sym as net.exoad.kira.compiler.analysis.types.Symbol) + targs
         }
@@ -425,11 +423,10 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
         return sym.kind == ClassKind.MAGIC && sym.name == "Unsafe"
     }
 
-    /** Types the parameter column passes by value: scalars, views, enums, raw pointers. */
+    /** Types the parameter column passes by value: scalars, views, raw pointers. */
     fun byValue(t: KType): Boolean = when (t) {
         is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> true
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> true
             is ClassSymbol -> when (sym.kind) {
                 ClassKind.OPAQUE -> true
                 ClassKind.MAGIC -> sym.name in BY_VALUE_MAGIC

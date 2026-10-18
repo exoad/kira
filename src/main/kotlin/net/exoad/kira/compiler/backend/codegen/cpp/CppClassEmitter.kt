@@ -9,8 +9,6 @@ import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.DeclarationCollector
 import net.exoad.kira.compiler.analysis.types.Effect
-import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -81,8 +79,8 @@ import java.util.WeakHashMap
  *     std::int32_t tricks;
  * };
  * ```
- * - `public:` holds the constructor, the two copy deletes, the destructor (from `finally`,
- *   or a virtual default for the first class of a chain with virtual methods), the `pub`
+ * - `public:` holds the constructor, the two copy deletes, the destructor (a virtual
+ *   default for the first class of a chain with virtual methods), the `pub`
  *   methods and the `pub` fields; `private:` the other methods and fields; each in Kira
  *   declaration order, with no blank line inside the class. A class is an identity:
  *   copying one is deleted.
@@ -111,8 +109,8 @@ import java.util.WeakHashMap
  * - Bodies are out of line: in the `.kira.cxx`, or in the header for a template (a generic
  *   class, a generic method, a method with a non-escaping `Fx` parameter) and for a
  *   header-only module.
- * - `initially` is the constructor's body and `finally` the destructor's, so a call in
- *   either dispatches to the class's own method, never to a subclass's override (C++), where
+ * - `initially` is the constructor's body, so a call in it dispatches to the class's own
+ *   method, never to a subclass's override (C++), where
  *   the spec's Kotlin `init` would reach the override. A call from there, directly or
  *   through the class's own methods, to a method some subclass overrides is refused rather
  *   than lowered to the other meaning ([CppClassFacts.initializerDispatches]).
@@ -280,14 +278,14 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             }
         }
         facts.initializerThisUses(c).forEach { node ->
-            ctx.unsupported(node, "this captured or used as a value in an initially or finally block of ${c.name} (C++ has no shared_ptr to an object under construction or destruction)")
+            ctx.unsupported(node, "this captured or used as a value in the initially block of ${c.name} (C++ has no shared_ptr to an object under construction)")
         }
         facts.initializerDispatches(c).forEach { d ->
             val reached = if (d.callee === d.overridden) "" else ", which reaches ${d.overridden.owner?.name}.${d.overridden.name}"
             ctx.unsupported(
                 d.site,
-                "the call to ${d.callee.name} in an initially or finally block of ${c.name}$reached: ${d.overrider.name} overrides it, " +
-                    "and a C++ constructor or destructor runs ${c.name}'s own ${d.overridden.name}, where the spec's init block would run ${d.overrider.name}'s",
+                "the call to ${d.callee.name} in the initially block of ${c.name}$reached: ${d.overrider.name} overrides it, " +
+                    "and a C++ constructor runs ${c.name}'s own ${d.overridden.name}, where the spec's init block would run ${d.overrider.name}'s",
             )
         }
         facts.unconnectedTraitMethods(c).forEach { (trait, method, via) ->
@@ -429,11 +427,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         val name = name(c)
         val own = facts.ownsVirtualDestructor(c)
         return when {
-            c.finally != null -> when {
-                own -> "virtual ~$name();"
-                facts.baseHasVirtualDestructor(c) -> "~$name() override;"
-                else -> "~$name();"
-            }
             own -> "virtual ~$name() = default;"
             else -> null
         }
@@ -806,7 +799,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             } else {
                 if (!split || !inline) {
                     constructorDefinition(sym, inline)?.let { blocks += it }
-                    destructorDefinition(sym, inline)?.let { blocks += it }
                 }
                 sym.methods.filter { wanted(it) }.forEach { fn -> blocks += { methodDefinition(this, sym, fn, inline) } }
             }
@@ -1007,17 +999,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
     }
 
-    private fun destructorDefinition(c: ClassSymbol, inline: Boolean): (CppWriter.() -> Unit)? {
-        val statements = c.finally ?: return null
-        return {
-            c.decl?.let { node -> ctx.lineDirective(node)?.let { line(it) } }
-            ctx.parts.generics.templateHead(ctx, c.typeParams)?.let { line(it) }
-            block("${inlineSpecifier(c, inline, template = false)}${qualifier(c)}~${name(c)}()") {
-                ctx.body(null, statements, this)
-            }
-        }
-    }
-
     // ---- this ------------------------------------------------------------------------------------------------
 
     /**
@@ -1047,7 +1028,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         }
         val fn = site.fn
         if (fn == null) {
-            ctx.unsupported(e, "this as a value in an initially or finally block of ${owner.name} (C++ has no shared_ptr to an object under construction or destruction)")
+            ctx.unsupported(e, "this as a value in the initially block of ${owner.name} (C++ has no shared_ptr to an object under construction)")
             return "/* this */"
         }
         if (refusedUnderInitializer(e, owner, fn, "this as a value")) {
@@ -1090,21 +1071,19 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     }
 
     /**
-     * Refuses [what] at [at] in [method] of [owner] when an `initially` or `finally` may run
-     * [method] ([CppClassFacts.initializerReach]): `shared_from_this()` there throws
-     * std::bad_weak_ptr, since no `kira::Rc` owns the object yet or any more (initcall2,
-     * initlam, fincall2 terminated on g++ and zig; MSVC exited 0xC0000409). True when refused.
+     * Refuses [what] at [at] in [method] of [owner] when an `initially` may run [method]
+     * ([CppClassFacts.initializerReach]): `shared_from_this()` there throws std::bad_weak_ptr,
+     * since no `kira::Rc` owns the object yet (initcall2, initlam terminated on g++ and zig;
+     * MSVC exited 0xC0000409). True when refused.
      */
     private fun refusedUnderInitializer(at: ASTNode, owner: ClassSymbol, method: FnSymbol, what: String): Boolean {
         val reach = facts.initializerReach(method) ?: return false
-        val block = if (reach.finally) "finally" else "initially"
         val callee = model.call(reach.site)?.fn?.name ?: KiraUnparser.text(reach.site.name)
         val via = if (callee == method.name) "" else " (through its call to $callee)"
-        val state = if (reach.finally) "under destruction" else "under construction"
         ctx.unsupported(
             at,
-            "$what in ${owner.name}.${method.name}, which the $block block of ${reach.cls.name} runs$via: C++ has no shared_ptr to an object $state, " +
-                "so shared_from_this() there throws std::bad_weak_ptr: hand on what is needed from this instead, or call ${method.name} from outside the $block block",
+            "$what in ${owner.name}.${method.name}, which the initially block of ${reach.cls.name} runs$via: C++ has no shared_ptr to an object under construction, " +
+                "so shared_from_this() there throws std::bad_weak_ptr: hand on what is needed from this instead, or call ${method.name} from outside the initially block",
         )
         return true
     }
@@ -1285,7 +1264,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 
     /**
      * Whether a value-initialized [t] (D38's `T{}`) is a value Kira has: a scalar, a `Str`, an
-     * enum, an empty container or `Maybe`, an empty `Weak` or view, a null pointer of the FFI's
+     * empty container or `Maybe`, an empty `Weak` or view, a null pointer of the FFI's
      * `Unsafe`, `CStr` and `@_opaque` handles, and a struct or tuple or `Arr` of those. A class,
      * trait, `Ref` or system class is a null `kira::Rc` and an `Fx` an empty `kira::Fn`, though
      * the Kira type is not nullable (`Maybe` is): the first member access segfaults, the first
@@ -1294,7 +1273,6 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
     private fun hasEmptyValue(t: KType, seen: MutableSet<TypeSymbol> = Collections.newSetFromMap(IdentityHashMap())): Boolean = when (t) {
         is KType.Scalar, KType.Str -> true
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> true
             is ClassSymbol -> when (sym.kind) {
                 ClassKind.CLASS -> false
                 ClassKind.OPAQUE -> true
@@ -1417,7 +1395,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
 class CppClassFacts(private val program: TypedProgram) {
     private val model = program.model
 
-    /** Where one `this` stands: its owner, its method (null in `initially`/`finally`), and whether an escaping lambda encloses it. */
+    /** Where one `this` stands: its owner, its method (null in `initially`), and whether an escaping lambda encloses it. */
     data class ThisSite(val owner: TypeSymbol, val fn: FnSymbol?, val inEscapingLambda: Boolean, val asValue: Boolean)
 
     /** One class of a superclass chain as a subclass sees it: [type] and [substitution] carry its type arguments. */
@@ -1479,13 +1457,13 @@ class CppClassFacts(private val program: TypedProgram) {
      */
     fun isConstMethod(fn: FnSymbol): Boolean = fn !in nonConst
 
-    /** One call in `initially` or `finally` that C++ would dispatch differently from the spec's init block. */
+    /** One call in `initially` that C++ would dispatch differently from the spec's init block. */
     data class InitializerDispatch(val site: FunctionCallExpr, val callee: FnSymbol, val overridden: FnSymbol, val overrider: ClassSymbol)
 
     /**
-     * The calls in [c]'s `initially` or `finally` that reach, directly or through [c]'s own
-     * methods called on `this`, a method some subclass of [c] overrides: a C++ constructor or
-     * destructor runs [c]'s version, where the spec (Kotlin's init block) would run the
+     * The calls in [c]'s `initially` that reach, directly or through [c]'s own methods called
+     * on `this`, a method some subclass of [c] overrides: a C++ constructor runs [c]'s
+     * version, where the spec (Kotlin's init block) would run the
      * override. One entry per call site, for the first such method it reaches.
      */
     fun initializerDispatches(c: ClassSymbol): List<InitializerDispatch> {
@@ -1538,7 +1516,7 @@ class CppClassFacts(private val program: TypedProgram) {
     /** A class this program defines, which C++ can derive from and construct: not magic, opaque, extern or a struct. */
     fun isKiraClass(t: TypeSymbol): Boolean = t is ClassSymbol && t.kind == ClassKind.CLASS && t.foreign == null
 
-    /** `this` used as a value, or captured by a lambda that escapes, in [c]'s `initially` or `finally`. */
+    /** `this` used as a value, or captured by a lambda that escapes, in [c]'s `initially`. */
     fun initializerThisUses(c: ClassSymbol): List<ASTNode> = initializerUses[c].orEmpty()
 
     /** Escaping lambdas that capture `this` in [t]'s default bodies. */
@@ -1679,7 +1657,7 @@ class CppClassFacts(private val program: TypedProgram) {
      * D33's rank of a construction operand [e], as W2.3's call hoister ranks an argument:
      * [RANK_IMPURE] when it may have an effect ([callsImpurely]); [RANK_PURE] when nothing a
      * sibling does can change what it reads (a literal, a local or a global that is not `mut`,
-     * a parameter C++ takes by value, an enum entry, a function, a class's `this`, a lambda
+     * a parameter C++ takes by value, a function, a class's `this`, a lambda
      * that captures nothing); [RANK_READS] for anything else, a field, an element, a `mut`
      * local, a parameter C++ takes by `const&`, a pure call: what it reads a sibling may
      * change, so it is read before the sibling runs. What cannot be shown to be one of the
@@ -1712,15 +1690,14 @@ class CppClassFacts(private val program: TypedProgram) {
             is LocalSymbol -> !sym.isMut
             is GlobalSymbol -> !sym.isMut
             is ParamSymbol -> !sym.byRef && isScalarLike(sym.type)
-            is EnumEntrySymbol, is FnSymbol -> true
+            is FnSymbol -> true
             else -> false
         }
-        is MemberAccessExpr -> model.member(e) is MemberRef.EnumEntry
         else -> false
     }
 
-    /** A value C++ passes by value and holds nothing through: a scalar, a `Bool`, a `Char`, an enum. */
-    private fun isScalarLike(t: KType): Boolean = t is KType.Scalar || (t is KType.Nominal && t.sym is EnumSymbol)
+    /** A value C++ passes by value and holds nothing through: a scalar, a `Bool`, a `Char`. */
+    private fun isScalarLike(t: KType): Boolean = t is KType.Scalar
 
     /**
      * Whether [e] names the frame of the body it is written in: a local, a parameter, a field
@@ -1744,19 +1721,19 @@ class CppClassFacts(private val program: TypedProgram) {
         }
     }
 
-    /** Where an `initially` or `finally` reaches a class method: the class, the call there, and whether it is a `finally`. */
-    data class InitializerReach(val cls: ClassSymbol, val site: FunctionCallExpr, val finally: Boolean)
+    /** Where an `initially` reaches a class method: the class and the call there. */
+    data class InitializerReach(val cls: ClassSymbol, val site: FunctionCallExpr)
 
     /**
-     * Every class method an `initially` or `finally` may run, each with the first call there
+     * Every class method an `initially` may run, each with the first call there
      * that reaches it ([InitializerReach]): what it calls on `this`, what those call on
      * `this`, and on through every method of each one's override family declared below it (a
      * call on `this` inside a trait default dispatches to the class's own override; an
      * override below the class itself is [initializerDispatches]' refusal, and counting it
      * here too only refuses more). `this` as a value there is `shared_from_this()`, and a lambda that escapes
      * captures `self = shared_from_this()`: the object has no owning `kira::Rc` yet (under
-     * construction) or any more (under destruction), so both throw std::bad_weak_ptr
-     * (initcall2, initlam, fincall2 on g++ and zig; MSVC 0xC0000409). [ClassLowering.thisValue]
+     * construction), so both throw std::bad_weak_ptr (initcall2, initlam on g++ and zig; MSVC
+     * 0xC0000409). [ClassLowering.thisValue]
      * and [ClassLowering.selfCapture] refuse there.
      */
     private val initializerReach: IdentityHashMap<FnSymbol, InitializerReach> by lazy {
@@ -1768,10 +1745,8 @@ class CppClassFacts(private val program: TypedProgram) {
             if (c !is ClassSymbol || c.kind != ClassKind.CLASS) {
                 return@forEach
             }
-            val finallyCalls: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
-            c.finally?.forEach { s -> AstTree.walk(s) { finallyCalls.add(it) } }
             for ((site, callee) in initializerCalls[c].orEmpty()) {
-                val reach = InitializerReach(c, site, site in finallyCalls)
+                val reach = InitializerReach(c, site)
                 val queue = ArrayDeque(listOf(callee))
                 while (queue.isNotEmpty()) {
                     val m = queue.removeFirst()
@@ -1793,7 +1768,7 @@ class CppClassFacts(private val program: TypedProgram) {
         out
     }
 
-    /** The `initially` or `finally` that may run [fn] ([initializerReach]), or null. */
+    /** The `initially` that may run [fn] ([initializerReach]), or null. */
     fun initializerReach(fn: FnSymbol): InitializerReach? = initializerReach[fn]
 
     // ---- the scans -------------------------------------------------------------------------------------
@@ -1838,7 +1813,6 @@ class CppClassFacts(private val program: TypedProgram) {
             is ClassSymbol -> {
                 t.methods.forEach { fn -> fn.body?.forEach { scan(it, t, fn, false, null) } }
                 t.initially?.forEach { scan(it, t, null, false, null) }
-                t.finally?.forEach { scan(it, t, null, false, null) }
             }
             is TraitSymbol -> t.methods.forEach { fn -> fn.body?.forEach { scan(it, t, fn, false, null) } }
             else -> {}

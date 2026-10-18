@@ -8,7 +8,6 @@ import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.Effect
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldInit
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
@@ -77,7 +76,7 @@ import java.util.IdentityHashMap
  *
  * An operand is one of three kinds, and the kind decides what "in order" means for it:
  *
- * - A [Operand.Value] is what C++ holds by value: a scalar, a `Char`, a `Bool`, an enum, a
+ * - A [Operand.Value] is what C++ holds by value: a scalar, a `Char`, a `Bool`, a
  *   view, a class or trait handle, or any fresh result (a call, a construction, an operator).
  *   When it is not PURE it is copied into a typed temporary (`const T t0_`, never `auto`,
  *   which would keep a `kira::at` reference): an impure one so it runs in order, a [READS] one
@@ -131,7 +130,7 @@ import java.util.IdentityHashMap
  *   absent, unless it is a stdlib binding marked `pure: true` or a function EffectsPass proved
  *   pure, dispatched statically, with a body; a virtual, trait, `Fx` or extern call, and a
  *   call handed a `MutView` it may write through, whatever an entry says: decision 4b read
- *   literally; a construction whose class has an `initially` or `finally` block or a left-out
+ *   literally; a construction whose class has an `initially` block or a left-out
  *   field's IMPURE default; an assignment, a `throw`, a `try` or a trace). PURE only on a
  *   positive list: a literal, a constant, a PRIVATE place (`CppCopyPolicy.isPrivate`: a
  *   local, a by-value parameter or a value `this` through value steps) that is no view and
@@ -284,9 +283,7 @@ class CppHoister(private val lower: CppLowering) {
      * the IIFE. [node] is the call [build] writes, when it is one: a [chain] of it takes the
      * operands here instead. [consumer] is what binds the operands that carry a [Use]: each
      * reaches [build] as the copy policy passes it (50-round4 2.0, [CppCopyPolicy.pass]), lent
-     * or copied, and a spilled one as its typed temporary, which is the copy (W1). A handle
-     * receiver the policy copies whose drop may run an IMPURE `finally` opens a spill of its own
-     * call (E-DROP), so the `finally` runs as the call returns.
+     * or copied, and a spilled one as its typed temporary, which is the copy (W1).
      */
     fun lower(
         ops: List<Operand>,
@@ -306,7 +303,7 @@ class CppHoister(private val lower: CppLowering) {
         }
         val written = writtenBy(ops)
         val named = lower.policy.named(written, consumer)
-        if (!force && !forced(ops) && !needsSpill(ops, written) && !lower.policy.dropsOnCopy(ops, named, consumer)) {
+        if (!force && !forced(ops) && !needsSpill(ops, written)) {
             return build(ops.map { lower.policy.pass(it, text(it), ops, named, consumer, spilled = false) })
         }
         return spill(ops, result, written, node, named, consumer, build)
@@ -701,7 +698,7 @@ class CppHoister(private val lower: CppLowering) {
      * [PURE], [READS] or [IMPURE] for evaluating [e] (50-round4 R-PURE, 2.8). IMPURE when
      * EffectsPass says so of a node outside its lambdas ([modelImpure]) or [scan] finds what no
      * table proves pure (a dispatched, `Fx`, extern or bodiless call, a write, a throw, a
-     * trace, a construction with an `initially`, a `finally` or an impure default); PURE only
+     * trace, a construction with an `initially` or an impure default); PURE only
      * on a positive list ([pure]); READS otherwise. So an operand kind nobody listed is
      * ordered, never left to C++ (w2-3 #0: a capturing lambda was PURE by omission). [written]
      * is [writtenBy] of the siblings: a PRIVATE place whose root a sibling writes is read first.
@@ -771,7 +768,7 @@ class CppHoister(private val lower: CppLowering) {
     private fun pureChild(n: ASTNode, written: Set<Place>): Boolean = when (n) {
         is Type -> true
         is Expr -> pure(n, written)
-        else -> own.declared(n) == Effect.PURE && AstTree.children(n).all { pureChild(it, written) }
+        else -> AstTree.children(n).all { pureChild(it, written) }
     }
 
     /**
@@ -996,8 +993,7 @@ class CppHoister(private val lower: CppLowering) {
 
     /**
      * The rank of what the construction [e] runs beyond the fields it writes: IMPURE when it is
-     * not resolved, or when its class or a superclass has an `initially` or a `finally` block
-     * (a temporary's is run where the full expression drops it); else the highest [scan] of the
+     * not resolved, or when its class or a superclass has an `initially` block; else the highest [scan] of the
      * defaults of the fields it leaves out, which C++ evaluates at the construction (a struct's
      * default member initializer, a class constructor's default argument).
      */
@@ -1011,7 +1007,7 @@ class CppHoister(private val lower: CppLowering) {
             var c: ClassSymbol? = cls
             val seen: MutableSet<ClassSymbol> = Collections.newSetFromMap(IdentityHashMap())
             while (c != null && seen.add(c)) {
-                if (c.initially != null || c.finally != null) {
+                if (c.initially != null) {
                     return IMPURE
                 }
                 c = c.superclass?.sym as? ClassSymbol
@@ -1087,7 +1083,7 @@ class CppHoister(private val lower: CppLowering) {
          * Whether a copy of a value of type [t] owns storage a view can be taken into: a `Str`,
          * a `StrBuf`, an `Arr`, a `List`, `Map`, `Set`, `Stack`, `Queue` or `Deque`, a `Maybe`,
          * tuple or `Result` holding one, a struct with such a field at any depth, or a type
-         * parameter (unknown). A scalar, an enum, a view, a pointer, a class or trait handle and
+         * parameter (unknown). A scalar, a view, a pointer, a class or trait handle and
          * an `Fx` value (whose captures are its own) are not.
          */
         fun ownsStorage(t: KType): Boolean = owns(t, Collections.newSetFromMap(IdentityHashMap()))
@@ -1119,7 +1115,7 @@ class CppHoister(private val lower: CppLowering) {
         /**
          * Whether a fresh value of type [t] may be what keeps alive the storage a view formed
          * from it points into, directly or through a handle it holds (E2): every type but a
-         * scalar, an enum and a second-class value (a view points wherever it was made, and a
+         * scalar and a second-class value (a view points wherever it was made, and a
          * copy of it keeps nothing alive). A value class (a struct, and after W2.9 an immutable
          * class) counts whatever its fields: `Wrap{.r = std::make_shared<...>(...)}` holds the
          * only `Ref` to the list its `items()` returns a view of, though [ownsStorage] finds no
@@ -1130,7 +1126,7 @@ class CppHoister(private val lower: CppLowering) {
          */
         fun mayKeepAlive(t: KType): Boolean = when (t) {
             is KType.Scalar, KType.Void, KType.Never, KType.NullT, KType.Error -> false
-            is KType.Nominal -> t.sym !is EnumSymbol && !isSecondClass(t)
+            is KType.Nominal -> !isSecondClass(t)
             KType.Str, is KType.Param, is KType.Fn -> true
         }
 

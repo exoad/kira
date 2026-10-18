@@ -15,7 +15,6 @@ abstract class KiraASTVisitor {
     abstract fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
     abstract fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
     abstract fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
-    abstract fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement)
     abstract fun visitReturnStatement(returnStatement: ReturnStatement)
     abstract fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
     abstract fun visitUseStatement(useStatement: UseStatement)
@@ -36,7 +35,6 @@ abstract class KiraASTVisitor {
     abstract fun visitTryExpr(tryExpr: TryExpr)
     abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
     abstract fun visitRangeExpr(rangeExpr: RangeExpr)
-    abstract fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr)
     abstract fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr)
     abstract fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
     abstract fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
@@ -63,9 +61,7 @@ abstract class KiraASTVisitor {
     abstract fun visitFunctionDecl(functionDecl: FunctionDecl)
     abstract fun visitClassDecl(classDecl: ClassDecl)
     abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
-    abstract fun visitEnumDecl(enumDecl: EnumDecl)
     abstract fun visitTraitDecl(traitDecl: TraitDecl)
-    abstract fun visitVariantDecl(variantDecl: VariantDecl)
     abstract fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl)
 
     // THE AST CONTRACT (design 2.4). Each new syntax form is a new node, and

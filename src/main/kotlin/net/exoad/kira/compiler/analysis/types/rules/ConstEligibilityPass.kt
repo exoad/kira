@@ -39,7 +39,7 @@ import java.util.IdentityHashMap
 /**
  * An `@_const` function lowers to `constexpr` (D7), and clang and MSVC reject a constexpr
  * function that can never be constant [A-M7]. So its body, on the gcc 11.4 floor, uses only
- * literal types (TypeFacts.isLiteralType: the scalars, `Char`, `Bool`, enums, `Arr<T, N>`,
+ * literal types (TypeFacts.isLiteralType: the scalars, `Char`, `Bool`, `Arr<T, N>`,
  * `View`/`MutView`, tuples and `Maybe` of those, and structs of those; never `Str`,
  * `Arr<T>`/`List<T>` (std::vector), a `Map`, a class or a trait reference), calls only
  * `@_const` functions and bindings marked `constexpr: true`, and has no `throw`, `try`,

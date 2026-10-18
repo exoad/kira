@@ -8,9 +8,9 @@ internal fun isKeyedContainer(sym: TypeSymbol): Boolean =
 
 /** A type a Map's key or a Set's element can be; a type parameter is checked where it is instantiated ([KeyCheck]). */
 internal fun isKeyType(t: KType): Boolean =
-    t is KType.Scalar || t == KType.Str || t is KType.Param || t == KType.Error || (t as? KType.Nominal)?.sym is EnumSymbol
+    t is KType.Scalar || t == KType.Str || t is KType.Param || t == KType.Error
 
-internal const val KEY_RULE = "a Map's key and a Set's element are a scalar, a Str or an enum"
+internal const val KEY_RULE = "a Map's key and a Set's element are a scalar or a Str"
 
 /**
  * Type parameters that reach a Map's key or a Set's element, directly, through a generic or an alias, or through a

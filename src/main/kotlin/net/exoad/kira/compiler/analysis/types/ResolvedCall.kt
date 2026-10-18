@@ -117,9 +117,6 @@ sealed interface MemberRef {
     /** A method, called or used as a value; [type] is its function type after substitution. */
     data class Method(val fn: FnSymbol, val type: KType) : MemberRef
 
-    /** `E.F`. */
-    data class EnumEntry(val entry: EnumEntrySymbol) : MemberRef
-
     /** A member of another module reached through the module's name. */
     data class ModuleMember(val module: ModuleSymbol, val symbol: Symbol) : MemberRef
 }

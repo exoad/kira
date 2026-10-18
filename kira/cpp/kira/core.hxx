@@ -1175,32 +1175,4 @@ namespace kira
       I ninth;
       bool operator==(const Tuple9&) const = default;
   };
-
-  // ---- enums -----------------------------------------------------------------
-  // enumOf<E>(raw) is the entry of E whose value is raw, or none (D25). It reads
-  // EnumTraits<E>::values, every entry in declaration order. The primary
-  // template takes them from `enum_values(E)`, a constexpr function found by
-  // argument-dependent lookup, which the emitter writes beside the enum, inside
-  // its namespace; C++ code may specialise EnumTraits instead.
-  template<class E>
-  struct EnumTraits
-  {
-      static_assert(std::is_enum_v<E>, "EnumTraits is for enums");
-      static constexpr auto values = enum_values(E{});
-  };
-
-  template<class E, class R>
-  [[nodiscard]] constexpr std::optional<E> enumOf(R raw) noexcept
-  {
-      static_assert(std::is_enum_v<E>, "enumOf<E> needs an enum");
-      static_assert(std::is_integral_v<R> && !std::is_same_v<R, bool>, "enumOf takes an integer");
-      for(const E e : EnumTraits<E>::values)
-      {
-          if(std::cmp_equal(static_cast<std::underlying_type_t<E>>(e), raw))
-          {
-              return e;
-          }
-      }
-      return std::nullopt;
-  }
 }

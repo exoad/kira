@@ -144,7 +144,6 @@ internal class ConstFolder(private val c: PhaseC) {
         val value = when (e) {
             is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral -> model.consts[e]
             is Identifier -> identifier(e)
-            is MemberAccessExpr -> (model.members[e] as? MemberRef.EnumEntry)?.let { ConstValue.EnumConst(it.entry) }
             is UnaryExpr -> unary(e)
             is BinaryExpr -> binary(e)
             is TypeCastExpr -> cast(e)
@@ -281,7 +280,6 @@ internal class ConstFolder(private val c: PhaseC) {
             op !in LiteralTyper.EQUALITY -> return null
             l is ConstValue.BoolConst && r is ConstValue.BoolConst -> if (l.value == r.value) 0 else 1
             l is ConstValue.StrConst && r is ConstValue.StrConst -> if (l.value == r.value) 0 else 1
-            l is ConstValue.EnumConst && r is ConstValue.EnumConst -> if (l.entry === r.entry) 0 else 1
             else -> return null
         }
         return ConstValue.BoolConst(
@@ -312,7 +310,6 @@ internal class ConstFolder(private val c: PhaseC) {
             }
             ConversionKind.CHAR_TO_INT -> (v as? ConstValue.CharConst)?.let { ch -> prim?.let { wrap(BigInteger.valueOf(ch.value.toLong()), it) } }
             ConversionKind.INT_TO_CHAR -> (v as? ConstValue.IntConst)?.let { ConstValue.CharConst(it.value.and(BigInteger.valueOf(0xFF)).toInt()) }
-            ConversionKind.ENUM_TO_BASE -> (v as? ConstValue.EnumConst)?.entry?.value
             ConversionKind.TO_STR -> null
         }
     }

@@ -44,8 +44,8 @@ import java.util.IdentityHashMap
  * (D20), from the arguments that are not bare literals, then from the expected type, then from the
  * literals' own defaults, and each inferred argument must satisfy its bound.
  *
- * **Special cases**: `bitCast<T>(v)` (equal sizes), `enumOf<E>(raw)` (an integer enum, a
- * `Maybe<E>`), `Result.success(v)` / `Result.error(e)` (D39, typed by the context), and
+ * **Special cases**: `bitCast<T>(v)` (equal sizes), `Result.success(v)` / `Result.error(e)`
+ * (D39, typed by the context), and
  * `Str.of(bytes)` (D55, a Str read from UTF-8).
  */
 internal class CallResolver(private val c: PhaseC) {
@@ -179,7 +179,7 @@ internal class CallResolver(private val c: PhaseC) {
             return print(e, null, ctx, scope)
         }
         argsOnly(e, ctx, scope)
-        val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is EnumSymbol || it is TraitSymbol }
+        val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol }
         if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
             c.report("types.call.type-name", "'$name' is a type; construct a value of it with $name { ... }.", id)
         } else {
@@ -229,7 +229,7 @@ internal class CallResolver(private val c: PhaseC) {
 
     /** `Result.success(v)`, `E.x()`, `module.f(...)`: the origin names a type or a module. */
     private fun staticCall(e: FunctionCallExpr, origin: Identifier, member: Identifier, hint: KType?, ctx: BodyContext, scope: Scope): KType? {
-        val asType = c.program.graph.lookup(ctx.module, origin.value) { it is ClassSymbol || it is EnumSymbol || it is TraitSymbol }
+        val asType = c.program.graph.lookup(ctx.module, origin.value) { it is ClassSymbol || it is TraitSymbol }
         val typeSym = (asType as? ModuleGraph.Lookup.Found)?.symbol ?: (asType as? ModuleGraph.Lookup.NotVisible)?.symbol
             ?: (asType as? ModuleGraph.Lookup.Ambiguous)?.first?.symbol
             ?: if (Builtins.isBuiltinName(origin.value)) c.builtins.classFor(origin.value) else null
@@ -247,8 +247,7 @@ internal class CallResolver(private val c: PhaseC) {
             argsOnly(e, ctx, scope)
             c.report(
                 "types.call.static",
-                "'${origin.value}' is a type: '${member.value}' is called on a value of it" +
-                    (if (typeSym is EnumSymbol) "; an enum has no methods (D25): use enumOf<${origin.value}>(raw) for the entry of a value" else "") + ".",
+                "'${origin.value}' is a type: '${member.value}' is called on a value of it.",
                 e,
             )
             return KType.Error
@@ -417,7 +416,6 @@ internal class CallResolver(private val c: PhaseC) {
         if (fn.module.isStdlib && fn.foreign is Foreign.Magic) {
             when {
                 fn.name == "bitCast" && fn.module.uri == "kira:core" -> return bitCast(e, fn, ctx, scope)
-                fn.name == "enumOf" && fn.module.uri == "kira:core" -> return enumOf(e, fn, ctx, scope)
                 fn.name in printNames && fn.module.uri == "kira:io" -> return print(e, fn, ctx, scope)
             }
         }
@@ -889,7 +887,7 @@ internal class CallResolver(private val c: PhaseC) {
             if (!t.containsError() && !facts.isShowable(t)) {
                 c.report(
                     "types.print.not-showable",
-                    "$label prints a number, Char, Bool, Str or an enum; this is ${t.display()}.",
+                    "$label prints a number, Char, Bool or Str; this is ${t.display()}.",
                     p.value,
                 )
             }
@@ -942,37 +940,6 @@ internal class CallResolver(private val c: PhaseC) {
             )
         }
         return target
-    }
-
-    /** `enumOf<E>(raw)` (D25): the entry of an integer enum E whose value is raw, as a `Maybe<E>`. */
-    private fun enumOf(e: FunctionCallExpr, fn: FnSymbol, ctx: BodyContext, scope: Scope): KType {
-        val target = e.typeArguments.map { c.typeOf(it) }.singleOrNull()
-        val enum = (target as? KType.Nominal)?.sym as? EnumSymbol
-        val arg = e.positionalParameters.singleOrNull()?.value
-        if (arg == null || e.namedParameters.isNotEmpty()) {
-            argsOnly(e, ctx, scope)
-            c.report("types.enumof.args", "enumOf<E>(raw) takes one integer.", e)
-        }
-        if (enum == null || enum.base.prim?.isInteger != true) {
-            if (arg != null) {
-                c.exprs.synth(arg, ctx, scope)
-            }
-            if (target?.containsError() != true) {
-                c.report("types.enumof.type", "enumOf<E> needs an enum with an integer base as E, like enumOf<Kind>(raw).", e)
-            }
-            return KType.Error
-        }
-        if (arg != null) {
-            val t = if (c.literals.isLiteralOnly(arg)) c.exprs.check(arg, enum.base, ctx, scope, "enumOf's raw value") else c.exprs.synth(arg, ctx, scope)
-            if (!t.containsError() && !facts.isInteger(t)) {
-                c.report("types.enumof.raw", "enumOf's raw value is an integer; this is ${t.display()}.", arg)
-            }
-            model.calls[e] = ResolvedCall(
-                CallKind.MAGIC, fn, null, false, listOf(target), listOf(ArgBinding.Given(arg, false)), listOf(0), facts.maybeOf(target),
-                fn.typeParams.firstOrNull()?.let { mapOf(it to target) } ?: emptyMap(),
-            )
-        }
-        return facts.maybeOf(target)
     }
 
     /** `Result.success(v)` / `Result.error(e)` (D39): the Result type comes from the context. */
@@ -1104,7 +1071,7 @@ internal class CallResolver(private val c: PhaseC) {
                 }
                 val t = c.exprs.synth(params.single(), ctx, scope)
                 if (!t.containsError() && !facts.isShowable(t)) {
-                    c.report("types.print.not-showable", "@_trace_ prints a number, Char, Bool, Str or an enum; this is ${t.display()}.", params.single())
+                    c.report("types.print.not-showable", "@_trace_ prints a number, Char, Bool or Str; this is ${t.display()}.", params.single())
                 }
                 return KType.Void
             }

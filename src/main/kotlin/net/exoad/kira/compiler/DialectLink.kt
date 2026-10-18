@@ -299,7 +299,7 @@ object DialectLink {
             next ?: m
         }
         if (!changed) return null
-        return ClassDecl(c.name, c.modifiers, members, c.parents, c.initially, c.finally)
+        return ClassDecl(c.name, c.modifiers, members, c.parents, c.initially)
     }
 
     /** A body-less function as the field a construction fills; null when it cannot be one. */

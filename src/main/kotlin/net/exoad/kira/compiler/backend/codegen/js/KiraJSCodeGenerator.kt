@@ -136,8 +136,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodParamNamesBySimpleName = mutableMapOf<String, MutableSet<List<String>>>()
     /** Non-magic user class names (generic templates included -- erased in JS). */
     private val userClassNames = mutableSetOf<String>()
-    /** Enum type names in the current unit -- int-like, keep direct operators. */
-    private val enumTypeNames = mutableSetOf<String>()
     private var indentLevel = 0
     private var emittingClassMembers = false
     /** True while emitting a method body -- bare field names become this.field. */
@@ -386,26 +384,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         return buildTranslationUnitOrFail()
     }
 
-    /**
-     * Pre-register enum type names before the statement walk. Source order can
-     * put `main` before the enum declaration, and operator lowering must know
-     * a type is an int-like enum even before its decl is emitted.
-     */
-    private fun collectEnumTypes() {
-        emittableSources().forEach { source ->
-            source.ast.statements.forEach { stmt ->
-                val expr: Any? = when (stmt) {
-                    is EnumDecl -> stmt
-                    is Statement -> stmt.expr
-                    else -> null
-                }
-                if (expr is EnumDecl && !isMagicDecl(expr)) {
-                    enumTypeNames.add(expr.name.value)
-                }
-            }
-        }
-    }
-
     private fun buildTranslationUnit(): String {
         // Layer 1 -- stdlib runtime, then Layer 2 -- user program.
         buffer.append(fetchTemplateFileContents().trimEnd())
@@ -415,7 +393,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         // Ensure @_opaque / @_extern marks are registered even if semantics skipped apply().
         harvestForeignMarks()
         collectSignatures()
-        collectEnumTypes()
 
         emittableSources().forEach { source ->
             callerModuleUri = runCatching { source.getModuleUri() }.getOrNull()
@@ -527,9 +504,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
-            is EnumDecl -> decl.name.value
             is TraitDecl -> baseTypeNameOf(decl.name)
-            is VariantDecl -> baseTypeNameOf(decl.name)
             is TypeAliasDecl -> when (val id = decl.alias.identifier) {
                 is Identifier -> id.value
                 else -> null
@@ -650,7 +625,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /**
      * Types that keep direct JS operators. Anything else statically known
-     * (user classes, enums, opaque handles, containers) is a candidate for
+     * (user classes, opaque handles, containers) is a candidate for
      * an `@op_*` overload.
      */
     private val primitiveTypeNames = setOf(
@@ -661,9 +636,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
         val t = receiverTypeOf(expr) ?: return false
-        // Enum types are int-like value types: direct JS operators work and no
-        // @op_* definition is ever emitted for them.
-        return t !in primitiveTypeNames && t !in enumTypeNames
+        return t !in primitiveTypeNames
     }
 
     /** Emit a call to an operator intrinsic (`op_add(...)`, ...). */
@@ -800,7 +773,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         methodReturnTypes.clear()
         methodsByClass.clear()
         userClassNames.clear()
-        enumTypeNames.clear()
         indentLevel = 0
         emittingClassMembers = false
         currentMethodClass = null
@@ -828,8 +800,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         when (val expr = statement.expr) {
             is NoExpr -> return
             // Decls and try manage their own terminators / newlines.
-            is ClassDecl, is FunctionDecl, is ModuleDecl, is EnumDecl,
-            is TraitDecl, is VariantDecl, is TypeAliasDecl, is VariableDecl,
+            is ClassDecl, is FunctionDecl, is ModuleDecl,
+            is TraitDecl, is TypeAliasDecl, is VariableDecl,
             is TryExpr -> {
                 expr.accept(this)
                 if (buffer.isNotEmpty() && buffer.last() != '\n') {
@@ -888,16 +860,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         whileIterationStatement.statements.forEach { it.accept(this) }
         indentLevel--
         appendIndentedLine("}")
-    }
-
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        appendIndentedLine("do {")
-        indentLevel++
-        doWhileIterationStatement.statements.forEach { it.accept(this) }
-        indentLevel--
-        appendIndented("} while (")
-        doWhileIterationStatement.condition.accept(this)
-        buffer.appendLine(");")
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
@@ -1292,17 +1254,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         val origin = memberAccessExpr.origin
         val member = memberAccessExpr.member
-        // Enum member access Color.RED -> Color.RED (left is type-ish identifier).
-        if (origin is Identifier && member is Identifier) {
-            if (origin.value.firstOrNull()?.isUpperCase() == true &&
-                member.value.all { it.isUpperCase() || it == '_' || it.isDigit() }
-            ) {
-                buffer.append(origin.value)
-                buffer.append(".")
-                buffer.append(member.value)
-                return
-            }
-        }
         origin.accept(this)
         buffer.append(".")
         val prev = suppressThisRewrite
@@ -1376,10 +1327,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         tryExpr.handlerBlock.forEach { it.accept(this) }
         indentLevel--
         appendIndentedLine("}")
-    }
-
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        enumMemberExpr.name.accept(this)
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
@@ -1655,8 +1602,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
-        if (classDecl.initially != null || classDecl.finally != null) {
-            throw UnsupportedConstruct(classDecl, "a class with an 'initially' or 'finally' block", TARGET_NAME)
+        if (classDecl.initially != null) {
+            throw UnsupportedConstruct(classDecl, "a class with an 'initially' block", TARGET_NAME)
         }
         if (isMagicDecl(classDecl)) {
             return
@@ -1748,43 +1695,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndentedLine("// module \"${moduleDecl.uri.value}\"")
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        if (isMagicDecl(enumDecl)) {
-            return
-        }
-        userSymbols.add(enumDecl.name.value)
-        enumTypeNames.add(enumDecl.name.value)
-        enumDecl.members.forEach { userSymbols.add(it.name.value) }
-        appendIndented("const ")
-        buffer.append(enumDecl.name.value)
-        buffer.append(" = Object.freeze({ ")
-        // Explicit values are honoured; the rest count on from the previous
-        // member (same rule as the C enum), and Str / Float bases carry
-        // their literals.
-        val values = enumDecl.memberValues()
-        enumDecl.members.forEachIndexed { index, member ->
-            if (index > 0) buffer.append(", ")
-            buffer.append(member.name.value)
-            buffer.append(": ")
-            when (val value = values[index]) {
-                is String -> {
-                    buffer.append("\"")
-                    buffer.append(escapeJsString(value))
-                    buffer.append("\"")
-                }
-                else -> buffer.append(value.toString())
-            }
-        }
-        buffer.appendLine(" });")
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Traits are erased at runtime -- duck typing does the dispatch.
         appendIndentedLine("// trait ${baseTypeNameOf(traitDecl.name)}")
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        appendIndentedLine("// variant ${typeNameOf(variantDecl.name)}: no JS lowering in baseline backend")
     }
 
     override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {

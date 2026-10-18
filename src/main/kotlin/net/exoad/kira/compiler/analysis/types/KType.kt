@@ -68,7 +68,7 @@ enum class Prim(val kiraName: String, val bits: Int, val signed: Boolean, val is
  * A resolved Kira type. The typed model stores these; the C++ backend spells them
  * (CppTypeSpeller, design table 5.1) and never re-derives a type from the AST.
  *
- * - [Nominal] covers every declared type: user classes, structs, traits and enums, and the
+ * - [Nominal] covers every declared type: user classes, structs and traits, and the
  *   magic containers (List, Map, Arr, Maybe, TupleN, View, ...). Its [Nominal.sym] is a
  *   [TypeSymbol] compared by identity.
  * - `Arr` resolves by arity: `Arr<T>` has one [TypeArg.Ty]; `Arr<T, N>` adds a [TypeArg.Const].

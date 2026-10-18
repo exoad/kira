@@ -3,7 +3,6 @@ package net.exoad.kira.types
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.types.AliasSymbol
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraTyper

@@ -1892,20 +1892,4 @@ class ExclusivityPassTest {
         assertEquals(listOf(true, false), confinedCalls(p, "startWith"))
     }
 
-    // ---- round 7 (w2-5 round-6 #1, W2.3's KI-20): a STABLE receiver of a binding that drops what it held mid-operation ----
-
-    /** The mut-operand refusals of [p], as (the receiver or argument text, the callee's name). */
-    private fun dropRefusals(p: TypedProgram): List<Pair<String, String>> =
-        p.diagnostics.filter { it.code == "rules.exclusivity.mut" }.map { d ->
-            assertTrue(d.message.contains("which drops what it held while it still works on the container"), d.message)
-            Regex("^the (?:receiver|mut argument) '([^']+)'.*? is passed to '([^']+)'").find(d.message)!!.let { it.groupValues[1] to it.groupValues[2] }
-        }
-
-    /** `CallReach.dropsMidCall` at every call of [name] in [p], in source order. */
-    private fun dropsMid(p: TypedProgram, name: String): List<Boolean> =
-        BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
-            val rc = p.model.calls[call]?.takeIf { it.fn?.name == name } ?: return@mapNotNull null
-            CallReach.dropsMidCall(rc, p.model, rc.receiver?.let { p.model.types[it] })
-        }
-
 }

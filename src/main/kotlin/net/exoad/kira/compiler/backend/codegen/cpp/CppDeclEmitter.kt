@@ -5,8 +5,6 @@ import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.ConstValue
-import net.exoad.kira.compiler.analysis.types.EnumEntrySymbol
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -51,7 +49,7 @@ import kotlin.math.floor
 
 /**
  * One module as C++ text (design 4.2 and table 5.2): the header, and the source unless the
- * module is header-only. Enums, aliases, constants, module state, structs and free functions
+ * module is header-only. Aliases, constants, module state, structs and free functions
  * are lowered here; classes and traits, function bodies, expressions and extern declarations
  * are delegated to the parts of [CppEmitContextImpl]. What goes where, and in what order, is
  * [CppPlacement]'s.
@@ -83,7 +81,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         is TraitSymbol -> sym.foreign
         is FnSymbol -> sym.foreign
         is GlobalSymbol -> sym.foreign
-        is EnumSymbol -> sym.foreign
         else -> null
     }
 
@@ -228,7 +225,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             sb.append(w.toString())
         }
         // The extern checks go after the module's own declarations: a check may name a Kira
-        // class, struct or enum this module declares (an extern taking a `Wrap`), and at the
+        // class or struct this module declares (an extern taking a `Wrap`), and at the
         // top of the header g++ said "'Wrap' was not declared in this scope" (w2-4 round-2
         // minor #3, externnested2). Nothing in the body reads a check.
         if (externChecks.isNotEmpty()) {
@@ -284,7 +281,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             }
         }
 
-        // 6 to 8. enums, aliases, constants and state; structs; traits, then classes: one
+        // 6 to 8. aliases, constants and state; structs; traits, then classes: one
         //    dependency-ordered sequence, private ones in impl_ runs (CppPlacement.ordered)
         sections += render { orderedDeclarations(this, setOf(Home.HEADER, Home.HEADER_IMPL)) }
 
@@ -418,8 +415,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     /**
      * Sections 6 to 8 for the declarations whose home is in [homes], in
-     * [CppPlacement.orderedItems]: each enum (followed by its `nameOf`, `enum_values` and
-     * `valueOf` where used), alias, constant, state, struct, trait and class, and the
+     * [CppPlacement.orderedItems]: each alias, constant, state, struct, trait and class, and the
      * prototype or definition of a function one of them names; consecutive `impl_` items in
      * one `namespace impl_` block.
      */
@@ -463,19 +459,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     }
 
     private fun declarationTexts(sym: Symbol, home: Home): List<String> = when (sym) {
-        is EnumSymbol -> {
-            val out = mutableListOf(render { enum(this, sym) })
-            if (usage.needsNameOf(sym)) {
-                out += render { nameOf(this, sym) }
-            }
-            if (usage.needsEnumValues(sym)) {
-                out += render { enumValues(this, sym) }
-            }
-            if (usage.needsValueOf(sym) && isNumbered(sym) && sym.base != KType.Str) {
-                out += render { valueOf(this, sym) }
-            }
-            out
-        }
         is AliasSymbol -> listOf(render { alias(this, sym) })
         is GlobalSymbol -> listOf(render { global(this, sym, home) })
         is ClassSymbol -> if (sym.isStruct) listOf(render { struct(this, sym) }) else listOf(render { ctx.inScopeOf(sym) { parts.classes.define(ctx, sym, this) } })
@@ -560,105 +543,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         w.line(if (message == null) "static_assert($condition);" else "static_assert($condition, $message);")
     }
 
-    // ---- enums ---------------------------------------------------------------------------------
-
-    /**
-     * A Str or float based enum (the parser allows Int8..Int64, Float32, Float64 and Str) has
-     * no C++ underlying type of its own: its entries are numbered in declaration order, as
-     * the C backend does, and `nameOf` or `valueOf` gives the entry's value where the program
-     * asks for it.
-     */
-    private fun isNumbered(e: EnumSymbol): Boolean = e.base == KType.Str || e.base.prim?.isFloat == true
-
-    private fun enumBase(e: EnumSymbol): String? {
-        val base = e.base
-        if (isNumbered(e)) {
-            return "std::int32_t"
-        }
-        val prim = base.prim
-        if (prim == null || !prim.isInteger) {
-            e.decl?.let { ctx.unsupported(it, "the enum '${e.name}' with a ${base} base (C++ enums take an integer base)") }
-            return null
-        }
-        return ctx.spell(base, Pos.VALUE, e.decl)
-    }
-
-    /** The value of [entry] as C++ reads its enumerator: what phase B folded, else the literal, else its index. */
-    private fun entryValue(entry: EnumEntrySymbol): BigInteger =
-        (entry.value as? ConstValue.IntConst)?.value
-            ?: (entry.decl?.value as? IntegerLiteral)?.let { BigInteger.valueOf(it.value) }
-            ?: BigInteger.valueOf(entry.index.toLong())
-
-    /**
-     * The entries a `switch` on the enum can label: Kira lets two entries share a value
-     * (`D_A = 1, D_B = 1`), and `case E::D_A:` beside `case E::D_B:` is then a duplicate case
-     * value, an error on every compiler. The first entry of each value keeps the label; the
-     * enumerator is its value, so `nameOf(E::D_B)` is `"D_A"`, as it would be for any
-     * `switch` over the same enum.
-     */
-    private fun labelledEntries(e: EnumSymbol): List<EnumEntrySymbol> {
-        if (isNumbered(e)) {
-            return e.entries
-        }
-        val seen = HashSet<BigInteger>()
-        return e.entries.filter { seen.add(entryValue(it)) }
-    }
-
-    private fun enum(w: CppWriter, e: EnumSymbol) {
-        val base = enumBase(e) ?: return
-        w.block("enum class ${ctx.names.escape(e.name)} : $base", ";") {
-            e.entries.forEach { entry ->
-                val value = when {
-                    isNumbered(e) -> entry.index.toString()
-                    else -> entry.decl?.value?.let { lit -> (lit as? IntegerLiteral)?.let { ctx.integerText(it, e.base.prim) } }
-                        ?: (entry.value as? ConstValue.IntConst)?.value?.toString()
-                        ?: entry.index.toString()
-                }
-                line("${ctx.names.escape(entry.name)} = $value,")
-            }
-        }
-    }
-
-    /** `valueOf(E)`: the entry's value for a float-based enum (what `x as Float32` gives). */
-    private fun valueOf(w: CppWriter, e: EnumSymbol) {
-        val name = ctx.names.escape(e.name)
-        val base = ctx.spell(e.base, Pos.VALUE, e.decl)
-        val zero = if (e.base.prim == Prim.FLOAT32) "0.0f" else "0.0"
-        w.block("[[nodiscard]] constexpr $base valueOf($name v)") {
-            block(CppWriter.switchHead("v")) {
-                labelledEntries(e).forEach { entry ->
-                    val value = entry.value?.let { constText(it, e.base) } ?: entry.decl?.value?.let { initText(it, e.base) } ?: zero
-                    line("case $name::${ctx.names.escape(entry.name)}:")
-                    line("    return $value;")
-                }
-            }
-            line("return $zero;")
-        }
-    }
-
-    /** `nameOf(E)`: the entry's name for an integer enum, its value for a Str-based one (what `x as Str` gives). */
-    private fun nameOf(w: CppWriter, e: EnumSymbol) {
-        val name = ctx.names.escape(e.name)
-        w.block("[[nodiscard]] constexpr const char* nameOf($name v)") {
-            block(CppWriter.switchHead("v")) {
-                labelledEntries(e).forEach { entry ->
-                    val text = if (e.base == KType.Str) (entry.value as? ConstValue.StrConst)?.value ?: entry.name else entry.name
-                    line("case $name::${ctx.names.escape(entry.name)}:")
-                    line("    return ${cppString(text)};")
-                }
-            }
-            line("return \"\";")
-        }
-    }
-
-    /** `enum_values(E)`: every entry in declaration order, what `kira::EnumTraits<E>` reads for `enumOf`. */
-    private fun enumValues(w: CppWriter, e: EnumSymbol) {
-        val name = ctx.names.escape(e.name)
-        w.block("[[nodiscard]] constexpr std::array<$name, ${e.entries.size}> enum_values($name)") {
-            line("return {${e.entries.joinToString(", ") { "$name::${ctx.names.escape(it.name)}" }}};")
-        }
-    }
-
     // ---- aliases and globals ---------------------------------------------------------------------
 
     private fun alias(w: CppWriter, a: AliasSymbol) {
@@ -701,7 +585,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         is KType.Scalar -> true
         KType.Str -> false
         is KType.Nominal -> when (val sym = t.sym) {
-            is EnumSymbol -> true
             is ClassSymbol -> when {
                 sym.kind == ClassKind.MAGIC -> when {
                     sym.name == Builtins.ARR && t.args.size >= 2 -> t.typeArgs().all { isLiteralType(it) }
@@ -884,8 +767,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     // ---- initializers and literals ---------------------------------------------------------------
 
     /**
-     * A default or initializer (D48: a literal or a constant's name; also an enum entry, an
-     * empty construction and anything ConstEval folded). Anything else goes to the expression part.
+     * A default or initializer (D48: a literal or a constant's name; also an empty
+     * construction and anything ConstEval folded). Anything else goes to the expression part.
      */
     fun initText(e: Expr, type: KType): String {
         when (e) {
@@ -918,16 +801,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     } else {
                         return ctx.qualified(g)
                     }
-                }
-            }
-            is MemberAccessExpr -> {
-                (model.const(e) as? ConstValue.EnumConst)?.let { return ctx.entry(it.entry) }
-                val origin = e.origin as? Identifier
-                val member = e.member as? Identifier
-                if (origin != null && origin !is IntrinsicExpr && member != null) {
-                    val found = model.symbolOf(origin) as? EnumSymbol
-                        ?: (ctx.program.graph.lookup(m, origin.value) { it is EnumSymbol } as? ModuleGraph.Lookup.Found)?.symbol as? EnumSymbol
-                    found?.entry(member.value)?.let { return ctx.entry(it) }
                 }
             }
             is ObjectInitExpr -> if (e.positionalArgs.isEmpty() && e.namedArgs.isEmpty()) {
@@ -1032,7 +905,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             is ConstValue.BoolConst -> v.value.toString()
             is ConstValue.CharConst -> cppChar(v.value)
             is ConstValue.StrConst -> cppString(v.value)
-            is ConstValue.EnumConst -> ctx.entry(v.entry)
             is ConstValue.ArrConst -> v.elements.joinToString(", ", "{", "}") { constText(it, v.element) }
             ConstValue.NullConst -> "kira::none"
         }
@@ -1118,7 +990,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
                     sym.fields.forEach { check(it.name, it.decl, "field") }
                     sym.methods.forEach { check(it.name, it.decl, "method") }
                 }
-                is EnumSymbol -> sym.entries.forEach { check(it.name, it.decl, "enum entry") }
                 is TraitSymbol -> sym.methods.forEach { check(it.name, it.decl, "method") }
                 else -> {}
             }
@@ -1128,7 +999,6 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
     private fun kindOf(sym: Symbol): String = when (sym) {
         is FnSymbol -> "function"
         is GlobalSymbol -> if (sym.isMut) "state" else "constant"
-        is EnumSymbol -> "enum"
         is AliasSymbol -> "alias"
         is ClassSymbol -> if (sym.isStruct) "struct" else "class"
         is TraitSymbol -> "trait"

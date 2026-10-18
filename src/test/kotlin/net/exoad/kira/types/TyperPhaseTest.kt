@@ -97,7 +97,6 @@ class TyperPhaseTest {
         assertNull(band.superclass)
         assertEquals(listOf("Sized"), band.traits.map { it.sym.name })
         assertNotNull(band.initially)
-        assertNull(band.finally)
         assertEquals(listOf("lo", "hi"), band.fields.map { it.name })
         assertTrue(band.fields[1].isRequired && !band.fields[0].isRequired)
         assertEquals("0:Int32", p.model.consts[band.fields[0].default]!!.toString())
@@ -121,21 +120,19 @@ class TyperPhaseTest {
     }
 
     @Test
-    fun classInitiallyAndFinallyAreRecorded() {
+    fun classInitiallyIsRecorded() {
         val unit = CompilationUnit()
         val cls = ClassDecl(
             ty("Governor"), listOf(Modifier.PUBLIC),
             listOf(field("seconds", ty("Int32"), null, Modifier.PUBLIC, Modifier.REQUIRE)),
             emptyList(),
             initially = listOf(Statement(IntegerLiteral(1))),
-            finally = listOf(Statement(IntegerLiteral(2)), Statement(IntegerLiteral(3))),
         )
         astModule(unit, "test:gov", cls)
         val p = typed(unit)
         expectNoErrors(p)
         val gov = p.member("test:gov", "Governor") as ClassSymbol
         assertEquals(1, gov.initially?.size)
-        assertEquals(2, gov.finally?.size)
     }
 
     @Test

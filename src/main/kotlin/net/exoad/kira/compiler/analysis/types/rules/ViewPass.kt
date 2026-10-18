@@ -1250,7 +1250,7 @@ internal class ViewPass : RulePass {
                     is PlaceAssignmentExpr -> assigned(model.places[n.target], model.types[n.target], n, out)
                     else -> {}
                 }
-                if (c.effects.node(n) == Effect.IMPURE || c.effects.declared(n) == Effect.IMPURE) {
+                if (c.effects.node(n) == Effect.IMPURE) {
                     out.add(Event.Impure("'${KiraUnparser.text(n)}'"))
                 }
             }

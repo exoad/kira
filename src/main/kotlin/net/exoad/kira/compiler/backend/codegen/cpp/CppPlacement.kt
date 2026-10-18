@@ -8,7 +8,6 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.ConversionKind
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -66,13 +65,13 @@ data class Placement(val decl: Home, val def: Home) {
  * `namespace impl_`, and in what order.
  *
  * **What the header names must be in the header.** A `pub` declaration may name a private
- * one: a struct field of a private enum type, a default argument that is a private constant,
+ * one: a struct field of a private struct type, a default argument that is a private constant,
  * a `static_assert` over a private helper, a `constexpr` or template body that calls one.
  * Those private declarations go in the header's `namespace impl_` (design 4.2 item 10),
  * with everything they name in turn; in a header-only module every private declaration
  * does. The rest of a source module's private declarations go in the `.cxx`.
  *
- * **Order.** Sections 6 to 8 of the header (enums, aliases, constants and state; structs;
+ * **Order.** Sections 6 to 8 of the header (aliases, constants and state; structs;
  * traits, then classes) are one dependency-ordered sequence: a declaration follows every
  * declaration of this module that C++ must have seen complete first (a constant it names,
  * a struct it holds by value or constructs, a base class), and otherwise the section order,
@@ -121,7 +120,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     private fun privateHome(sym: Symbol): Home = if (headerOnly || sym in headerNeeds) Home.HEADER_IMPL else Home.SOURCE
 
-    /** A constant, module state, enum or alias. */
+    /** A constant, module state or alias. */
     fun value(sym: Symbol): Placement {
         val home = if (isExported(sym)) Home.HEADER else privateHome(sym)
         return Placement(home, home)
@@ -210,7 +209,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     private fun bodiesOf(sym: Symbol): List<Statement> = when (sym) {
         is FnSymbol -> sym.body.orEmpty()
-        is ClassSymbol -> sym.methods.flatMap { it.body.orEmpty() } + sym.initially.orEmpty() + sym.finally.orEmpty()
+        is ClassSymbol -> sym.methods.flatMap { it.body.orEmpty() } + sym.initially.orEmpty()
         is TraitSymbol -> sym.methods.flatMap { it.body.orEmpty() }
         else -> emptyList()
     }
@@ -231,7 +230,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
             }
             visitRefs(decl, bodies = false, constructs = constructs) { s ->
                 mentions.add(s)
-                // A type needs its values, enums and aliases defined; another type only declared (by-value containment is added below).
+                // A type needs its values and aliases defined; another type only declared (by-value containment is added below).
                 if (!isType || s !is ClassSymbol && s !is TraitSymbol) {
                     completes.add(s)
                 }
@@ -260,9 +259,9 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     /**
      * Calls [visit] with every declaration of this module that [root] names: type references
-     * (through aliases, and the constant in `Arr<T, N>`), identifiers, enum owners in
-     * `Kind.KIND_OK`. A member name after `.` and a named argument's name are not
-     * references. Function bodies and `initially`/`finally` blocks are walked only with
+     * (through aliases, and the constant in `Arr<T, N>`) and identifiers. A member name after
+     * `.` and a named argument's name are not references. Function bodies and `initially`
+     * blocks are walked only with
      * [bodies]. [constructs] gets the struct or class an `S { }` constructs, and the struct a
      * call returns by value (`origin()`), which must be complete there.
      */
@@ -392,7 +391,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     /** What one position of [orderedItems] holds. */
     enum class ItemKind {
-        /** A value, enum, alias, struct, trait or class: its definition. */
+        /** A value, alias, struct, trait or class: its definition. */
         DECL,
 
         /** The prototype of a free function hoisted before a declaration that names it. */
@@ -436,7 +435,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         ItemKind.PROTO -> -2
         ItemKind.DEF -> -1
         ItemKind.DECL -> when (val sym = item.sym) {
-            is GlobalSymbol, is EnumSymbol, is AliasSymbol -> 0
+            is GlobalSymbol, is AliasSymbol -> 0
             is ClassSymbol -> if (sym.isStruct) 1 else 3
             is TraitSymbol -> 2
             else -> 4
@@ -450,7 +449,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     private fun order(): List<OrderedItem> {
         val base = declarations.filter { sym ->
             when (sym) {
-                is GlobalSymbol, is EnumSymbol, is AliasSymbol, is TraitSymbol -> foreignOf(sym) !is Foreign.Extern
+                is GlobalSymbol, is AliasSymbol, is TraitSymbol -> foreignOf(sym) !is Foreign.Extern
                 is ClassSymbol -> foreignOf(sym) !is Foreign.Extern && sym.kind != ClassKind.OPAQUE
                 else -> false
             }
@@ -613,7 +612,6 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 
     private fun kindOf(sym: Symbol): String = when (sym) {
         is GlobalSymbol -> if (sym.isMut) "state" else "constant"
-        is EnumSymbol -> "enum"
         is AliasSymbol -> "alias"
         is ClassSymbol -> if (sym.isStruct) "struct" else "class"
         is TraitSymbol -> "trait"
@@ -710,7 +708,6 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         is TraitSymbol -> sym.foreign
         is FnSymbol -> sym.foreign
         is GlobalSymbol -> sym.foreign
-        is EnumSymbol -> sym.foreign
         else -> null
     }
 
@@ -723,7 +720,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
         /**
          * A pre-order walk of [root] that skips what is not a reference: the member name of
          * `a.b`, the name of a named argument, and, unless [bodies], every function body and
-         * `initially`/`finally` block.
+         * `initially` block.
          */
         fun walk(root: ASTNode, bodies: Boolean, visit: (ASTNode) -> Unit) {
             val seen = IdentityHashMap<ASTNode, Boolean>()
@@ -757,7 +754,6 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                 }
                 is ClassDecl -> if (!bodies) {
                     node.initially?.forEach { out.add(it) }
-                    node.finally?.forEach { out.add(it) }
                 }
                 else -> {}
             }
@@ -767,25 +763,12 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
 }
 
 /**
- * What the program uses of its enums and structs, so `nameOf`, `enum_values` and a struct's
- * `operator==` are emitted only where used (design 5.2, and the goldens' convention).
- * Computed once per program over every module's bodies.
+ * What the program uses of its structs, so a struct's `operator==` is emitted only where used
+ * (design 5.2, and the goldens' convention). Computed once per program over every module's bodies.
  */
 class CppUsage private constructor(
-    private val nameOf: Set<EnumSymbol>,
-    private val enumValues: Set<EnumSymbol>,
     private val compared: Set<ClassSymbol>,
-    private val valueOf: Set<EnumSymbol>,
 ) {
-    /** `x as Str` or `"${x}"` on the enum somewhere in the program (`kira::text` calls ADL `nameOf`). */
-    fun needsNameOf(e: EnumSymbol): Boolean = e in nameOf
-
-    /** `enumOf<E>(raw)` somewhere in the program (`kira::EnumTraits` reads ADL `enum_values`). */
-    fun needsEnumValues(e: EnumSymbol): Boolean = e in enumValues
-
-    /** `x as Float32` (or `Float64`) on a float-based enum somewhere in the program: its entries are numbered, `valueOf` gives the value. */
-    fun needsValueOf(e: EnumSymbol): Boolean = e in valueOf
-
     /**
      * `a == b`, `a != b`, `contains` or `containsValue` somewhere in the program on the struct,
      * or on a `Maybe`, `List`, `Arr`, `Map`, `Set`, `Deque` or tuple holding it, or on a struct
@@ -795,53 +778,23 @@ class CppUsage private constructor(
     fun needsEquality(s: ClassSymbol): Boolean = s in compared
 
     companion object {
-        val NONE: CppUsage = CppUsage(emptySet(), emptySet(), emptySet(), emptySet())
+        val NONE: CppUsage = CppUsage(emptySet())
 
         /** A usage set stated outright, for tests and for callers that know better; [compared] is closed over fields as [scan] closes it. */
-        fun of(
-            nameOf: Set<EnumSymbol> = emptySet(),
-            enumValues: Set<EnumSymbol> = emptySet(),
-            compared: Set<ClassSymbol> = emptySet(),
-            valueOf: Set<EnumSymbol> = emptySet(),
-        ): CppUsage = CppUsage(nameOf, enumValues, closeOverFields(compared), valueOf)
+        fun of(compared: Set<ClassSymbol> = emptySet()): CppUsage = CppUsage(closeOverFields(compared))
 
         fun scan(program: TypedProgram): CppUsage {
             val model = program.model
-            val nameOf = LinkedHashSet<EnumSymbol>()
-            val enumValues = LinkedHashSet<EnumSymbol>()
             val compared = LinkedHashSet<ClassSymbol>()
-            val valueOf = LinkedHashSet<EnumSymbol>()
-            fun enumOf(e: Expr): EnumSymbol? = (model.typeOrNull(e) as? KType.Nominal)?.sym as? EnumSymbol
             for (m in program.modules) {
                 val ast = runCatching { m.source.ast }.getOrNull() ?: continue
                 AstTree.walk(ast) { node ->
                     when (node) {
-                        is TypeCastExpr -> {
-                            val toStr = model.conversion(node) == ConversionKind.TO_STR || model.typeOf(node.type) == KType.Str
-                            if (toStr) {
-                                enumOf(node.value)?.let { nameOf.add(it) }
-                            }
-                            val toFloat = (model.typeOf(node.type) as? KType.Scalar)?.prim?.isFloat == true
-                            if (toFloat) {
-                                enumOf(node.value)?.let { e -> if (e.base.prim?.isFloat == true) valueOf.add(e) }
-                            }
-                        }
-                        is InterpolatedStringLiteral -> node.parts.forEach { part ->
-                            if (part is InterpolationPart.Hole) {
-                                enumOf(part.expr)?.let { nameOf.add(it) }
-                            }
-                        }
                         is BinaryExpr -> if (node.operator == BinaryOp.EQUALS || node.operator == BinaryOp.NOT_EQUAL) {
                             model.typeOrNull(node.leftExpr)?.let { structsIn(it, compared) }
                             model.typeOrNull(node.rightExpr)?.let { structsIn(it, compared) }
                         }
                         is FunctionCallExpr -> model.call(node)?.let { call ->
-                            if (call.kind == CallKind.MAGIC && call.fn?.name == "enumOf") {
-                                (call.typeArgs.firstOrNull() as? KType.Nominal)?.sym?.let { s -> (s as? EnumSymbol)?.let { enumValues.add(it) } }
-                                ((call.returnType as? KType.Nominal)?.args?.firstOrNull() as? TypeArg.Ty)?.t?.let { r ->
-                                    ((r as? KType.Nominal)?.sym as? EnumSymbol)?.let { enumValues.add(it) }
-                                }
-                            }
                             if (call.kind == CallKind.MAGIC && (call.fn?.name == "contains" || call.fn?.name == "containsValue")) {
                                 call.args.forEach { a -> (a as? ArgBinding.Given)?.expr?.let { model.typeOrNull(it) }?.let { structsIn(it, compared) } }
                             }
@@ -850,7 +803,7 @@ class CppUsage private constructor(
                     }
                 }
             }
-            return CppUsage(nameOf, enumValues, closeOverFields(compared), valueOf)
+            return CppUsage(closeOverFields(compared))
         }
 
         /** [compared] plus every struct a compared struct's fields hold, at any depth. */

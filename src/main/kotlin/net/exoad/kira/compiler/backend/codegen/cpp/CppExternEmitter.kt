@@ -4,7 +4,6 @@ import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
-import net.exoad.kira.compiler.analysis.types.EnumSymbol
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
@@ -133,7 +132,6 @@ object CppExternEmitter : CppExternsPart {
         is TraitSymbol -> sym.foreign
         is FnSymbol -> sym.foreign
         is GlobalSymbol -> sym.foreign
-        is EnumSymbol -> sym.foreign
         else -> null
     } as? Foreign.Extern
 
@@ -221,7 +219,6 @@ object CppExternEmitter : CppExternsPart {
             is ClassSymbol -> classChecks(ctx, sym, w)
             is GlobalSymbol -> globalCheck(ctx, sym, w)
             is TraitSymbol -> sym.decl?.let { ctx.unsupported(it, "the extern trait '${sym.name}' (a C++ interface is reached through an extern class)") }
-            is EnumSymbol -> sym.decl?.let { ctx.unsupported(it, "the extern enum '${sym.name}' (declare its values as extern constants)") }
             else -> sym.decl?.let { ctx.unsupported(it, "the extern declaration '${sym.name}'") }
         }
     }

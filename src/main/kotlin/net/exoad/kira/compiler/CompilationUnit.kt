@@ -4,10 +4,8 @@ import net.exoad.kira.compiler.analysis.semantic.KiraSymbolTable
 import net.exoad.kira.compiler.analysis.semantic.SemanticSymbol
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariantDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.lexer.Token
@@ -142,9 +140,7 @@ class CompilationUnit {
         return when (this) {
             is ClassDecl -> (name.identifier as? Identifier)?.value
             is TraitDecl -> (name.identifier as? Identifier)?.value
-            is VariantDecl -> (name.identifier as? Identifier)?.value
             is TypeAliasDecl -> (alias.identifier as? Identifier)?.value
-            is EnumDecl -> name.value
             else -> null
         }
     }

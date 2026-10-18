@@ -107,7 +107,7 @@ class CppClosureEmitter : CppLambdaPart {
                 cls == null || cls.kind != ClassKind.CLASS ->
                     ctx.unsupported(l, "an escaping lambda capturing the receiver of ${owner?.name ?: "no class"} (only a class has a shared_from_this)")
                 outer?.fn == null ->
-                    ctx.unsupported(l, "an escaping lambda capturing this in an initially or finally block of ${cls.name} (C++ has no shared_ptr to an object under construction or destruction)")
+                    ctx.unsupported(l, "an escaping lambda capturing this in the initially block of ${cls.name} (C++ has no shared_ptr to an object under construction)")
                 !cls.thisEscapes ->
                     // prepare() saw every lambda of the program; a class it missed would fail to compile.
                     ctx.diag(l, CppModuleEmitterFactory.INTERNAL_CODE, "class ${cls.name} captures shared_from_this() but was not marked thisEscapes before its definition")
@@ -166,7 +166,7 @@ class CppClosureEmitter : CppLambdaPart {
                 if (cls.kind != ClassKind.CLASS) {
                     continue
                 }
-                val bodies = cls.methods.flatMap { it.body.orEmpty() } + cls.initially.orEmpty() + cls.finally.orEmpty()
+                val bodies = cls.methods.flatMap { it.body.orEmpty() } + cls.initially.orEmpty()
                 if (bodies.any { escapesThis(program, cls, it) }) {
                     cls.thisEscapes = true
                 }

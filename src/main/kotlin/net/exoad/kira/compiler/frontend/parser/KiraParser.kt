@@ -825,7 +825,7 @@ class KiraParser(private val context: SourceContext) {
         val decl: Decl = if (isStruct) {
             StructDecl(nameType, mods, body.members, named, body.initially)
         } else {
-            ClassDecl(nameType, mods, body.members, named, body.initially, null)
+            ClassDecl(nameType, mods, body.members, named, body.initially)
         }
         markIntrinsics(decl, typeIntrinsics)
         attachIntrinsics(decl)

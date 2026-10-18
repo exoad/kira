@@ -14,7 +14,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
  * | a float | a float | FLOAT_RESIZE |
  * | Char | an integer | CHAR_TO_INT (the code unit, unsigned) |
  * | an integer | Char | INT_TO_CHAR |
- * | an integer enum | its base type | ENUM_TO_BASE |
  * | anything showable | Str | TO_STR (`kira::text`) |
  *
  * The operand is typed on its own (a bare literal is an Int32 or a Float64), since the
@@ -52,23 +51,15 @@ internal class ConversionRules(private val c: PhaseC) {
             f != null && t != null && f.isFloat && t.isFloat -> ConversionKind.FLOAT_RESIZE
             f == Prim.CHAR && t != null && t.isInteger -> ConversionKind.CHAR_TO_INT
             f != null && f.isInteger && t == Prim.CHAR -> ConversionKind.INT_TO_CHAR
-            from is KType.Nominal && from.sym is EnumSymbol -> {
-                val base = (from.sym as EnumSymbol).base
-                if (base == to && base.prim?.isInteger == true) ConversionKind.ENUM_TO_BASE else null
-            }
             else -> null
         }
     }
 
     private fun hint(from: KType, to: KType): String {
-        val enumBase = ((from as? KType.Nominal)?.sym as? EnumSymbol)?.base
         return when {
-            enumBase != null && enumBase.prim?.isInteger == true ->
-                "An enum converts to its base type ${enumBase.display()} only; convert that result onward."
-            enumBase != null -> "Only an enum with an integer base converts with `as`."
             from == KType.BOOL || to == KType.BOOL -> "Bool converts to Str only; compare it or use an if-expression."
-            to == KType.Str -> "Only scalars, Char, Bool, Str and enums have a text form."
-            else -> "`as` converts between numbers, Char and integers, an enum to its base, and a showable value to Str (R13)."
+            to == KType.Str -> "Only scalars, Char, Bool and Str have a text form."
+            else -> "`as` converts between numbers, Char and integers, and a showable value to Str (R13)."
         }
     }
 }
