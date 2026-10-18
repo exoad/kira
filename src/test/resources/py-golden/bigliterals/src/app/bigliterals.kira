@@ -1,0 +1,17 @@
+// Radix literals past Int64 as an unsigned type's bits, and the \uXXXX escape.
+
+pub main: () Int32 {
+    all: UInt64 = 0xFFFFFFFFFFFFFFFF
+    top: UInt64 = 0x8000000000000000
+    half: UInt32 = 0x80000000
+    minus: Int64 = 0xFFFFFFFFFFFFFFFF
+    trace("${all} ${top} ${half} ${minus}")
+    s: Str = "caf\u00e9 A\u00DF"
+    mut hex: Str = ""
+    for b: UInt8 in s.bytes() {
+        hex = hex + b.toHex().padStart(2, '0')
+    }
+    trace(hex)
+    trace("${s == "café Aß"}")
+    return 0
+}

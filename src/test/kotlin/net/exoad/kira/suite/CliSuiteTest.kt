@@ -178,7 +178,7 @@ class CliSuiteTest {
         val output = result.stdout + result.stderr
         assertEquals(1, result.exitCode, output)
         assertTrue(output.contains("Unknown escape sequence '\\0'"), output)
-        assertTrue(output.contains("Kira knows \\n, \\t, \\r, \\\\, \\\" and \\${'$'}."), output)
+        assertTrue(output.contains("Kira knows \\n, \\t, \\r, \\\\, \\\", \\${'$'} and \\uXXXX."), output)
         assertTrue(output.contains("main.kira] : line 2"), output)
         assertFalse(output.contains("Exception in thread"), output)
         assertFalse(output.contains("at net.exoad."), output)

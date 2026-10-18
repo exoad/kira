@@ -1,7 +1,12 @@
 package net.exoad.kira.kim
 
+import java.io.IOException
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * Glob matching for the two shapes the manifest uses: file paths (separator
@@ -183,7 +188,7 @@ object DependencyResolver {
         val excludes = manifest?.srcExclude.orEmpty()
         val absoluteRoot = projectRoot.toAbsolutePath().normalize()
 
-        val primary = scanKiraFiles(root).filterNot { isExcluded(it, absoluteRoot, excludes) }
+        val primary = scanKiraFiles(root) { isExcluded(it.toString(), absoluteRoot, excludes) }.filterNot { isExcluded(it, absoluteRoot, excludes) }
         if (primary.isNotEmpty()) {
             return primary
         }
@@ -245,7 +250,8 @@ object DependencyResolver {
         return if (Files.exists(parentResolved)) parentResolved else null
     }
 
-    private fun scanKiraFiles(path: Path): List<String> {
+    /** The .kira files under [path] (a linked file too); a directory [prune] names is never entered, one that vanishes mid-walk is skipped. */
+    private fun scanKiraFiles(path: Path, prune: (Path) -> Boolean = { false }): List<String> {
         if (!Files.exists(path)) {
             return emptyList()
         }
@@ -263,10 +269,23 @@ object DependencyResolver {
         }
 
         val entries = mutableListOf<String>()
-        Files.walk(path).use { stream ->
-            stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
-                .forEach { entries.add(it.toAbsolutePath().toString()) }
-        }
+        Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+                if (dir != path && prune(dir)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                if (file.toString().endsWith(".kira") && Files.isRegularFile(file)) {
+                    entries.add(file.toAbsolutePath().toString())
+                }
+                return FileVisitResult.CONTINUE
+            }
+
+            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult =
+                if (exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
+
+            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult =
+                if (exc == null || exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
+        })
         return entries.distinct().sorted()
     }
 }

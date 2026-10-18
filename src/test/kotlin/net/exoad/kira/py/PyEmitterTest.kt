@@ -1,6 +1,7 @@
 package net.exoad.kira.py
 
 import net.exoad.kira.Public
+import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.backend.codegen.py.PyBinding
 import net.exoad.kira.compiler.backend.codegen.py.PyBindingTable
 import net.exoad.kira.compiler.backend.codegen.py.PyModuleEmitter
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1793,7 +1795,7 @@ class PyEmitterTest {
                 x = 1
             }
             """,
-            "the mut parameter 'x': Int32 (only a List, a Map or a struct is passed by reference)",
+            "the mut parameter 'x': Int32 (only a List, a Map, a struct or a class is passed by reference)",
         )
     }
 
@@ -1852,16 +1854,16 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aNamePythonReservesIsRefused() {
-        refused(
+    fun aLocalNamedAsPythonReservesIsRenamed() {
+        val py = python(
             """
-            f: () Int32 {
+            f: (from: Int32) Int32 {
                 len: Int32 = 1
-                return len
+                return len + from
             }
-            """,
-            "the name 'len', which generated Python uses, is not supported",
+            """
         )
+        assertTrue(py.contains("def _f(k_from):") && py.contains("k_len = 1") && py.contains("k_len + k_from"), py)
     }
 
     @Test
@@ -2002,7 +2004,7 @@ class PyEmitterTest {
                 }
             }
             """,
-            "an Fx taking a mut Int32 (only a List, a Map or a struct is passed by reference)",
+            "an Fx taking a mut Int32 (only a List, a Map, a struct or a class is passed by reference)",
         )
     }
 
@@ -2317,15 +2319,88 @@ class PyEmitterTest {
     fun dictIsANamePythonReserves() {
         refused(
             """
-            f: () Int32 {
-                dict: Int32 = 1
-                return dict
+            pub dict: () Int32 {
+                return 1
             }
             """,
             "the name 'dict', which generated Python uses, is not supported",
         )
     }
 
+
+    @Test
+    fun aParameterIsNamedByItsOwnModuleAtEveryCall() {
+        val (py, errors) = PyTestSupport.emitProgram(
+            "lib:span" to """
+                pub LIMIT: List<Int32> = List<Int32> { }
+
+                pub g: (from: Int32, count: List<Int32> = LIMIT) Int32 {
+                    return from
+                }
+                """,
+            "app:main" to """
+                lib.span as span
+
+                pub count: () Int32 {
+                    return 1
+                }
+
+                f: () Int32 {
+                    return g(from = count()) + g(1)
+                }
+                """,
+        )
+        assertEquals(emptyList(), errors)
+        val main = py.getValue("app:main")
+        assertTrue(main.contains("k_from=") && main.contains("count=") && !main.contains("k_count="), main)
+    }
+
+    @Test
+    fun aParameterNamedLikeItsModulesDeclarationIsRefused() {
+        refused(
+            """
+            pub helper: () Int32 {
+                return 1
+            }
+
+            pub span: (from: Int32, helper: Int32 = 2) Int32 {
+                return from + helper
+            }
+            """,
+            "a parameter named like the module's own 'helper'",
+        )
+    }
+
+    @Test
+    fun aLambdaLocalNamedSelfIsRenamedBesideTheCapturedThis() {
+        val py = python(
+            """
+            C: Any {
+                pub n: Int32 = 2
+
+                pub twice: () Int32 {
+                    return n * 2
+                }
+
+                pub run: () Int32 {
+                    f: Fx<Tuple0, Int32> = () Int32 {
+                        self: Int32 = twice()
+                        return self
+                    }
+                    return f()
+                }
+            }
+            """
+        )
+        assertTrue(py.contains("k_self = "), py)
+    }
+
+    @Test
+    fun aUnicodeEscapeIsFourHexDigitsOfACodePoint() {
+        listOf("\\u-001", "\\u+0e9", "\\u00", "\\u0000", "\\ud800").forEach { esc ->
+            assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("f: () Str {\n    return \"x${esc}y\"\n}") }
+        }
+    }
 
     // ---- programs of several modules ----------------------------------------------------------
 
@@ -2557,7 +2632,7 @@ class PyEmitterTest {
             "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
             "@_extern f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
-            "@_extern f: (s: Set<Int32>) Void" to "the parameter 's' of the extern 'f': a Set<Int32>",
+            "@_extern f: (s: List<Set<Int32>>) Void" to "the parameter 's' of the extern 'f': a Set<Int32> inside a value (a Set crosses as a parameter or a result)",
             "@_extern f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
             "@_extern f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
             "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
@@ -2703,8 +2778,25 @@ class PyEmitterTest {
     }
 
     @Test
+    fun aMutClassParameterGivenANewObjectIsRefused() {
+        refused(
+            """
+            Box: Any {
+                pub mut n: Int64 = 0
+            }
+
+            reset: (mut b: Box) Void {
+                b.n = 1
+                b = Box { }
+            }
+            """,
+            "a new Box assigned to the mut parameter 'b'",
+        )
+    }
+
+    @Test
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
-        refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map or a struct)")
+        refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map, a struct or a class)")
         refused("kira.sync as sync\nf: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
         refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
     }
