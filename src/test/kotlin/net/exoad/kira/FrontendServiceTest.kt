@@ -59,7 +59,14 @@ class FrontendServiceTest {
                 overlays = mapOf(main.toAbsolutePath().normalize().toString() to broken)
             )
             assertFalse(result.isOk, "expected diagnostics for broken overlay")
-            assertTrue(result.diagnostics.isNotEmpty())
+            // The overlay's own parse error: its trailing `!!!` finds no operand before the `}`.
+            assertTrue(
+                result.diagnostics.any {
+                    it.tag == "KiraParser::parsePrimaryExpr" && it.file.endsWith("main.kira") && it.start.lineNumber == 3 &&
+                        it.message.contains("'}' (Closing Brace) is not allowed here")
+                },
+                result.diagnostics.toString(),
+            )
         } finally {
             dir.toFile().deleteRecursively()
         }

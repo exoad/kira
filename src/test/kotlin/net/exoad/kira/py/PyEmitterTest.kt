@@ -2398,7 +2398,8 @@ class PyEmitterTest {
     @Test
     fun aUnicodeEscapeIsFourHexDigitsOfACodePoint() {
         listOf("\\u-001", "\\u+0e9", "\\u00", "\\u0000", "\\ud800").forEach { esc ->
-            assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("f: () Str {\n    return \"x${esc}y\"\n}") }
+            val e = assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("f: () Str {\n    return \"x${esc}y\"\n}") }
+            assertTrue(e.tag == "KiraParser::parseStringLiteral" && e.message.contains("takes four hex digits"), e.message)
         }
     }
 

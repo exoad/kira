@@ -98,6 +98,13 @@ class ParserGrowthTest {
         runSemantic = false,
     )
 
+    /** [body] refused by the parser with [tag], its message holding [words]: the reason the test means. */
+    private fun refusedAs(body: String, tag: String, words: String) {
+        val e = assertThrows<DiagnosticsException>(body) { parse(body) }
+        assertEquals(tag, e.tag, e.message)
+        assertTrue(e.message.contains(words), e.message)
+    }
+
     /** The analyzer's diagnostics for [body], every one at a real position. */
     private fun analyze(body: String): List<DiagnosticsException> {
         val result = TestCompileSupport.compileSnippet(
@@ -158,8 +165,8 @@ class ParserGrowthTest {
 
     @Test
     fun structRefusesFinallyAndDuplicateInitially() {
-        assertThrows<Throwable> { parse("S: Struct { finally { } }") }
-        assertThrows<Throwable> { parse("S: Struct { initially { } initially { } }") }
+        refusedAs("S: Struct { finally { } }", "parse.removed", "'finally' is not part of Kira any more")
+        refusedAs("S: Struct { initially { } initially { } }", "KiraParser::parseTypeBody", "only one 'initially' block")
     }
 
     // --- for ... in ---------------------------------------------------------
@@ -194,7 +201,7 @@ class ParserGrowthTest {
 
     @Test
     fun forInWithoutTheInKeywordIsRejected() {
-        assertThrows<Throwable> { parse("f: () Void { for i: Int32 0..8 { } }") }
+        refusedAs("f: () Void { for i: Int32 0..8 { } }", "KiraParser::expect", "Expected an 'in' but got an Integer Literal")
     }
 
     // --- if-expressions -----------------------------------------------------
@@ -243,16 +250,16 @@ class ParserGrowthTest {
 
     @Test
     fun ifExpressionWithoutElseIsRejected() {
-        assertThrows<Throwable> {
-            parse(
-                """
-                f: (c: Bool) Int32 {
-                    v: Int32 = if c { 1 }
-                    return v
-                }
-                """
-            )
-        }
+        refusedAs(
+            """
+            f: (c: Bool) Int32 {
+                v: Int32 = if c { 1 }
+                return v
+            }
+            """,
+            "KiraParser::parseIfExpr",
+            "An if-expression needs an 'else' branch",
+        )
     }
 
     @Test
@@ -310,7 +317,7 @@ class ParserGrowthTest {
             assertTrue(assertNotNull(e.location).lineNumber >= 1)
         }
         // A lambda's parameter list follows the same rule.
-        assertThrows<DiagnosticsException> { parse("f: () Void { g: Fx<Tuple2<Int32, Int32>, Void> = (a: Int32 = 1, b: Int32) Void { } }") }
+        refusedAs("f: () Void { g: Fx<Tuple2<Int32, Int32>, Void> = (a: Int32 = 1, b: Int32) Void { } }", "KiraParser::parseFunctionDeclParameters", "A required parameter cannot follow")
         // Defaults after every required parameter stay fine.
         parse("f: (host: Str, port: Int32 = 8080, ssl: Bool = true) Void { }")
     }
@@ -346,8 +353,8 @@ class ParserGrowthTest {
 
     @Test
     fun namedArgumentBeforePositionalIsRejected() {
-        assertThrows<Throwable> { parse("f: () Void { p: Point = Point { y = 2, 1 } }") }
-        assertThrows<Throwable> { parse("f: () Void { g(y = 2, 1) }") }
+        refusedAs("f: () Void { p: Point = Point { y = 2, 1 } }", "KiraParser::parseObjectInit", "Positional arguments must come before named arguments in a construction")
+        refusedAs("f: () Void { g(y = 2, 1) }", "KiraParser::parseFunctionCallParameter", "Positional arguments must come before named arguments")
     }
 
     // --- place assignment -------------------------------------------------------
@@ -456,9 +463,9 @@ class ParserGrowthTest {
 
     @Test
     fun duplicateBlocksAndMisplacedOverrideAreRejected() {
-        assertThrows<Throwable> { parse("C: Any { initially { } initially { } }") }
-        assertThrows<Throwable> { parse("C: Any { finally { } }") }
-        assertThrows<Throwable> { parse("override x: Int32 = 1") }
+        refusedAs("C: Any { initially { } initially { } }", "KiraParser::parseTypeBody", "only one 'initially' block")
+        refusedAs("C: Any { finally { } }", "parse.removed", "'finally' is not part of Kira any more")
+        refusedAs("override x: Int32 = 1", "KiraParser::expectModifiers", "The modifier 'override' cannot be applied to a variable")
     }
 
     // --- const type arguments, mut in tuples -------------------------------------
@@ -492,7 +499,7 @@ class ParserGrowthTest {
         assertTrue(tuple.children[0].isMutParam)
         assertFalse(tuple.children[1].isMutParam)
         assertFalse(fx.isMutParam)
-        assertThrows<Throwable> { parse("f: (xs: Arr<mut Str>) Void { }") }
+        refusedAs("f: (xs: Arr<mut Str>) Void { }", "KiraParser::parseTypeParameter", "'mut' in a type argument is only meaningful inside a Tuple")
     }
 
     @Test
@@ -510,8 +517,8 @@ class ParserGrowthTest {
             val e = assertThrows<DiagnosticsException>(decl) { parse(decl) }
             assertTrue(e.message.contains("Type parameter 'T_X' does not conform to PascalCase"), e.message)
         }
-        assertThrows<DiagnosticsException> { parse("Box<4>: Any { }") }
-        assertThrows<DiagnosticsException> { parse("Box<mut T>: Any { }") }
+        refusedAs("Box<4>: Any { }", "KiraParser::expect", "Expected an identifier but got an Integer Literal")
+        refusedAs("Box<mut T>: Any { }", "KiraParser::expect", "Expected an identifier but got a 'mut'")
         parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { return x }")
         // ...and the argument-list forms still parse where they belong.
         parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<mut Str>, Void>) Void { }")
@@ -550,18 +557,18 @@ class ParserGrowthTest {
 
     @Test
     fun markerArgumentsMustBeLiteralsAndAMarkerMustMarkADeclaration() {
-        assertThrows<Throwable> { parse("@_extern(name) f: () Void;") }
+        refusedAs("@_extern(name) f: () Void;", "KiraParser::parseModifiers", "'@_extern' takes literal arguments")
         // Measured before: this compiled to a stray `"fopen";` statement.
-        assertThrows<Throwable> {
-            parse(
-                """
-                openFile: (path: Str) Int32 {
-                    @_extern("fopen")
-                    return 0
-                }
-                """
-            )
-        }
+        refusedAs(
+            """
+            openFile: (path: Str) Int32 {
+                @_extern("fopen")
+                return 0
+            }
+            """,
+            "KiraParser::parseStatement",
+            "'@_extern' marks the declaration that follows it, but a 'return' follows instead",
+        )
     }
 
     @Test
@@ -695,10 +702,10 @@ class ParserGrowthTest {
     fun constructionInAnUnparenthesizedConditionHeadIsNotAConstruction() {
         // `Foo { }` in a bare head is the condition `Foo` followed by the body `{ }`,
         // so what comes next is an error rather than a method call on a new Foo.
-        assertThrows<Throwable> { parse("f: () Void { if Foo { }.ok() { trace(1) } } ") }
+        refusedAs("f: () Void { if Foo { }.ok() { trace(1) } } ", "KiraParser::parsePrimaryExpr", "a '.' (Dot) is not allowed here")
         // A construction the body follows directly cannot be told from a
         // condition and a body either, so it is refused the same way.
-        assertThrows<Throwable> { parse("f: () Void { while Foo { 1 } { trace(1) } }") }
+        refusedAs("f: () Void { while Foo { 1 } { trace(1) } }", "KiraParser::parsePrimaryExpr", "an '{' (Opening Brace) is not allowed here")
     }
 
     // --- char literals and interpolated strings ---------------------------------
@@ -723,8 +730,8 @@ class ParserGrowthTest {
 
     @Test
     fun charLiteralsOutsideOneByteOrWithUnknownEscapesAreRejected() {
-        assertThrows<Throwable> { parse("c: Char = '€'") }
-        assertThrows<Throwable> { parse("c: Char = '\\q'") }
+        refusedAs("c: Char = '€'", "KiraParser::parseCharLiteral", "A Char is one byte (0..255)")
+        refusedAs("c: Char = '\\q'", "KiraParser::parseCharLiteral", "Unknown escape sequence '\\q'")
     }
 
     @Test

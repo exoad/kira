@@ -148,7 +148,7 @@ class OperatorMemberParseTest {
         // Not an operator name: falls through to `parseIdentifier`, which cannot consume an
         // INTRINSIC_IDENTIFIER token either, so this is still a parse error (unchanged by this
         // package): only operator intrinsics get the new member treatment.
-        assertThrows<DiagnosticsException> {
+        val e = assertThrows<DiagnosticsException> {
             parse(
                 """
                 apply: (a: Int32) Void {
@@ -157,6 +157,8 @@ class OperatorMemberParseTest {
                 """
             )
         }
+        assertEquals("KiraParser::expect", e.tag, e.message)
+        assertTrue(e.message.contains("Expected an identifier but got an Intrinsic Identifier"), e.message)
     }
 
     @Test

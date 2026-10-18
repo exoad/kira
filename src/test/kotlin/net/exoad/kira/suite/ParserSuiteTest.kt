@@ -561,9 +561,11 @@ class ParserSuiteTest {
 
     @Test
     fun nullableTypesAreRejected() {
-        assertThrows<Throwable> {
-            parseModule("pub Node: Any { pub next: Node? }")
-        }
+        // No `T?`: the `?` is where the body stops reading a member.
+        val src = "pub Node: Any { pub next: Node? }"
+        val e = assertThrows<DiagnosticsException> { parseModule(src) }
+        assertEquals("KiraParser::parseTypeBody", e.tag, e.message)
+        assertEquals(src.indexOf('?') + 1, e.location?.column, e.message)
     }
 
     @Test
@@ -614,14 +616,16 @@ class ParserSuiteTest {
         )
         assertEquals(2, declsOf(ast).size, ast.toString())
         // Rejected: types, functions, parameters and type parameters.
-        for (bad in listOf(
-            "A_T: Any {}",
-            "Int32 as A_B",
-            "MY_FN: () Void {}",
-            "f: (X_Y: Int32) Void {}",
-            "id<T_X>: (v: T_X) T_X { return v }",
+        for ((bad, tag, words) in listOf(
+            Triple("A_T: Any {}", "parse.type.name", "'A_T' is a constant's name"),
+            Triple("Int32 as A_B", "KiraParser::expectConventionalName", "Type alias 'A_B' does not conform to PascalCase"),
+            Triple("MY_FN: () Void {}", "KiraParser::expectConventionalName", "Function 'MY_FN' does not conform to camelCase"),
+            Triple("f: (X_Y: Int32) Void {}", "KiraParser::expectConventionalName", "Parameter 'X_Y' does not conform to camelCase"),
+            Triple("id<T_X>: (v: T_X) T_X { return v }", "KiraParser::expectConventionalName", "Type parameter 'T_X' does not conform to PascalCase"),
         )) {
-            assertThrows<Throwable>(bad) { parseModule(bad) }
+            val e = assertThrows<DiagnosticsException>(bad) { parseModule(bad) }
+            assertEquals(tag, e.tag, e.message)
+            assertTrue(e.message.contains(words), e.message)
         }
     }
 
@@ -670,30 +674,26 @@ class ParserSuiteTest {
 
     @Test
     fun garbageFailsToParse() {
-        assertThrows<Throwable> {
-            parseModule("fx fx fx { { {")
-        }
+        val e = assertThrows<DiagnosticsException> { parseModule("fx fx fx { { {") }
+        assertEquals("parse.removed", e.tag, e.message)
     }
 
     @Test
     fun unterminatedBlockFails() {
-        assertThrows<Throwable> {
-            parseModule("main: () Void {")
-        }
+        val e = assertThrows<DiagnosticsException> { parseModule("main: () Void {") }
+        assertTrue(e.tag == "KiraParser::expect" && e.message.contains("Expected a '}' (closing brace) but got an 'EOF'"), e.message)
     }
 
     @Test
     fun badStatementFails() {
-        assertThrows<Throwable> {
-            parseModule("main: () Void { 1 + }")
-        }
+        val e = assertThrows<DiagnosticsException> { parseModule("main: () Void { 1 + }") }
+        assertTrue(e.tag == "KiraParser::parsePrimaryExpr" && e.message.contains("a '}' (Closing Brace) is not allowed here"), e.message)
     }
 
     @Test
     fun unknownTokenFails() {
-        assertThrows<Throwable> {
-            parseModule("main: () Void { \$ }")
-        }
+        val e = assertThrows<DiagnosticsException> { parseModule("main: () Void { \$ }") }
+        assertTrue(e.tag == "KiraLexer::nextToken" && e.message.contains("Symbol '$' is not known"), e.message)
     }
 
     @Test
