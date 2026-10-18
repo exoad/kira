@@ -6,6 +6,7 @@ import net.exoad.kira.types.rules.RulesTestSupport.message
 import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import net.exoad.kira.types.rules.RulesTestSupport.warnings
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -68,10 +69,10 @@ class NamingPassTest {
         // The parser already refuses underscores outside UPPER_SNAKE_CASE; the pass sees the case violations.
         val p = snippet(
             """
-            pub point: Any {
+            pub Point: Any {
                 pub Xpos: Int32 = 0
             }
-            pub comparable<t>: Any {
+            pub Comparable<t>: Any {
                 pub CompareTo: (Other: t) Int32;
             }
             pub DoThing: (Value: Int32) Int32 {
@@ -85,8 +86,8 @@ class NamingPassTest {
         assertTrue(p.diagnostics.all { it.severity == Severity.WARNING }, "warnings only")
         assertEquals(
             listOf(
-                "rules.naming.type", "rules.naming.variable",
-                "rules.naming.type", "rules.naming.type", "rules.naming.function", "rules.naming.variable",
+                "rules.naming.variable",
+                "rules.naming.type", "rules.naming.function", "rules.naming.variable",
                 "rules.naming.function", "rules.naming.variable",
                 "rules.naming.variable", "rules.naming.variable",
             ),
@@ -94,7 +95,9 @@ class NamingPassTest {
             p.diagnostics.joinToString("\n") { it.render() },
         )
         assertTrue(p.diagnostics.any { it.message.contains("did you mean 'doThing'") }, p.diagnostics.joinToString("\n") { it.render() })
-        assertTrue(p.diagnostics.any { it.message.contains("did you mean 'Point'") })
+        // A type's name is PascalCase or it declares no type: `point: Any { }` is refused as it parses.
+        val e = assertThrows<net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException> { snippet("pub point: Any {\n    pub x: Int32 = 0\n}") }
+        assertEquals("parse.type.name", e.tag)
         assertTrue(p.diagnostics.any { it.message.contains("did you mean 'myVar'") })
     }
 

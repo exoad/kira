@@ -389,6 +389,7 @@ class SharedPredicatesTest {
             }
             pub Keeper: Any {
                 pub f: Fx<Tuple0, Void>
+                pub n: Int32 = 0
             }
             pub Counted: Any {
                 pub mut n: Int32 = 0

@@ -372,10 +372,13 @@ class KiraParser(private val context: SourceContext) {
                 }
             }
             in Token.Type.modifiers -> parseDeclarationStatement()
-            Token.Type.IDENTIFIER -> if ((atTopLevel() && startsImportOrAlias()) || startsDeclaration()) {
-                parseDeclarationStatement()
-            } else {
-                parseExpressionStatement()
+            Token.Type.IDENTIFIER -> {
+                if (!atTopLevel()) refuseNestedImport()
+                if ((atTopLevel() && startsImportOrAlias()) || startsDeclaration()) {
+                    parseDeclarationStatement()
+                } else {
+                    parseExpressionStatement()
+                }
             }
 
             else -> parseExpressionStatement()
@@ -538,9 +541,59 @@ class KiraParser(private val context: SourceContext) {
         }
     }
 
-    /** A type a program writes is PascalCase: an uppercase first letter and a lowercase one after. */
+    /**
+     * `a.b as name` (an import) or `Type<A> as Name<A>` (an alias) inside a body, where a cast
+     * names a type: both are top-level only, so refused here.
+     */
+    private fun refuseNestedImport() {
+        if (!at(Token.Type.IDENTIFIER)) return
+        var i = 0
+        while (peek(i + 1).type == Token.Type.S_DOT && peek(i + 2).type == Token.Type.IDENTIFIER) {
+            i += 2
+        }
+        val generic = peek(i + 1).type == Token.Type.S_OPEN_ANGLE
+        val asAt = (if (generic) typeArgumentsEnd(i + 1)?.plus(1) else i + 1) ?: return
+        val target = peek(asAt + 1)
+        if (peek(asAt).type != Token.Type.K_AS || target.type != Token.Type.IDENTIFIER) return
+        val what = when {
+            generic && target.content.first().isUpperCase() -> "A type alias"
+            !generic && i > 0 && target.content.first().isLowerCase() -> "An import"
+            else -> return
+        }
+        val line = context.findCanonicalLine(here().lineNumber).trim()
+        Diagnostics.panic(
+            "parse.import.nested",
+            "$what is top-level only: move '$line' to the top of the file.",
+            location = here(),
+            selectorLength = max(1, peek().content.length),
+            context = context
+        )
+    }
+
+    /**
+     * The one rule for what a declaration declares: a name in PascalCase (a capital first, no
+     * underscore, and a lowercase letter or a lone capital: `Url`, `K`, `V2`) is a type's, unless
+     * `= value` follows; capitals (`URL`, `MAX_SIZE`) are a constant's, and camelCase a value's.
+     */
     private fun isTypeName(name: String): Boolean =
-        name.isNotEmpty() && name[0].isUpperCase() && name.any { it.isLowerCase() } && !name.contains(Symbols.UNDERSCORE.rep)
+        name.isNotEmpty() && name[0].isUpperCase() && !name.contains(Symbols.UNDERSCORE.rep) &&
+            (name.any { it.isLowerCase() } || name.drop(1).all { it.isDigit() })
+
+    /** `c: Cfg { }` or `URL: Any { }`: a body or a parent list after a name no type has. */
+    private fun refuseValueShapedType(name: Identifier, first: Type, origin: SourcePosition): Nothing {
+        val identity = net.exoad.kira.compiler.analysis.types.KiraUnparser.type(first)
+        val message = if (name.value.first().isUpperCase()) {
+            val pascal = name.value.split(Symbols.UNDERSCORE.rep).joinToString("") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
+            "'${name.value}' is a constant's name (capitals), so it declares no type: a type's name is PascalCase, " +
+                "with a lowercase letter${if (pascal.any { it.isLowerCase() }) " ('$pascal')" else ""}, and a constant takes '=' " +
+                "('${name.value}: $identity = ...')."
+        } else {
+            "'${name.value}: $identity { }' declares nothing: '${name.value}' is a value's name (a type's is PascalCase). " +
+                "A value takes '=' ('${name.value}: $identity = ...'), and a function its parameters first " +
+                "('${name.value}: () $identity { }')."
+        }
+        Diagnostics.panic("parse.type.name", message, location = origin, selectorLength = name.value.length, context = context)
+    }
 
     /**
      * `kira.math as math` imports a module, `kira.math.sqrt as sqrt` one of its names (both only
@@ -616,8 +669,11 @@ class KiraParser(private val context: SourceContext) {
         }
         val ident = name as Identifier
         val first = parseType()
-        if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE) || (isTypeName(ident.value) && !at(Token.Type.S_EQUAL))) {
+        if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL)) {
             return parseTypeDecl(origin, ident, generics, first, modifiers, marks)
+        }
+        if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE)) {
+            refuseValueShapedType(ident, first, origin)
         }
         if (generics.isNotEmpty()) {
             Diagnostics.panic(
@@ -754,6 +810,17 @@ class KiraParser(private val context: SourceContext) {
         val body = if (at(Token.Type.S_OPEN_BRACE)) parseTypeBody() else TypeBody(emptyList(), null)
         val isStruct = parents.any { isRoot(it, STRUCT_ROOT) }
         val named = parents.filterNot { isRoot(it, ANY_ROOT) || isRoot(it, STRUCT_ROOT) }
+        if (named.isEmpty() && body.members.isEmpty() && body.initially == null && typeIntrinsics.isNullOrEmpty()) {
+            // A type adds at least one member, so a dropped `=` never declares one; the host's is marked.
+            Diagnostics.panic(
+                "parse.type.empty",
+                "'${name.value}' adds no member, and a type adds at least one (a field, a function or 'initially'), " +
+                    "so a dropped '=' never declares one; a type the host supplies says so with @_opaque or @_extern.",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
+        }
         val mods = modifier?.keys?.toList() ?: emptyList()
         val decl: Decl = if (isStruct) {
             StructDecl(nameType, mods, body.members, named, body.initially)
@@ -813,6 +880,9 @@ class KiraParser(private val context: SourceContext) {
                 val memberModifiers = parseModifiers()
                 expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
                 refuseRemovedForm()
+                if (memberModifiers.isEmpty()) {
+                    refuseNestedImport()
+                }
                 if (!startsDeclaration()) {
                     Diagnostics.panic(
                         "KiraParser::parseTypeBody",
@@ -1120,6 +1190,7 @@ class KiraParser(private val context: SourceContext) {
         Token.Type.L_INTEGER,
         Token.Type.K_MODIFIER_MUTABLE,
         Token.Type.S_COLON,
+        Token.Type.S_DOT,
     )
 
     /** Parse `<T, U>` type-argument list; pointer must be on `<`. */
@@ -1205,6 +1276,9 @@ class KiraParser(private val context: SourceContext) {
 
             Token.Type.IDENTIFIER -> {
                 refuseRemovedForm()
+                if (startsQualifiedConstruction()) {
+                    return parseObjectInit()
+                }
                 when (peek(1).type) {
                     Token.Type.S_OPEN_PARENTHESIS -> {
                         if (modifier?.isNotEmpty() ?: false) {
@@ -1317,6 +1391,17 @@ class KiraParser(private val context: SourceContext) {
             parseStatementBlock()
         }
         return putOrigin(IfExpr(condition, thenBranch, elseBranch), origin)
+    }
+
+    /** `shapes.Impl {` or `shapes.Box<T> {` at the pointer, outside a bare condition head: a construction. */
+    private fun startsQualifiedConstruction(): Boolean {
+        if (noObjectInit || !peek().content.first().isLowerCase()) return false
+        if (peek(1).type != Token.Type.S_DOT || peek(2).type != Token.Type.IDENTIFIER || !looksLikeTypeName(peek(2).content)) return false
+        return when (peek(3).type) {
+            Token.Type.S_OPEN_BRACE -> true
+            Token.Type.S_OPEN_ANGLE -> typeArgumentsEnd(3)?.let { peek(it + 1).type == Token.Type.S_OPEN_BRACE } ?: false
+            else -> false
+        }
     }
 
     /** `(params) Ret { body }` in expression position: a lambda. */
@@ -1893,7 +1978,12 @@ class KiraParser(private val context: SourceContext) {
             }
         }
 
-        val baseIdentifier = parseIdentifier()
+        var baseIdentifier = parseIdentifier()
+        if (!declaring && startsQualifiedType(baseIdentifier)) {
+            advancePointer()
+            val nameAt = here()
+            baseIdentifier = putOrigin(QualifiedIdentifier(baseIdentifier, parseIdentifier().value), nameAt)
+        }
         // In a named type's argument list a constant name (`Arr<UInt8,
         // USER_CMD_BYTES>`, design D6) is an UPPER_SNAKE value, not a type
         // parameter; it stays a Type and the typer resolves it. A declared
@@ -1930,7 +2020,14 @@ class KiraParser(private val context: SourceContext) {
             return parseFunctionType()
         }
         val baseLocation = here()
-        val baseIdentifier = parseIdentifier()
+        var baseIdentifier = parseIdentifier()
+        if (!declaresGenerics && startsQualifiedType(baseIdentifier)) {
+            // `shapes.Impl`: a type of the module the alias `shapes` imports.
+            advancePointer()
+            val nameAt = here()
+            val name = parseIdentifier()
+            baseIdentifier = putOrigin(QualifiedIdentifier(baseIdentifier, name.value), nameAt)
+        }
         if (!at(Token.Type.S_OPEN_ANGLE)) {
             return putOrigin(Type(baseIdentifier), baseLocation)
         }
@@ -1947,6 +2044,11 @@ class KiraParser(private val context: SourceContext) {
         return putOrigin(Type(baseIdentifier, null, children), baseLocation)
 
     }
+
+    /** After [first], `.Name` with [first] a module alias (camelCase): a qualified type. */
+    private fun startsQualifiedType(first: Identifier): Boolean =
+        first.value.firstOrNull()?.isLowerCase() == true && at(Token.Type.S_DOT) &&
+            peek(1).type == Token.Type.IDENTIFIER && looksLikeTypeName(peek(1).content)
 
     /** A keyword modifier or an intrinsic of a declaration head, as written. */
     private class HeadWord(val text: String, val at: SourcePosition, val isIntrinsic: Boolean)

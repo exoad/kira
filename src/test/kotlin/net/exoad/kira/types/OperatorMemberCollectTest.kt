@@ -608,16 +608,16 @@ class OperatorMemberCollectTest {
         // Same shape as above, for the operator form the brief calls out specifically ("It
         // matters most for @_op_set_, whose mut-ness 1.3.2 says varies by class").
         val ops = """
-            pub SA: Any {
+            pub Sa: Any {
                 pub @_op_set_: (i: Int32, v: Int32) Void { }
             }
-            pub SB: Any {
+            pub Sb: Any {
                 pub mut @_op_set_: (i: Int32, v: Int32) Void { }
             }
         """.trimIndent()
-        val ab = phasesAAndB { snippet("$ops\npub C: SA, SB {\n}") }
+        val ab = phasesAAndB { snippet("$ops\npub C: Sa, Sb {\n}") }
         expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$ops\npub C: SB, SA {\n}") }
+        val ba = phasesAAndB { snippet("$ops\npub C: Sb, Sa {\n}") }
         expectDiagnostic(ba, "types.member.conflict")
     }
 
@@ -629,6 +629,7 @@ class OperatorMemberCollectTest {
         // though the two `m`s disagree on their bound. Both orders must now conflict.
         val bounds = """
             pub X: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub A: Any {
                 pub m<U: X>: (u: U) U;
@@ -696,8 +697,10 @@ class OperatorMemberCollectTest {
         // 932/0, half-reverting round 5's fix. Both orders must conflict.
         val bounds = """
             pub X: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub Y: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub A: Any {
                 pub m<U: X>: (u: U) U;
@@ -723,6 +726,7 @@ class OperatorMemberCollectTest {
         // parent, so both orders are asserted.
         val bounds = """
             pub Marker<T>: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub A<T>: Any {
                 pub m<U: Marker<T>>: (u: U) U;
@@ -746,6 +750,7 @@ class OperatorMemberCollectTest {
         // different names, so this must never conflict -- with `ownMap` dropped it falsely does.
         val bounds = """
             pub Marker<T>: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub F: Any {
                 pub m<U: Marker<U>>: (u: U) U;
@@ -842,9 +847,9 @@ class OperatorMemberCollectTest {
                 pub m: (t: Int32) Int32;
             }
         """.trimIndent()
-        val gh = phasesAAndB { snippet("$bodies\npub GH: G<Int32>, H {\n}") }
+        val gh = phasesAAndB { snippet("$bodies\npub Gh: G<Int32>, H {\n}") }
         assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
-        val hg = phasesAAndB { snippet("$bodies\npub HG: H, G<Int32> {\n}") }
+        val hg = phasesAAndB { snippet("$bodies\npub Hg: H, G<Int32> {\n}") }
         assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
     }
 
@@ -864,9 +869,9 @@ class OperatorMemberCollectTest {
                 pub m: () Int32;
             }
         """.trimIndent()
-        val gh = phasesAAndB { snippet("$bodies\npub GH: G<Int32>, H {\n}") }
+        val gh = phasesAAndB { snippet("$bodies\npub Gh: G<Int32>, H {\n}") }
         assertFalse(gh.diagnostics.any { it.code == "types.member.conflict" }, render(gh))
-        val hg = phasesAAndB { snippet("$bodies\npub HG: H, G<Int32> {\n}") }
+        val hg = phasesAAndB { snippet("$bodies\npub Hg: H, G<Int32> {\n}") }
         assertFalse(hg.diagnostics.any { it.code == "types.member.conflict" }, render(hg))
     }
 
@@ -1284,6 +1289,7 @@ class OperatorMemberCollectTest {
         // comparison that only ever looks at index 0 would also see them as the same.
         val bounds = """
             pub X: Any {
+                pub tag: () Int32 { return 0 }
             }
             pub A: Any {
                 pub m<U, V: X>: (u: U, v: V) V;

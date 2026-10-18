@@ -218,6 +218,9 @@ class TraitSymbol(
     override var isPub: Boolean = false
     val markers: MutableList<Marker> = mutableListOf()
 
+    /** `pub final Shape: Any { ... }`: no type may list it as a parent, whatever its role. */
+    var isFinal: Boolean = false
+
     /**
      * Every method a class implementing this trait must provide or inherit, parents first,
      * each name once. A method this trait redeclares replaces the parent's in place. A method

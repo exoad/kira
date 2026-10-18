@@ -195,12 +195,41 @@ class CppModuleLayout(
             } else if (modules.none { SourceGlob.matchesUri(pattern, it.uri) }) {
                 diagnostics += CppDiagnostic(
                     "cpp.namespace-unused",
-                    "build.cpp.namespaces['$pattern'] matches no module",
+                    "build.cpp.namespaces['$pattern'] matches no module${dottedHint(pattern)}",
+                    CppSeverity.WARNING,
+                )
+            }
+        }
+        // A glob in a module header's spelling (`firmware:lib.**`) names no module now: say so.
+        for ((key, globs) in listOf("headerOnly" to options.headerOnly, "freestanding" to options.freestanding)) {
+            globs.filter { pattern -> modules.none { SourceGlob.matchesUri(pattern, it.uri) } }.forEach { pattern ->
+                diagnostics += CppDiagnostic(
+                    "cpp.glob-unused",
+                    "build.cpp.$key['$pattern'] matches no module${dottedHint(pattern)}",
                     CppSeverity.WARNING,
                 )
             }
         }
         return diagnostics
+    }
+
+    /**
+     * The dotted spelling an unmatched glob likely meant: the project and path of a module the
+     * glob names from a later segment on (`firmware:lib.**` is `bibo.firmware.lib.**`), else a
+     * module's own name as the example; "" when there is none.
+     */
+    private fun dottedHint(pattern: String): String {
+        val dotted = pattern.replace(':', '.')
+        for (ref in modules) {
+            val segments = ref.uri.replace(':', '.').split('.')
+            for (k in 1 until segments.size) {
+                if (SourceGlob.matchesUri(dotted, segments.drop(k).joinToString("."))) {
+                    return "; a pattern names a module by its dotted name, project then path: '${segments.take(k).joinToString(".")}.$dotted'"
+                }
+            }
+        }
+        val example = modules.firstOrNull { !it.uri.startsWith(CppOptions.STDLIB_URI_PREFIX) }?.uri?.replace(':', '.') ?: return ""
+        return "; a pattern names a module by its dotted name, project then path, as '$example'"
     }
 
     /**

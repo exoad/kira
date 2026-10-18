@@ -2644,9 +2644,9 @@ class PyEmitterTest {
             "@_extern f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
             "@_extern f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
             "@_extern f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
-            "Holder: Any {\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
+            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
                 "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
-            "Holder: Any {\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (g: Fx<Tuple0, Holder>) Void" to
+            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (g: Fx<Tuple0, Holder>) Void" to
                 "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
             "In: Struct {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Struct {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",

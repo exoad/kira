@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.ModuleNames
+import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 
 /**
  * Phase A, second half: resolves each module's `use` statements to [ModuleSymbol]s, applies
@@ -30,6 +31,19 @@ class ModuleGraph(private val program: TypedProgram) {
     fun link() {
         val options = program.options
         for (m in program.modules) {
+            // Each alias names one thing, a module or a module's member; a module may have two.
+            val aliased = HashMap<String, Pair<Any, UseStatement>>()
+            fun claim(use: UseStatement, thing: Any, what: String): Boolean {
+                val alias = use.alias ?: return true
+                val prior = aliased.putIfAbsent(alias.value, thing to use) ?: return true
+                if (prior.first === thing) return true
+                program.report(
+                    "types.use.alias-taken",
+                    "'${alias.value}' already names ${prior.second.uri.value} here; give $what another alias.",
+                    use,
+                )
+                return false
+            }
             for (use in m.uses) {
                 val uri = use.moduleUri
                 val target = program.module(uri)
@@ -46,7 +60,7 @@ class ModuleGraph(private val program: TypedProgram) {
                         when {
                             sym == null -> program.report("types.use.unknown-member", "Module '${ModuleNames.dotted(target.uri)}' has no member '$member'.", use)
                             !isPub(sym) -> program.report("types.use.not-visible", "'$member' is not pub in module '${ModuleNames.dotted(target.uri)}'.", use)
-                            else -> {
+                            claim(use, sym, use.uri.value) -> {
                                 m.memberImports[use.alias!!.value] = sym
                                 program.model.refs[use.alias] = sym
                             }
@@ -58,10 +72,10 @@ class ModuleGraph(private val program: TypedProgram) {
                         use,
                         Severity.WARNING,
                     )
-                    target !in m.imports -> {
-                        m.imports.add(target)
+                    claim(use, target, use.uri.value) -> {
+                        if (target !in m.imports) m.imports.add(target)
                         use.alias?.let {
-                            m.importAliases.putIfAbsent(it.value, target)
+                            m.importAliases[it.value] = target
                             program.model.refs[it] = target
                         }
                     }

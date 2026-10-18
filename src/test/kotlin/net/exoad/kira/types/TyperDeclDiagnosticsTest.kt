@@ -181,7 +181,7 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun nonPubTypeOfAUsedModuleIsNotVisible() {
         val p = TyperTestSupport.type(
-            module("app:lib", "Hidden: Any { }\npub Shown: Any { }"),
+            module("app:lib", "Hidden: Any { pub n: Int32 = 0 }\npub Shown: Any { pub n: Int32 = 0 }"),
             module("app:main", "app.lib as lib\na: Shown = Shown { }\nb: Hidden = Hidden { }"),
         )
         assertEquals(2, count(p, "types.type.not-visible"), TyperTestSupport.render(p))
@@ -193,7 +193,7 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aTypeFromAModuleThatIsNotUsedIsUnknown() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub Shown: Any { }"),
+            module("app:lib", "pub Shown: Any { pub n: Int32 = 0 }"),
             module("app:main", "a: Shown = Shown { }"),
         )
         assertEquals(2, count(p, "types.type.unknown"), TyperTestSupport.render(p))
@@ -208,8 +208,8 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun ambiguousExport() {
         val p = TyperTestSupport.type(
-            module("app:one", "pub Thing: Any { }"),
-            module("app:two", "pub Thing: Any { }"),
+            module("app:one", "pub Thing: Any { pub n: Int32 = 0 }"),
+            module("app:two", "pub Thing: Any { pub n: Int32 = 0 }"),
             module("app:main", "app.one as one\napp.two as two\nt: Thing = Thing { }"),
         )
         assertTrue(count(p, "types.type.ambiguous") >= 1, TyperTestSupport.render(p))
@@ -219,7 +219,7 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aUsedProjectModuleBeatsAUsedStdlibModule() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub exp: (x: Float64) Float64 {\n    return x\n}\npub Regex: Any { }\npub IGNORE_CASE: Int32 = 7"),
+            module("app:lib", "pub exp: (x: Float64) Float64 {\n    return x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7"),
             module(
                 "app:main",
                 "kira.math as math\nkira.regex as regex\napp.lib as lib\n" +

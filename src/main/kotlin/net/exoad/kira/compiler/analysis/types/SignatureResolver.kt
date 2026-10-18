@@ -185,7 +185,10 @@ internal class SignatureResolver(private val program: TypedProgram) {
             }
             val sym = (t as? KType.Nominal)?.sym
             when {
-                sym is TraitSymbol -> c.traits.add(t)
+                sym is TraitSymbol -> {
+                    if (sym.isFinal) finalParent(c.name, sym.name, node)
+                    c.traits.add(t)
+                }
                 sym is ClassSymbol && c.isStruct -> program.report(
                     "types.struct.inherits-class",
                     "struct ${c.name} cannot inherit from ${sym.name}: a struct is a value type and only implements traits (D1).",
@@ -208,16 +211,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
                     node,
                 )
                 sym is ClassSymbol -> {
-                    if (sym.isFinal) {
-                        // charter: "final forbids inheriting" (W2.9, 1.8). The parser's
-                        // `parse.final` refuses `final` anywhere but a class modifier; this is
-                        // its typer-side twin, for the class actually named as a parent.
-                        program.report(
-                            "types.class.final",
-                            "${c.name} cannot extend ${sym.name}: ${sym.name} is final.",
-                            node,
-                        )
-                    }
+                    if (sym.isFinal) finalParent(c.name, sym.name, node)
                     c.superclass = t
                 }
                 else -> program.report(
@@ -229,6 +223,14 @@ internal class SignatureResolver(private val program: TypedProgram) {
         }
     }
 
+    /**
+     * charter: "final forbids inheriting" (W2.9, 1.8), whatever the final type's role: the
+     * parser's `parse.final` keeps `final` on types; this refuses a type naming one as a parent.
+     */
+    private fun finalParent(child: String, parent: String, node: Type) {
+        program.report("types.class.final", "$child cannot extend $parent: $parent is final.", node)
+    }
+
     private fun traitParents(t: TraitSymbol) {
         val decl = t.decl ?: return
         val scope = traitScope(t)
@@ -238,6 +240,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 continue
             }
             if ((p as? KType.Nominal)?.sym is TraitSymbol) {
+                if ((p.sym as TraitSymbol).isFinal) finalParent(t.name, p.sym.name, node)
                 t.parents.add(p)
             } else {
                 program.report(

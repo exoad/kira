@@ -11,7 +11,8 @@ module decls:negative  profile=HOSTED ns=negative imports=[]
     field b: Int32  pub default=0 #0
   class Both : First  pub
   trait Marker  pub
-    flat []
+    fn tag: () Int32  pub virtual body
+    flat [Marker.tag]
   class Late : Marker  pub
 diag warning rules.naming.constant decls/negative.kira:4:5  Constant 'value' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'VALUE'?
 diag error types.type.unknown decls/negative.kira:4:12  Unknown type 'Missing'.

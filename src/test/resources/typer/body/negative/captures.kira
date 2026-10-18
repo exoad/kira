@@ -169,19 +169,19 @@ pub Node: Struct {
     pub next: Maybe<Node> = null
 }
 
-pub NA: Struct {
-    pub b: Maybe<NB> = null
+pub Na: Struct {
+    pub b: Maybe<Nb> = null
 }
 
-pub NB: Struct {
-    pub a: Maybe<NA> = null
+pub Nb: Struct {
+    pub a: Maybe<Na> = null
 }
 
 pub N0: Node = Node { }                    // no error: built at run time from literals, in no order
 pub mut HEAD: Node = Node { }
 pub NV: Int32 = N0.v                       // @error types.const.not-constant
-pub NA0: NA = NA { }
-pub NAB: Maybe<NB> = NA0.b                 // @error types.const.not-constant
+pub NA0: Na = Na { }
+pub NAB: Maybe<Nb> = NA0.b                 // @error types.const.not-constant
 
 // A generic struct instance is literal when its arguments make its fields so.
 pub Box<T>: Struct {

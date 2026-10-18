@@ -149,7 +149,7 @@ class SemanticSuiteTest {
         val results = analyzeMultiSource(
             listOf(
                 "test/semantic/other.kira" to """""" + "\n" + """
-                    pub OtherType: Any { }
+                    pub OtherType: Any { pub n: Int32 = 0 }
                     """,
                 "test/semantic/basic.kira" to """""" + "\n" + """
                     test.semantic.other as other
@@ -196,8 +196,8 @@ class SemanticSuiteTest {
         // class passes without a diagnostic.
         assertHealthy(
             """
-            pub Dup: Any { }
-            pub Dup: Any { }
+            pub Dup: Any { pub n: Int32 = 0 }
+            pub Dup: Any { pub n: Int32 = 0 }
             """
         )
     }
@@ -206,8 +206,8 @@ class SemanticSuiteTest {
     fun rejectsClassAndTraitSharingAName() {
         val msgs = assertUnhealthy(
             """
+            pub Shared: Any { pub n: Int32 = 0 }
             pub Shared: Any { pub a: () Int32; }
-            pub Shared: Any { }
             pub Impl: Shared { }
             """
         )
@@ -422,7 +422,7 @@ class SemanticSuiteTest {
     fun resolvesDeclaredTypesAndVariables() {
         val results = analyze(
             """
-            pub Pet: Any { }
+            pub Pet: Any { pub name: Str = "" }
 
             pub Speaker: Any {
                 pub speak: () Str;
@@ -454,7 +454,7 @@ class SemanticSuiteTest {
         val results = analyzeMultiSource(
             listOf(
                 "test/semantic/other.kira" to """""" + "\n" + """
-                    pub OtherType: Any { }
+                    pub OtherType: Any { pub n: Int32 = 0 }
                     """,
                 "test/semantic/basic.kira" to """""" + "\n" + """
                     test.semantic.other as other

@@ -832,14 +832,14 @@ class ViewPassTest {
         // a function that stores it (Q5b's link), to a mut fx that stores it (Q6's keep) and to a stdlib container.
         val p = snippet(
             """
-            pub CB2: Any {
+            pub Cb2: Any {
                 pub mut f: Maybe<Fx<Tuple0, Char>> = null
                 pub mut keep: (g: Fx<Tuple0, Char>) Void {
                     f = g
                 }
             }
-            pub mut GH: Maybe<CB2> = null
-            pub link: (h: CB2, g: Fx<Tuple0, Char>) Void {
+            pub mut GH: Maybe<Cb2> = null
+            pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
                 h.f = g
             }
             pub inLocal: (v: View<Char>) Char {
@@ -880,24 +880,24 @@ class ViewPassTest {
         // is refused, and the lambda that captures it is not reported again.
         val p = snippet(
             """
-            pub CB2: Any {
+            pub Cb2: Any {
                 pub mut f: Maybe<Fx<Tuple0, Char>> = null
                 pub mut keep: (g: Fx<Tuple0, Char>) Void {
                     f = g
                 }
             }
             pub Box2: Any {
-                pub mut item: Maybe<CB2> = null
+                pub mut item: Maybe<Cb2> = null
             }
-            pub mut GH: Maybe<CB2> = null
+            pub mut GH: Maybe<Cb2> = null
             pub mut GR: Maybe<Ref<Maybe<Fx<Tuple0, Char>>>> = null
-            pub link: (h: CB2, g: Fx<Tuple0, Char>) Void {
+            pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
                 h.f = g
             }
-            pub put: (bx: Box2, x: CB2) Void {
+            pub put: (bx: Box2, x: Cb2) Void {
                 bx.item = x
             }
-            pub get: () CB2 {
+            pub get: () Cb2 {
                 return GH.unwrap()
             }
             pub q4: (r: Ref<Maybe<Fx<Tuple0, Char>>>, a: Str) Void {
@@ -922,7 +922,7 @@ class ViewPassTest {
                     return v.get(0 as Size)
                 })
             }
-            pub q5: (holder: CB2, a: Str) Void {
+            pub q5: (holder: Cb2, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 link(holder, () Char {
@@ -932,7 +932,7 @@ class ViewPassTest {
             pub q5c: (bx: Box2, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
-                c: CB2 = CB2 {}
+                c: Cb2 = Cb2 {}
                 c.f = () Char {
                     return v.get(0 as Size)
                 }
@@ -966,11 +966,11 @@ class ViewPassTest {
 
     @Test
     fun q6cAClassThatPublishesItselfChangesNothingForALambdaOverAView() {
-        // w2-5 #5 Q6c: CB2's initially stores this in a global; the view local is refused all the same, and with a
-        // view parameter the lambda is refused for escaping into keep, whatever CB2's initially does.
+        // w2-5 #5 Q6c: Cb2's initially stores this in a global; the view local is refused all the same, and with a
+        // view parameter the lambda is refused for escaping into keep, whatever Cb2's initially does.
         val p = snippet(
             """
-            pub CB2: Any {
+            pub Cb2: Any {
                 pub mut f: Maybe<Fx<Tuple0, Char>> = null
                 initially {
                     GH = this
@@ -979,16 +979,16 @@ class ViewPassTest {
                     f = g
                 }
             }
-            pub mut GH: Maybe<CB2> = null
+            pub mut GH: Maybe<Cb2> = null
             pub q6c: (a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
-                CB2 {}.keep(() Char {
+                Cb2 {}.keep(() Char {
                     return v.get(0 as Size)
                 })
             }
             pub q6cParam: (v: View<Char>) Void {
-                CB2 {}.keep(() Char {
+                Cb2 {}.keep(() Char {
                     return v[0]
                 })
             }

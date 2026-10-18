@@ -530,6 +530,7 @@ object KiraUnparser {
             (ps.map { expr(it, 0) } + e.namedParameters.map { (k, v) -> "$k = ${expr(v, 0)}" }).joinToString(", ", "(", ")")
         } ?: "")
         AnonymousIdentifier -> "<anonymous>"
+        is net.exoad.kira.compiler.frontend.parser.ast.elements.QualifiedIdentifier -> e.text
         is Identifier -> e.value
         is ThisExpr -> "this"
         is BinaryExpr -> {

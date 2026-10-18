@@ -232,7 +232,7 @@ class CppDeclRound1Test {
 
     @Test
     fun aNestedNamespaceCollidesWithADeclarationOfItsName() {
-        val a = DeclTestSupport.module("test:a", "pub text: Struct { pub x: Int32 = 0 }")
+        val a = DeclTestSupport.module("test:a", "pub text: () Int32 {\n    return 1\n}")
         val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 = 1")
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:a" to "bibo", "test:b" to "bibo::text"))
         val emitted = DeclTestSupport.emit(a, b, options = options)

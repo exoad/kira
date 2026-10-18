@@ -282,13 +282,18 @@ class KiraLexer(
     }
 
     /** `a.b_c.d as name`: a module path names files, and a file's name may be snake_case. */
-    private val importLine = Regex("""\s*[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+\s+as\s+[A-Za-z][A-Za-z0-9_]*\s*;?\s*""")
+    private val importLine = Regex("""\s*[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+(\s+as\s+)[A-Za-z][A-Za-z0-9_]*\s*;?\s*""")
 
+    /** How many `{` are open outside string holes: a top-level import line is at 0. */
+    private var braceDepth = 0
+
+    /** Whether the identifier at [at] is in the path of a top-level import, before its `as`. */
     private fun onImportLine(at: Int): Boolean {
-        if (keywords !== Keywords.reserved) return false
+        if (keywords !== Keywords.reserved || braceDepth != 0) return false
         val from = context.content.lastIndexOf('\n', at - 1) + 1
         val to = context.content.indexOf('\n', at).let { if (it < 0) context.content.length else it }
-        return importLine.matches(context.content.substring(from, to).trimEnd('\r'))
+        val m = importLine.matchEntire(context.content.substring(from, to).trimEnd('\r')) ?: return false
+        return at - from < m.groups[2]!!.range.first
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
@@ -589,6 +594,7 @@ class KiraLexer(
                     if (holeDepths.isNotEmpty()) {
                         holeDepths[holeDepths.lastIndex] = holeDepths.last() + 1
                     }
+                    braceDepth++
                     Token.Symbol(
                         Token.Type.S_OPEN_BRACE,
                         Symbols.OPEN_BRACE,
@@ -724,6 +730,7 @@ class KiraLexer(
                         }
                         holeDepths[holeDepths.lastIndex] = depth - 1
                     }
+                    braceDepth--
                     Token.Symbol(
                         Token.Type.S_CLOSE_BRACE,
                         Symbols.CLOSE_BRACE,

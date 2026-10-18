@@ -301,7 +301,7 @@ class TyperBodyNegativeTest {
         // a run-time value, not reported as an internal StackOverflowError.
         val p = snippet(
             "pub Node: Struct {\n    pub v: Int32 = 0\n    pub next: Maybe<Node> = null\n}\npub N0: Node = Node { }\npub mut HEAD: Node = Node { }\npub NV: Int32 = N0.v\n" +
-                "pub NA: Struct {\n    pub b: Maybe<NB> = null\n}\npub NB: Struct {\n    pub a: Maybe<NA> = null\n}\npub NA0: NA = NA { }\npub NAB: Maybe<NB> = NA0.b\n" +
+                "pub Na: Struct {\n    pub b: Maybe<Nb> = null\n}\npub Nb: Struct {\n    pub a: Maybe<Na> = null\n}\npub NA0: Na = Na { }\npub NAB: Maybe<Nb> = NA0.b\n" +
                 "pub Tree: Struct {\n    pub kids: Arr<Tree, 2>\n}\npub T0: Maybe<Tree> = null\npub T1: Maybe<Tree> = T0",
         )
         assertEquals(List(3) { "types.const.not-constant" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))

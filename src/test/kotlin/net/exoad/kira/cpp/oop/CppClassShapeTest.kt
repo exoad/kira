@@ -1481,8 +1481,9 @@ class CppClassShapeTest {
     // ---- refusals ------------------------------------------------------------------------------------
 
     @Test
-    fun aBodylessClassMethodIsRefusedUnlessASubclassOverridesIt() {
-        val messages = unsupported(
+    fun aBodylessClassMethodIsAFieldTheConstructionGivesUnlessASubclassOverridesIt() {
+        // One rule: a slot no subtype overrides is supplied at construction, as a field is.
+        val slot = header(
             """
             pub Handler: Any {
                 pub tag: Int32 = 0
@@ -1490,7 +1491,8 @@ class CppClassShapeTest {
             }
             """
         )
-        assertEquals(listOf("'Handler.process' without a body, a method implemented at instantiation (D43) is not lowered yet"), messages)
+        assertContains(slot, "      kira::Fn<void(const kira::Str&)> process;\n")
+        assertTrue(!slot.contains("process(const kira::Str& data)"), slot)
 
         val (h, _) = both(
             """

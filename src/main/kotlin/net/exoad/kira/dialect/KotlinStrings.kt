@@ -33,7 +33,7 @@ object KotlinStrings {
                 if (!check) f.writeText(out)
             }
         }
-        println("kira-dialect kt: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix")
+        println("kira-dialect kt: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix, $roleChanges with a role to check")
         return if (check && changedFiles > 0) 1 else 0
     }
 
@@ -96,6 +96,11 @@ object KotlinStrings {
         val (nc, nerr) = TreeProof.parseNew(r.text, path, if (whole) moduleOf(old) else "kt:snippet")
         if (nc == null) return Outcome.Refused("the new parser refuses the conversion: $nerr")
         TreeProof.compare(r.old ?: old, nc, DialectConverter.Renames(), r.madeRequired)?.let { return Outcome.Refused("tree: $it") }
+        roleChange(r.old ?: old, nc, path)?.let {
+            // Read alone beside the stdlib: a type another literal constructs or lists can read otherwise.
+            roleChanges++
+            println("ROLE $path: $it: ${source.lines().first { l -> l.isNotBlank() }.trim().take(70)}")
+        }
         if (r.madeRequired.isNotEmpty()) {
             println("REQUIRED $path: ${r.madeRequired.joinToString { it.name.value }} given at construction now")
         }
@@ -104,6 +109,33 @@ object KotlinStrings {
         val shift = SNIPPET.length
         val edits = r.edits.filter { it.start >= shift }.map { DialectConverter.Edit(it.start - shift, it.end - shift, it.text) }
         return Outcome.Converted(edits)
+    }
+
+    /** How many converted literals give a type a role its old keyword did not. */
+    private var roleChanges = 0
+
+    /** The stdlib under `kira/`, read once in the clean dialect, for each literal's role check. */
+    private val stdlib: List<Triple<String, String, net.exoad.kira.source.SourceContext>> by lazy {
+        val root = java.nio.file.Path.of("kira").toAbsolutePath().normalize()
+        if (!java.nio.file.Files.isRegularFile(root.resolve("core.kira"))) return@lazy emptyList()
+        root.toFile().walkTopDown().filter { it.isFile && it.extension == "kira" }.mapNotNull { f ->
+            val uri = net.exoad.kira.compiler.ModuleNames.dependency(root, f.toPath())
+            DialectMain.readNew(f.path, uri)?.let { Triple(f.path, uri, it) }
+        }.toList()
+    }
+
+    /** Each type's role in [nc] (a literal, read beside the stdlib) against [old]'s keywords: what differs, or null. */
+    private fun roleChange(old: net.exoad.kira.source.SourceContext, nc: net.exoad.kira.source.SourceContext, path: String): String? {
+        val cu = net.exoad.kira.compiler.CompilationUnit()
+        val held = cu.allSources().mapNotNull { it.moduleName }.toSet()
+        stdlib.forEach { (f, uri, ctx) -> if (uri !in held) DialectMain.adopt(cu, f, ctx, uri) }
+        val file = "$path#literal"
+        DialectMain.adopt(cu, file, nc, nc.moduleName ?: "kt:snippet")
+        net.exoad.kira.compiler.DialectLink.link(cu)
+        val newKinds = DialectMain.kinds(cu.getSource(file)!!)
+        val oldKinds = DialectMain.kinds(old)
+        if (newKinds == oldKinds) return null
+        return oldKinds.filter { newKinds[it.key] != it.value }.map { "${it.key} was ${it.value}, is ${newKinds[it.key]}" }.joinToString()
     }
 
     /** Set by `kt --force-wrong`: old Kira the old parser refuses (a test's wrong program) is rewritten by its words. */

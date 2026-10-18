@@ -449,7 +449,7 @@ class TyperPhaseTest {
     @Test
     fun aUserTypeShadowsABuiltinName() {
         // Phases A and B alone: a class constant is not a compile-time value, which phase C reports.
-        val p = TyperTestSupport.phasesAAndB { snippet("pub View: Any { }\nv: View = View { }") }
+        val p = TyperTestSupport.phasesAAndB { snippet("pub View: Any { pub n: Int32 = 0 }\nv: View = View { }") }
         expectNoErrors(p)
         val t = (p.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals(ClassKind.CLASS, (t.sym as ClassSymbol).kind)

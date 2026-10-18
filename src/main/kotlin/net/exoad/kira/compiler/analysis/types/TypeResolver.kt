@@ -3,6 +3,8 @@ package net.exoad.kira.compiler.analysis.types
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
+import net.exoad.kira.compiler.frontend.parser.ast.elements.QualifiedIdentifier
+import net.exoad.kira.compiler.ModuleNames
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import java.util.IdentityHashMap
@@ -72,6 +74,9 @@ class TypeResolver(private val program: TypedProgram) {
             return KType.Error
         }
         val name = id.value
+        if (id is QualifiedIdentifier) {
+            return qualified(t, id, scope)
+        }
         scope.findTypeParam(name)?.let { tp ->
             model.refs[id] = tp
             if (t.children.isNotEmpty()) {
@@ -113,6 +118,28 @@ class TypeResolver(private val program: TypedProgram) {
         }
         program.report("types.type.unknown", "Unknown type '$name'.", t)
         return KType.Error
+    }
+
+    /** `shapes.Impl`: the pub type `Impl` of the module the alias `shapes` imports. */
+    private fun qualified(t: Type, id: QualifiedIdentifier, scope: TypeScope): KType {
+        val module = scope.module.importAliases[id.qualifier.value]
+        if (module == null) {
+            program.report("types.type.unknown-module", "'${id.qualifier.value}' names no module this file imports, so '${id.text}' names no type.", t)
+            return KType.Error
+        }
+        model.refs[id.qualifier] = module
+        val sym = module.members[id.value]?.takeIf(::isTypeLike)
+        return when {
+            sym == null -> {
+                program.report("types.type.unknown", "Module ${ModuleNames.dotted(module.uri)} has no type '${id.value}'.", t)
+                KType.Error
+            }
+            !ModuleGraph.isPub(sym) -> {
+                program.report("types.type.not-visible", "'${id.value}' is declared in ${module.uri} but is not pub, so this module cannot use it.", t)
+                symbolType(sym, t, id, scope)
+            }
+            else -> symbolType(sym, t, id, scope)
+        }
     }
 
     private fun kindOf(s: Symbol): String = when (s) {

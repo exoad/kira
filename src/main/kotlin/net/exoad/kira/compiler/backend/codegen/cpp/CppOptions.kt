@@ -29,9 +29,10 @@ enum class CppLayout {
  * builds.
  *
  * Module globs (`headerOnly`, `freestanding`, and the keys of `namespaces`)
- * match module URIs: `*` matches one URI segment, `**` any number, and
- * `{a,b}` alternatives, so `firmware:lib.**` covers every module under
- * `firmware:lib` and `firmware:pilot.src.{scan,imu}` names two.
+ * match a module's dotted name, its project then its path: `*` matches one
+ * segment, `**` any number, and `{a,b}` alternatives, so `bibo.firmware.lib.**`
+ * covers every module under firmware/lib in project bibo and
+ * `bibo.firmware.pilot.src.{scan,imu}` names two.
  */
 data class CppOptions(
     val layout: CppLayout = CppLayout.BESIDE,

@@ -384,6 +384,7 @@ internal class DeclarationCollector(
         val typeParams = typeParams(module, decl.name.children)
         val t = TraitSymbol(id?.value ?: decl.name.toString(), module, decl, typeParams)
         t.isPub = Modifier.PUBLIC in decl.modifiers
+        t.isFinal = Modifier.FINAL in decl.modifiers
         t.markers.addAll(markers)
         t.foreign = foreignOf(markers, t.name)
         typeParams.forEach { it.owner = t }

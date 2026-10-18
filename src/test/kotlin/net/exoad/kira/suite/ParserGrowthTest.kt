@@ -145,12 +145,15 @@ class ParserGrowthTest {
     }
 
     @Test
-    fun structWithoutBodyOrTraitsParses() {
-        val bare = parse("Unit: Struct").single<StructDecl>()
+    fun aStructWithoutBodyOrTraitsIsTheHosts() {
+        // A type adds at least one member; one with none parses only as the host's (marked).
+        val bare = parse("@_extern(cpp = \"Unit\", header = \"unit.hxx\") Unit: Struct").single<StructDecl>()
         assertTrue(bare.members.isEmpty())
         assertTrue(bare.traits.isEmpty())
         assertNull(bare.initially)
-        assertNull(parse("Empty: Struct { }").single<StructDecl>().initially)
+        for (empty in listOf("Unit: Struct", "Empty: Struct { }")) {
+            assertEquals("parse.type.empty", assertThrows<DiagnosticsException>(empty) { parse(empty) }.tag)
+        }
     }
 
     @Test
@@ -509,7 +512,7 @@ class ParserGrowthTest {
         }
         assertThrows<DiagnosticsException> { parse("Box<4>: Any { }") }
         assertThrows<DiagnosticsException> { parse("Box<mut T>: Any { }") }
-        parse("Box<T>: Any { }\nid<T>: (x: T) T { return x }")
+        parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { return x }")
         // ...and the argument-list forms still parse where they belong.
         parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<mut Str>, Void>) Void { }")
     }

@@ -455,7 +455,7 @@ class ExclusivityPassTest {
             pub T: Any {
                 pub act: () Void;
             }
-            pub SI: Struct, T {
+            pub Si: Struct, T {
                 override pub act: () Void {
                     LOG.add(1)
                 }

@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -35,14 +36,18 @@ object DialectMain {
             println(if (nc == null) "NEW-PARSE: $err" else "parsed")
             return
         }
-        if (args.isEmpty() || args[0] !in setOf("convert", "kt")) {
-            println("usage: kira-dialect convert|kt [--check] PATH...")
+        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml")) {
+            println("usage: kira-dialect convert|kt|yaml [--check] PATH...")
             exitProcess(2)
         }
         val check = "--check" in args
         KotlinStrings.forceWrong = "--force-wrong" in args
         val paths = args.drop(1).filter { it != "--check" && it != "--force-wrong" }
-        val code = if (args[0] == "convert") convertKira(paths, check) else KotlinStrings.convertAll(paths, check)
+        val code = when (args[0]) {
+            "convert" -> convertKira(paths, check)
+            "yaml" -> YamlGlobs.convertAll(paths, check)
+            else -> KotlinStrings.convertAll(paths, check)
+        }
         exitProcess(code)
     }
 
@@ -99,16 +104,50 @@ object DialectMain {
             }
         }
         bad += roles(converted)
+        bad += yamls(units, check)
         println("kira-dialect: ${files.size} files, $proved proved equal, $changed ${if (check) "would change" else "changed"}, $bad not converted")
         return if (bad > 0 || (check && changed > 0)) 1 else 0
     }
 
-    /** Each type's role after DialectLink, per group, against the old dialect's keyword. */
+    /** Each converted project's kira.yaml globs in the dotted spelling, proved on its modules' old and new names. */
+    private fun yamls(units: List<Unit>, check: Boolean): Int {
+        var bad = 0
+        for ((group, us) in units.groupBy { it.group }) {
+            val yaml = File(group, "kira.yaml")
+            val manifest = yaml.takeIf { it.isFile }?.let { runCatching { ManifestLoader.loadFromPath(it.toPath()) }.getOrNull() } ?: continue
+            val srcRoot = yaml.absoluteFile.parentFile.toPath().resolve(manifest.srcDir).normalize()
+            val modules = us.filter { it.oldUri != null }.map { YamlGlobs.Module(it.file.path, it.oldUri!!, it.newUri) }
+            val r = YamlGlobs.rewrite(yaml.readText(), manifest, srcRoot, modules)
+            r.notes.forEach { println("NOTE $yaml: $it") }
+            r.problems.forEach { println("PROBLEM $yaml: $it") }
+            bad += r.problems.size
+            r.rewrites.forEach { (o, n) -> println("GLOB $yaml: '$o' is '$n'") }
+            if (r.rewrites.isNotEmpty() && !check) yaml.writeText(r.text)
+        }
+        return bad
+    }
+
+    /**
+     * Each type's role after DialectLink against the old dialect's keyword, per project as the
+     * compiler reads it: its files with its dependencies (the stdlib among them) beside them.
+     */
     private fun roles(converted: List<Pair<Unit, SourceContext>>): Int {
+        val byFile = converted.associateBy { canonical(it.first.file) }
         var bad = 0
         for ((group, members) in converted.groupBy { it.first.group }) {
             val cu = CompilationUnit()
-            members.forEach { (u, nc) -> cu.addSource(u.file.path, nc.content, nc.tokens, u.newUri).also { it.ast = nc.ast; it.astOrigins = nc.astOrigins; it.astIntrinsicMarked = nc.astIntrinsicMarked; it.astIntrinsicInvocations = nc.astIntrinsicInvocations } }
+            members.forEach { (u, nc) -> adopt(cu, u.file.path, nc, u.newUri) }
+            val held = cu.allSources().map { canonical(File(it.file)) }.toMutableSet()
+            for ((file, uri) in dependenciesOf(group)) {
+                if (!held.add(canonical(File(file)))) continue
+                val hit = byFile[canonical(File(file))]
+                val ctx = hit?.second ?: readNew(file, uri)
+                if (ctx == null) {
+                    println("NOTE $file: neither parser reads it, so its types are not in $group's role check")
+                    continue
+                }
+                adopt(cu, file, ctx, hit?.first?.newUri ?: uri)
+            }
             DialectLink.link(cu)
             for ((u, _) in members) {
                 val newKinds = kinds(cu.getSource(u.file.path)!!)
@@ -122,7 +161,48 @@ object DialectMain {
         return bad
     }
 
-    private fun kinds(s: SourceContext): Map<String, String> = s.ast.statements.mapNotNull { st ->
+    /** [nc]'s tree in [cu] as [file], module [uri]. */
+    fun adopt(cu: CompilationUnit, file: String, nc: SourceContext, uri: String) {
+        cu.addSource(file, nc.content, nc.tokens, uri).also {
+            it.ast = nc.ast
+            it.astOrigins = nc.astOrigins
+            it.astIntrinsicMarked = nc.astIntrinsicMarked
+            it.astIntrinsicInvocations = nc.astIntrinsicInvocations
+        }
+    }
+
+    /** [file] in the clean dialect, as module [uri]: as it is, or converted in memory; null when neither parses. */
+    fun readNew(file: String, uri: String): SourceContext? {
+        val text = File(file).readText()
+        TreeProof.parseNew(text, file, uri).first?.let { return it }
+        val r = DialectConverter.convert(text, file)
+        if (r.problems.isNotEmpty()) return null
+        return TreeProof.parseNew(r.text, file, uri).first
+    }
+
+    /**
+     * The dependency files a group's project reads, each with its module URI: its kira.yaml's
+     * dependencies, or (a group with no kira.yaml, the stdlib's own aside) the stdlib under `kira/`.
+     */
+    fun dependenciesOf(group: String): List<Pair<String, String>> {
+        val dir = File(group)
+        val yaml = File(dir, "kira.yaml")
+        val roots = if (yaml.isFile) {
+            val m = runCatching { ManifestLoader.loadFromPath(yaml.toPath()) }.getOrNull() ?: return emptyList()
+            m.dependencies.values.mapNotNull { spec -> spec.path?.let { DependencyResolver.resolvePath(dir.absoluteFile.toPath(), it) } }
+        } else if (File(dir, "core.kira").isFile) {
+            emptyList()
+        } else {
+            listOfNotNull(Path.of("kira").toAbsolutePath().normalize().takeIf { Files.isRegularFile(it.resolve("core.kira")) })
+        }
+        return roots.flatMap { root ->
+            root.toFile().walkTopDown().filter { it.isFile && it.extension == "kira" }.map { it.path to ModuleNames.dependency(root, it.toPath()) }.toList()
+        }
+    }
+
+    private fun canonical(f: File): String = runCatching { f.canonicalPath }.getOrDefault(f.absolutePath)
+
+    fun kinds(s: SourceContext): Map<String, String> = s.ast.statements.mapNotNull { st ->
         when (val e = (st as? Statement)?.expr) {
             is ClassDecl -> ((e.name.identifier as? Identifier)?.value ?: "?") to "class"
             is TraitDecl -> ((e.name.identifier as? Identifier)?.value ?: "?") to "trait"
