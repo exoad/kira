@@ -49,6 +49,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
@@ -362,6 +363,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 compound(e.target, e.operator, e.value, e)
             }
             is ThrowExpr -> throwExpr(e)
+            // A module constant's `with` folds into a construction; any other is lowered on the py target only.
+            is WithExpr -> unsupported(e, "a `with` outside a module constant (it is lowered on the py target)")
             NoExpr -> CppEx("", CppPrec.PRIMARY)
             else -> unsupported(e, "the expression ${CppEmitContextImpl.describe(e)}")
         }

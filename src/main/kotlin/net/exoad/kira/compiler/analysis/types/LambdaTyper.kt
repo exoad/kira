@@ -39,6 +39,7 @@ internal class LambdaTyper(private val c: PhaseC) {
             if (inner.declare(p.name, p) != null) {
                 c.report("types.decl.duplicate", "'${p.name}' is already a parameter of this lambda.", decl)
             }
+            c.withs.declares(p.name, decl, inner)
             if (p.default != null) {
                 c.report("types.lambda.default", "A lambda's parameters have no defaults; the caller passes every argument.", p.default)
             }

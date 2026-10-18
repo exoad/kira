@@ -3030,12 +3030,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitWithExpr(withExpr: WithExpr) {
-        buffer.append("{ ")
-        withExpr.members.forEachIndexed { idx, member ->
-            if (idx > 0) buffer.append(", ")
-            member.accept(this)
-        }
-        buffer.append(" }")
+        throw UnsupportedConstruct(withExpr, "a `with` builder", TARGET_NAME)
     }
 
     override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {
@@ -3046,13 +3041,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr
     ) {
         functionCallPositionalParameterExpr.value.accept(this)
-    }
-
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        buffer.append(".")
-        withExprMember.name.accept(this)
-        buffer.append(" = ")
-        withExprMember.value.accept(this)
     }
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {

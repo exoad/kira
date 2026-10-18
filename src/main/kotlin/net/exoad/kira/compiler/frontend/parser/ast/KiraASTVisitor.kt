@@ -42,7 +42,6 @@ abstract class KiraASTVisitor {
     abstract fun visitWithExpr(withExpr: WithExpr)
     abstract fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
     abstract fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
-    abstract fun visitWithExprMember(withExprMember: WithExprMember)
     abstract fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr)
 
     // LITERALS

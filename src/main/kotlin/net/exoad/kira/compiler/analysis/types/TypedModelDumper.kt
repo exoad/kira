@@ -34,7 +34,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExprMember
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
@@ -104,7 +103,7 @@ object TypedModelDumper {
 
     private fun isDumpable(node: Expr): Boolean = when (node) {
         is Decl, is Type, is FunctionDefExpr, is FunctionDeclParameterExpr, is ModuleDecl,
-        is FunctionCallPositionalParameterExpr, is FunctionCallNamedParameterExpr, is WithExprMember,
+        is FunctionCallPositionalParameterExpr, is FunctionCallNamedParameterExpr,
         is ForIterationExpr, is NoExpr -> false
         else -> true
     }
@@ -167,7 +166,6 @@ object TypedModelDumper {
                 is FunctionDeclParameterExpr -> names[node.name] = true
                 is ForIterationExpr -> names[node.initializer] = true
                 is FunctionCallNamedParameterExpr -> names[node.name] = true
-                is WithExprMember -> names[node.name] = true
                 is TryExpr -> node.exceptionName?.let { names[it] = true }
                 is ObjectInitExpr -> {}
                 else -> {}
@@ -562,7 +560,7 @@ object KiraUnparser {
         is FunctionDefExpr -> "(${params(e)}) ${type(e.returnTypeSpecifier)} { ... }"
         is ThrowExpr -> "throw ${expr(e.value, 0)}"
         is TryExpr -> "try { ... }"
-        is WithExpr -> "with { ... }"
+        is WithExpr -> "${expr(e.receiver, 0)} with { ... }"
         is ForIterationExpr -> {
             val declared = e.declaredType?.let { ": ${type(it)}" } ?: ""
             if (e.isLegacy) "mut ${e.initializer.value}$declared: ${expr(e.target, 0)}" else "${e.initializer.value}$declared in ${expr(e.target, 0)}"

@@ -593,10 +593,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
         // should be true
     }

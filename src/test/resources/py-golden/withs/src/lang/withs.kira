@@ -1,0 +1,129 @@
+// The builder operator: `value with { ... }`, on a copy or in place.
+
+// A value type: a `with` edits a copy, and the copy runs its initially again.
+Box: Struct {
+    pub w: Int32
+    pub h: Int32
+    pub area: Int32 = 0
+    pub tags: List<Str> = List<Str> { }
+
+    initially {
+        area = w * h
+    }
+
+    pub mut grow: (by: Int32) Void {
+        w += by
+    }
+}
+
+// A class with no `mut` field: copied too, every field assignable in the block.
+Trim: Any {
+    pub servoCenterUs: Int64
+    pub escMinUs: Int64
+}
+
+// A class with a `mut` field: edited in place.
+Counter: Any {
+    pub mut frames: Int64 = 0
+    pub mut label: Str = ""
+
+    pub mut count: () Void {
+        frames += 1
+    }
+}
+
+Holder: Any {
+    pub mut box: Box = Box { 1, 1 }
+}
+
+BENCH_TRIM: Trim = Trim { 1500, 1541 } with {
+    escMinUs = 1620
+}
+
+NAMED_TRIM: Trim = Trim { servoCenterUs = 1400, escMinUs = 1500 } with {
+    servoCenterUs = 1450
+}
+
+show: (b: Box) Str {
+    return "${b.w}x${b.h}=${b.area} [${b.tags.joinToString(",")}]"
+}
+
+trimText: (t: Trim) Str {
+    return "${t.servoCenterUs}/${t.escMinUs}"
+}
+
+wider: (b: Box, by: Int32) Box {
+    return b with {
+        w = w + by
+    }
+}
+
+sum: (a: Int32, b: Box) Int32 {
+    return a + b.area
+}
+
+main: () Void {
+    b: Box = Box { 2, 3 }
+    c: Box = b with {
+        w = 10
+        tags.add("big")
+    }
+    println("${show(b)} ${show(c)}")
+    println(show(wider(b, 5)))
+    k: Int32 = 7
+    println("${sum(k, b with {
+        h = 5
+    })}")
+    g: Box = b with {
+        grow(3)
+    }
+    println(show(g))
+    println("${trimText(BENCH_TRIM)} ${trimText(NAMED_TRIM)}")
+    t: Trim = BENCH_TRIM with {
+        servoCenterUs = 1490
+    }
+    println("${trimText(t)} ${trimText(BENCH_TRIM)}")
+    n: Counter = Counter { }
+    n with {
+        count()
+        count()
+        label = "two"
+    }
+    println("${n.frames} ${n.label}")
+    holder: Holder = Holder { }
+    holder.box = holder.box with {
+        w = 4
+    }
+    println(show(holder.box))
+    mut acc: Box = Box { 0, 1 }
+    for i: Int32 in 0..6 {
+        acc = acc with {
+            w = w + i
+            if i == 4 {
+                break
+            }
+        }
+    }
+    println(show(acc))
+    try {
+        d: Box = b with {
+            w = 100
+            throw "stop"
+        }
+        println(show(d))
+    } on e: Str {
+        println("caught ${e}, ${show(b)}")
+    }
+    f: () Str = () Str {
+        return show(b with {
+            h = 9
+        })
+    }
+    println(f())
+    chained: Box = (b with {
+        w = 4
+    }) with {
+        h = 4
+    }
+    println(show(chained))
+}

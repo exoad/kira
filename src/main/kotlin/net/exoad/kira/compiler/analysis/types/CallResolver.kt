@@ -107,7 +107,7 @@ internal class CallResolver(private val c: PhaseC) {
     private fun named(e: FunctionCallExpr, id: Identifier, hint: KType?, ctx: BodyContext, scope: Scope): KType {
         val name = id.value
         // 1. A local Fx value.
-        scope.find(name)?.let { found ->
+        scope.find(name)?.takeIf { !c.withs.clash(id, it.symbol, scope) }?.let { found ->
             val type = (found.symbol as? LocalSymbol)?.type ?: (found.symbol as? ParamSymbol)?.type
             if (type is KType.Fn) {
                 val ct = c.exprs.synth(id, ctx, scope)
@@ -123,6 +123,24 @@ internal class CallResolver(private val c: PhaseC) {
                 )
                 return KType.Error
             }
+        }
+        // 1b. A method of a `with`'s receiver, then an Fx field of it, through the receiver's temporary.
+        scope.withMember(name)?.let { frame ->
+            c.members.method(frame.type, name)?.let { hit ->
+                c.exprs.captureValue(frame.temp, frame.declaredIn, ctx)
+                model.refs[id] = hit.fn
+                model.withMembers[id] = frame.expr
+                return method(e, frame.self, frame.type, hit, id, hint, implicitThis = false, ctx = ctx, scope = scope)
+            }
+            val ct = c.exprs.synth(id, ctx, scope)
+            if (ct is KType.Fn) {
+                return fnValue(e, ct, null, false, ctx, scope)
+            }
+            argsOnly(e, ctx, scope)
+            if (!ct.containsError()) {
+                c.report("types.call.shadowed", "'$name' here is a field of the `with`'s receiver (a ${ct.display()}), not a function.", id)
+            }
+            return KType.Error
         }
         // 2. A method of the enclosing type, then an Fx field of it.
         ctx.owner?.let { owner ->
@@ -211,6 +229,15 @@ internal class CallResolver(private val c: PhaseC) {
             return KType.Error
         }
         val hit = c.members.method(recv, name)
+        if (hit == null && name == "copy" && e.namedParameters.isNotEmpty() && e.positionalParameters.isEmpty() && c.members.field(recv, name) == null) {
+            argsOnly(e, ctx, scope)
+            c.report(
+                "types.with.copy",
+                "copy(...) is retired: build the changed value with `with`, as `value with {\n    ${e.namedParameters.first().name.value} = ...\n}`.",
+                member,
+            )
+            return KType.Error
+        }
         if (hit == null) {
             val field = c.members.field(recv, name)
             val callee = e.name as? MemberAccessExpr

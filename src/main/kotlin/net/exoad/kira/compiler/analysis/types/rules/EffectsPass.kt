@@ -401,9 +401,11 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>) {
         if (p == null || p.root() !is Place.Local) {
             return false
         }
-        return p.path().all { step ->
+        // A `with`'s copy owns its fields: its first step is its own storage.
+        val copy = (p.root() as Place.Local).sym.builds
+        return p.path().withIndex().all { (i, step) ->
             when (step) {
-                is PathStep.FieldStep -> !r.ownerIsReference(step.sym)
+                is PathStep.FieldStep -> (copy && i == 0) || !r.ownerIsReference(step.sym)
                 is PathStep.IndexStep -> step.kind != IndexKind.MUT_VIEW && step.kind != IndexKind.VIEW
             }
         }

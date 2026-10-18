@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import java.util.IdentityHashMap
 
@@ -61,6 +62,18 @@ data class LoopPlan(
     val element: KType,
     val variable: Symbol?,
     val isLegacy: Boolean,
+)
+
+/**
+ * A `with` (WithTyper): [temp] holds the receiver (a copy when [copy]), [self] is the bare
+ * receiver its block's member calls go through, and [reinit] says the copy re-runs `initially`.
+ */
+data class WithInfo(
+    val temp: LocalSymbol,
+    val self: Identifier,
+    val cls: ClassSymbol,
+    val copy: Boolean,
+    val reinit: Boolean,
 )
 
 /**
@@ -205,6 +218,15 @@ class TypedModel {
 
     /** Whether an if-expression can become a C++ ternary (R18). */
     val ifShape: IdentityHashMap<IfExpr, Boolean> = IdentityHashMap()
+
+    /** Every `with` typed, keyed by its node. */
+    val withs: IdentityHashMap<WithExpr, WithInfo> = IdentityHashMap()
+
+    /** A bare name in a `with` block that is a member of that `with`'s receiver. */
+    val withMembers: IdentityHashMap<Identifier, WithExpr> = IdentityHashMap()
+
+    /** The classes some `with` copies. */
+    val withCopied: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())
 
     /** Purity per expression (EffectsPass); an absent entry means [Effect.IMPURE]. */
     val effects: IdentityHashMap<Expr, Effect> = IdentityHashMap()

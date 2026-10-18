@@ -67,7 +67,7 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         inProgress[global] = true
         try {
             val declared = globalType(global)
-            val value = magicValue(global) ?: fold(global.init, declared, global.module)
+            val value = magicValue(global) ?: global.init?.let { fold(it, declared, global.module) }
             global.constValue = value?.takeIf { fitsDeclared(it, declared) }
             return global.constValue
         } finally {

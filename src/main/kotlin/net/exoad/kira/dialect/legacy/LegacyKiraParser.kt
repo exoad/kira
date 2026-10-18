@@ -1031,24 +1031,8 @@ class LegacyKiraParser(private val context: SourceContext) {
     }
 
 
-    fun parseWithExpr(): Expr {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_WITH)
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<WithExprMember>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            if (members.isNotEmpty()) {
-                expectThenAdvance(Token.Type.S_COMMA)
-            }
-            val subOrigin = peek().canonicalLocation
-            val identifier = parseIdentifier()
-            expectThenAdvance(Token.Type.S_EQUAL)
-            val expr = parseExpr()
-            members.add(putOrigin(WithExprMember(identifier, expr), subOrigin))
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return putOrigin(WithExpr(members), origin)
-    }
+    /** The old `with { a = b }` never had a typed meaning: `value with { ... }` replaces it. */
+    fun parseWithExpr(): Expr = removedForm("a `with { }`, which never had a typed meaning")
 
     private fun parseFunctionCallExpr(): FunctionCallExpr {
         val origin = here()

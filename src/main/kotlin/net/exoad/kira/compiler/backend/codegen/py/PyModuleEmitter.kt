@@ -62,6 +62,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.ArrayLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
@@ -405,6 +406,14 @@ class PyModuleEmitter(
                 body += listOf("", "def __eq__(self, o):") + indent(listOf("return $same"))
             }
         }
+        if (c in model.withCopied) {
+            // A `with` copies it (a struct has its _k_clone already) and re-runs its initially on the copy.
+            if (c.kind == ClassKind.CLASS) {
+                val copied = c.fields.map { "c.${pyName(it)} = ${copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+                body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
+            }
+            c.initially?.let { body += listOf("", "def _k_initially(self):") + indent(block(it, Frame(c, null))) }
+        }
         c.methods.forEach { m ->
             body += ""
             body += function(m, c)
@@ -672,6 +681,9 @@ class PyModuleEmitter(
 
         /** A struct field a lambda captured as a copy of its own, by the name it has in the closure. */
         val fieldNames = IdentityHashMap<FieldSymbol, String>()
+
+        /** The lines that run before the statement being written: each `with` in it. Null outside a statement. */
+        var pre: MutableList<String>? = null
     }
 
     private fun block(statements: List<Statement>, f: Frame): List<String> {
@@ -683,7 +695,20 @@ class PyModuleEmitter(
 
     private fun indent(lines: List<String>): List<String> = lines.map { if (it.isEmpty()) it else "    $it" }
 
-    private fun stmt(s: Statement, f: Frame): List<String> = when (s) {
+    /** A statement, after the lines its `with`s run first. */
+    private fun stmt(s: Statement, f: Frame): List<String> {
+        val outer = f.pre
+        val pre = mutableListOf<String>()
+        f.pre = pre
+        val out = try {
+            statementLines(s, f)
+        } finally {
+            f.pre = outer
+        }
+        return if (pre.isEmpty()) out else pre + out
+    }
+
+    private fun statementLines(s: Statement, f: Frame): List<String> = when (s) {
         is ReturnStatement -> if (s.expr === NoExpr) listOf("return") else listOf("return ${asValue(s.expr, f, Use.RETURN).text}")
         is IfSelectionStatement -> {
             val out = mutableListOf("if ${expr(s.expr, f).text}:")
@@ -801,6 +826,11 @@ class PyModuleEmitter(
             refuse(s, "a declaration inside a body")
             emptyList()
         }
+        // A `with` alone is its lines; its value is dropped.
+        is WithExpr -> {
+            expr(e, f)
+            emptyList()
+        }
         else -> {
             statementCall = e as? FunctionCallExpr ?: (e as? MemberAccessExpr)?.member as? FunctionCallExpr
             val text = expr(e, f).text
@@ -885,7 +915,7 @@ class PyModuleEmitter(
         return when (target) {
             is Identifier -> when (val sym = model.symbolOf(target)) {
                 is LocalSymbol, is ParamSymbol -> local(sym.name)
-                is FieldSymbol -> fieldOfThis(sym, target, f)
+                is FieldSymbol -> withField(target, sym) ?: fieldOfThis(sym, target, f)
                 is GlobalSymbol -> ref(sym, target)
                 else -> refuseText(target, "an assignment to '${target.value}'")
             }
@@ -1162,6 +1192,7 @@ class PyModuleEmitter(
             is IfExpr -> ternary(e, f)
             is ArrayLiteral -> arrayLiteral(e, f)
             is LambdaExpr -> lambda(e, f)
+            is WithExpr -> withExpr(e, f)
             is ThrowExpr -> call("_k_throw", wrap(expr(e.value, f), PyPrec.TERNARY))
             else -> refusePy(e, "the expression ${e.javaClass.simpleName.removeSuffix("Expr").removeSuffix("Literal")}")
         }
@@ -1176,6 +1207,34 @@ class PyModuleEmitter(
         val items = e.value.joinToString(", ") { wrap(asValue(it, f, Use.STORE), PyPrec.TERNARY) }
         return if (isBytes(t)) call("bytearray", "($items${if (e.value.size == 1) "," else ""})") else Py("[$items]", PyPrec.ATOM)
     }
+
+    /**
+     * `receiver with { ... }`: the receiver (a copy when the typer says so) into a temporary, the
+     * block, the copy's `initially` again, each a line before the statement; the value is the temporary.
+     */
+    private fun withExpr(e: WithExpr, f: Frame): Py {
+        val info = model.withs[e] ?: return refusePy(e, "a `with` the typer did not resolve")
+        val pre = f.pre ?: return refusePy(e, "a `with` outside a statement")
+        val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
+        val temp = local(info.temp.name)
+        val receiver = expr(e.receiver, f)
+        pre += when {
+            !info.copy || e.receiver is ObjectInitExpr || e.receiver is WithExpr -> "$temp = ${receiver.text}"
+            isStruct(t) -> "$temp = ${copyOf(receiver, t).text}"
+            else -> "$temp = ${wrap(receiver, PyPrec.POSTFIX)}._k_clone()"
+        }
+        f.scopes.addLast(HashSet())
+        e.body.forEach { pre += stmt(it, f) }
+        f.scopes.removeLast()
+        if (info.reinit) {
+            pre += "$temp._k_initially()"
+        }
+        return Py(temp, PyPrec.ATOM)
+    }
+
+    /** A field of a `with`'s receiver named bare in its block: through the receiver's temporary. */
+    private fun withField(id: Identifier, field: FieldSymbol): String? =
+        model.withMembers[id]?.let { model.withs[it] }?.let { "${local(it.temp.name)}.${pyName(field)}" }
 
     /**
      * A lambda (D74): a module-level def, or a factory of its captures run where the lambda is, so
@@ -1274,7 +1333,7 @@ class PyModuleEmitter(
 
     private fun identifier(id: Identifier, f: Frame): Py = when (val sym = model.symbolOf(id)) {
         is LocalSymbol, is ParamSymbol -> Py(local(sym.name), PyPrec.ATOM)
-        is FieldSymbol -> fieldOfThis(sym, id, f)?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
+        is FieldSymbol -> (withField(id, sym) ?: fieldOfThis(sym, id, f))?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
         is GlobalSymbol -> globalRead(sym, id)
         is FnSymbol -> fnValue(sym, id)
         else -> refusePy(id, "the name '${id.value}'")
@@ -1348,7 +1407,7 @@ class PyModuleEmitter(
     private fun listPlace(e: Expr, f: Frame): String? = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol, is ParamSymbol -> local(sym.name)
-            is FieldSymbol -> fieldOfThis(sym, e, f)
+            is FieldSymbol -> withField(e, sym) ?: fieldOfThis(sym, e, f)
             is GlobalSymbol -> ref(sym, e)
             else -> refuseText(e, "this List")
         }

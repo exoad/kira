@@ -38,7 +38,7 @@ internal class LambdaFrame(val lambda: LambdaExpr, val parent: LambdaFrame?, val
  * variable, innermost first. Each scope knows the lambda it belongs to ([lambda]), so a
  * lookup that finds a name declared outside the current lambda knows that name is a capture.
  */
-internal class Scope private constructor(val parent: Scope?, val lambda: LambdaFrame?) {
+internal class Scope private constructor(val parent: Scope?, val lambda: LambdaFrame?, val with: WithFrame? = null) {
     private val names = LinkedHashMap<String, Symbol>()
 
     /** A name found by [find]: the symbol, and the lambda whose body declared it (null: none). */
@@ -61,6 +61,23 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
 
     /** The body of [frame]: names declared from here on belong to that lambda. */
     fun lambdaBody(frame: LambdaFrame): Scope = Scope(this, frame)
+
+    /** A `with` block: its receiver's members are reachable bare from here on. */
+    fun withBody(frame: WithFrame): Scope = Scope(this, lambda, frame)
+
+    /** The receivers of the `with` blocks around here, innermost first. */
+    fun withFrames(): List<WithFrame> {
+        val out = mutableListOf<WithFrame>()
+        var s: Scope? = this
+        while (s != null) {
+            s.with?.let { out.add(it) }
+            s = s.parent
+        }
+        return out
+    }
+
+    /** The innermost receiver with a member [name], and the lambda the `with` is written in. */
+    fun withMember(name: String): WithFrame? = withFrames().firstOrNull { name in it.members }
 
     companion object {
         fun root(): Scope = Scope(null, null)

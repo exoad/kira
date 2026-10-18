@@ -94,6 +94,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 KiraTyper.guard(c.program, "typing a module statement of ${m.uri}", st) { moduleStatement(st, m) }
             }
         }
+        c.withs.unplaced()
     }
 
     /** The field defaults of a struct or class, and the parameter defaults of every function and method. */
@@ -136,9 +137,13 @@ internal class StmtChecker(private val c: PhaseC) {
     // ---- module-level ------------------------------------------------------------------------
 
     private fun global(g: GlobalSymbol) {
-        val init = g.init ?: return
+        var init = g.init ?: return
         if (g.foreign is Foreign.Magic && g.module.isStdlib) {
             return
+        }
+        if (init is net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr) {
+            init = c.withs.fold(init, g) ?: return
+            g.init = init
         }
         val what = "the initializer of '${g.name}'"
         val ctx = moduleContext(g.module, what)
@@ -468,6 +473,7 @@ internal class StmtChecker(private val c: PhaseC) {
         } finally {
             loopDepth.removeLast()
         }
+        c.withs.placement(statements)
     }
 
     /** A lambda's body: its own loop nesting, its own return type. */
@@ -593,6 +599,7 @@ internal class StmtChecker(private val c: PhaseC) {
         if (scope.declare(name, local) != null) {
             c.report("types.local.duplicate", "'$name' is already declared in this block.", decl)
         }
+        c.withs.declares(name, decl, scope)
     }
 
     private fun returnStatement(s: ReturnStatement, ctx: BodyContext, scope: Scope) {
@@ -669,6 +676,7 @@ internal class StmtChecker(private val c: PhaseC) {
         model.loops[s] = LoopPlan(kind, element, variable, fe.isLegacy)
         val bodyScope = scope.child()
         bodyScope.declare(name, variable)
+        c.withs.declares(name, fe, bodyScope)
         loopBody(s.body, ctx, bodyScope)
     }
 
@@ -824,6 +832,7 @@ internal class StmtChecker(private val c: PhaseC) {
         model.refs[name] = local
         ctx.lambda?.let { c.declaredIn[local] = it }
         handler.declare(name.value, local)
+        c.withs.declares(name.value, name, handler)
         block(e.handlerBlock, ctx, handler)
     }
 

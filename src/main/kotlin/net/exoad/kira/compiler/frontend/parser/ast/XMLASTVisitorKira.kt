@@ -522,7 +522,12 @@ object XMLASTVisitorKira :
     override fun visitWithExpr(withExpr: WithExpr) {
         node("WithExpr")
         {
-            withExpr.members.forEach { it.accept(this) }
+            node("Receiver") {
+                withExpr.receiver.accept(this)
+            }
+            node("Body") {
+                withExpr.body.forEach { it.accept(this) }
+            }
         }
     }
 
@@ -545,17 +550,6 @@ object XMLASTVisitorKira :
                 appendLine(functionCallPositionalParameterExpr.position.toString())
             }
             functionCallPositionalParameterExpr.value.accept(this)
-        }
-    }
-
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        node("WithExprMember")
-        {
-            node("Name")
-            {
-                withExprMember.name.accept(this)
-            }
-            withExprMember.value.accept(this)
         }
     }
 

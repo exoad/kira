@@ -26,8 +26,10 @@ import kotlin.properties.Delegates
  *
  * It will then pass this AST onto the [net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
+ *
+ * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals parse as well.
  */
-class KiraParser(private val context: SourceContext) {
+class KiraParser(private val context: SourceContext, private val literals: Boolean = false) {
     private val buffer = TokenBuffer(context.tokens)
 
     init {
@@ -1156,6 +1158,8 @@ class KiraParser(private val context: SourceContext) {
                     expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
                 }
 
+                at(Token.Type.K_WITH) -> expr = parseWithExpr(expr)
+
                 else -> break
             }
         }
@@ -1265,7 +1269,13 @@ class KiraParser(private val context: SourceContext) {
                 }
             }
 
-            Token.Type.K_WITH -> parseWithExpr()
+            Token.Type.K_WITH -> Diagnostics.panic(
+                "parse.with.receiver",
+                "A `with` follows the value it builds: `value with {\n    field = ...\n}`.",
+                location = here(),
+                selectorLength = 4,
+                context = context
+            )
             Token.Type.K_IF -> parseIfExpr()
             Token.Type.K_THIS -> {
                 // A fresh node per use: the typed model keys nodes by identity.
@@ -1444,24 +1454,55 @@ class KiraParser(private val context: SourceContext) {
     }
 
 
-    fun parseWithExpr(): Expr {
-        val origin = here()
-        expectThenAdvance(Token.Type.K_WITH)
-        expectThenAdvance(Token.Type.S_OPEN_BRACE)
-        val members = mutableListOf<WithExprMember>()
-        while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-            if (members.isNotEmpty()) {
-                expectThenAdvance(Token.Type.S_COMMA)
+    /**
+     * `receiver with { ... }`: a block that spans lines, as every block does. In a bare condition
+     * head its brace would be the body's, so a `with` there is refused.
+     */
+    private fun parseWithExpr(receiver: Expr): Expr {
+        val origin = context.astOrigins[receiver] ?: here()
+        if (noObjectInit) {
+            Diagnostics.panic(
+                "parse.with.condition",
+                "A `with` cannot stand in a condition or a loop header: bind it to a local first.",
+                location = here(),
+                selectorLength = 4,
+                context = context
+            )
+        }
+        advancePointer()
+        if (!at(Token.Type.S_OPEN_BRACE)) {
+            expectThenAdvance(Token.Type.S_OPEN_BRACE)
+        }
+        val braceLine = peek().canonicalLocation.lineNumber
+        if (peek(1).canonicalLocation.lineNumber == braceLine) {
+            oneLineWith(1)
+        }
+        advancePointer()
+        val statements = mutableListOf<Statement>()
+        functionDepth++
+        try {
+            withNoObjectInit(false) {
+                while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
+                    statements.add(parseStatement(null))
+                }
             }
-            val subOrigin = peek().canonicalLocation
-            val identifier = parseIdentifier()
-            expectThenAdvance(Token.Type.S_EQUAL)
-            val expr = parseExpr()
-            members.add(putOrigin(WithExprMember(identifier, expr), subOrigin))
+        } finally {
+            functionDepth--
+        }
+        if (at(Token.Type.S_CLOSE_BRACE) && !startsOnNewLine()) {
+            oneLineWith(0)
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return putOrigin(WithExpr(members), origin)
+        return putOrigin(WithExpr(receiver, statements), origin)
     }
+
+    private fun oneLineWith(at: Int): Nothing = Diagnostics.panic(
+        "parse.with.one-line",
+        "A `with` block spans lines, as every block does: its statements go on the lines after `{`, and `}` on a line of its own.",
+        location = peek(at).canonicalLocation,
+        selectorLength = max(1, peek(at).content.length),
+        context = context
+    )
 
     private fun parseFunctionCallExpr(): FunctionCallExpr {
         val origin = here()

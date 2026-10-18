@@ -15,7 +15,8 @@ import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
 
-class CompilationUnit {
+/** [bootstrap]: read the stdlib under `kira/` in the working directory first, as the CLI does. */
+class CompilationUnit(bootstrap: Boolean = true) {
     private val sources = mutableMapOf<String, SourceContext>()
     private val magicTypeNames = mutableSetOf<String>()
     /** Foreign opaque class names → C pointer handles (no Kira ARC). */
@@ -27,7 +28,7 @@ class CompilationUnit {
     init {
         try {
             val kiraRoot = File("kira")
-            if (kiraRoot.exists() && kiraRoot.isDirectory) {
+            if (bootstrap && kiraRoot.exists() && kiraRoot.isDirectory) {
                 kiraRoot.walkTopDown()
                     .filter { it.isFile && it.extension == "kira" }
                     .forEach { sourceFile ->

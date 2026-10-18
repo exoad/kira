@@ -36,6 +36,13 @@ object NamedArguments {
         if (call.namedParameters.isEmpty()) {
             return Binding.Ordered(positional)
         }
+        if (parameterNames == null && calleeName == "copy") {
+            // Kotlin's copy(field = ...) is retired: `with` builds the changed value.
+            return Binding.Unbound(
+                "copy(...) is retired: build the changed value with `with`, as `value with {\n    " +
+                    "${call.namedParameters.first().name.value} = ...\n}`."
+            )
+        }
         if (parameterNames == null) {
             return Binding.Unbound(
                 "Named arguments need a callee the compiler can resolve, and '$calleeName' is not a " +

@@ -349,6 +349,8 @@ class LocalSymbol(
     val isMut: Boolean = false,
     /** The function whose body declares it, when there is one. */
     val fn: FnSymbol? = null,
+    /** A `with`'s copy of its receiver: the block may assign every field of it, `mut` or not. */
+    val builds: Boolean = false,
 ) : Symbol() {
     override val qualifiedName: String get() = "${fn?.qualifiedName ?: module.uri}::$name"
 }
@@ -364,7 +366,8 @@ class GlobalSymbol(
      * (UPPER_SNAKE_CASE by convention); [constValue] says whether ConstEval could fold it.
      */
     val isConstant: Boolean = !isMut,
-    val init: Expr? = null,
+    /** The initializer; phase C replaces a `with` it folds by the construction it folds into. */
+    var init: Expr? = null,
     var constValue: ConstValue? = null,
 ) : Symbol() {
     var isPub: Boolean = false

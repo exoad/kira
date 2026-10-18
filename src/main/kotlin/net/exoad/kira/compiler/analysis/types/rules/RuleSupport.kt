@@ -346,6 +346,8 @@ internal class Rules(val program: TypedProgram) {
         is Place.Field -> {
             val owner = p.sym.owner
             when {
+                // A `with`'s copy: its block may assign every field of it.
+                (p.receiver as? Place.Local)?.sym?.builds == true -> true
                 owner is ClassSymbol && owner.kind == ClassKind.STRUCT -> p.receiver?.let { isMutablePlace(it, thisMutable) } ?: true
                 p.receiver is Place.This && !thisMutable -> false
                 else -> p.sym.isMut
@@ -517,9 +519,11 @@ internal class Rules(val program: TypedProgram) {
         if (rootShared) {
             return true
         }
-        return p.path().any { step ->
+        // A `with`'s copy owns its fields: its first step is its own storage.
+        val copy = (p.root() as? Place.Local)?.sym?.builds == true
+        return p.path().withIndex().any { (i, step) ->
             when (step) {
-                is PathStep.FieldStep -> ownerIsReference(step.sym)
+                is PathStep.FieldStep -> !(copy && i == 0) && ownerIsReference(step.sym)
                 is PathStep.IndexStep -> step.kind == IndexKind.VIEW || step.kind == IndexKind.MUT_VIEW
             }
         }

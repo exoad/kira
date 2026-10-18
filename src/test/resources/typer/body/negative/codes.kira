@@ -23,7 +23,7 @@ pub codes: (s: Str, v: View<UInt8>, i: Int32, p: Point) Void {
     Result.success(1)                      // @error types.result.context
     @_static_assert(true, "here")          // @error types.static-assert.position
     k: Fx<Tuple2<Bool, Str>, Void> = assert // @error types.fn.foreign-value
-    m: Point = p with { x = 1 }            // @error types.with.unsupported
+    m: Point = p.copy(x = 1)               // @error types.with.copy
     n: Int32 = @_infer                     // @error types.intrinsic.value
     nested: () Void {                   // @error types.decl.nested
     }

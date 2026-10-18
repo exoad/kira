@@ -21,7 +21,8 @@ import kotlin.system.exitProcess
  * `kira-dialect convert [--check] PATH...`: every .kira under each PATH from the old dialect to
  * the clean one, in place, each proved by its tree; `kt [--check] PATH...` does the same for the
  * Kira in Kotlin string literals (`--force-wrong`: also the old Kira a test means to be wrong, by
- * its words). `--check` writes nothing and exits 1 when anything would change or cannot be converted.
+ * its words); `stage2 [--check] PATH...` takes stage 1's text to stage 2's ([Stage2]). `--check`
+ * writes nothing and exits 1 when anything would change or cannot be converted.
  */
 object DialectMain {
     @JvmStatic
@@ -36,8 +37,8 @@ object DialectMain {
             println(if (nc == null) "NEW-PARSE: $err" else "parsed")
             return
         }
-        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml")) {
-            println("usage: kira-dialect convert|kt|yaml [--check] PATH...")
+        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2")) {
+            println("usage: kira-dialect convert|kt|yaml|stage2 [--check] PATH...")
             exitProcess(2)
         }
         val check = "--check" in args
@@ -46,6 +47,7 @@ object DialectMain {
         val code = when (args[0]) {
             "convert" -> convertKira(paths, check)
             "yaml" -> YamlGlobs.convertAll(paths, check)
+            "stage2" -> Stage2.convertAll(paths, check)
             else -> KotlinStrings.convertAll(paths, check)
         }
         exitProcess(code)

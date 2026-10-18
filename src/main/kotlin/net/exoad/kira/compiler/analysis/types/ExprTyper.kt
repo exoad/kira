@@ -57,6 +57,7 @@ internal class PhaseC(val program: TypedProgram) {
     val lambdas = LambdaTyper(this)
     val exprs = ExprTyper(this)
     val stmts = StmtChecker(this)
+    val withs = WithTyper(this)
     val bindings = MagicBindings()
 
     /** The lambda whose body declares each local or parameter (absent: declared outside every lambda). */
@@ -108,7 +109,12 @@ internal class PhaseC(val program: TypedProgram) {
         is Place.This -> ctx.thisMutable
         is Place.Field -> {
             val owner = p.sym.owner
-            if (owner is ClassSymbol && owner.kind == ClassKind.STRUCT) p.receiver?.let { isMutablePlace(it, ctx) } ?: false else p.sym.isMut
+            when {
+                // A `with`'s copy: its block may assign every field of it.
+                (p.receiver as? Place.Local)?.sym?.builds == true -> true
+                owner is ClassSymbol && owner.kind == ClassKind.STRUCT -> p.receiver?.let { isMutablePlace(it, ctx) } ?: false
+                else -> p.sym.isMut
+            }
         }
         is Place.Index -> when (p.kind) {
             IndexKind.MUT_VIEW -> true
@@ -238,10 +244,7 @@ internal class ExprTyper(private val c: PhaseC) {
             c.report("types.is.unsupported", "`is` needs run-time type information, which is deferred (D43).", e)
             KType.Error
         }
-        is WithExpr -> {
-            c.report("types.with.unsupported", "`with` has no typed lowering; construct the value with T { name = value }.", e)
-            KType.Error
-        }
+        is WithExpr -> c.withs.with(e, hint, ctx, scope)
         NoExpr -> KType.Void
         is Type -> {
             c.report("types.expr.type", "'${KiraUnparser.type(e)}' is a type, not a value.", e)
@@ -264,6 +267,7 @@ internal class ExprTyper(private val c: PhaseC) {
         if (scope.find(id.value) != null) {
             return true
         }
+        scope.withMember(id.value)?.let { frame -> if (c.members.field(frame.type, id.value) != null) return true }
         ctx.owner?.let { owner -> if (c.members.field(c.selfType(owner), id.value) != null) return true }
         return c.program.graph.lookup(ctx.module, id.value) { it is GlobalSymbol || it is FnSymbol } !is ModuleGraph.Lookup.Missing
     }
@@ -271,7 +275,7 @@ internal class ExprTyper(private val c: PhaseC) {
     /** A name in value position: a local, a field of the implicit receiver, a global, or a function. */
     fun identifier(id: Identifier, ctx: BodyContext, scope: Scope): KType {
         val name = id.value
-        scope.find(name)?.let { found ->
+        scope.find(name)?.takeIf { !c.withs.clash(id, it.symbol, scope) }?.let { found ->
             val sym = found.symbol
             model.refs[id] = sym
             captureValue(sym, found.declaredIn, ctx)
@@ -287,6 +291,7 @@ internal class ExprTyper(private val c: PhaseC) {
                 else -> KType.Error
             }
         }
+        scope.withMember(name)?.let { frame -> return withMember(id, frame, ctx) }
         ctx.owner?.let { owner ->
             val self = c.selfType(owner)
             c.members.field(self, name)?.let { (f, type) ->
@@ -328,6 +333,19 @@ internal class ExprTyper(private val c: PhaseC) {
         }
     }
 
+    /** [id], a member of [frame]'s receiver read bare in its block: a field through the receiver's temporary. */
+    private fun withMember(id: Identifier, frame: WithFrame, ctx: BodyContext): KType {
+        val (f, type) = c.members.field(frame.type, id.value) ?: run {
+            c.report("types.member.method-value", "'${id.value}' is a method of the `with`'s receiver; call it (${id.value}(...)).", id)
+            return KType.Error
+        }
+        model.refs[id] = f
+        model.places[id] = Place.Field(Place.Local(frame.temp), f)
+        model.withMembers[id] = frame.expr
+        captureValue(frame.temp, frame.declaredIn, ctx)
+        return type
+    }
+
     private fun moduleValue(id: Identifier, sym: Symbol): KType {
         model.refs[id] = sym
         return when (sym) {
@@ -363,7 +381,7 @@ internal class ExprTyper(private val c: PhaseC) {
     }
 
     /** A local or parameter of an enclosing body, read inside a lambda: each lambda in between captures it. */
-    private fun captureValue(sym: Symbol, declaredIn: LambdaFrame?, ctx: BodyContext) {
+    fun captureValue(sym: Symbol, declaredIn: LambdaFrame?, ctx: BodyContext) {
         var f = ctx.lambda
         while (f != null && f !== declaredIn) {
             f.add(Capture.Value(sym))
