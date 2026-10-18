@@ -1,5 +1,5 @@
 project:
-  name: golden-py-signals
+  name: golden.py.signals
 srcDir: src
 build:
   target: py

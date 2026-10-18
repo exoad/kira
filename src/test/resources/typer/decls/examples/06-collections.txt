@@ -1,8 +1,8 @@
-module app:arrays  profile=HOSTED ns=arrays imports=[]
+module collections:app.arrays  profile=HOSTED ns=arrays imports=[]
   fn first: (values: Arr<Int32>) Int32  body
-module app:main  profile=HOSTED ns=main_ imports=[app:arrays, app:maps]
+module collections:app.main  profile=HOSTED ns=main_ imports=[collections:app.arrays, collections:app.maps]
   fn main: () Void  body
-module app:maps  profile=HOSTED ns=maps imports=[]
+module collections:app.maps  profile=HOSTED ns=maps imports=[]
   fn hasAny: (values: Map<Str, Int32>) Bool  body
-diag error rules.visibility.module app/main.kira:8:19  Function 'first' is declared in app:arrays but is not pub, so app:main cannot use it. Mark it `pub`.
-diag error rules.visibility.module app/main.kira:11:21  Function 'hasAny' is declared in app:maps but is not pub, so app:main cannot use it. Mark it `pub`.
+diag error rules.visibility.module collections/app/main.kira:6:19  Function 'first' is declared in collections:app.arrays but is not pub, so collections:app.main cannot use it. Mark it `pub`.
+diag error rules.visibility.module collections/app/main.kira:9:21  Function 'hasAny' is declared in collections:app.maps but is not pub, so collections:app.main cannot use it. Mark it `pub`.

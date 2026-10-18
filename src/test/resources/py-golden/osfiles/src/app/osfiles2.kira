@@ -1,12 +1,10 @@
-module "app:osfiles2"
-
-use "kira:os"
-use "kira:test"
+kira.os as os
+kira.test as test
 
 // kira:os's files on both targets (K3, K4): what each call answers and the kind of each failure, the same lines on
 // C++ and py. It works in osfiles2.d, beside the program (args()[0]).
 
-fx dirOf: (path: Str) Str {
+dirOf: (path: Str) Str {
     parts: List<Str> = path.replace("\\", "/").split("/")
     last: Size = parts.size() - 1
     mut kept: List<Str> = []
@@ -19,21 +17,21 @@ fx dirOf: (path: Str) Str {
     return kept.joinToString("/")
 }
 
-fx textOf: (m: Maybe<Str>) Str {
+textOf: (m: Maybe<Str>) Str {
     if m.isSome() {
         return m.value
     }
     return "<none>"
 }
 
-fx bytesOf: (m: Maybe<List<UInt8>>) Str {
+bytesOf: (m: Maybe<List<UInt8>>) Str {
     if m.isSome() {
         return Str.of(m.value)
     }
     return "<none>"
 }
 
-fx temporaryIn: (dir: Str) Bool {
+temporaryIn: (dir: Str) Bool {
     for name: Str in listDir(dir) {
         if name.endsWith(".tmp") {
             return true
@@ -43,23 +41,23 @@ fx temporaryIn: (dir: Str) Bool {
 }
 
 // A missing file's read, for the driver: its reason is the thread's, whichever module reads it.
-pub fx missing: (path: Str) Bool {
+pub missing: (path: Str) Bool {
     return readFile(path).isNone()
 }
 
-pub fx head: (path: Str, n: Size) Maybe<List<UInt8>> {
+pub head: (path: Str, n: Size) Maybe<List<UInt8>> {
     return readFileHead(path, n)
 }
 
-pub fx changed: (path: Str) Maybe<Float64> {
+pub changed: (path: Str) Maybe<Float64> {
     return modifiedS(path)
 }
 
-pub fx atomic: (path: Str, text: Str) Bool {
+pub atomic: (path: Str, text: Str) Bool {
     return writeFileAtomic(path, text.bytes())
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "osfiles2 - kira:os files on C++ and py" }
     dir: Str = dirOf(args()[0]) + "/osfiles2.d"
     for name: Str in listDir(dir) {

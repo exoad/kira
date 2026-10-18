@@ -1,5 +1,3 @@
-module "dash:dashtext"
-
 // bibodash.py's two text parsers in Kira. scan: one "F <...> <rot mHz> <angle>,<dist>[,<q>] ..."
 // line of the lidar's text feed, after the reader strips it, as the scan's points: angles
 // (centi-degrees, kept mod 36000), distances (mm, 1..65535) and qualities (capped at 255),
@@ -11,19 +9,19 @@ module "dash:dashtext"
 
 LIDAR: Int64 = 255
 
-pub class Scan {
+pub Scan: Any {
     pub mut rotMhz: Int64 = 0
     pub mut angles: List<UInt16> = List<UInt16> { }
     pub mut dists: List<UInt16> = List<UInt16> { }
     pub mut quals: List<UInt8> = List<UInt8> { }
 }
 
-fx space: (c: Char) Bool {
+space: (c: Char) Bool {
     return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
 // text.strip() over ASCII.
-fx strip: (s: Str) Str {
+strip: (s: Str) Str {
     mut a: Size = 0
     mut b: Size = s.length()
     while a < b && space(s[a]) {
@@ -36,7 +34,7 @@ fx strip: (s: Str) Str {
 }
 
 // str.isdigit() over ASCII: not empty, every character 0-9.
-fx isDigits: (s: Str) Bool {
+isDigits: (s: Str) Bool {
     if s.isEmpty() {
         return false
     }
@@ -51,7 +49,7 @@ fx isDigits: (s: Str) Bool {
 }
 
 // int(s) % m for digits of any length, digit by digit.
-fx digitsMod: (s: Str, m: Int64) Int64 {
+digitsMod: (s: Str, m: Int64) Int64 {
     mut v: Int64 = 0
     mut i: Size = 0
     while i < s.length() {
@@ -62,7 +60,7 @@ fx digitsMod: (s: Str, m: Int64) Int64 {
 }
 
 // min(int(s), cap) for digits of any length.
-fx digitsCapped: (s: Str, cap: Int64) Int64 {
+digitsCapped: (s: Str, cap: Int64) Int64 {
     mut v: Int64 = 0
     mut i: Size = 0
     while i < s.length() {
@@ -76,11 +74,11 @@ fx digitsCapped: (s: Str, cap: Int64) Int64 {
 }
 
 // The reader's test: the stripped line is a scan when it starts "F ".
-pub fx isScan: (line: Str) Bool {
+pub isScan: (line: Str) Bool {
     return strip(line).startsWith("F ")
 }
 
-pub fx scan: (line: Str) Scan {
+pub scan: (line: Str) Scan {
     out: Scan = Scan { }
     words: List<Str> = strip(line).split(" ")
     if words.size() > 2 && isDigits(words[2]) {
@@ -104,12 +102,12 @@ pub fx scan: (line: Str) Scan {
     return out
 }
 
-fx flag: (w: Str) Str {
+flag: (w: Str) Str {
     return if w == "1" { "1" } else { "0" }
 }
 
 // The int of an isdigit() word, none past Int64.
-fx number: (w: Str) Maybe<Int64> {
+number: (w: Str) Maybe<Int64> {
     if !isDigits(w) {
         return null
     }
@@ -117,7 +115,7 @@ fx number: (w: Str) Maybe<Int64> {
 }
 
 // ws_command(page, words) as the action it takes, or "ignored".
-fx wsCommand: (words: List<Str>) Str {
+wsCommand: (words: List<Str>) Str {
     w0: Str = words[0]
     n: Size = words.size()
     if w0 == "all" && n == 2 {
@@ -163,7 +161,7 @@ fx wsCommand: (words: List<Str>) Str {
 }
 
 // One text frame: `ctrl` when it came on the control link.
-pub fx command: (text: Str, ctrl: Bool) Str {
+pub command: (text: Str, ctrl: Bool) Str {
     words: List<Str> = text.split(" ")
     w0: Str = words[0]
     n: Size = words.size()
@@ -190,11 +188,11 @@ pub fx command: (text: Str, ctrl: Bool) Str {
 
 // A page's text frame as ws_reader reads it: its bytes decoded, data.decode("utf-8", "replace")
 // (Str.of, D55), then split on spaces.
-pub fx frame: (data: View<UInt8>, ctrl: Bool) Str {
+pub frame: (data: View<UInt8>, ctrl: Bool) Str {
     return command(Str.of(data), ctrl)
 }
 
-fx scanText: (line: Str) Str {
+scanText: (line: Str) Str {
     if !isScan(line) {
         return "not a scan"
     }
@@ -208,7 +206,7 @@ fx scanText: (line: Str) Str {
     return out
 }
 
-fx main: () Void {
+main: () Void {
     trace(scanText("F 12 10012 0,500,47 9000,1200 18000,0,9 27000,65535,300 35999,65536,1 36001,7,x 1,2,3,4"))
     trace(scanText("  F 0 x 100,200,10\r"))
     trace(scanText("F 1 2"))

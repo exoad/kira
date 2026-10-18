@@ -1,8 +1,6 @@
-module "lang:bags"
-
 // Set, Stack, Queue and Deque are values (D44), a Set insertion-ordered (D27).
 
-fx show: (xs: Arr<Int32>) Str {
+show: (xs: Arr<Int32>) Str {
     mut s: Str = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
@@ -13,11 +11,11 @@ fx show: (xs: Arr<Int32>) Str {
     return s + "]"
 }
 
-fx count: (s: Set<Str>) Size {
+count: (s: Set<Str>) Size {
     return s.size()
 }
 
-fx drain: (mut q: Queue<Int32>) Int32 {
+drain: (mut q: Queue<Int32>) Int32 {
     mut t: Int32 = 0
     while !q.isEmpty() {
         t += q.dequeue().unwrapOr(0)
@@ -25,7 +23,7 @@ fx drain: (mut q: Queue<Int32>) Int32 {
     return t
 }
 
-fx main: () Void {
+main: () Void {
     mut seen: Set<Int32> = Set<Int32> { }
     trace(seen.add(3))
     trace(seen.add(1))

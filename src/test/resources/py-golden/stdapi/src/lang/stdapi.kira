@@ -1,6 +1,4 @@
-module "lang:stdapi"
-
-use "kira:math"
+kira.math as math
 
 // The Kotlin-named stdlib batch (D56 on): expected.txt is the C++ backend's run of main, then
 // the driver's panics as the C++ backend's run of each call alone gives them.
@@ -8,10 +6,10 @@ use "kira:math"
 FNV_BASIS: UInt64 = 0x4BF29CE484222325
 FNV_PRIME: UInt64 = 0x100000001B3
 
-pub class Rng {
+pub Rng: Any {
     pub mut s: UInt64 = 20261005
 
-    pub mut fx below: (n: UInt64) UInt64 {
+    pub mut below: (n: UInt64) UInt64 {
         s = s ^ (s << 13)
         s = s ^ (s >> 7)
         s = s ^ (s << 17)
@@ -19,11 +17,11 @@ pub class Rng {
     }
 }
 
-pub class Digest {
+pub Digest: Any {
     pub mut h: UInt64 = FNV_BASIS
     pub mut count: Int64 = 0
 
-    pub mut fx text: (s: Str) Void {
+    pub mut text: (s: Str) Void {
         b: List<UInt8> = s.bytes()
         mut i: Size = 0
         while i < b.size() {
@@ -34,12 +32,12 @@ pub class Digest {
         count += 1
     }
 
-    pub fx said: () Str {
+    pub said: () Str {
         return "${count} values, digest ${h.toHex()}"
     }
 }
 
-fx vis: (s: Str) Str {
+vis: (s: Str) Str {
     b: List<UInt8> = s.bytes()
     mut out: Str = "["
     mut i: Size = 0
@@ -54,7 +52,7 @@ fx vis: (s: Str) Str {
     return out + "]"
 }
 
-fx visAll: (xs: List<Str>) Str {
+visAll: (xs: List<Str>) Str {
     mut out: Str = "${xs.size()}"
     mut i: Size = 0
     while i < xs.size() {
@@ -64,14 +62,14 @@ fx visAll: (xs: List<Str>) Str {
     return out
 }
 
-fx maybeText: (m: Maybe<Int64>) Str {
+maybeText: (m: Maybe<Int64>) Str {
     if m.isNone() {
         return "none"
     }
     return m.value as Str
 }
 
-fx order: (a: Str, b: Str) Str {
+order: (a: Str, b: Str) Str {
     if a < b && a <= b && b > a && b >= a {
         return "<"
     }
@@ -84,7 +82,7 @@ fx order: (a: Str, b: Str) Str {
     return "?"
 }
 
-fx strOrder: () Void {
+strOrder: () Void {
     trace(order("abc", "abd"))
     trace(order("abd", "abc"))
     trace(order("abc", "abc"))
@@ -107,15 +105,15 @@ fx strOrder: () Void {
     trace(order("éa", "éb"))
 }
 
-fx pieces: () List<Str> {
+pieces: () List<Str> {
     return ["a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓"]
 }
 
-pub fx radixOf: (s: Str, radix: Int32) Str {
+pub radixOf: (s: Str, radix: Int32) Str {
     return maybeText(s.toInt64Radix(radix))
 }
 
-fx strText: () Void {
+strText: () Void {
     trace(vis("ab".padEnd(5, '.')) + vis("abcdef".padEnd(3, '.')) + vis("".padEnd(2, ' ')))
     trace(vis(" \t x y \r\n".trimStart()) + vis(" \t x y \r\n".trimEnd()) + vis(" \n".trimStart()) + vis("".trimEnd()))
     v: Str = "${11 as Char}x${12 as Char}"
@@ -187,7 +185,7 @@ fx strText: () Void {
     trace("toInt64Radix: " + radixes.said())
 }
 
-fx joins: () Void {
+joins: () Void {
     abc: List<Str> = ["a", "", "b"]
     none: List<Str> = List<Str> { }
     one: List<Str> = ["x"]
@@ -210,7 +208,7 @@ fx joins: () Void {
     trace("joinToString: " + joined.said())
 }
 
-fx charTests: () Void {
+charTests: () Void {
     mut digits: Str = ""
     mut spaces: Str = ""
     mut letters: Str = ""
@@ -251,11 +249,11 @@ fx charTests: () Void {
     trace("in non-ASCII text: ${d} digits, ${w} spaces, ${l} letters")
 }
 
-fx rem: (a: Float64, b: Float64) Str {
+rem: (a: Float64, b: Float64) Str {
     return "${fmod(a, b)}"
 }
 
-fx remainders: () Void {
+remainders: () Void {
     zero: Float64 = 0.0
     inf: Float64 = 1.0 / zero
     nan: Float64 = zero / zero
@@ -280,15 +278,15 @@ fx remainders: () Void {
     trace("fmod: " + rems.said())
 }
 
-pub fx sum32: (xs: List<Int32>) Int32 {
+pub sum32: (xs: List<Int32>) Int32 {
     return xs.sum()
 }
 
-pub fx sum64: (xs: List<Int64>) Int64 {
+pub sum64: (xs: List<Int64>) Int64 {
     return xs.sum()
 }
 
-fx ints: (xs: List<Int32>) Str {
+ints: (xs: List<Int32>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -298,7 +296,7 @@ fx ints: (xs: List<Int32>) Str {
     return out + "]"
 }
 
-fx floats: (xs: List<Float64>) Str {
+floats: (xs: List<Float64>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -308,7 +306,7 @@ fx floats: (xs: List<Float64>) Str {
     return out + "]"
 }
 
-fx codes: (xs: List<Char>) Str {
+codes: (xs: List<Char>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -318,7 +316,7 @@ fx codes: (xs: List<Char>) Str {
     return out + "]"
 }
 
-fx bytes8: (xs: List<UInt8>) Str {
+bytes8: (xs: List<UInt8>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -328,23 +326,23 @@ fx bytes8: (xs: List<UInt8>) Str {
     return out + "]"
 }
 
-fx mi: (m: Maybe<Int32>) Str {
+mi: (m: Maybe<Int32>) Str {
     return if m.isNone() { "none" } else { "${m.value}" }
 }
 
-fx mf: (m: Maybe<Float64>) Str {
+mf: (m: Maybe<Float64>) Str {
     return if m.isNone() { "none" } else { "${m.value}" }
 }
 
-fx ms: (m: Maybe<Str>) Str {
+ms: (m: Maybe<Str>) Str {
     return if m.isNone() { "none" } else { vis(m.value) }
 }
 
-fx mc: (m: Maybe<Char>) Str {
+mc: (m: Maybe<Char>) Str {
     return if m.isNone() { "none" } else { "${m.value as UInt8}" }
 }
 
-fx listOrder: () Void {
+listOrder: () Void {
     zero: Float64 = 0.0
     inf: Float64 = 1.0 / zero
     nan: Float64 = zero / zero
@@ -431,7 +429,7 @@ fx listOrder: () Void {
     trace("Char and UInt8 lists: " + dc.said())
 }
 
-fx main: () Void {
+main: () Void {
     strOrder()
     strText()
     joins()

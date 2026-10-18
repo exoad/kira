@@ -31,7 +31,7 @@ namespace
   {
       std::int64_t nowMs = 60000;
       std::int64_t stepMs = 1;
-      carlink::LinkResult answer = carlink::LinkResult::LINK_OK;
+      std::int32_t answer = carlink::LINK_OK;
       kira::List<kira::Str> lines;
       kira::List<std::int32_t> waits;
 
@@ -40,7 +40,7 @@ namespace
           [this](const kira::Str& line, std::int32_t waitMs) { return write(line, waitMs); }
       };
 
-      carlink::LinkResult write(const kira::Str& line, std::int32_t waitMs)
+      std::int32_t write(const kira::Str& line, std::int32_t waitMs)
       {
           lines.push_back(line);
           waits.push_back(waitMs);
@@ -56,11 +56,11 @@ int main()
     {
         FakePort p;
         check(p.sender.sentMs() == -1, "nothing sent yet: -1");
-        check(p.sender.send("STOP") == carlink::LinkResult::LINK_OK, "a line goes out");
+        check(p.sender.send("STOP") == carlink::LINK_OK, "a line goes out");
         check(p.lines.size() == 1 && p.lines[0] == "STOP", "through the write lambda");
         check(p.waits[0] == carlink::WRITE_WAIT_MS, "with the default wait, WRITE_WAIT_MS");
         check(p.sender.sentMs() == 60001, "and counts as sent when its write returns");
-        check(p.sender.send("ESC 1541", 12) == carlink::LinkResult::LINK_OK && p.waits[1] == 12, "a given wait is passed on");
+        check(p.sender.send("ESC 1541", 12) == carlink::LINK_OK && p.waits[1] == 12, "a given wait is passed on");
     }
     {
         FakePort p;
@@ -74,8 +74,8 @@ int main()
     {
         FakePort p;
         static_cast<void>(p.sender.send("STOP"));
-        p.answer = carlink::LinkResult::LINK_CLOSED;
-        check(p.sender.send("ESC 1600") == carlink::LinkResult::LINK_CLOSED, "a failed write's result comes back");
+        p.answer = carlink::LINK_CLOSED;
+        check(p.sender.send("ESC 1600") == carlink::LINK_CLOSED, "a failed write's result comes back");
         check(p.sender.sentMs() == 60001 && p.lines.size() == 2, "and does not count as sent");
     }
     {
@@ -84,7 +84,7 @@ int main()
         carrules::Sender direct([&clock]() { return clock; },
                                 [&last](const kira::Str& line, std::int32_t) {
                                     last = line;
-                                    return carlink::LinkResult::LINK_OK;
+                                    return carlink::LINK_OK;
                                 },
                                 100, 7);
         static_cast<void>(direct.send("PING"));

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-strs
+  name: golden.py.strs
 srcDir: src
 build:
   target: py

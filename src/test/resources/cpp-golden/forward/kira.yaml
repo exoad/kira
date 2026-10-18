@@ -1,5 +1,5 @@
 project:
-  name: golden-forward
+  name: golden.forward
 srcDir: src
 build:
   target: cpp
@@ -7,7 +7,7 @@ build:
     layout: beside
     lineDirectives: false
     namespaces:
-      "pilot:car": bibo
+      "golden.forward.pilot.car": bibo
 compiler:
   types: strict
 dependencies:

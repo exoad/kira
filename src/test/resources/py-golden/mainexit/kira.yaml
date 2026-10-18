@@ -1,5 +1,5 @@
 project:
-  name: golden-py-mainexit
+  name: golden.py.mainexit
 srcDir: src
 build:
   target: py

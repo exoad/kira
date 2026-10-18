@@ -1,15 +1,15 @@
 
 decls - declarations by themselves
 
-  ok    an Int32 enum keeps its values
-  ok    an Int16 enum keeps its hex values
-  ok    a Str enum numbers its entries in order
+  ok    an Int32 constant keeps its value
+  ok    an Int16 constant keeps its hex value
+  ok    a Str constant keeps its text
   ok    integer constants
   ok    float constants take their own width
   ok    Str, Char and Bool constants
   ok    a Str constant holding every trigraph keeps its text
   ok    a require field is value-initialized
-  ok    defaults name constants and enum entries
+  ok    defaults name constants
   ok    a Str default and an alias-typed field
   ok    a const method declared in the struct
   ok    a defaulted method parameter is filled in

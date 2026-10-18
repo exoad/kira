@@ -1,12 +1,10 @@
-module "app:late"
-
-use "kira:sync"
+kira.sync as sync
 
 // Loaded after the driver froze time.monotonic: its wait runs on the clock the first module took (D88).
 
-pub fx waitNever: (ms: Int64) Bool {
+pub waitNever: (ms: Int64) Bool {
     m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
-    return m.waitUntil(fx(xs: List<Int32>) Bool {
+    return m.waitUntil((xs: List<Int32>) Bool {
         return xs.size() > 0
     }, ms)
 }

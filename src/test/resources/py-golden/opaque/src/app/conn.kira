@@ -1,7 +1,5 @@
-module "app:conn"
-
 // An opaque class in a module with no free extern: its raises = still names conn_ext.py's own Busy.
 
-pub @_opaque class Conn {
-    pub @_extern(raises = "Busy") fx wait: () Str
+pub @_opaque Conn: Any {
+    pub @_extern(raises = "Busy") wait: () Str
 }

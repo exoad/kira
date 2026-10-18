@@ -1,10 +1,8 @@
-module "app:intmain"
-
 // An Int32 main: its result is the exit status, and an uncaught throw is 70 as for a Void main.
 
-use "kira:os"
+kira.os as os
 
-fx main: () Int32 {
+main: () Int32 {
     a: List<Str> = args()
     if a.size() > 1 {
         throw "asked to: ${a[1]}"

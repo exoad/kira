@@ -1,5 +1,5 @@
 project:
-  name: golden-py-osserial
+  name: golden.py.osserial
 srcDir: src
 build:
   target: py

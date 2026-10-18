@@ -1,5 +1,5 @@
 project:
-  name: golden-py-numcalls
+  name: golden.py.numcalls
 srcDir: src
 build:
   target: py

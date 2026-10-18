@@ -1,7 +1,5 @@
-module "pkg:a"
+golden.py.importname.pkg.b as b
 
-use "pkg:b"
-
-pub fx twice: () Int32 {
+pub twice: () Int32 {
     return tick() + tick()
 }

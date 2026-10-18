@@ -1,5 +1,3 @@
-module "firmware:pilot.tools.dash.ladder"
-
 // The video stream's quality ladder. streamenc.py keeps the levels themselves (LADDER) and the
 // encoders; this decides, once a second per page, from that second's numbers, whether the link
 // carries the page's level:
@@ -34,17 +32,17 @@ FORGET_S: Float64 = 120.0
 KEEP: Size = 61
 
 // One second as the ladder keeps it.
-class Second {
-    require pub delivered: Float64
-    require pub offered: Float64
-    require pub verdict: Str
+Second: Any {
+    pub delivered: Float64
+    pub offered: Float64
+    pub verdict: Str
 }
 
-pub class Ladder {
+pub Ladder: Any {
     // The level, 0 the lowest. Construction clamps it to 0..top.
-    require pub mut level: Int32
+    pub mut level: Int32
     // The highest level: the last index of streamenc.py's LADDER.
-    require top: Int32
+    top: Int32
     // The last second's: good, fair, bad, severe, full, up, idle or warm.
     pub mut verdict: Str = ""
     mut hist: List<Second> = List<Second> { }
@@ -74,7 +72,7 @@ pub class Ladder {
 
     // One second's numbers in, the level for the next second out. fps is the frame rate of the
     // level the page is at. Unknown numbers are null.
-    pub mut fx update: (
+    pub mut update: (
         deliveredKbs: Maybe<Float64>,
         offeredKbs: Maybe<Float64>,
         ageMs: Maybe<Float64>,
@@ -160,7 +158,7 @@ pub class Ladder {
 
     // How many good seconds a step up into `to` waits for: UP_S, doubled for each failed try
     // there, at most BACKOFF_MAX_S. A level's failures are forgotten FORGET_S after the last.
-    mut fx waitUp: (to: Int32, nowS: Float64) Float64 {
+    mut waitUp: (to: Int32, nowS: Float64) Float64 {
         at: Size = to as Size
         if fails[at] > 0 && nowS - failedAt[at] > FORGET_S {
             fails[at] = 0
@@ -175,7 +173,7 @@ pub class Ladder {
     }
 
     // A fall within PROBE_S of stepping up into this level is a failed try of it.
-    mut fx move: (to: Int32, nowS: Float64) Void {
+    mut move: (to: Int32, nowS: Float64) Void {
         down: Bool = to < level
         if down && !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S {
             at: Size = level as Size
@@ -193,7 +191,7 @@ pub class Ladder {
     }
 
     // Delivered over offered, summed over the last n seconds (all of them, when fewer).
-    fx sumRatio: (n: Size) Float64 {
+    sumRatio: (n: Size) Float64 {
         mut delivered: Float64 = 0.0
         mut offered: Float64 = 0.0
         mut i: Size = since(n)
@@ -209,7 +207,7 @@ pub class Ladder {
     }
 
     // Where the last n seconds of the history start.
-    fx since: (n: Size) Size {
+    since: (n: Size) Size {
         if hist.size() > n {
             return hist.size() - n
         }

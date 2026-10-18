@@ -1,5 +1,5 @@
 project:
-  name: golden-py-paths
+  name: golden.py.paths
 srcDir: src
 build:
   target: py

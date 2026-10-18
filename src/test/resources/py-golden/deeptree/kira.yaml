@@ -1,5 +1,5 @@
 project:
-  name: golden-py-deeptree
+  name: golden.py.deeptree
 srcDir: src
 build:
   target: py

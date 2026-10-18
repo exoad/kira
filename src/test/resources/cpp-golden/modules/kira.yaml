@@ -1,5 +1,5 @@
 project:
-  name: golden-modules
+  name: golden.modules
 srcDir: src
 build:
   target: cpp
@@ -7,8 +7,8 @@ build:
     layout: beside
     lineDirectives: false
     namespaces:
-      "lib:units": golden::units
-    headerOnly: ["lib:units"]
+      "golden.modules.lib.units": golden::units
+    headerOnly: ["golden.modules.lib.units"]
 compiler:
   types: strict
 dependencies:

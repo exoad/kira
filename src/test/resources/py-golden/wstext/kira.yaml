@@ -1,5 +1,5 @@
 project:
-  name: golden-py-wstext
+  name: golden.py.wstext
 srcDir: src
 build:
   target: py

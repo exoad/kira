@@ -1,5 +1,5 @@
 project:
-  name: golden-py-text
+  name: golden.py.text
 srcDir: src
 build:
   target: py

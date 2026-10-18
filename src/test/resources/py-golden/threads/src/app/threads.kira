@@ -1,30 +1,28 @@
-module "app:threads"
-
 // kira:sync (D77) per driver.py case: threads joined by hand, Mutexes, Atomics, a BlockingQueue,
 // and the process a thread's body ends with a panic, a throw (D82) or an exit.
 
-use "kira:os"
-use "kira:sync"
-use "kira:time"
+kira.os as os
+kira.sync as sync
+kira.time as time
 
-pub struct Tally {
+pub Tally: Struct {
     pub count: Int32 = 0
     pub names: List<Str> = List<Str> { }
 }
 
-fx counting: () Void {
+counting: () Void {
     hits: Atomic<Int64> = Atomic<Int64> { value = 0 }
     tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
     mut workers: List<Thread> = List<Thread> { }
     for w: Int32 in 0..4 {
-        workers.add(spawn("worker ${w}", fx() Void {
+        workers.add(spawn("worker ${w}", () Void {
             for i: Int32 in 0..500 {
                 hits.add(1)
-                tally.lock(fx(mut t: Tally) Void {
+                tally.lock((mut t: Tally) Void {
                     t.count += 1
                 })
             }
-            tally.lock(fx(mut t: Tally) Void {
+            tally.lock((mut t: Tally) Void {
                 t.names.add("w${w}")
             })
         }))
@@ -33,15 +31,15 @@ fx counting: () Void {
         t.join()
         t.join()
     }
-    tally.lock(fx(mut t: Tally) Void {
+    tally.lock((mut t: Tally) Void {
         t.names.sort()
         println("counted ${hits.load()} and ${t.count}, from ${t.names.joinToString(" ")}")
     })
 }
 
-fx queueing: () Void {
+queueing: () Void {
     q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-    producer: Thread = spawn("producer", fx() Void {
+    producer: Thread = spawn("producer", () Void {
         for i: Int32 in 0..3 {
             tens: Int32 = i * 10
             q.push([i, tens])
@@ -72,34 +70,34 @@ fx queueing: () Void {
     println("a pushed List is a copy: ${first}, none waiting: ${rows.pop(20).isNone()}")
 }
 
-fx waiting: () Void {
+waiting: () Void {
     ready: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
-    filler: Thread = spawn("filler", fx() Void {
+    filler: Thread = spawn("filler", () Void {
         sleepMs(20)
-        ready.lock(fx(mut xs: List<Int32>) Void {
+        ready.lock((mut xs: List<Int32>) Void {
             xs.add(7)
         })
     })
-    held: Bool = ready.waitUntil(fx(xs: List<Int32>) Bool {
+    held: Bool = ready.waitUntil((xs: List<Int32>) Bool {
         return xs.size() > 0
     }, -1)
     filler.join()
-    never: Bool = ready.waitUntil(fx(xs: List<Int32>) Bool {
+    never: Bool = ready.waitUntil((xs: List<Int32>) Bool {
         return xs.size() > 5
     }, 30)
-    now: Bool = ready.waitUntil(fx(xs: List<Int32>) Bool {
+    now: Bool = ready.waitUntil((xs: List<Int32>) Bool {
         return xs.size() == 1
     }, 0)
     println("waitUntil ${held} ${never} ${now}")
     calls: Atomic<Int32> = Atomic<Int32> { value = 0 }
-    once: Bool = ready.waitUntil(fx(xs: List<Int32>) Bool {
+    once: Bool = ready.waitUntil((xs: List<Int32>) Bool {
         calls.add(1)
         return xs.size() > 5
     }, 0)
     println("a zero timeout asks a false predicate ${calls.load()} time: ${once}")
 }
 
-fx atomics: () Void {
+atomics: () Void {
     a: Atomic<Int32> = Atomic<Int32> { value = 2147483647 }
     println("Int32 add wraps: ${a.add(1)}")
     b: Atomic<UInt8> = Atomic<UInt8> { value = 250 }
@@ -120,14 +118,14 @@ fx atomics: () Void {
     println("Float64 compareSwap by bits: ${zeroBits} ${nanBits} ${q.load()}")
 }
 
-fx nanOf: (zero: Float64) Float64 {
+nanOf: (zero: Float64) Float64 {
     return zero / zero
 }
 
-fx stopping: () Void {
+stopping: () Void {
     stop: Atomic<Bool> = Atomic<Bool> { value = false }
     spins: Atomic<Int64> = Atomic<Int64> { value = 0 }
-    t: Thread = spawn("spinner", fx() Void {
+    t: Thread = spawn("spinner", () Void {
         while !stop.load() {
             spins.add(1)
             sleepMs(1)
@@ -140,7 +138,7 @@ fx stopping: () Void {
     println("stopRequested ${before} ${t.stopRequested()}, spun ${spins.load() >= 0}")
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     a: List<Str> = args()
     how: Str = if a.size() > 1 { a[1] } else { "all" }
     if how == "all" {
@@ -150,23 +148,23 @@ pub fx main: () Int32 {
         atomics()
         stopping()
     } else if how == "throw" {
-        spawn("thrower", fx() Void {
+        spawn("thrower", () Void {
             throw "thrown on a Kira thread"
         }).join()
     } else if how == "panic" {
-        spawn("panicker", fx() Void {
+        spawn("panicker", () Void {
             xs: List<Int32> = List<Int32> { }
             println("${1 / xs.size() as Int32}")
         }).join()
     } else if how == "exit" {
-        spawn("exiter", fx() Void {
+        spawn("exiter", () Void {
             print("unflushed")
             exit(9)
         }).join()
     } else if how == "joinself" {
         handle: Ref<Maybe<Thread>> = Ref<Maybe<Thread>> { value = null }
         gate: Atomic<Bool> = Atomic<Bool> { value = false }
-        t: Thread = spawn("selfish", fx() Void {
+        t: Thread = spawn("selfish", () Void {
             while !gate.load() {
                 sleepMs(1)
             }

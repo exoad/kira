@@ -1,5 +1,5 @@
 project:
-  name: golden-py-regexes
+  name: golden.py.regexes
 srcDir: src
 build:
   target: py

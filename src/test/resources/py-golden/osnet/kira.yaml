@@ -1,5 +1,5 @@
 project:
-  name: golden-py-osnet
+  name: golden.py.osnet
 srcDir: src
 build:
   target: py

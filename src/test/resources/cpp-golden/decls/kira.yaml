@@ -1,5 +1,5 @@
 project:
-  name: golden-decls
+  name: golden.decls
 srcDir: src
 build:
   target: cpp
@@ -7,8 +7,8 @@ build:
     layout: beside
     lineDirectives: false
     namespaces:
-      "lib:shapes": golden::shapes
-    headerOnly: ["lib:shapes"]
+      "golden.decls.lib.shapes": golden::shapes
+    headerOnly: ["golden.decls.lib.shapes"]
 compiler:
   types: strict
 dependencies:

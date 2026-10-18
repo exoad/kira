@@ -1,5 +1,5 @@
 project:
-  name: golden-py-ladder
+  name: golden.py.ladder
 srcDir: src
 build:
   target: py

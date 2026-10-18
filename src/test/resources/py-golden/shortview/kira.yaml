@@ -1,5 +1,5 @@
 project:
-  name: golden-py-shortview
+  name: golden.py.shortview
 srcDir: src
 build:
   target: py

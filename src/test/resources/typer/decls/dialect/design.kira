@@ -1,87 +1,79 @@
-module "fixture:design"
-
-// The design's dialect (section 2): struct, override, initially and finally, parameter
+// The design's dialect (section 2): struct, override, initially, parameter
 // defaults, const type arguments, `mut` parameters and `Fx` elements, char literals.
 // It parses once the frontend package's parser is on the branch; until then TyperDeclTest
 // skips it and says why.
 
 pub LIMIT: Size = 32
-pub alias Frame as Arr<UInt8, 32>
-pub alias Sized as Arr<UInt8, LIMIT>
+pub Arr<UInt8, 32> as Frame
+pub Arr<UInt8, LIMIT> as Sized
 pub SPACE: Char = ' '
 
-pub enum Kind: Int32 {
-    KIND_OK = 0,
-    KIND_ERR = 1
-}
+pub KIND_OK: Int32 = 0
+pub KIND_ERR: Int32 = 1
 
-pub struct Reply {
-    pub kind: Kind = Kind.KIND_OK
+pub Reply: Struct {
+    pub kind: Int32 = KIND_OK
     pub line: Str = ""
-    require pub code: Int32
+    pub code: Int32
 
-    pub fx isOk: () Bool {
-        return kind == Kind.KIND_OK
+    pub isOk: () Bool {
+        return kind == KIND_OK
     }
 
-    pub mut fx reset: () Void {
-        kind = Kind.KIND_OK
+    pub mut reset: () Void {
+        kind = KIND_OK
     }
 }
 
-pub trait Measured {
-    pub fx width: () Int32;
+pub Measured: Any {
+    pub width: () Int32;
 }
 
-pub struct Band: Measured {
+pub Band: Struct, Measured {
     pub lo: Int32 = 0
     pub hi: Int32 = 10
 
-    override pub fx width: () Int32 {
+    override pub width: () Int32 {
         return hi - lo
     }
 }
 
-pub trait Behaviour {
-    pub fx id: () Str;
-    pub fx mayDrive: () Bool {
+pub Behaviour: Any {
+    pub id: () Str;
+    pub mayDrive: () Bool {
         return false
     }
-    pub mut fx step: (r: Reply) Reply;
+    pub mut step: (r: Reply) Reply;
 }
 
-pub class Stop: Behaviour {
-    require pub reason: Str
+pub Stop: Behaviour {
+    pub reason: Str
 
     initially {
         trace(reason)
     }
 
-    finally {
-        trace("gone")
-    }
-
-    override pub fx id: () Str {
+    override pub id: () Str {
         return "stop"
     }
 
-    override pub mut fx step: (r: Reply) Reply {
+    override pub mut step: (r: Reply) Reply {
         return r
     }
 }
 
-pub fx command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
+pub command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
     return verb
 }
 
-pub fx apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
+pub apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
     f(mut x)
 }
 
-pub fx isSpace: (c: Char) Bool {
+pub isSpace: (c: Char) Bool {
     return c == SPACE
 }
 
-pub fx frame: () Frame {
+pub frame: () Frame {
     return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }

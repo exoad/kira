@@ -1,39 +1,37 @@
-module "app:seams"
-
-use "kira:os"
-use "kira:sync"
-use "kira:time"
+kira.os as os
+kira.sync as sync
+kira.time as time
 
 // The stdlib seams a test patches, each read by the runtime where it is called (D88).
 
-pub fx mono: () Int64 {
+pub mono: () Int64 {
     return monoNowNs()
 }
 
-pub fx monoMs: () Int64 {
+pub monoMs: () Int64 {
     return monoNowMs()
 }
 
-pub fx wall: () Int64 {
+pub wall: () Int64 {
     return wallNowNs()
 }
 
-pub fx nap: (ms: Int64) Void {
+pub nap: (ms: Int64) Void {
     sleepMs(ms)
 }
 
-pub fx argCount: () Size {
+pub argCount: () Size {
     return args().size()
 }
 
-pub fx waitNever: (ms: Int64) Bool {
+pub waitNever: (ms: Int64) Bool {
     m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
-    return m.waitUntil(fx(xs: List<Int32>) Bool {
+    return m.waitUntil((xs: List<Int32>) Bool {
         return xs.size() > 0
     }, ms)
 }
 
-pub fx popNone: (ms: Int64) Bool {
+pub popNone: (ms: Int64) Bool {
     q: BlockingQueue<Int32> = BlockingQueue<Int32> { }
     return q.pop(ms).isNone()
 }

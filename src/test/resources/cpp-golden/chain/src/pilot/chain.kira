@@ -1,23 +1,19 @@
-module "pilot:chain"
-
 // The behaviour chain: the one class hierarchy bibo has, and Maybe<Class>.
 
 pub ID_WASD: Str = "net.exoad.tt02bibo.wasd"
 pub ID_STOP: Str = "net.exoad.tt02bibo.stop"
 
-pub enum Act: Int32 {
-    ACT_NOTHING = 0,
-    ACT_CLAMP = 1,
-    ACT_PROPOSE = 2
-}
+pub ACT_NOTHING: Int32 = 0
+pub ACT_CLAMP: Int32 = 1
+pub ACT_PROPOSE: Int32 = 2
 
-pub struct Reply {
-    pub act: Act = Act.ACT_NOTHING
+pub Reply: Struct {
+    pub act: Int32 = ACT_NOTHING
     pub throttle: Float32 = 0.0
     pub steer: Float32 = 0.0
 }
 
-pub struct Pass {
+pub Pass: Struct {
     pub dtMs: Int32 = 0
     pub nowMs: Int64 = 0
     pub haveHolder: Bool = false
@@ -25,42 +21,42 @@ pub struct Pass {
 
 // A trait lowers to an abstract C++ class; a default body is a virtual with a
 // body, so a C++ test double overrides exactly what it needs.
-pub trait Behaviour {
-    pub fx id: () Str;
-    pub fx name: () Str;
-    pub fx mayDrive: () Bool {
+pub Behaviour: Any {
+    pub id: () Str;
+    pub name: () Str;
+    pub mayDrive: () Bool {
         return false
     }
-    pub mut fx onLoad: () Void {
+    pub mut onLoad: () Void {
     }
-    pub mut fx onUnload: () Void {
+    pub mut onUnload: () Void {
     }
-    pub mut fx step: (p: Pass) Reply;
+    pub mut step: (p: Pass) Reply;
 }
 
-class Stop: Behaviour {
-    override pub fx id: () Str {
+Stop: Behaviour {
+    override pub id: () Str {
         return ID_STOP
     }
-    override pub fx name: () Str {
+    override pub name: () Str {
         return "stop"
     }
-    override pub mut fx step: (p: Pass) Reply {
-        return Reply { act = Act.ACT_CLAMP, throttle = 0.0 }
+    override pub mut step: (p: Pass) Reply {
+        return Reply { act = ACT_CLAMP, throttle = 0.0 }
     }
 }
 
-pub fx make: (wanted: Str) Maybe<Behaviour> {
+pub make: (wanted: Str) Maybe<Behaviour> {
     if wanted == ID_STOP {
         return Stop {}
     }
     return null
 }
 
-pub class Chain {
+pub Chain: Any {
     mut loaded: List<Behaviour> = List<Behaviour> {}
 
-    pub mut fx load: (b: Maybe<Behaviour>, mut why: Str) Bool {
+    pub mut load: (b: Maybe<Behaviour>, mut why: Str) Bool {
         if b.isNone() {
             why = "no behaviour"
             return false
@@ -80,11 +76,11 @@ pub class Chain {
         return true
     }
 
-    pub fx size: () Size {
+    pub size: () Size {
         return loaded.size()
     }
 
-    pub fx has: (wanted: Str) Bool {
+    pub has: (wanted: Str) Bool {
         for b: Behaviour in loaded {
             if b.id() == wanted {
                 return true
@@ -93,7 +89,7 @@ pub class Chain {
         return false
     }
 
-    pub fx at: (i: Size) Maybe<Behaviour> {
+    pub at: (i: Size) Maybe<Behaviour> {
         if i >= loaded.size() {
             return null
         }

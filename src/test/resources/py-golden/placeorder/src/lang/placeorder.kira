@@ -1,19 +1,17 @@
-module "lang:placeorder"
-
 // D33: a container a call gives is located before the key and the value, and once.
 
-class Holder {
+Holder: Any {
     pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
     pub mut xs: List<Int32> = List<Int32> { }
     pub mut n: Int32 = 0
     pub mut tag: Int32 = 0
 }
 
-class Shelf {
+Shelf: Any {
     pub mut bags: List<Holder> = List<Holder> { }
     pub mut swaps: Int32 = 0
 
-    pub mut fx swapFirst: () Int32 {
+    pub mut swapFirst: () Int32 {
         mut b: Holder = Holder { }
         swaps += 1
         b.tag = swaps
@@ -21,7 +19,7 @@ class Shelf {
         return 7
     }
 
-    pub fx first: () Holder {
+    pub first: () Holder {
         return bags[0]
     }
 }
@@ -29,27 +27,27 @@ class Shelf {
 mut gm: Map<Str, Int32> = Map<Str, Int32> { }
 mut gxs: List<Int32> = List<Int32> { }
 
-fx holderOf: (h: Holder) Holder {
+holderOf: (h: Holder) Holder {
     trace("holder")
     return h
 }
 
-fx key: () Str {
+key: () Str {
     trace("key")
     return "k"
 }
 
-fx idx: () Size {
+idx: () Size {
     trace("idx")
     return 0
 }
 
-fx val: () Int32 {
+val: () Int32 {
     trace("val")
     return 1
 }
 
-fx swapGlobals: () Int32 {
+swapGlobals: () Int32 {
     gm = Map<Str, Int32> { }
     gm["x"] = 0
     gxs = List<Int32> { }
@@ -58,7 +56,7 @@ fx swapGlobals: () Int32 {
     return 3
 }
 
-fx show: (b: Holder) Str {
+show: (b: Holder) Str {
     ks: Arr<Str> = b.items.keys()
     mut s: Str = "holder${b.tag} {"
     mut i: Size = 0
@@ -69,7 +67,7 @@ fx show: (b: Holder) Str {
     return s + " }"
 }
 
-fx main: () Void {
+main: () Void {
     mut h: Holder = Holder { }
     h.xs.add(0)
     trace("-- map, impure key and value")

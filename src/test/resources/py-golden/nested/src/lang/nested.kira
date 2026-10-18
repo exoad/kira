@@ -1,15 +1,13 @@
-module "lang:nested"
-
 // Containers of containers are values all the way down (D44): each copy below is written to
 // show the other did not move.
 
-use "kira:tuples"
+kira.tuples as tuples
 
-class Book {
+Book: Any {
     pub mut pages: Map<Str, List<Int32>> = Map<Str, List<Int32>> { }
     pub mut last: Maybe<List<Int32>> = null
 
-    pub mut fx note: (key: Str, v: Int32) Void {
+    pub mut note: (key: Str, v: Int32) Void {
         mut row: List<Int32> = pages.get(key).unwrapOr(List<Int32> { })
         row.add(v)
         pages.put(key, row)
@@ -17,7 +15,7 @@ class Book {
     }
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
@@ -28,7 +26,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx grid: (rows: Size, cols: Size) List<List<Int32>> {
+grid: (rows: Size, cols: Size) List<List<Int32>> {
     mut out: List<List<Int32>> = List<List<Int32>> { }
     for r: Size in 0..rows {
         mut row: List<Int32> = List<Int32> { }
@@ -41,7 +39,7 @@ fx grid: (rows: Size, cols: Size) List<List<Int32>> {
     return out
 }
 
-fx total: (g: List<List<Int32>>) Int32 {
+total: (g: List<List<Int32>>) Int32 {
     mut t: Int32 = 0
     for row: List<Int32> in g {
         for v: Int32 in row {
@@ -51,7 +49,7 @@ fx total: (g: List<List<Int32>>) Int32 {
     return t
 }
 
-fx main: () Void {
+main: () Void {
     mut g: List<List<Int32>> = grid(2, 3)
     trace("${show(g[0])} ${show(g[1])} ${total(g)}")
     mut row: List<Int32> = g[0]

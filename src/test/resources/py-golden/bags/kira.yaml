@@ -1,5 +1,5 @@
 project:
-  name: golden-py-bags
+  name: golden.py.bags
 srcDir: src
 build:
   target: py

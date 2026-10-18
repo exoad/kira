@@ -1,5 +1,5 @@
 project:
-  name: golden-py-builtinnames
+  name: golden.py.builtinnames
 srcDir: src
 build:
   target: py

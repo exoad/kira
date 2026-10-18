@@ -1,12 +1,10 @@
-module "app:fileout"
-
-use "kira:os"
-use "kira:test"
+kira.os as os
+kira.test as test
 
 // kira:os's FileOut on py (critique 12): a log appended a line at a time, its header written into an empty file only,
 // LF on every OS, and what a closed one answers.
 
-pub fx append: (path: Str, line: Str) Bool {
+pub append: (path: Str, line: Str) Bool {
     opened: Maybe<FileOut> = openAppend(path)
     if opened.isNone() {
         return false
@@ -17,19 +15,19 @@ pub fx append: (path: Str, line: Str) Bool {
     return ok
 }
 
-pub fx handle: (path: Str) Maybe<FileOut> {
+pub handle: (path: Str) Maybe<FileOut> {
     return openAppend(path)
 }
 
-pub fx reason: () Str {
+pub reason: () Str {
     return lastError()
 }
 
-pub fx kind: () Str {
+pub kind: () Str {
     return lastErrorKind()
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "fileout - kira:os's FileOut on py" }
     root: Str = tempDir("kira-fileout-").value
     log: Str = root + "/run.log"

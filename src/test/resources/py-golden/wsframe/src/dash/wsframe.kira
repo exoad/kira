@@ -1,6 +1,4 @@
-module "dash:wsframe"
-
-use "kira:bytes"
+kira.bytes as bytes
 
 // bibo's WebSocket framing in Kira: ws_frame (bibodash.py, webdrive_fake.py), a frame the board
 // sends, FIN set and unmasked in the short, 126 and 127 length forms; and read_frames
@@ -9,13 +7,13 @@ use "kira:bytes"
 // and the bytes they took. The expected output is the C++ backend's run of main, then the driver's
 // run of these against the hand-written ones.
 
-pub class Frame {
-    require pub opcode: UInt8
-    require pub payload: List<UInt8>
+pub Frame: Any {
+    pub opcode: UInt8
+    pub payload: List<UInt8>
 }
 
 // The length forms: 7 bits, 126 and 16 bits, or 127 and 64 bits, big-endian.
-fx addLength: (mut out: List<UInt8>, maskBit: UInt8, n: Size) Void {
+addLength: (mut out: List<UInt8>, maskBit: UInt8, n: Size) Void {
     if n < 126 {
         out.add(maskBit | (n as UInt8))
     } else if n < 65536 {
@@ -33,7 +31,7 @@ fx addLength: (mut out: List<UInt8>, maskBit: UInt8, n: Size) Void {
 }
 
 // ws_frame(opcode, payload): what the board sends.
-pub fx encode: (opcode: UInt8, payload: View<UInt8>) List<UInt8> {
+pub encode: (opcode: UInt8, payload: View<UInt8>) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     out.add(0x80 | opcode)
     addLength(mut out, 0, payload.size())
@@ -46,7 +44,7 @@ pub fx encode: (opcode: UInt8, payload: View<UInt8>) List<UInt8> {
 }
 
 // What a page sends: the payload masked with a 4-byte key.
-pub fx encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) List<UInt8> {
+pub encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     out.add(0x80 | opcode)
     addLength(mut out, 0x80, payload.size())
@@ -65,7 +63,7 @@ pub fx encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) Lis
 
 // read_frames(buf): every complete frame at the start of buf goes into out, unmasked; the
 // bytes they took, so buf.from(that) is the rest.
-pub fx readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
+pub readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
     mut at: Size = 0
     while buf.size() - at >= 2 {
         b1: UInt8 = buf[at]
@@ -107,7 +105,7 @@ pub fx readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
 
 // ---- main: each form, and a stream of them read back -------------------------------------------
 
-fx pattern: (n: Size, seed: UInt8) List<UInt8> {
+pattern: (n: Size, seed: UInt8) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     mut b: UInt8 = seed
     while out.size() < n {
@@ -117,7 +115,7 @@ fx pattern: (n: Size, seed: UInt8) List<UInt8> {
     return out
 }
 
-fx hex: (v: View<UInt8>, n: Size) Str {
+hex: (v: View<UInt8>, n: Size) Str {
     mut s: Str = ""
     mut i: Size = 0
     while i < n && i < v.size() {
@@ -130,7 +128,7 @@ fx hex: (v: View<UInt8>, n: Size) Str {
     return s
 }
 
-fx sum: (v: View<UInt8>) UInt32 {
+sum: (v: View<UInt8>) UInt32 {
     mut s: UInt32 = 0
     mut i: Size = 0
     while i < v.size() {
@@ -140,7 +138,7 @@ fx sum: (v: View<UInt8>) UInt32 {
     return s
 }
 
-fx same: (a: View<UInt8>, b: View<UInt8>) Bool {
+same: (a: View<UInt8>, b: View<UInt8>) Bool {
     if a.size() != b.size() {
         return false
     }
@@ -156,7 +154,7 @@ fx same: (a: View<UInt8>, b: View<UInt8>) Bool {
 
 KEY: Arr<UInt8, 4> = [0x37, 0xFA, 0x21, 0x3D]
 
-fx main: () Void {
+main: () Void {
     small: List<UInt8> = pattern(5, 3)
     mid: List<UInt8> = pattern(200, 9)
     big: List<UInt8> = pattern(70000, 1)

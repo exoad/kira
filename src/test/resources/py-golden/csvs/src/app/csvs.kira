@@ -1,34 +1,32 @@
-module "app:csvs"
-
-use "kira:csv"
-use "kira:os"
-use "kira:test"
+kira.csv as csv
+kira.os as os
+kira.test as test
 
 // kira:csv (K6): a file's rows as csv.reader reads them, the reason str(e) alone, and a csv.Error a caller may end the
 // program on (critique 15), as strictRows does.
 
-pub fx opened: (path: Str) Maybe<CsvReader> {
+pub opened: (path: Str) Maybe<CsvReader> {
     return openCsv(path)
 }
 
-pub fx nextRow: (r: CsvReader) Maybe<List<Str>> {
+pub nextRow: (r: CsvReader) Maybe<List<Str>> {
     return r.next()
 }
 
-pub fx malformed: (r: CsvReader) Bool {
+pub malformed: (r: CsvReader) Bool {
     return r.isMalformed()
 }
 
-pub fx why: () Str {
+pub why: () Str {
     return csvError()
 }
 
-pub fx line: (cells: List<Str>) Str {
+pub line: (cells: List<Str>) Str {
     return csvLine(cells)
 }
 
 // Every row of the file; a row csv refuses ends the program here, as Python's csv.Error ended powerpage's reader.
-pub fx strictRows: (path: Str) List<List<Str>> {
+pub strictRows: (path: Str) List<List<Str>> {
     mut out: List<List<Str>> = []
     r: CsvReader = openCsv(path).value
     mut row: Maybe<List<Str>> = r.next()
@@ -40,7 +38,7 @@ pub fx strictRows: (path: Str) List<List<Str>> {
     return out
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "csvs - kira:csv on py" }
     dir: Str = tempDir("kira-csvs-").value
     path: Str = dir + "/day.csv"

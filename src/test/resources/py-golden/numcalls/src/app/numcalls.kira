@@ -1,9 +1,7 @@
-module "app:numcalls"
-
 // Num's own methods on py (D83): equals is ==, hashCode is kira::hashCode, toInt32 and toInt64 are `as`, and
 // toFloat64 widens. The expected output is the C++ backend's run of this module.
 
-pub fx main: () Void {
+pub main: () Void {
     a: Int32 = -7
     b: Int64 = 9000000000
     u: UInt64 = (0 - 1) as UInt64
@@ -40,7 +38,7 @@ pub fx main: () Void {
 }
 
 // The driver hands these the same numbers as Python ints, which must answer as the doubles do.
-pub fx callers: (v: Float64, w: Float64) Void {
+pub callers: (v: Float64, w: Float64) Void {
     trace(v as Int32)
     trace(v.toInt32())
     trace(v.toInt64())

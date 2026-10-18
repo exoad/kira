@@ -50,7 +50,7 @@ namespace
       }
       [[nodiscard]] chain::Reply step(const chain::Pass& p) override
       {
-          return chain::Reply{.act = chain::Act::ACT_PROPOSE, .throttle = p.haveHolder ? 1.0f : 0.5f, .steer = -1.0f};
+          return chain::Reply{.act = chain::ACT_PROPOSE, .throttle = p.haveHolder ? 1.0f : 0.5f, .steer = -1.0f};
       }
   };
 
@@ -106,9 +106,9 @@ int main()
     check(!c.load(std::make_shared<Nameless>(), why) && why == "a behaviour with no id", "an empty id is refused");
     check(c.size() == 2 && c.has("greedy") && !c.has(chain::ID_WASD), "size and has");
     const chain::Reply r = kira::unwrap(c.at(0))->step(chain::Pass{.dtMs = 50});
-    check(r.act == chain::Act::ACT_CLAMP && r.throttle == 0.0f, "Stop clamps");
+    check(r.act == chain::ACT_CLAMP && r.throttle == 0.0f, "Stop clamps");
     const chain::Reply g = c.at(1)->step(chain::Pass{.haveHolder = true});
-    check(g.act == chain::Act::ACT_PROPOSE && g.throttle == 1.0f && g.steer == -1.0f, "and the double proposes");
+    check(g.act == chain::ACT_PROPOSE && g.throttle == 1.0f && g.steer == -1.0f, "and the double proposes");
     const kira::Rc<chain::Chain> shared = std::make_shared<chain::Chain>();
     check(shared->load(chain::make(chain::ID_STOP), why) && shared->size() == 1, "Kira code holds a Chain by Rc");
     std::printf("\n%d checks, %d failed\n", checks, failures);

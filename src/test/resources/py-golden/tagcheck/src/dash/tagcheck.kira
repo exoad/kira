@@ -1,5 +1,3 @@
-module "dash:tagcheck"
-
 // tagset.py's checks of a page's request in Kira: tag_of, the id in POST /tags/<id> (ID_TEXT,
 // whose $ also takes one trailing newline, then a tag of the printed sheets), and checked's
 // label (one of LABEL_IDS) and note (stripped, one line with no control character, at most
@@ -11,16 +9,16 @@ NOTE_MAX: Size = 80
 TAGS: Int64 = 48
 LABEL_IDS: List<Str> = ["none", "landmark", "home", "waypoint", "slow", "stop", "door", "test", "keep_out", "dock", "junction", "calibration", "bobo"]
 
-pub class Answer {
-    require pub ok: Bool
-    require pub text: Str
+pub Answer: Any {
+    pub ok: Bool
+    pub text: Str
 }
 
-fx space: (c: Char) Bool {
+space: (c: Char) Bool {
     return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
-fx strip: (s: Str) Str {
+strip: (s: Str) Str {
     mut a: Size = 0
     mut b: Size = s.length()
     while a < b && space(s[a]) {
@@ -33,13 +31,13 @@ fx strip: (s: Str) Str {
 }
 
 // [\x00-\x1f\x7f]
-fx control: (c: Char) Bool {
+control: (c: Char) Bool {
     return c < ' ' || c == (127 as Char)
 }
 
 // repr(s): single quotes unless s holds one and no double quote; a backslash, the quote, \t,
 // \n and \r escaped, any other control character as \xNN.
-pub fx pyRepr: (s: Str) Str {
+pub pyRepr: (s: Str) Str {
     q: Char = if s.contains("'") && !s.contains("\"") { '"' } else { '\'' }
     mut out: Str = "${q}"
     mut i: Size = 0
@@ -64,7 +62,7 @@ pub fx pyRepr: (s: Str) Str {
 }
 
 // ^(0|[1-9][0-9]{0,5})$, where $ also stands before one last \n.
-fx idText: (text: Str) Bool {
+idText: (text: Str) Bool {
     body: Str = if text.endsWith("\n") { text.substring(0, text.length() - 1) } else { text }
     if body == "0" {
         return true
@@ -82,7 +80,7 @@ fx idText: (text: Str) Bool {
     return true
 }
 
-pub fx tagOf: (text: Str) Answer {
+pub tagOf: (text: Str) Answer {
     if idText(text) {
         id: Int64 = strip(text).toInt64().unwrapOr(-1)
         if id >= 0 && id < TAGS {
@@ -92,14 +90,14 @@ pub fx tagOf: (text: Str) Answer {
     return Answer { false, "no tag " + pyRepr(text) }
 }
 
-pub fx label: (v: Str) Answer {
+pub label: (v: Str) Answer {
     if !LABEL_IDS.contains(v) {
         return Answer { false, "unknown label " + pyRepr(v) }
     }
     return Answer { true, v }
 }
 
-pub fx note: (v: Str) Answer {
+pub note: (v: Str) Answer {
     s: Str = strip(v)
     mut i: Size = 0
     while i < s.length() {
@@ -114,11 +112,11 @@ pub fx note: (v: Str) Answer {
     return Answer { true, s }
 }
 
-fx said: (a: Answer) Str {
+said: (a: Answer) Str {
     return if a.ok { "ok " + a.text } else { "refused: " + a.text }
 }
 
-fx main: () Void {
+main: () Void {
     trace(said(tagOf("0")))
     trace(said(tagOf("47")))
     trace(said(tagOf("48")))

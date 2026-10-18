@@ -1,20 +1,18 @@
-module "pilot:car"
-
 // An extern module: Kira's view of the C++ that stays C++. It emits drift checks
 // against the real headers, never a second copy of their declarations.
 
-pub @_extern(cpp = "bibo::Scan", header = "car.hxx") struct Scan {
-    pub fx ahead: () Float32;
+pub @_extern(cpp = "bibo::Scan", header = "car.hxx") Scan: Struct {
+    pub ahead: () Float32;
 }
 
-pub @_extern(cpp = "bibo::Car", header = "car.hxx") class Car {
-    pub mut fx arm: () Bool;
-    pub fx ok: () Bool;
-    pub fx drivable: () Bool;
-    pub mut fx scan: () Scan;
-    pub mut fx drive: (throttle: Float32, steer: Float32) Void;
-    pub mut fx finish: () Int32;
+pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
+    pub mut arm: () Bool;
+    pub ok: () Bool;
+    pub drivable: () Bool;
+    pub mut scan: () Scan;
+    pub mut drive: (throttle: Float32, steer: Float32) Void;
+    pub mut finish: () Int32;
 }
 
 // A 5-line hand-written factory over kira::rt::argc/argv.
-pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") fx openCar: () Car;
+pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") openCar: () Car;

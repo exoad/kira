@@ -1,26 +1,24 @@
-module "lang:strs"
-
 // Str's methods as kira::str gives them: lengths and indices, the checked substring, find as a
 // Maybe, split keeping empty pieces and an empty delimiter giving the text back, trim of the six
 // whitespace characters only (D62), ASCII case changes, the strict parsers and djb2. The expected output is
 // the C++ backend's run of main, then the driver's: the panics, and the py target's one rule
 // for text, a length counting code points.
 
-fx sizeText: (m: Maybe<Size>) Str {
+sizeText: (m: Maybe<Size>) Str {
     if m.isNone() {
         return "none"
     }
     return m.value as Str
 }
 
-fx intText: (m: Maybe<Int64>) Str {
+intText: (m: Maybe<Int64>) Str {
     if m.isNone() {
         return "none"
     }
     return m.value as Str
 }
 
-fx floatText: (m: Maybe<Float64>) Str {
+floatText: (m: Maybe<Float64>) Str {
     if m.isNone() {
         return "none"
     }
@@ -28,7 +26,7 @@ fx floatText: (m: Maybe<Float64>) Str {
 }
 
 // The pieces between bars, and how many.
-fx joined: (xs: List<Str>) Str {
+joined: (xs: List<Str>) Str {
     mut out: Str = "${xs.size()} ["
     mut i: Size = 0
     while i < xs.size() {
@@ -41,55 +39,55 @@ fx joined: (xs: List<Str>) Str {
     return out + "]"
 }
 
-pub fx lengthOf: (s: Str) Size {
+pub lengthOf: (s: Str) Size {
     return s.length()
 }
 
-pub fx substringOf: (s: Str, start: Size, end: Size) Str {
+pub substringOf: (s: Str, start: Size, end: Size) Str {
     return s.substring(start, end)
 }
 
-pub fx charAtOf: (s: Str, i: Size) Str {
+pub charAtOf: (s: Str, i: Size) Str {
     return s.charAt(i)
 }
 
-pub fx findOf: (s: Str, v: Str) Maybe<Size> {
+pub findOf: (s: Str, v: Str) Maybe<Size> {
     return s.find(v)
 }
 
-pub fx splitOf: (s: Str, d: Str) List<Str> {
+pub splitOf: (s: Str, d: Str) List<Str> {
     return s.split(d)
 }
 
-pub fx trimOf: (s: Str) Str {
+pub trimOf: (s: Str) Str {
     return s.trim()
 }
 
-pub fx lowerOf: (s: Str) Str {
+pub lowerOf: (s: Str) Str {
     return s.toLower()
 }
 
-pub fx upperOf: (s: Str) Str {
+pub upperOf: (s: Str) Str {
     return s.toUpper()
 }
 
-pub fx intOf: (s: Str) Maybe<Int64> {
+pub intOf: (s: Str) Maybe<Int64> {
     return s.toInt64()
 }
 
-pub fx floatOf: (s: Str) Maybe<Float64> {
+pub floatOf: (s: Str) Maybe<Float64> {
     return s.toFloat64()
 }
 
-pub fx hashOf: (s: Str) Int64 {
+pub hashOf: (s: Str) Int64 {
     return s.hashCode()
 }
 
-fx parsed: (s: Str) Str {
+parsed: (s: Str) Str {
     return "[" + s + "] " + intText(s.toInt64()) + " " + floatText(s.toFloat64())
 }
 
-fx main: () Void {
+main: () Void {
     trace("".length())
     trace("a".size())
     trace("hello world".length())

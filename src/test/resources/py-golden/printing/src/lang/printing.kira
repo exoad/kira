@@ -1,17 +1,15 @@
-module "lang:printing"
-
 // eprint's text goes to stderr, which is not compared.
 
-use "kira:io"
-use "kira:os"
+kira.io as io
+kira.os as os
 
-fx stop: (code: Int32) Int32 {
+stop: (code: Int32) Int32 {
     println("stopping")
     exit(code)
     return 1
 }
 
-fx main: () Void {
+main: () Void {
     print("a")
     print(1)
     print(true)

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-bebytes
+  name: golden.py.bebytes
 srcDir: src
 build:
   target: py

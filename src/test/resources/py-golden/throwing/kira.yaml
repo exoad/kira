@@ -1,5 +1,5 @@
 project:
-  name: golden-py-throwing
+  name: golden.py.throwing
 srcDir: src
 build:
   target: py

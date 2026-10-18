@@ -1,7 +1,5 @@
-module "app:parser"
+kira.json as json
 
-use "kira:json"
-
-pub fx parsed: (text: Str) Bool {
+pub parsed: (text: Str) Bool {
     return !Json.parse(text).isNull()
 }

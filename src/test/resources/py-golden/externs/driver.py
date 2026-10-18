@@ -41,7 +41,6 @@ for f, keys in (
     (m.giveBytes, ("bytes", "bytearray", "ints")),
     (m.giveMap, ("map", "intkey")),
     (m.giveTuple, ("pair", "tuple", "pairlist")),
-    (m.giveLevel, ("int", "3")),
     (m.giveJson, ("json", "none", "set", "2^64", "intkeyjson", "512 deep", "513 deep", "dag", "loop")),
     (m.giveVoid, ("none", "int")),
 ):

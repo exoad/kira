@@ -1,5 +1,5 @@
 project:
-  name: golden-py-dbwspec
+  name: golden.py.dbwspec
 srcDir: src
 build:
   target: py

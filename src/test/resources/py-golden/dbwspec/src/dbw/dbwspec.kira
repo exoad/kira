@@ -1,28 +1,26 @@
-module "dbw:dbwspec"
-
-use "kira:bytes"
+kira.bytes as bytes
 
 // dbwcodec.py's Spec, pack, unpack and names, and dbwcli.py's rtt_samples, on Maps. A payload's
 // fields are two Maps (integers, bytes as hex) and an error a Str, as Kira has no mixed dict.
 
-pub class Field {
-    require pub name: Str
-    require pub kind: Str
-    require pub count: Size
+pub Field: Any {
+    pub name: Str
+    pub kind: Str
+    pub count: Size
 }
 
-pub class Message {
-    require pub name: Str
-    require pub id: Int64
-    require pub dir: Str
-    require pub size: Size
+pub Message: Any {
+    pub name: Str
+    pub id: Int64
+    pub dir: Str
+    pub size: Size
     pub mut fields: List<Field> = List<Field> { }
 
-    pub mut fx addField: (fieldName: Str, fieldKind: Str, n: Size) Void {
+    pub mut addField: (fieldName: Str, fieldKind: Str, n: Size) Void {
         fields.add(Field { fieldName, fieldKind, n })
     }
 
-    pub fx packedSize: () Size {
+    pub packedSize: () Size {
         mut total: Size = 0
         mut i: Size = 0
         while i < fields.size() {
@@ -33,17 +31,17 @@ pub class Message {
     }
 }
 
-pub class Table {
+pub Table: Any {
     pub mut byName: Map<Str, Int64> = Map<Str, Int64> { }
     pub mut byValue: Map<Int64, Str> = Map<Int64, Str> { }
 
-    pub mut fx add: (n: Str, v: Int64) Void {
+    pub mut add: (n: Str, v: Int64) Void {
         byName[n] = v
         byValue[v] = n
     }
 }
 
-pub class Spec {
+pub Spec: Any {
     pub mut messages: Map<Str, Message> = Map<Str, Message> { }
     pub mut byId: Map<Int64, Message> = Map<Int64, Message> { }
     pub mut faultBits: Table = Table { }
@@ -52,14 +50,14 @@ pub class Spec {
     pub mut nacks: Table = Table { }
     pub mut enums: Map<Str, Table> = Map<Str, Table> { }
 
-    pub mut fx addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
+    pub mut addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
         m: Message = Message { n, msgId, msgDir, msgSize }
         messages[n] = m
         byId[msgId] = m
         return m
     }
 
-    pub mut fx enumTable: (n: Str) Table {
+    pub mut enumTable: (n: Str) Table {
         if !enums.containsKey(n) {
             enums[n] = Table { }
         }
@@ -67,18 +65,18 @@ pub class Spec {
     }
 }
 
-pub class Packed {
+pub Packed: Any {
     pub mut error: Str = ""
     pub mut payload: List<UInt8> = List<UInt8> { }
 }
 
-pub class Unpacked {
+pub Unpacked: Any {
     pub mut error: Str = ""
     pub mut ints: Map<Str, Int64> = Map<Str, Int64> { }
     pub mut hex: Map<Str, Str> = Map<Str, Str> { }
 }
 
-fx width: (f: Field) Size {
+width: (f: Field) Size {
     if f.kind == "u8" || f.kind == "i8" {
         return 1
     } else if f.kind == "u16" || f.kind == "i16" {
@@ -89,7 +87,7 @@ fx width: (f: Field) Size {
     return f.count
 }
 
-fx lowest: (kind: Str) Int64 {
+lowest: (kind: Str) Int64 {
     if kind == "i8" {
         return -128
     } else if kind == "i16" {
@@ -100,7 +98,7 @@ fx lowest: (kind: Str) Int64 {
     return 0
 }
 
-fx highest: (kind: Str) Int64 {
+highest: (kind: Str) Int64 {
     if kind == "u8" {
         return 255
     } else if kind == "i8" {
@@ -116,12 +114,12 @@ fx highest: (kind: Str) Int64 {
 }
 
 // bytes.fromhex: pairs of hex digits, ASCII whitespace between pairs.
-fx space: (c: Char) Bool {
+space: (c: Char) Bool {
     code: Int32 = c as Int32
     return c == ' ' || (code >= 9 && code <= 13)
 }
 
-fx digit: (c: Char) Int32 {
+digit: (c: Char) Int32 {
     if c >= '0' && c <= '9' {
         return (c as Int32) - 48
     } else if c >= 'a' && c <= 'f' {
@@ -132,7 +130,7 @@ fx digit: (c: Char) Int32 {
     return -1
 }
 
-pub fx fromHex: (text: Str, mut out: List<UInt8>) Bool {
+pub fromHex: (text: Str, mut out: List<UInt8>) Bool {
     mut i: Size = 0
     while i < text.size() {
         if space(text.at(i)) {
@@ -153,7 +151,7 @@ pub fx fromHex: (text: Str, mut out: List<UInt8>) Bool {
     return true
 }
 
-pub fx hexOf: (b: View<UInt8>) Str {
+pub hexOf: (b: View<UInt8>) Str {
     mut s: Str = ""
     mut i: Size = 0
     while i < b.size() {
@@ -163,7 +161,7 @@ pub fx hexOf: (b: View<UInt8>) Str {
     return s
 }
 
-fx listText: (names: List<Str>) Str {
+listText: (names: List<Str>) Str {
     mut s: Str = "["
     mut i: Size = 0
     while i < names.size() {
@@ -176,7 +174,7 @@ fx listText: (names: List<Str>) Str {
     return s + "]"
 }
 
-fx isField: (m: Message, n: Str) Bool {
+isField: (m: Message, n: Str) Bool {
     mut i: Size = 0
     while i < m.fields.size() {
         if m.fields[i].name == n {
@@ -187,7 +185,7 @@ fx isField: (m: Message, n: Str) Bool {
     return false
 }
 
-fx collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
+collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
     mut i: Size = 0
     while i < keys.size() {
         if !isField(m, keys[i]) {
@@ -198,7 +196,7 @@ fx collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
 }
 
 // Kira's Str has no <: code point order, as sorted() puts ASCII names.
-fx before: (a: Str, b: Str) Bool {
+before: (a: Str, b: Str) Bool {
     mut i: Size = 0
     while i < a.size() && i < b.size() {
         if a.at(i) != b.at(i) {
@@ -209,7 +207,7 @@ fx before: (a: Str, b: Str) Bool {
     return a.size() < b.size()
 }
 
-fx sortNames: (mut names: List<Str>) Void {
+sortNames: (mut names: List<Str>) Void {
     mut i: Size = 1
     while i < names.size() {
         v: Str = names[i]
@@ -223,7 +221,7 @@ fx sortNames: (mut names: List<Str>) Void {
     }
 }
 
-fx addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
+addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
     mut k: Size = 0
     while k < n {
         out.add(((v >> ((k * 8) as Int64)) & 0xFF) as UInt8)
@@ -232,7 +230,7 @@ fx addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
 }
 
 // Bytes fields are checked before any integer, as pack builds its values before struct.pack.
-pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Packed {
+pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Packed {
     mut out: Packed = Packed { }
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
@@ -314,7 +312,7 @@ pub fx pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) 
     return out
 }
 
-pub fx unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
+pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
     mut out: Unpacked = Unpacked { }
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
@@ -352,7 +350,7 @@ pub fx unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
     return out
 }
 
-pub fx bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
+pub bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
     mut inv: Map<Int64, Str> = Map<Int64, Str> { }
     names: Arr<Str> = table.keys()
     mut i: Size = 0
@@ -372,7 +370,7 @@ pub fx bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
 }
 
 // none where Python raises KeyError.
-pub fx bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
+pub bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
     mut m: Int64 = 0
     mut i: Size = 0
     while i < names.size() {
@@ -386,11 +384,11 @@ pub fx bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
     return m
 }
 
-fx hex4: (v: Int64) Str {
+hex4: (v: Int64) Str {
     return "0x" + v.toHex().toUpper().padStart(4, '0')
 }
 
-pub fx typeName: (spec: Spec, typ: Int64) Str {
+pub typeName: (spec: Spec, typ: Int64) Str {
     m: Maybe<Message> = spec.byId.get(typ)
     if m.isSome() {
         return m.value.name
@@ -398,27 +396,27 @@ pub fx typeName: (spec: Spec, typ: Int64) Str {
     return hex4(typ)
 }
 
-pub fx reasonName: (spec: Spec, code: Int64) Str {
+pub reasonName: (spec: Spec, code: Int64) Str {
     return spec.reasons.byValue.get(code).unwrapOr(hex4(code))
 }
 
-pub fx nackName: (spec: Spec, code: Int64) Str {
+pub nackName: (spec: Spec, code: Int64) Str {
     return spec.nacks.byValue.get(code).unwrapOr("NACK${code}")
 }
 
-pub fx stateName: (spec: Spec, value: Int64) Str {
+pub stateName: (spec: Spec, value: Int64) Str {
     return spec.enums.get("State").value.byValue.get(value).unwrapOr("STATE${value}")
 }
 
-pub class Ev {
-    require pub tUs: Int64
-    require pub name: Str
-    require pub hasFields: Bool
-    require pub hbSeq: Int64
-    require pub hbAgeMs: Int64
+pub Ev: Any {
+    pub tUs: Int64
+    pub name: Str
+    pub hasFields: Bool
+    pub hbSeq: Int64
+    pub hbAgeMs: Int64
 }
 
-pub fx rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
+pub rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
     mut pending: Map<Int64, Int64> = sentHb
     mut out: List<Float64> = List<Float64> { }
     mut i: Size = 0
@@ -436,7 +434,7 @@ pub fx rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
     return out
 }
 
-fx show: (u: Unpacked, m: Message) Str {
+show: (u: Unpacked, m: Message) Str {
     if u.error != "" {
         return u.error
     }
@@ -454,7 +452,7 @@ fx show: (u: Unpacked, m: Message) Str {
     return s
 }
 
-fx joined: (names: List<Str>) Str {
+joined: (names: List<Str>) Str {
     mut s: Str = ""
     mut i: Size = 0
     while i < names.size() {
@@ -467,7 +465,7 @@ fx joined: (names: List<Str>) Str {
     return s
 }
 
-fx main: () Void {
+main: () Void {
     mut spec: Spec = Spec { }
     mut hb: Message = spec.addMessage("HEARTBEAT", 1, "host_to_vcu", 5)
     hb.addField("host_ms", "u32", 0)

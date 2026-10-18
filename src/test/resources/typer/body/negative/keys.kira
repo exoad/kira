@@ -1,29 +1,22 @@
-module "fixture:body.keys"
+// A Map's key and a Set's element are a scalar or a Str, on every target.
 
-// A Map's key and a Set's element are a scalar, a Str or an enum, on every target.
-
-pub class Holder {
-    require pub n: Int32
+pub Holder: Any {
+    pub n: Int32
 }
 
-pub struct Point {
+pub Point: Struct {
     pub x: Int32 = 0
 }
 
-pub enum Kind: Int32 {
-    KIND_A = 0
-}
+pub UInt16 as Id
 
-pub alias Id as UInt16
-
-pub fx count<K>: (m: Map<K, Int32>) Size {
+pub count<K>: (m: Map<K, Int32>) Size {
     return m.size()
 }
 
-pub fx keys: () Void {
+pub keys: () Void {
     a: Map<Int32, Holder> = Map<Int32, Holder> { }
     b: Map<Str, Int32> = Map<Str, Int32> { }
-    c: Map<Kind, Str> = Map<Kind, Str> { }
     d: Set<Char> = Set<Char> { }
     e: Map<Id, Bool> = Map<Id, Bool> { }
     f: Set<Float64> = Set<Float64> { }
@@ -34,5 +27,5 @@ pub fx keys: () Void {
     m: Map<List<Int32>, Int32> = Map<List<Int32>, Int32> { }       // @error types.type.key ; @error types.type.key
 }
 
-pub fx field: (p: Map<Point, Str>) Void {                          // @error types.type.key
+pub field: (p: Map<Point, Str>) Void {                          // @error types.type.key
 }

@@ -1,12 +1,10 @@
-module "app:osfiles"
-
-use "kira:os"
-use "kira:test"
+kira.os as os
+kira.test as test
 
 // kira:os's py-only files (K4): tempDir, removeTree, setModifiedS, glob, walkFiles, which, pythonExecutable and
 // moduleDir, with lastError's category and readText's strict UTF-8.
 
-fx slashed: (paths: List<Str>, root: Str) Str {
+slashed: (paths: List<Str>, root: Str) Str {
     mut out: List<Str> = []
     for p: Str in paths {
         out.add(p.replace("\\", "/").replace(root.replace("\\", "/") + "/", ""))
@@ -15,20 +13,20 @@ fx slashed: (paths: List<Str>, root: Str) Str {
 }
 
 // The kind the last kira:os call on this thread left, whichever module made it (D86).
-pub fx kind: () Str {
+pub kind: () Str {
     return lastErrorKind()
 }
 
-pub fx reason: () Str {
+pub reason: () Str {
     return lastError()
 }
 
 // moduleDir for the driver, which loads this module through a linked directory and with no file.
-pub fx here: () Str {
+pub here: () Str {
     return moduleDir()
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "osfiles - kira:os on py" }
     made: Maybe<Str> = tempDir("kira-osfiles-")
     t.check(made.isSome() && isDir(made.value), "tempDir makes a directory")

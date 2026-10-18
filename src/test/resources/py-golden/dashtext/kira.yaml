@@ -1,5 +1,5 @@
 project:
-  name: golden-py-dashtext
+  name: golden.py.dashtext
 srcDir: src
 build:
   target: py

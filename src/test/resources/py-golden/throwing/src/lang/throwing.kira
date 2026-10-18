@@ -1,15 +1,13 @@
-module "lang:throwing"
-
-use "lib:parse"
+golden.py.throwing.lib.parse as parse
 
 mut log: List<Int32> = List<Int32> { }
 
-class Account {
-    require pub name: Str
+Account: Any {
+    pub name: Str
     pub mut balance: Int32 = 0
     pub mut last: Result<Int32, Str> = Result.success(0)
 
-    pub mut fx take: (n: Int32) Int32 {
+    pub mut take: (n: Int32) Int32 {
         if n > balance {
             throw "${name} has ${balance}, not ${n}"
         }
@@ -18,11 +16,11 @@ class Account {
     }
 }
 
-fx pick: (ok: Bool) Int32 {
+pick: (ok: Bool) Int32 {
     return if ok { 1 } else { throw "not ok" }
 }
 
-fx deep: (n: Int32) Int32 {
+deep: (n: Int32) Int32 {
     log.add(n)
     if n == 0 {
         throw "bottom"
@@ -30,7 +28,7 @@ fx deep: (n: Int32) Int32 {
     return deep(n - 1) + 1
 }
 
-fx guarded: (s: Str) Int64 {
+guarded: (s: Str) Int64 {
     try {
         return number(s)
     } on e: Str {
@@ -39,7 +37,7 @@ fx guarded: (s: Str) Int64 {
     return -1
 }
 
-fx loop: () Int32 {
+loop: () Int32 {
     mut n: Int32 = 0
     for i: Int32 in 0..5 {
         try {
@@ -59,14 +57,14 @@ fx loop: () Int32 {
     return n
 }
 
-fx describe: (r: Result<Int32, Str>) Str {
+describe: (r: Result<Int32, Str>) Str {
     if r.isOk() {
         return "ok ${r.unwrap()} ${r.value}"
     }
     return "err ${r.unwrapErr()} ${r.error} ${r.isErr()}"
 }
 
-fx main: () Void {
+main: () Void {
     // a throw in another module, caught here
     try {
         trace(number("12"))

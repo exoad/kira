@@ -1,7 +1,5 @@
-module "app:thrower"
-
 // An uncaught throw ends the program with 70 whether the guard or a console script's _k_run() ran it.
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     throw "no luck"
 }

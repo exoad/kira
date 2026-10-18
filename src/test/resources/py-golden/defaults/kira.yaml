@@ -1,5 +1,5 @@
 project:
-  name: golden-py-defaults
+  name: golden.py.defaults
 srcDir: src
 build:
   target: py

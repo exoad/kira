@@ -1,12 +1,12 @@
 project:
-  name: golden-unilidar
+  name: golden.unilidar
 srcDir: src
 build:
   target: cpp
   cpp:
     layout: beside
     lineDirectives: false
-    headerOnly: ["pilot:unilidar"]
+    headerOnly: ["golden.unilidar.pilot.unilidar"]
 compiler:
   types: strict
 dependencies:

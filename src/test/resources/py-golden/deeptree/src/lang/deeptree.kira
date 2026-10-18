@@ -1,11 +1,9 @@
-module "lang:deeptree"
-
-struct Node {
+Node: Struct {
     pub v: Int32 = 0
     pub kids: List<Node> = List<Node> { }
 }
 
-fx total: (n: Node) Int32 {
+total: (n: Node) Int32 {
     mut t: Int32 = n.v
     for k: Node in n.kids {
         t += total(k)
@@ -13,7 +11,7 @@ fx total: (n: Node) Int32 {
     return t
 }
 
-fx main: () Void {
+main: () Void {
     mut leaf: Node = Node { 1 }
     mut mid: Node = Node { 10 }
     mid.kids.add(leaf)

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-placeorder
+  name: golden.py.placeorder
 srcDir: src
 build:
   target: py

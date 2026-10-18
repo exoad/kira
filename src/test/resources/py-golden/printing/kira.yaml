@@ -1,5 +1,5 @@
 project:
-  name: golden-py-printing
+  name: golden.py.printing
 srcDir: src
 build:
   target: py

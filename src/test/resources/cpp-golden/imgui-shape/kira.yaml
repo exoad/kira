@@ -1,5 +1,5 @@
 project:
-  name: golden-imgui-shape
+  name: golden.imgui.shape
 srcDir: src
 build:
   target: cpp

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-bitmath
+  name: golden.py.bitmath
 srcDir: src
 build:
   target: py

@@ -1,6 +1,4 @@
-module "dash:jpegwalk"
-
-use "kira:bytes"
+kira.bytes as bytes
 
 // bibo's JPEG walkers in Kira (streamenc.py): jpeg_size, the size of a JPEG that has a SOF, an
 // SOS after it and ends in EOI; jpeg_end, the end of the JPEG at an SOI, walked by segment
@@ -9,22 +7,22 @@ use "kira:bytes"
 // and the rest. The expected output is the C++ backend's run of main over synthetic JPEGs, then
 // the driver's run of these against the hand-written ones.
 
-pub class JpegSize {
-    require pub w: UInt32
-    require pub h: UInt32
+pub JpegSize: Any {
+    pub w: UInt32
+    pub h: UInt32
 }
 
-pub class Jpeg {
-    require pub data: List<UInt8>
+pub Jpeg: Any {
+    pub data: List<UInt8>
 }
 
-pub class Split {
+pub Split: Any {
     pub mut jpegs: List<Jpeg> = List<Jpeg> { }
     pub mut rest: List<UInt8> = List<UInt8> { }
 }
 
 // The index of the first FF and [second] at or after [start], or null (bytes.find).
-fx findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
+findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
     mut j: Size = start
     while j + 2 <= buf.size() {
         if buf[j] == 0xFF && buf[j + 1] == second {
@@ -36,7 +34,7 @@ fx findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
 }
 
 // jpeg_size(frame): (w, h) of a JPEG that has a SOF, an SOS after it and ends in EOI, else null.
-pub fx jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
+pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
     n: Size = frame.size()
     if n < 4 || frame[0] != 0xFF || frame[1] != 0xD8 || frame[n - 2] != 0xFF || frame[n - 1] != 0xD9 {
         return null
@@ -74,7 +72,7 @@ pub fx jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
 
 // jpeg_end(buf, soi): the index just past the EOI of the JPEG starting at soi, or null while it
 // is incomplete. In the entropy-coded data after SOS an FF is always stuffed or a marker.
-pub fx jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
+pub jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
     mut i: Size = soi + 2
     n: Size = buf.size()
     while i + 4 <= n {
@@ -100,7 +98,7 @@ pub fx jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
 }
 
 // split_jpegs(buf): the complete JPEGs, and the rest from the SOI of an incomplete one.
-pub fx splitJpegs: (buf: View<UInt8>) Split {
+pub splitJpegs: (buf: View<UInt8>) Split {
     mut out: Split = Split { }
     mut pos: Size = 0
     while true {
@@ -121,7 +119,7 @@ pub fx splitJpegs: (buf: View<UInt8>) Split {
 
 // ---- main: synthetic JPEGs -------------------------------------------------------------------
 
-fx append: (mut out: List<UInt8>, v: View<UInt8>) Void {
+append: (mut out: List<UInt8>, v: View<UInt8>) Void {
     mut i: Size = 0
     while i < v.size() {
         out.add(v[i])
@@ -130,7 +128,7 @@ fx append: (mut out: List<UInt8>, v: View<UInt8>) Void {
 }
 
 // A marker segment: FF, the marker, its big-endian length (which counts itself) and its body.
-fx segment: (mut out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
+segment: (mut out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
     n: Size = body.size() + 2
     out.add(0xFF)
     out.add(marker)
@@ -139,7 +137,7 @@ fx segment: (mut out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
     append(mut out, body)
 }
 
-fx filled: (n: Size, b: UInt8) List<UInt8> {
+filled: (n: Size, b: UInt8) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     while out.size() < n {
         out.add(b)
@@ -149,7 +147,7 @@ fx filled: (n: Size, b: UInt8) List<UInt8> {
 
 // SOI, APP0, a DQT whose table holds FF D9, SOF0 at w x h, a DHT, SOS, scan data with a stuffed
 // FF 00 and a restart marker, then EOI unless [cut].
-fx jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
+jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
     mut out: List<UInt8> = [0xFF, 0xD8]
     app0: Arr<UInt8, 14> = [0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00]
     segment(mut out, 0xE0, app0)
@@ -175,7 +173,7 @@ fx jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
     return out
 }
 
-fx show: (m: Maybe<JpegSize>) Str {
+show: (m: Maybe<JpegSize>) Str {
     if m.isNull() {
         return "none"
     }
@@ -183,11 +181,11 @@ fx show: (m: Maybe<JpegSize>) Str {
     return "${s.w}x${s.h}"
 }
 
-fx showEnd: (m: Maybe<Size>) Str {
+showEnd: (m: Maybe<Size>) Str {
     return if m.isNull() { "none" } else { "${m.value}" }
 }
 
-fx main: () Void {
+main: () Void {
     a: List<UInt8> = jpeg(640, 480, false)
     b: List<UInt8> = jpeg(1280, 720, false)
     c: List<UInt8> = jpeg(320, 240, true)

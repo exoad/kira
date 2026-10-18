@@ -1,8 +1,6 @@
-module "app:strict"
-
 // A program that does not ask writes its text as it is, or stops: a pipe never gets an escape it did not ask for.
 
-pub fx main: () Void {
+pub main: () Void {
     println("before")
     println("a → b")
 }

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-randoms
+  name: golden.py.randoms
 srcDir: src
 build:
   target: py

@@ -1,8 +1,6 @@
-module "lib:parse"
-
 // Throws for app:main to catch: one module's throw, another's try.
 
-pub fx number: (s: Str) Int64 {
+pub number: (s: Str) Int64 {
     v: Maybe<Int64> = s.toInt64()
     if v.isNone() {
         throw "not a number: ${s}"
@@ -10,7 +8,7 @@ pub fx number: (s: Str) Int64 {
     return v.unwrap()
 }
 
-pub fx checked: (x: Int32) Result<Int32, Str> {
+pub checked: (x: Int32) Result<Int32, Str> {
     if x < 0 {
         return Result.error("negative: ${x}")
     }

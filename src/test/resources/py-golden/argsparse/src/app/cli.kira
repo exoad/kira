@@ -1,12 +1,10 @@
-module "app:cli"
-
-use "kira:args"
-use "kira:pytext"
+kira.args as args
+kira.pytext as pytext
 
 // kira:args (K7): argparse with the program's own prog (deviation 8), its usage, help and error text, 2 for a bad
 // command line and 0 for --help; the driver runs the same parser built in Python, as the sidecars built theirs.
 
-pub fx spec: () ArgSpec {
+pub spec: () ArgSpec {
     s: ArgSpec = argSpec("decode", "Decodes the tag heads, 50% of them at most.")
     s.positional("onnx", "")
     s.whole("--samples", 200, "")
@@ -20,63 +18,63 @@ pub fx spec: () ArgSpec {
     return s
 }
 
-pub fx parsed: (argv: List<Str>) Parsed {
+pub parsed: (argv: List<Str>) Parsed {
     return spec().parse(argv)
 }
 
-pub fx textOf: (p: Parsed, name: Str) Maybe<Str> {
+pub textOf: (p: Parsed, name: Str) Maybe<Str> {
     return p.textOf(name)
 }
 
-pub fx wholeOf: (p: Parsed, name: Str) Maybe<Int64> {
+pub wholeOf: (p: Parsed, name: Str) Maybe<Int64> {
     return p.wholeOf(name)
 }
 
-pub fx realOf: (p: Parsed, name: Str) Maybe<Float64> {
+pub realOf: (p: Parsed, name: Str) Maybe<Float64> {
     return p.realOf(name)
 }
 
-pub fx isSet: (p: Parsed, name: Str) Bool {
+pub isSet: (p: Parsed, name: Str) Bool {
     return p.isSet(name)
 }
 
 // A flag declared twice, a flag without its dash and a positional with one: each a program error.
-pub fx twice: () Void {
+pub twice: () Void {
     s: ArgSpec = spec()
     s.whole("--samples", null, "")
 }
 
-pub fx undashed: () Void {
+pub undashed: () Void {
     s: ArgSpec = spec()
     s.text("out", null, "")
 }
 
-pub fx dashed: () Void {
+pub dashed: () Void {
     s: ArgSpec = spec()
     s.positional("--onnx", "")
 }
 
 // --help of a description that names %(prog)s, which argparse would format, and a lone %.
-pub fx plainHelp: () Void {
+pub plainHelp: () Void {
     s: ArgSpec = argSpec("decode", "%(prog)s at 50%")
     s.parse(["--help"])
 }
 
-fx orNone: (m: Maybe<Str>) Str {
+orNone: (m: Maybe<Str>) Str {
     if m.isNone() {
         return "none"
     }
     return m.value
 }
 
-fx realText: (m: Maybe<Float64>) Str {
+realText: (m: Maybe<Float64>) Str {
     if m.isNone() {
         return "none"
     }
     return floatRepr(m.value)
 }
 
-pub fx main: (args: List<Str>) Int32 {
+pub main: (args: List<Str>) Int32 {
     p: Parsed = spec().parse(args.from(1).toList())
     println("onnx=${p.textOf("onnx").value} samples=${p.wholeOf("--samples").value} steps=${p.wholeOf("--steps-per-epoch").value} out=${orNone(p.textOf("--out"))} plan=${orNone(p.textOf("--plan"))} hold=${realText(p.realOf("--hold"))} duty=${realText(p.realOf("--duty"))} export=${p.isSet("--export-only")} v=${p.isSet("-v")}")
     return 0

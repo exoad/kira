@@ -1,5 +1,5 @@
 project:
-  name: golden-py-csvs
+  name: golden.py.csvs
 srcDir: src
 build:
   target: py

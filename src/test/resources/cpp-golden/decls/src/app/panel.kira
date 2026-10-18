@@ -1,6 +1,4 @@
-module "app:panel"
-
-use "lib:shapes"
+golden.decls.lib.shapes as shapes
 
 // A module in another directory that uses lib:shapes: the header includes it
 // by relative path, and every name taken from it is fully qualified. It is
@@ -8,14 +6,12 @@ use "lib:shapes"
 // inline variable in the header, and it has no source file to write, since
 // nothing here has a body.
 
-pub enum Level: Int32 {
-    LEVEL_LOW = 0,
-    LEVEL_HIGH = 1
-}
+pub LEVEL_LOW: Int32 = 0
+pub LEVEL_HIGH: Int32 = 1
 
-pub struct Cell {
+pub Cell: Struct {
     pub at: Point = Point {}
-    pub level: Level = Level.LEVEL_LOW
+    pub level: Int32 = LEVEL_LOW
     pub weight: Float32 = 0.25
     pub tag: Char = TAG
 }
@@ -24,6 +20,6 @@ pub LIMIT: Int32 = SCALE
 pub CELLS: Size = MAX_POINTS
 pub mut drawn: Int32 = 0
 
-pub fx place: (c: Cell, x: Int32 = LIMIT, kind: Kind = Kind.KIND_DOT) Cell;
-pub fx render: (cells: List<Cell>, sep: Str = ", ") Str;
-pub fx best: (cells: Arr<Cell, CELLS>) Maybe<Cell>;
+pub place: (c: Cell, x: Int32 = LIMIT, kind: Int32 = KIND_DOT) Cell;
+pub render: (cells: List<Cell>, sep: Str = ", ") Str;
+pub best: (cells: Arr<Cell, CELLS>) Maybe<Cell>;

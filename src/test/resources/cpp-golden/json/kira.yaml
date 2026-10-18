@@ -1,5 +1,5 @@
 project:
-  name: golden-json
+  name: golden.json
 srcDir: src
 build:
   target: cpp

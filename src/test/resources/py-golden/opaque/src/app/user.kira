@@ -1,16 +1,14 @@
-module "app:user"
-
 // A module that uses opaque.kira's handles: each call goes through opaque.kira's checked wrapper.
 
-use "app:conn"
-use "app:opaque"
+golden.py.opaque.app.conn as conn
+golden.py.opaque.app.opaque as opaque
 
-class Pair {
-    require pub left: Counter
+Pair: Any {
+    pub left: Counter
     pub mut spare: Maybe<Counter> = null
 }
 
-fx labelOf: (c: Counter) Str {
+labelOf: (c: Counter) Str {
     try {
         return c.label()
     } on e: Str {
@@ -18,7 +16,7 @@ fx labelOf: (c: Counter) Str {
     }
 }
 
-fx main: () Void {
+main: () Void {
     mut a: Counter = counter("a")
     mut all: List<Counter> = [a, counter("")]
     trace(a.bump(2))

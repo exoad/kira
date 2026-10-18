@@ -1,4 +1,4 @@
-module fixture:declarations  profile=HOSTED ns=declarations imports=[]
+module decls:declarations  profile=HOSTED ns=declarations imports=[]
   global LIMIT: Int32  pub const value=10:Int32
   global MASK: UInt32  pub const value=4294967295:UInt32
   global SHIFTED: Int64  pub const value=1099511627776:Int64
@@ -12,19 +12,8 @@ module fixture:declarations  profile=HOSTED ns=declarations imports=[]
   global PRIMES: Arr<Int32>  pub const value=[2:Int32, 3:Int32, 5:Int32, 7:Int32]
   global FIXED: Arr<UInt8, 4>  pub const value=[1:UInt8, 2:UInt8, 3:UInt8, 4:UInt8]
   global LEN: Size  const value=4:Size
-  global DEFAULT_MODE: Mode  pub const value=Mode.IDLE
   global counter: Int32  pub mut init=0
   global nowhere: Maybe<Int32>  pub const value=null
-  enum Mode: Int32  pub
-    entry IDLE = 0:Int32  #0
-    entry RUN = 5:Int32  #1
-    entry STOP = 6:Int32  #2
-  enum Level: Str  pub
-    entry LOW = "low"  #0
-    entry HIGH = "high"  #1
-  enum Gain: Float32  pub
-    entry UNIT = 1.0:Float32  #0
-    entry HALF_GAIN = 0.5:Float32  #1
   alias Id = Int64  pub
   alias Pair<A, B> = Tuple2<A, B>  pub
   alias Named = Tuple2<Str, Int64>  pub
@@ -62,8 +51,8 @@ module fixture:declarations  profile=HOSTED ns=declarations imports=[]
   fn intrinsicClock: () Int64  pub magic=intrinsicClock
   opaque Handle  pub @_opaque
   op op_add: (a: Animal, b: Animal) Animal  body
-diag warning rules.naming.constant fixture/declarations.kira:22:5  Constant 'nowhere' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'NOWHERE'?
-diag warning types.override.missing fixture/declarations.kira:80:9  Dog.describe replaces Animal.describe; mark it `override` (spec: Inheritance).
-diag warning types.override.missing fixture/declarations.kira:84:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
-diag warning types.override.missing fixture/declarations.kira:88:9  Dog.shout replaces Shouter.shout; mark it `override` (spec: Inheritance).
-diag warning types.override.missing fixture/declarations.kira:92:9  Dog.key replaces Keyed.key; mark it `override` (spec: Inheritance).
+diag warning rules.naming.constant decls/declarations.kira:19:5  Constant 'nowhere' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'NOWHERE'?
+diag warning types.override.missing decls/declarations.kira:61:9  Dog.describe replaces Animal.describe; mark it `override` (spec: Inheritance).
+diag warning types.override.missing decls/declarations.kira:65:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
+diag warning types.override.missing decls/declarations.kira:69:9  Dog.shout replaces Shouter.shout; mark it `override` (spec: Inheritance).
+diag warning types.override.missing decls/declarations.kira:73:9  Dog.key replaces Keyed.key; mark it `override` (spec: Inheritance).

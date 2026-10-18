@@ -1,17 +1,15 @@
-module "lang:forloops"
-
 mut log: List<Int32> = [1, 2, 3]
 mut other: List<Int32> = List<Int32> { }
 
-class Bag {
-    require pub mut items: List<Int32>
+Bag: Any {
+    pub mut items: List<Int32>
     pub mut seen: List<Int32> = List<Int32> { }
 
-    pub mut fx note: (v: Int32) Void {
+    pub mut note: (v: Int32) Void {
         seen.add(v)
     }
 
-    pub mut fx walk: () Int32 {
+    pub mut walk: () Int32 {
         mut n: Int32 = 0
         for x: Int32 in items {
             note(x * 10)
@@ -21,26 +19,26 @@ class Bag {
     }
 }
 
-class Cell {
-    require pub mut v: Int32
+Cell: Any {
+    pub mut v: Int32
 }
 
-fx endAt: (n: Int32) Int32 {
+endAt: (n: Int32) Int32 {
     trace("end ${n}")
     return n
 }
 
-fx startAt: (n: Int32) Int32 {
+startAt: (n: Int32) Int32 {
     trace("start ${n}")
     return n
 }
 
-fx elsewhere: () Int32 {
+elsewhere: () Int32 {
     other.add(9)
     return 1
 }
 
-fx sumView: (xs: View<Int32>) Int32 {
+sumView: (xs: View<Int32>) Int32 {
     mut t: Int32 = 0
     for x: Int32 in xs {
         t += x
@@ -48,7 +46,7 @@ fx sumView: (xs: View<Int32>) Int32 {
     return t
 }
 
-fx sumBytes: (bs: View<UInt8>) UInt32 {
+sumBytes: (bs: View<UInt8>) UInt32 {
     mut t: UInt32 = 0
     for b: UInt8 in bs {
         t += b as UInt32
@@ -56,7 +54,7 @@ fx sumBytes: (bs: View<UInt8>) UInt32 {
     return t
 }
 
-fx walkParam: (xs: List<Int32>) Int32 {
+walkParam: (xs: List<Int32>) Int32 {
     mut t: Int32 = 0
     for x: Int32 in xs {
         t += x
@@ -64,7 +62,7 @@ fx walkParam: (xs: List<Int32>) Int32 {
     return t
 }
 
-fx walkMut: (mut xs: List<Int32>) Int32 {
+walkMut: (mut xs: List<Int32>) Int32 {
     mut t: Int32 = 0
     for x: Int32 in xs {
         t += x
@@ -73,11 +71,11 @@ fx walkMut: (mut xs: List<Int32>) Int32 {
     return t
 }
 
-fx made: () List<Int32> {
+made: () List<Int32> {
     return [4, 5, 6]
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
@@ -88,7 +86,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx main: () Void {
+main: () Void {
     // ranges: the start, then the end, each once; empty and backwards ranges
     for i: Int32 in startAt(1)..endAt(4) {
         trace(i)

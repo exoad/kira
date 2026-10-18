@@ -1,12 +1,12 @@
 project:
-  name: golden-macros
+  name: golden.macros
 srcDir: src
 build:
   target: cpp
   cpp:
     layout: beside
     lineDirectives: false
-    headerOnly: ["win:names"]
+    headerOnly: ["golden.macros.win.names"]
 compiler:
   types: strict
 dependencies:

@@ -1,6 +1,4 @@
-module "app:evalorder"
-
-use "lib:ctr"
+golden.evalorder.lib.ctr as ctr
 
 // D33: Kira evaluates a call's receiver and arguments, and an operator's operands, left
 // to right, and locates an assignment's target before its value runs. C++ leaves the
@@ -28,42 +26,42 @@ mut row: Size = 1
 mut garr: Arr<Int32, 4> = [10, 20, 30, 40]
 mut gl: List<Int32> = List<Int32> { }
 
-fx next: () Int32 {
+next: () Int32 {
     ticks += 1
     return ticks
 }
 
-fx nextSize: () Size {
+nextSize: () Size {
     idx += 1
     return idx
 }
 
-fx sub: (a: Int32, b: Int32) Int32 {
+sub: (a: Int32, b: Int32) Int32 {
     return a - b
 }
 
-fx store: (mut into: Int32, tens: Int32, ones: Int32) Void {
+store: (mut into: Int32, tens: Int32, ones: Int32) Void {
     into = tens * 10 + ones
 }
 
-pub struct Box {
+pub Box: Struct {
     pub v: Int32 = 0
 
-    pub fx pair: (a: Int32, b: Int32) Int32 {
+    pub pair: (a: Int32, b: Int32) Int32 {
         return v * 100 + a * 10 + b
     }
 
-    pub mut fx grow: (a: Int32, b: Int32) Void {
+    pub mut grow: (a: Int32, b: Int32) Void {
         v = v * 100 + a * 10 + b
     }
 }
 
-fx makeBox: () Box {
+makeBox: () Box {
     ticks += 1
     return Box { v = ticks }
 }
 
-fx setFirst: () Size {
+setFirst: () Size {
     gl.set(0, 50)
     return 0
 }
@@ -71,38 +69,38 @@ fx setFirst: () Size {
 mut gs: Str = "a"
 mut gb: Box = Box { v = 1 }
 
-fx changeS: () Int32 {
+changeS: () Int32 {
     gs = "b"
     return 1
 }
 
-fx bumpB: () Int32 {
+bumpB: () Int32 {
     gb.v = 9
     return 0
 }
 
-fx resetL: () Int32 {
+resetL: () Int32 {
     gl = List<Int32> { values = [8] }
     return 0
 }
 
-fx pairS: (s: Str, k: Int32) Str {
+pairS: (s: Str, k: Int32) Str {
     return "${s}${k}"
 }
 
-fx sumB: (b: Box, k: Int32) Int32 {
+sumB: (b: Box, k: Int32) Int32 {
     return b.v + k
 }
 
-fx firstL: (xs: List<Int32>, k: Int32) Int32 {
+firstL: (xs: List<Int32>, k: Int32) Int32 {
     return xs.get(0) + k
 }
 
-fx tail: (xs: View<Int32>, at: Size) View<Int32> {
+tail: (xs: View<Int32>, at: Size) View<Int32> {
     return xs.from(at)
 }
 
-fx total: (v: View<Int32>) Int32 {
+total: (v: View<Int32>) Int32 {
     mut s: Int32 = 0
     for x: Int32 in v {
         s += x
@@ -110,18 +108,18 @@ fx total: (v: View<Int32>) Int32 {
     return s
 }
 
-fx tailAt: (at: Size, xs: View<Int32>) View<Int32> {
+tailAt: (at: Size, xs: View<Int32>) View<Int32> {
     return xs.from(at)
 }
 
 // The index runs before the view of xs is formed: xs is a const& parameter, a shared place,
 // and decision 4b (read literally) refuses an impure call in its view's span, which
 // total(tail(xs, nextSize())) has.
-fx sumTail: (xs: List<Int32>) Int32 {
+sumTail: (xs: List<Int32>) Int32 {
     return total(tailAt(nextSize(), xs))
 }
 
-fx main: () Void {
+main: () Void {
     // The design's probe: 1 - 2.
     trace(sub(next(), next()))
     // An operator's operands: 3 - 4.
@@ -287,25 +285,25 @@ fx main: () Void {
     trace(rm)
 }
 
-fx freshLists: () List<List<Int32>> {
+freshLists: () List<List<Int32>> {
     return List<List<Int32>> { values = [List<Int32> { values = [10, 20, 30] }] }
 }
 
-fx freshRef: () Ref<List<Int32>> {
+freshRef: () Ref<List<Int32>> {
     return Ref<List<Int32>> { value = List<Int32> { values = [10, 20, 30] } }
 }
 
-fx freshMaybe: () Maybe<List<Int32>> {
+freshMaybe: () Maybe<List<Int32>> {
     m: Maybe<List<Int32>> = List<Int32> { values = [10, 20, 30] }
     return m
 }
 
-fx makeList: () List<Int32> {
+makeList: () List<Int32> {
     ticks += 1
     return List<Int32> { values = [1000, 2000, 3000, 4000] }
 }
 
-fx minus: (v: View<Int32>, k: Int32) Int32 {
+minus: (v: View<Int32>, k: Int32) Int32 {
     return total(v) - k
 }
 
@@ -314,7 +312,7 @@ mut gls: List<Int32> = List<Int32> { }
 mut gv: List<Int32> = List<Int32> { values = [1, 2, 3] }
 
 // Appends past any capacity gll had: its rows move.
-fx growGll: () Int32 {
+growGll: () Int32 {
     mut i: Int32 = 0
     while i < 64 {
         gll.add(List<Int32> { values = [i] })
@@ -324,7 +322,7 @@ fx growGll: () Int32 {
 }
 
 // Appends past any capacity gls had: its storage moves.
-fx growGls: () Int32 {
+growGls: () Int32 {
     mut i: Int32 = 0
     while i < 64 {
         gls.add(i)
@@ -333,41 +331,41 @@ fx growGls: () Int32 {
     return 7
 }
 
-fx setGv: () Int32 {
+setGv: () Int32 {
     gv.set(0, 9)
     return 1
 }
 
-fx poke: (m: MutView<Int32>) Int32 {
+poke: (m: MutView<Int32>) Int32 {
     m[0] = 9
     return 1
 }
 
-fx inc: (mut v: Int32) Int32 {
+inc: (mut v: Int32) Int32 {
     v += 10
     return 1
 }
 
-fx pushTo: (mut into: List<Int32>) Size {
+pushTo: (mut into: List<Int32>) Size {
     into.add(7)
     return 0
 }
 
-fx lenOf: (items: List<Int32>, k: Size) Size {
+lenOf: (items: List<Int32>, k: Size) Size {
     return items.size()
 }
 
-fx applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
+applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
     return f(n)
 }
 
-fx twice: (n: Int32) Int32 {
+twice: (n: Int32) Int32 {
     return n * 2
 }
 
-fx adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
+adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
     n: Int32 = s.length() as Int32
-    return fx (x: Int32) Int32 {
+    return (x: Int32) Int32 {
         return x + n + k
     }
 }

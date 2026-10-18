@@ -1,26 +1,24 @@
-module "lang:defaults"
-
 pub STEP: Int32 = 7
 pub LABEL: Str = "dflt"
 pub ROW: List<Int32> = [1, 2, 3]
 
 mut made: Int32 = 0
 
-fx tick: (v: Int32) Int32 {
+tick: (v: Int32) Int32 {
     made += 1
     trace("tick ${v}")
     return v
 }
 
-fx scale: (x: Int32, k: Int32 = 2) Int32 {
+scale: (x: Int32, k: Int32 = 2) Int32 {
     return x * k
 }
 
-fx mid: (a: Int32, b: Int32 = STEP, c: Int32 = 1) Int32 {
+mid: (a: Int32, b: Int32 = STEP, c: Int32 = 1) Int32 {
     return a * 100 + b * 10 + c
 }
 
-fx words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, m: Maybe<Int32> = null) Str {
+words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, m: Maybe<Int32> = null) Str {
     mut out: Str = s
     if loud {
         out = out.toUpper()
@@ -28,7 +26,7 @@ fx words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.
     return "${out}${mark as UInt8} ${w} ${m.unwrapOr(-1)}"
 }
 
-fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
+total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
     mut t: Int32 = extra
     for x: Int32 in xs {
         t += x
@@ -36,27 +34,27 @@ fx total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
     return t
 }
 
-class Knob {
-    require pub name: Str
+Knob: Any {
+    pub name: Str
     pub mut level: Int32 = tick(1)
     pub mut tags: List<Int32> = List<Int32> { }
     pub mut limit: Maybe<Int32> = null
-    pub mut zero: Int32
+    pub mut zero: Int32 = 0
     mut hidden: Int32 = tick(9)
 
-    pub fx shift: (by: Int32 = 1, twice: Bool = false) Int32 {
+    pub shift: (by: Int32 = 1, twice: Bool = false) Int32 {
         if twice {
             return level + by * 2
         }
         return level + by
     }
 
-    pub fx peek: () Int32 {
+    pub peek: () Int32 {
         return hidden
     }
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
@@ -67,7 +65,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx main: () Void {
+main: () Void {
     trace(scale(3))
     trace(scale(3, 4))
     trace(scale(3, k = 5))

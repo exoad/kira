@@ -1,5 +1,5 @@
 project:
-  name: golden-mathplus
+  name: golden.mathplus
 srcDir: src
 build:
   target: cpp

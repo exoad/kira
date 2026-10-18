@@ -1,5 +1,3 @@
-module "dash:drivewords"
-
 // webdrive_fake.py's reading of a page's text frame in Kira: split() into words, then "c" and
 // six ints (the control, which the newest of a read carries), and message's "hold", "cmd" and
 // six ints, "p" and "hidden"; a word that int() refuses drops a control or a command. split()
@@ -7,12 +5,12 @@ module "dash:drivewords"
 // backend's run of main, then the driver's run of readFrame, a frame's bytes read with Str.of
 // (D55), against the hand-written reader.
 
-fx space: (c: Char) Bool {
+space: (c: Char) Bool {
     return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
 // s.split()
-pub fx words: (s: Str) List<Str> {
+pub words: (s: Str) List<Str> {
     mut out: List<Str> = List<Str> { }
     mut i: Size = 0
     while i < s.length() {
@@ -33,7 +31,7 @@ pub fx words: (s: Str) List<Str> {
 }
 
 // words[1:7] as ints, joined by spaces, or none when one is not an int.
-fx sixInts: (w: List<Str>) Maybe<Str> {
+sixInts: (w: List<Str>) Maybe<Str> {
     mut out: Str = ""
     mut k: Size = 1
     while k < 7 {
@@ -48,7 +46,7 @@ fx sixInts: (w: List<Str>) Maybe<Str> {
 }
 
 // One frame's words as what the fake car does with them.
-pub fx read: (text: Str) Str {
+pub read: (text: Str) Str {
     w: List<Str> = words(text)
     if w.isEmpty() {
         return "nothing"
@@ -73,11 +71,11 @@ pub fx read: (text: Str) Str {
 }
 
 // A frame as the loop reads it: data.decode("utf-8", "replace") (Str.of, D55), then read.
-pub fx readFrame: (data: View<UInt8>) Str {
+pub readFrame: (data: View<UInt8>) Str {
     return read(Str.of(data))
 }
 
-fx main: () Void {
+main: () Void {
     trace(read("c 1 0 1500 0 3 1"))
     trace(read("  c\t7 -250 +1600 2 3 0  extra\r\n"))
     trace(read("c 1 2 3 4 5"))

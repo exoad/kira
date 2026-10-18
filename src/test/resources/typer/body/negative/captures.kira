@@ -1,5 +1,3 @@
-module "fixture:body.captures"
-
 // A lambda's capture is an immutable copy (spec): a `mut fx` on one writes it, like assigning
 // it or passing it as `mut`. A type parameter reaches only its bounds' members (a cyclic
 // bound reaches none). A magic call whose C++ binding is not constexpr is no constant, and
@@ -7,41 +5,41 @@ module "fixture:body.captures"
 // std::vector, no literal type on the gcc 11.4 floor): `inline constexpr` cannot hold the
 // result, and a static assert on one has no C++ spelling at all.
 
-pub trait Shape {
-    pub fx area: () Float64;
+pub Shape: Any {
+    pub area: () Float64;
 }
 
-pub struct Pt {
+pub Pt: Struct {
     pub x: Int32 = 0
 
-    pub mut fx shift: (d: Int32) Void {
+    pub mut shift: (d: Int32) Void {
         x += d
     }
 
-    pub fx shifter: () Fx<Tuple0, Void> {
-        return fx() Void {
+    pub shifter: () Fx<Tuple0, Void> {
+        return () Void {
             shift(1)                       // @error types.lambda.assign-capture
         }
     }
 
-    pub fx shifterThis: () Fx<Tuple0, Void> {
-        return fx() Void {
+    pub shifterThis: () Fx<Tuple0, Void> {
+        return () Void {
             this.shift(1)                  // @error types.lambda.assign-capture
         }
     }
 }
 
-pub struct Frame {
+pub Frame: Struct {
     pub origin: Pt = Pt { }
 }
 
-pub fx captures: (mut q: Pt, mut fr: Frame) Int32 {
+pub captures: (mut q: Pt, mut fr: Frame) Int32 {
     mut xs: List<Int32> = List<Int32> { }
     mut p: Pt = Pt { }
     mut buf: StrBuf<64> = StrBuf<64> { }
     mut ages: Map<Str, Int32> = Map<Str, Int32> { }
     mut ptsInside: Arr<Pt> = [Pt { }]
-    g: Fx<Tuple0, Void> = fx() Void {
+    g: Fx<Tuple0, Void> = () Void {
         xs.add(1)                          // @error types.lambda.assign-capture
         p.shift(2)                         // @error types.lambda.assign-capture
         q.shift(3)                         // @error types.lambda.assign-capture
@@ -55,23 +53,23 @@ pub fx captures: (mut q: Pt, mut fr: Frame) Int32 {
     return p.x
 }
 
-pub fx unbounded<T>: (s: T) Float64 {
+pub unbounded<T>: (s: T) Float64 {
     return s.area()                        // @error types.member.unknown
 }
 
-pub fx wrongBound<T: Shape>: (s: T) Float64 {
+pub wrongBound<T: Shape>: (s: T) Float64 {
     return s.perimeter()                   // @error types.member.unknown
 }
 
-pub fx noField<T: Shape>: (s: T) Float64 {
+pub noField<T: Shape>: (s: T) Float64 {
     return s.side                          // @error types.member.unknown
 }
 
-pub fx cyclic<T: T>: (s: T) Float64 {
+pub cyclic<T: T>: (s: T) Float64 {
     return s.area()                        // @error types.member.unknown
 }
 
-pub fx mutual<T: U, U: T>: (s: T, u: U) Float64 {
+pub mutual<T: U, U: T>: (s: T, u: U) Float64 {
     return s.area() + u.area()             // @error types.member.unknown ; @error types.member.unknown
 }
 
@@ -80,7 +78,7 @@ pub SCALED: Float64 = sqrt(2.0) * 2.0      // @error types.const.not-constant
 pub mut SEED: Float64 = sqrt(4.0)          // @error types.global.mut-init
 @_static_assert(floor(1.5) == 1.0, "no")  // @error types.static-assert.not-constant
 
-pub struct Bag {
+pub Bag: Struct {
     pub items: List<Int32> = []
     pub n: Int32 = 1
 }
@@ -101,19 +99,19 @@ pub mut BAGS: Bag = Bag { n = BAG.n }      // @error types.global.mut-init
 
 // A construction that leaves a field to its default runs the default (C++: `W{}` over a default
 // member initializer), and a call that leaves a parameter to its default passes the default.
-fx seed: () Int32 {
+seed: () Int32 {
     return 4
 }
 
-pub struct Seeded {
+pub Seeded: Struct {
     pub n: Int32 = seed()
 }
 
-pub struct Sized {
+pub Sized: Struct {
     pub n: Size = DYN.size()
 }
 
-pub struct SizedBag {
+pub SizedBag: Struct {
     pub items: List<Int32> = []
     pub n: Size = DYN.size()
 }
@@ -126,11 +124,11 @@ pub mut GG: Sized = Sized { 3 }
 pub mut GB: SizedBag = SizedBag { }        // @error types.global.mut-init
 pub mut GBG: SizedBag = SizedBag { n = 3 }
 
-pub @_const fx firstOf: (xs: Arr<Int32> = DYN) Int32 { // @error rules.const.type
+pub @_const firstOf: (xs: Arr<Int32> = DYN) Int32 { // @error rules.const.type
     return xs.get(0)
 }
 
-pub @_const fx addTo: (a: Int32, b: Int32 = 2) Int32 {
+pub @_const addTo: (a: Int32, b: Int32 = 2) Int32 {
     return a + b
 }
 
@@ -138,15 +136,15 @@ pub FD: Int32 = firstOf()                  // @error types.const.not-constant
 pub AK: Int32 = addTo(1)                   // no error: the default is a literal
 
 // An operator with an @op_* overload is a call of that function: constant only when it is @_const.
-pub struct V2 {
+pub V2: Struct {
     pub x: Int32 = 0
 }
 
-pub fx @op_add: (a: V2, b: V2) V2 {
+pub @op_add: (a: V2, b: V2) V2 {
     return V2 { a.x + b.x }
 }
 
-pub fx @op_eq: (a: V2, b: V2) Bool {
+pub @op_eq: (a: V2, b: V2) Bool {
     return a.x == b.x
 }
 
@@ -166,16 +164,16 @@ pub mut MC: Char = SEP[0]                  // @error types.global.mut-init
 
 // A struct that contains itself has no C++ spelling, so it is no literal type: a constant of
 // it is built at run time, and reading it is no constant.
-pub struct Node {
+pub Node: Struct {
     pub v: Int32 = 0
     pub next: Maybe<Node> = null
 }
 
-pub struct NA {
+pub NA: Struct {
     pub b: Maybe<NB> = null
 }
 
-pub struct NB {
+pub NB: Struct {
     pub a: Maybe<NA> = null
 }
 
@@ -186,7 +184,7 @@ pub NA0: NA = NA { }
 pub NAB: Maybe<NB> = NA0.b                 // @error types.const.not-constant
 
 // A generic struct instance is literal when its arguments make its fields so.
-pub struct Box<T> {
+pub Box<T>: Struct {
     pub v: T
 }
 

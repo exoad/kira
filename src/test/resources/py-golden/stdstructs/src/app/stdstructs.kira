@@ -1,28 +1,26 @@
-module "app:stdstructs"
-
-use "kira:os"
+kira.os as os
 
 // kira:os's Datagram and Ready (D84): built with the declaration's defaults, copied where Kira copies a
 // value, compared field by field, as a field, in a List, a Map and a Maybe, and through a mut parameter.
 
-pub struct Seen {
-    pub last: Datagram
+pub Seen: Struct {
+    pub last: Datagram = Datagram { }
     pub ready: Maybe<Ready> = null
 }
 
-pub fx made: (size: Size, host: Str) Datagram {
+pub made: (size: Size, host: Str) Datagram {
     return Datagram { size = size, host = host }
 }
 
-fx bump: (mut d: Datagram) Void {
+bump: (mut d: Datagram) Void {
     d.port = d.port + 1
 }
 
-fx show: (d: Datagram) Void {
+show: (d: Datagram) Void {
     println("${d.size} ${d.host}:${d.port}")
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     d: Datagram = Datagram { 3, "10.0.0.2", 9 }
     mut e: Datagram = d
     e.port = 10

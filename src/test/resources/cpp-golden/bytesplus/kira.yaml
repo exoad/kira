@@ -1,5 +1,5 @@
 project:
-  name: golden-bytesplus
+  name: golden.bytesplus
 srcDir: src
 build:
   target: cpp

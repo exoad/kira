@@ -1,5 +1,5 @@
 project:
-  name: golden-py-tuples
+  name: golden.py.tuples
 srcDir: src
 build:
   target: py

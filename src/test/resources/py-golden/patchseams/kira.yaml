@@ -1,5 +1,5 @@
 project:
-  name: golden-py-patchseams
+  name: golden.py.patchseams
 srcDir: src
 build:
   target: py

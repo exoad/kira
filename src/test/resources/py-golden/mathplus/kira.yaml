@@ -1,5 +1,5 @@
 project:
-  name: golden-py-mathplus
+  name: golden.py.mathplus
 srcDir: src
 build:
   target: py

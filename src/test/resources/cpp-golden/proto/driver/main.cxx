@@ -44,28 +44,28 @@ int main()
     std::printf("\nproto - the car's line protocol\n\n");
     {
         const proto::Reply r = proto::read("OK drive servo=1500 esc=1541");
-        check(r.kind == proto::Kind::KIND_OK, "OK is recognized");
+        check(r.kind == proto::KIND_OK, "OK is recognized");
         checkStr(r.topic, "drive", "and its topic split off");
         checkStr(r.rest, "servo=1500 esc=1541", "and the fields kept");
     }
     {
         const proto::Reply r = proto::read("INFO status up_ms=4210 led=on");
-        check(r.kind == proto::Kind::KIND_INFO, "INFO is recognized");
+        check(r.kind == proto::KIND_INFO, "INFO is recognized");
         checkStr(r.topic, "status", "and its topic split off");
     }
     {
         const proto::Reply r = proto::read("ERR blink wants a rate in hz");
-        check(r.kind == proto::Kind::KIND_ERR, "ERR is recognized");
+        check(r.kind == proto::KIND_ERR, "ERR is recognized");
         check(r.topic.empty(), "and has no topic invented for it");
         checkStr(r.rest, "blink wants a rate in hz", "the reason is kept whole");
     }
     {
         const proto::Reply r = proto::read("bibo firmware, RP2350");
-        check(r.kind == proto::Kind::KIND_OTHER, "an unrecognized line is OTHER, not a fault");
+        check(r.kind == proto::KIND_OTHER, "an unrecognized line is OTHER, not a fault");
         checkStr(r.rest, "bibo firmware, RP2350", "and kept whole");
     }
-    check(proto::read("").kind == proto::Kind::KIND_EMPTY, "empty is empty");
-    check(proto::read("   \t ").kind == proto::Kind::KIND_EMPTY, "and so is whitespace");
+    check(proto::read("").kind == proto::KIND_EMPTY, "empty is empty");
+    check(proto::read("   \t ").kind == proto::KIND_EMPTY, "and so is whitespace");
     checkStr(proto::read("OK led on\r\n").line, "OK led on", "CRLF is stripped from the kept line");
     {
         const kira::Str line = "servo=1500 servo_t=1480 esc=1541 esc_t=1600";
@@ -111,7 +111,7 @@ int main()
                                "slew_esc=12 servo_min=1230 servo_max=1660 esc_min=1541 esc_max=1600 "
                                "esc_rev=1400 stale=0 tick=-2859 tps=-420 hskip=0 hbad=1";
         const proto::Reply r = proto::read(line);
-        check(r.kind == proto::Kind::KIND_OK, "the drive reply is an OK");
+        check(r.kind == proto::KIND_OK, "the drive reply is an OK");
         checkStr(r.topic, "drive", "with topic drive");
         std::int32_t v = 0;
         check(proto::fieldInt(r.rest, "armed=", v) && v == 1, "armed= reads the arm state");

@@ -1,56 +1,54 @@
-module "lang:structs"
-
 // A struct is a value (D1): each copy below is written to show the other did not move.
 
-pub struct Pt {
+pub Pt: Struct {
     pub x: Int32 = 0
     pub y: Int32 = 0
 
-    pub fx sum: () Int32 {
+    pub sum: () Int32 {
         return x + y
     }
 
-    pub mut fx shift: (dx: Int32) Void {
+    pub mut shift: (dx: Int32) Void {
         x += dx
     }
 
-    pub fx moved: (dx: Int32) Pt {
+    pub moved: (dx: Int32) Pt {
         mut p: Pt = this
         p.shift(dx)
         return p
     }
 }
 
-struct Path {
-    require pub name: Str
+Path: Struct {
+    pub name: Str
     pub pts: List<Pt> = List<Pt> { }
     pub start: Pt = Pt { 1, 1 }
     pub last: Maybe<Pt> = null
 }
 
-class Holder {
+Holder: Any {
     pub mut at: Pt = Pt { }
 
-    pub fx get: () Pt {
+    pub get: () Pt {
         return at
     }
 }
 
 mut origin: Pt = Pt { }
 
-fx bump: (mut p: Pt) Void {
+bump: (mut p: Pt) Void {
     p.x += 100
 }
 
-fx reset: (mut p: Pt) Void {
+reset: (mut p: Pt) Void {
     p = Pt { 5, 5 }
 }
 
-fx norm: (p: Pt) Int32 {
+norm: (p: Pt) Int32 {
     return p.x * p.x + p.y * p.y
 }
 
-fx main: () Void {
+main: () Void {
     mut a: Pt = Pt { 1, 2 }
     mut b: Pt = a
     b.x = 10

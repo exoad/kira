@@ -1,5 +1,5 @@
 project:
-  name: golden-py-forloops
+  name: golden.py.forloops
 srcDir: src
 build:
   target: py

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-connbook
+  name: golden.py.connbook
 srcDir: src
 build:
   target: py

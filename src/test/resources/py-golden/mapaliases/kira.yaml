@@ -1,5 +1,5 @@
 project:
-  name: golden-py-mapaliases
+  name: golden.py.mapaliases
 srcDir: src
 build:
   target: py

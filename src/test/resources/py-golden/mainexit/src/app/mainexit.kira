@@ -1,16 +1,14 @@
-module "app:mainexit"
-
 // main as a program, which driver.py runs: kira:os args (D71), kira:time's clocks and sleep (D72), an
 // uncaught throw, which exits 70 keeping Python's traceback and its cause (D73), and a panic, which aborts (D81).
 
-use "kira:os"
-use "kira:time"
+kira.os as os
+kira.time as time
 
-@_extern(raises = "OSError") fx readText: (path: Str) Str
+@_extern(raises = "OSError") readText: (path: Str) Str
 
-@_extern fx linger: () Void
+@_extern linger: () Void
 
-fx main: () Void {
+main: () Void {
     a: List<Str> = args()
     trace(a.size())
     trace(a[0].endsWith("mainexit_kira.py"))
@@ -44,11 +42,11 @@ fx main: () Void {
 }
 
 // What driver.py calls with Int64 max, past what Python's sleep takes in one go.
-pub fx nap: (ms: Int64) Void {
+pub nap: (ms: Int64) Void {
     sleepMs(ms)
 }
 
 // A Python caller of a Kira function sees exit as SystemExit; only a program's main ends at once.
-pub fx quit: (code: Int32) Void {
+pub quit: (code: Int32) Void {
     exit(code)
 }

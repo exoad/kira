@@ -1,5 +1,5 @@
 project:
-  name: golden-text
+  name: golden.text
 srcDir: src
 build:
   target: cpp
@@ -7,8 +7,8 @@ build:
     layout: beside
     lineDirectives: false
     namespaces:
-      "lib:text": bibo::text
-    freestanding: ["lib:text"]
+      "golden.text.lib.text": bibo::text
+    freestanding: ["golden.text.lib.text"]
 compiler:
   types: strict
 dependencies:

@@ -1,7 +1,5 @@
-module "app:other"
+golden.py.builtinnames.app.main as main
 
-use "app:main"
-
-pub fx twice: () Int32 {
+pub twice: () Int32 {
     return globals * 2
 }

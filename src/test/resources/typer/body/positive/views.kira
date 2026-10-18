@@ -1,13 +1,11 @@
-module "fixture:body.views"
-
 // Views, fixed arrays and StrBuf (D5, D6, design section 10): an Arr or List place, a MutView or
 // a string literal becomes a View implicitly (ToView); an Arr that is a mutable place lends a
 // MutView; a constant names an Arr's size.
 
 pub N: Size = 4
-pub alias Frame as Arr<UInt8, 8>
+pub Arr<UInt8, 8> as Frame
 
-pub fx sum: (buf: View<UInt8>) UInt32 {
+pub sum: (buf: View<UInt8>) UInt32 {
     mut s: UInt32 = 0
     for b: UInt8 in buf {
         s += b as UInt32
@@ -15,16 +13,16 @@ pub fx sum: (buf: View<UInt8>) UInt32 {
     return s
 }
 
-pub fx fill: (p: MutView<UInt8>, v: UInt8) Void {
+pub fill: (p: MutView<UInt8>, v: UInt8) Void {
     p[0] = v                               // @type UInt8 place=Index(Param(p), MUT_VIEW) @ p[0]
     p.set(1, v)                            // @type Void call=MAGIC(MutView.set)
 }
 
-pub fx words: (text: View<Char>) Size {
+pub words: (text: View<Char>) Size {
     return text.size()                     // @type Size call=MAGIC(View.size)
 }
 
-pub fx views: (text: View<Char>) Void {
+pub views: (text: View<Char>) Void {
     mut f: Frame = Frame { }               // @type Arr<UInt8, 8>
     f[1] = 3                               // @type UInt8 place=Index(Local(f), ARR) @ f[1]
     fill(f.from(2), 9)                     // @type MutView<UInt8> call=MAGIC(Arr.from) @ f.from(2)
@@ -46,7 +44,7 @@ pub fx views: (text: View<Char>) Void {
     fill(buf.view(), 1)                    // @type MutView<UInt8> call=MAGIC(Arr.view) @ buf.view()
 }
 
-pub fx texts: (mut out: StrBuf<16>, x: Int32) Void {
+pub texts: (mut out: StrBuf<16>, x: Int32) Void {
     out.set("x=${x}")                      // @type View<Char> @ "x=${x}"
     out.add("!")                           // @type Str coerce=ToView(Str) @ "!"
     out.addChar('.')                       // @type Void call=MAGIC(StrBuf.addChar)

@@ -1,5 +1,5 @@
 project:
-  name: golden-osfiles2
+  name: golden.osfiles2
 srcDir: src
 build:
   target: cpp

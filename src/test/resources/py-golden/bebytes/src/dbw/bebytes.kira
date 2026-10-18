@@ -1,6 +1,4 @@
-module "dbw:bebytes"
-
-use "kira:bytes"
+kira.bytes as bytes
 
 // kira:bytes' big-endian set (D53), the little-endian one's twins: each width read and written
 // most significant byte first, at the end of its view exactly and past it, which stops the
@@ -9,7 +7,7 @@ use "kira:bytes"
 // backend's run of main, then the driver's: each call past the end as the C++ backend's run of
 // it alone gives it, and the reads and writes against struct's ">H", ">I", ">Q" and ">d".
 
-fx ramp: (n: Size) List<UInt8> {
+ramp: (n: Size) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     while out.size() < n {
         out.add(out.size() as UInt8)
@@ -17,7 +15,7 @@ fx ramp: (n: Size) List<UInt8> {
     return out
 }
 
-fx hex: (v: View<UInt8>) Str {
+hex: (v: View<UInt8>) Str {
     mut s: Str = ""
     mut i: Size = 0
     while i < v.size() {
@@ -30,55 +28,55 @@ fx hex: (v: View<UInt8>) Str {
     return s
 }
 
-pub fx read16: (n: Size, at: Size) UInt16 {
+pub read16: (n: Size, at: Size) UInt16 {
     return readU16Be(ramp(n), at)
 }
 
-pub fx read32: (n: Size, at: Size) UInt32 {
+pub read32: (n: Size, at: Size) UInt32 {
     return readU32Be(ramp(n), at)
 }
 
-pub fx read64: (n: Size, at: Size) UInt64 {
+pub read64: (n: Size, at: Size) UInt64 {
     return readU64Be(ramp(n), at)
 }
 
-pub fx readF64: (n: Size, at: Size) Float64 {
+pub readF64: (n: Size, at: Size) Float64 {
     return readF64Be(ramp(n), at)
 }
 
-pub fx write16: (n: Size, at: Size) Str {
+pub write16: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU16Be(buf.view(), at, 0xBEEF)
     return hex(buf)
 }
 
-pub fx write32: (n: Size, at: Size) Str {
+pub write32: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU32Be(buf.view(), at, 0xA1B2C3D4)
     return hex(buf)
 }
 
-pub fx write64: (n: Size, at: Size) Str {
+pub write64: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU64Be(buf.view(), at, 0x1122334455667788)
     return hex(buf)
 }
 
-pub fx writeF64: (n: Size, at: Size) Str {
+pub writeF64: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeF64Be(buf.view(), at, -1.5)
     return hex(buf)
 }
 
 // A write through a MutView lent from part of the List: its own end is the bound.
-pub fx writeInside: (n: Size, at: Size, k: Size, off: Size) Str {
+pub writeInside: (n: Size, at: Size, k: Size, off: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU32Be(buf.slice(at, k), off, 0xCAFEF00D)
     return hex(buf)
 }
 
 // The round trips the driver holds against struct.
-pub fx put: (v16: UInt16, v32: UInt32, v64: UInt64, f: Float64) List<UInt8> {
+pub put: (v16: UInt16, v32: UInt32, v64: UInt64, f: Float64) List<UInt8> {
     mut out: List<UInt8> = List<UInt8> { }
     while out.size() < 22 {
         out.add(0)
@@ -90,23 +88,23 @@ pub fx put: (v16: UInt16, v32: UInt32, v64: UInt64, f: Float64) List<UInt8> {
     return out
 }
 
-pub fx get16: (b: View<UInt8>, at: Size) UInt16 {
+pub get16: (b: View<UInt8>, at: Size) UInt16 {
     return readU16Be(b, at)
 }
 
-pub fx get32: (b: View<UInt8>, at: Size) UInt32 {
+pub get32: (b: View<UInt8>, at: Size) UInt32 {
     return readU32Be(b, at)
 }
 
-pub fx get64: (b: View<UInt8>, at: Size) UInt64 {
+pub get64: (b: View<UInt8>, at: Size) UInt64 {
     return readU64Be(b, at)
 }
 
-pub fx getF64: (b: View<UInt8>, at: Size) Float64 {
+pub getF64: (b: View<UInt8>, at: Size) Float64 {
     return readF64Be(b, at)
 }
 
-fx main: () Void {
+main: () Void {
     trace(read16(2, 0))
     trace(read16(6, 4))
     trace(read32(6, 2))

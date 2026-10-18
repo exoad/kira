@@ -1,5 +1,5 @@
 project:
-  name: golden-py-hexpad
+  name: golden.py.hexpad
 srcDir: src
 build:
   target: py

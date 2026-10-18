@@ -1,5 +1,5 @@
 project:
-  name: golden-py-reasons
+  name: golden.py.reasons
 srcDir: src
 build:
   target: py

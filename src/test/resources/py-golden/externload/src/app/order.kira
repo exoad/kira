@@ -1,5 +1,3 @@
-module "app:order"
-
 // A raises = name after one that already catches it: a panic at import.
 
-pub @_extern(raises = "OSError TimeoutError") fx f: () Void
+pub @_extern(raises = "OSError TimeoutError") f: () Void

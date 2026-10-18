@@ -1,5 +1,3 @@
-module "lang:aliases"
-
 // A List is a value (D44): assigning, storing, passing and returning it copies, and a `mut`
 // parameter is the caller's own List. Each probe mutates one name and traces the other.
 // The expected output is the C++ backend's run of this same module.
@@ -7,42 +5,42 @@ module "lang:aliases"
 mut log: List<Int32> = List<Int32> { }
 mut seed: List<Int32> = List<Int32> { }
 
-class Holder {
-    require pub mut items: List<Int32>
+Holder: Any {
+    pub mut items: List<Int32>
 
-    pub fx snapshot: () List<Int32> {
+    pub snapshot: () List<Int32> {
         return items
     }
 
-    pub mut fx setItems: (xs: List<Int32>) Void {
+    pub mut setItems: (xs: List<Int32>) Void {
         items = xs
     }
 
     // The callee writes the field the caller passed: the argument is the field as it was.
-    pub mut fx poke: (xs: List<Int32>) Size {
+    pub mut poke: (xs: List<Int32>) Size {
         items.add(9)
         return xs.size()
     }
 
-    pub mut fx grow: () Int32 {
+    pub mut grow: () Int32 {
         items.add(0)
         return 1
     }
 
     // The callee replaces the field its mut parameter is: the parameter is the field.
-    pub mut fx reset: (mut xs: List<Int32>) Size {
+    pub mut reset: (mut xs: List<Int32>) Size {
         items = List<Int32> { }
         xs.add(1)
         return items.size()
     }
 }
 
-fx count: (xs: List<Int32>) Size {
+count: (xs: List<Int32>) Size {
     log.add(1)
     return xs.size()
 }
 
-fx fill: (mut xs: List<Int32>, n: Int32) Void {
+fill: (mut xs: List<Int32>, n: Int32) Void {
     mut i: Int32 = 0
     while i < n {
         xs.add(i)
@@ -50,34 +48,34 @@ fx fill: (mut xs: List<Int32>, n: Int32) Void {
     }
 }
 
-fx replace: (mut xs: List<Int32>, ys: List<Int32>) Void {
+replace: (mut xs: List<Int32>, ys: List<Int32>) Void {
     xs = ys
 }
 
-fx pushTo: (mut xs: List<Int32>) Int32 {
+pushTo: (mut xs: List<Int32>) Int32 {
     xs.add(100)
     return 1
 }
 
-fx lenOf: (xs: List<Int32>, k: Int32) Size {
+lenOf: (xs: List<Int32>, k: Int32) Size {
     return xs.size() + (k as Size)
 }
 
-fx echo: (xs: List<Int32>) List<Int32> {
+echo: (xs: List<Int32>) List<Int32> {
     return xs
 }
 
-fx fresh: (n: Int32) List<Int32> {
+fresh: (n: Int32) List<Int32> {
     mut out: List<Int32> = List<Int32> { }
     fill(mut out, n)
     return out
 }
 
-fx pick: (c: Bool, a: List<Int32>, b: List<Int32>) List<Int32> {
+pick: (c: Bool, a: List<Int32>, b: List<Int32>) List<Int32> {
     return if c { a } else { b }
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -90,7 +88,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx main: () Void {
+main: () Void {
     // assign, then mutate either name
     mut a: List<Int32> = List<Int32> { }
     a.add(1)

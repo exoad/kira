@@ -1,21 +1,19 @@
-module "lang:structeq"
-
-struct Pt {
+Pt: Struct {
     pub x: Int32 = 0
     pub y: Int32 = 0
 }
 
-struct Seg {
+Seg: Struct {
     pub a: Pt = Pt { }
     pub b: Pt = Pt { }
     pub tags: List<Int32> = List<Int32> { }
 }
 
-struct Lone {
+Lone: Struct {
     pub v: Float64 = 0.0
 }
 
-fx main: () Void {
+main: () Void {
     mut pts: List<Pt> = List<Pt> { }
     pts.add(Pt { 1, 2 })
     probe: Pt = Pt { 1, 2 }

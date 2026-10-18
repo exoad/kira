@@ -1,5 +1,5 @@
 project:
-  name: golden-py-threads
+  name: golden.py.threads
 srcDir: src
 build:
   target: py

@@ -52,12 +52,12 @@ os.mkdir(os.path.join(site, "pkg"))
 open(os.path.join(site, "pkg", "__init__.py"), "w").close()
 for n in ("a_kira.py", "b_kira.py"):
     os.symlink(os.path.join(out, "src", "pkg", n), os.path.join(site, "pkg", n))
-linked = "import sys; sys.path.insert(0, sys.argv[1]); import pkg.a_kira; from pkg import b_kira; print(pkg.a_kira.twice(), b_kira.ticks, pkg.a_kira._k_m_pkg_b is b_kira)"
+linked = "import sys; sys.path.insert(0, sys.argv[1]); import pkg.a_kira; from pkg import b_kira; print(pkg.a_kira.twice(), b_kira.ticks, pkg.a_kira._k_m_golden_py_importname_pkg_b is b_kira)"
 r = subprocess.run([sys.executable, "-c", linked, site], capture_output=True, text=True)
 print("a package of links:", r.stdout.strip() or r.stderr.strip())
 with open(os.path.join(shadow, "lib_kira.py"), "w") as f:
     f.write("count = 'shadow'\n")
-shadowed = "import sys; sys.path[:0] = sys.argv[1:]; import main_kira; import lib_kira; print(main_kira.viaLib(), lib_kira.count, main_kira._k_m_app_lib is lib_kira)"
+shadowed = "import sys; sys.path[:0] = sys.argv[1:]; import main_kira; import lib_kira; print(main_kira.viaLib(), lib_kira.count, main_kira._k_m_golden_py_importname_app_lib is lib_kira)"
 r = subprocess.run([sys.executable, "-c", shadowed, shadow, app], capture_output=True, text=True)
 print("a name an earlier entry holds:", r.stdout.strip() or r.stderr.strip())
 shutil.rmtree(site)

@@ -1,6 +1,4 @@
-module "app:hold"
-
-use "kira:sync"
+kira.sync as sync
 
 // Declarations that hold kira:sync's classes. A `@_magic` class of a system
 // module is the runtime's class held as kira::Rc, so `BlockingQueue<Str> {}`
@@ -10,7 +8,7 @@ use "kira:sync"
 // kira/std/sync.kira.hxx is emitted: kira:sync has nothing of its own to
 // write.
 
-pub struct Holder {
+pub Holder: Struct {
     pub q: BlockingQueue<Str> = BlockingQueue<Str> {}
     pub worker: Maybe<Thread> = null
     pub count: Int32 = 0
@@ -20,5 +18,5 @@ pub mut inbox: BlockingQueue<Str> = BlockingQueue<Str> {}
 pub OUTBOX: BlockingQueue<Int32> = BlockingQueue<Int32> {}
 mut backlog: BlockingQueue<Int32> = BlockingQueue<Int32> {}
 
-pub fx wait: (t: Thread, m: Mutex<Int32>) Void;
-pub fx go: () Void;
+pub wait: (t: Thread, m: Mutex<Int32>) Void;
+pub go: () Void;

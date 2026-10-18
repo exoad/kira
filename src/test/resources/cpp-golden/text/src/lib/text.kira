@@ -1,13 +1,11 @@
-module "lib:text"
-
-use "kira:bytes"
+kira.bytes as bytes
 
 // text - string handling on a caller's buffer: no allocation, no ownership, no
 // state. FREESTANDING: Str allocates, so it is refused in this module, and text
 // is View<Char> or a StrBuf. A string literal in a View<Char> context is a
 // static view.
 
-fx isBlank: (c: Char) Bool {
+isBlank: (c: Char) Bool {
     return c == ' ' || c == '\t'
 }
 
@@ -15,7 +13,7 @@ fx isBlank: (c: Char) Bool {
 // follows, the spaces skipped: the caller slices, s.from(at). A bare command
 // returns s.size(), NOT none: "matched, nothing after it" and "did not match"
 // stay apart. A view is never held, so the offset is what comes back.
-pub fx wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
+pub wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
     n: Size = w.size()
     if s.size() < n || s.slice(0, n) != w {
         return null
@@ -32,7 +30,7 @@ pub fx wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
 
 // The length without trailing CR, LF, space and tab. A terminal picks its own
 // line ending, and "PING\r" is not "PING".
-pub fx trimEnd: (s: View<Char>) Size {
+pub trimEnd: (s: View<Char>) Size {
     mut n: Size = s.size()
     while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isBlank(s[n - 1])) {
         n -= 1
@@ -42,7 +40,7 @@ pub fx trimEnd: (s: View<Char>) Size {
 
 // STRICT: surrounding space is allowed and anything else is a refusal, where
 // atoi("12abc") is 12. out is untouched on failure.
-pub fx toInt: (s: View<Char>, mut out: Int32) Bool {
+pub toInt: (s: View<Char>, mut out: Int32) Bool {
     mut from: Size = 0
     while from < s.size() && isBlank(s[from]) {
         from += 1
@@ -61,16 +59,16 @@ pub fx toInt: (s: View<Char>, mut out: Int32) Bool {
 
 // The drive reply into a caller's buffer. Interpolation into a StrBuf appends
 // in place: no Str, so no heap.
-pub fx driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
+pub driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
     out.set("OK drive servo=${servo} esc=${esc}")
 }
 
 // A reading into a caller's buffer: addFixed rounds as FloatNum.fixed (D50).
-pub fx speedReply: (mps: Float64, places: Int32, mut out: StrBuf<32>) Void {
+pub speedReply: (mps: Float64, places: Int32, mut out: StrBuf<32>) Void {
     out.set("SPEED ")
     out.addFixed(mps, places)
 }
 
-pub fx isCommand: (s: View<Char>, verb: View<Char>) Bool {
+pub isCommand: (s: View<Char>, verb: View<Char>) Bool {
     return !wordEnd(s, verb).isNull()
 }

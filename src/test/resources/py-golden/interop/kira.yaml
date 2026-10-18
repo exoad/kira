@@ -1,5 +1,5 @@
 project:
-  name: golden-py-interop
+  name: golden.py.interop
 srcDir: src
 build:
   target: py

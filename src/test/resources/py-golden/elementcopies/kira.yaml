@@ -1,5 +1,5 @@
 project:
-  name: golden-py-elementcopies
+  name: golden.py.elementcopies
 srcDir: src
 build:
   target: py

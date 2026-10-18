@@ -1,12 +1,10 @@
-module "app:serial"
-
-use "kira:os"
-use "kira:sync"
+kira.os as os
+kira.sync as sync
 
 // kira:os's Serial on py (K3, K7): open imports pyserial, so a program that never opens a port needs none and one that
 // does is told which module is missing; then reads, writes and a signal's end of a read on the driver's stand-in.
 
-fx text: (buf: List<UInt8>, n: Int64) Str {
+text: (buf: List<UInt8>, n: Int64) Str {
     if n <= 0 {
         return ""
     }
@@ -15,7 +13,7 @@ fx text: (buf: List<UInt8>, n: Int64) Str {
 
 // The driver's stand-in port, whose descriptor is a socket's: the bytes waiting, then a read without limit that the
 // driver's SIGINT 300 ms in ends (D78), as EINTR ends C++'s poll.
-pub fx readOnSignal: () Str {
+pub readOnSignal: () Str {
     flag: Atomic<Bool> = Atomic<Bool> { value = false }
     installed: Bool = onSignal(SIGNAL_INT, flag)
     port: Serial = Serial {}
@@ -28,7 +26,7 @@ pub fx readOnSignal: () Str {
 }
 
 // Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
-pub fx readSome: (port: Serial, size: Size, ms: Int64) Str {
+pub readSome: (port: Serial, size: Size, ms: Int64) Str {
     mut buf: List<UInt8> = []
     for i: Size in 0..size {
         buf.add(0)
@@ -37,33 +35,33 @@ pub fx readSome: (port: Serial, size: Size, ms: Int64) Str {
     return "${n} '${text(buf, n)}'"
 }
 
-pub fx openPort: (path: Str, baud: Int32) Serial {
+pub openPort: (path: Str, baud: Int32) Serial {
     port: Serial = Serial {}
     port.open(path, baud)
     return port
 }
 
-pub fx reopen: (port: Serial, path: Str) Bool {
+pub reopen: (port: Serial, path: Str) Bool {
     return port.open(path, 115200)
 }
 
-pub fx writeText: (port: Serial, data: Str) Int64 {
+pub writeText: (port: Serial, data: Str) Int64 {
     return port.write(data.bytes())
 }
 
-pub fx shut: (port: Serial) Void {
+pub shut: (port: Serial) Void {
     port.close()
 }
 
-pub fx state: (port: Serial) Str {
+pub state: (port: Serial) Str {
     return "open ${port.isOpen()} handle ${port.handle()}"
 }
 
-pub fx why: () Str {
+pub why: () Str {
     return "${lastError()} (${lastErrorKind()})"
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     port: Serial = Serial {}
     println("open ${port.open("kira-no-such-port", 115200)}")
     println(lastError())

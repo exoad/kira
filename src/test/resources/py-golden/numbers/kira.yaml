@@ -1,5 +1,5 @@
 project:
-  name: golden-py-numbers
+  name: golden.py.numbers
 srcDir: src
 build:
   target: py

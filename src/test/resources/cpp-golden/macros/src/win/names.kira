@@ -1,5 +1,3 @@
-module "win:names"
-
 // Names that <windows.h> defines as function-like macros: min and max. The
 // generated header includes kira/macro_push.hxx after its own includes, so it
 // compiles after <windows.h> (the driver includes that first, without
@@ -9,13 +7,13 @@ module "win:names"
 
 pub INTERVAL: Int32 = 5
 
-pub struct Range {
+pub Range: Struct {
     pub lo: Int32 = 0
     pub hi: Int32 = INTERVAL
 
-    pub fx min: () Int32;
-    pub fx max: () Int32;
+    pub min: () Int32;
+    pub max: () Int32;
 }
 
-pub fx min: (a: Int32, b: Int32) Int32;
-pub fx max: (a: Int32, b: Int32) Int32;
+pub min: (a: Int32, b: Int32) Int32;
+pub max: (a: Int32, b: Int32) Int32;

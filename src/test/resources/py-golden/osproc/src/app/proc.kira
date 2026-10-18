@@ -1,18 +1,16 @@
-module "app:proc"
-
-use "kira:os"
-use "kira:sync"
-use "kira:test"
-use "kira:time"
+kira.os as os
+kira.sync as sync
+kira.test as test
+kira.time as time
 
 // kira:os's processes on py (K3, K4), each child this Python running -c: spawnProcess, runCapture, runInherit and
 // spawnPiped, their exit codes (137 after kill), a missing program, an empty argv, and the reason each failure leaves.
 
-fx py: (code: Str) List<Str> {
+py: (code: Str) List<Str> {
     return [pythonExecutable(), "-c", code]
 }
 
-fx drain: (p: Process) Str {
+drain: (p: Process) Str {
     mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
     mut text: Str = ""
     mut n: Int64 = p.readStdout(buf.from(0))
@@ -23,7 +21,7 @@ fx drain: (p: Process) Str {
     return text.replace("\r\n", "\n")
 }
 
-fx readSome: (p: PipedProcess, want: Size) Str {
+readSome: (p: PipedProcess, want: Size) Str {
     mut buf: List<UInt8> = [0, 0, 0, 0, 0, 0, 0, 0]
     mut text: Str = ""
     while text.size() < want {
@@ -36,7 +34,7 @@ fx readSome: (p: PipedProcess, want: Size) Str {
     return text
 }
 
-fx lineOf: (m: Maybe<Str>) Str {
+lineOf: (m: Maybe<Str>) Str {
     if m.isSome() {
         return m.value
     }
@@ -44,21 +42,21 @@ fx lineOf: (m: Maybe<Str>) Str {
 }
 
 // A running child the Process is dropped on: the driver sees its pid gone.
-pub fx dropRunning: () Int64 {
+pub dropRunning: () Int64 {
     p: Process = spawnProcess(py("import time; time.sleep(30)")).value
     return p.pid()
 }
 
-pub fx spawned: () Bool {
+pub spawned: () Bool {
     return spawnProcess(py("pass")).isSome()
 }
 
-pub fx reason: () Str {
+pub reason: () Str {
     return lastError()
 }
 
 // A readStdout of a child asleep for 1 s, which the driver's SIGINT 300 ms in ends on POSIX (D78).
-pub fx readOnSignal: () Str {
+pub readOnSignal: () Str {
     flag: Atomic<Bool> = Atomic<Bool> { value = false }
     installed: Bool = onSignal(SIGNAL_INT, flag)
     p: Process = spawnProcess(py("import time; time.sleep(1)")).value
@@ -69,7 +67,7 @@ pub fx readOnSignal: () Str {
     return "${installed} ${n} ${lastErrorKind()} ${flag.load()} ${took}"
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "proc - kira:os's processes on py" }
     hi: Process = spawnProcess(py("print('hi from a child')")).value
     t.check(hi.pid() > 0, "spawnProcess starts a child with a pid")

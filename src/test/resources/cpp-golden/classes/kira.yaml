@@ -1,5 +1,5 @@
 project:
-  name: golden-classes
+  name: golden.classes
 srcDir: src
 build:
   target: cpp

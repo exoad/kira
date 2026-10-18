@@ -1,6 +1,4 @@
-module "dbw:dbwjson"
-
-use "kira:json"
+kira.json as json
 
 // dbwcodec.py's load() and Spec over dbw.json with kira:json: the tables Spec builds, as one Json in
 // canon()'s order, or what load and Spec raise in their words. The expected output is main's C++ run.
@@ -8,7 +6,7 @@ use "kira:json"
 HEADER_BYTES: Int64 = 10
 CRC_BYTES: Int64 = 2
 
-fx crc16: (data: List<UInt8>) Int64 {
+crc16: (data: List<UInt8>) Int64 {
     mut crc: UInt32 = 0xFFFF
     mut i: Size = 0
     while i < data.size() {
@@ -28,7 +26,7 @@ fx crc16: (data: List<UInt8>) Int64 {
 }
 
 // Python's int(text, 16) of a JSON value: a 0x prefix, hex digits; none where it raises ValueError.
-fx hex: (v: Json) Maybe<Int64> {
+hex: (v: Json) Maybe<Int64> {
     t: Str = v.asStr().unwrapOr("").trim()
     digits: Str = if t.startsWith("0x") || t.startsWith("0X") {
         t.substring(2, t.size())
@@ -60,7 +58,7 @@ fx hex: (v: Json) Maybe<Int64> {
 }
 
 // Python's v != n for a JSON value and an integer: a Bool is 0 or 1, a Str never equal.
-fx differs: (v: Json, n: Int64) Bool {
+differs: (v: Json, n: Int64) Bool {
     if v.isBool() {
         b: Int64 = if v.asBool().unwrap() {
             1
@@ -76,7 +74,7 @@ fx differs: (v: Json, n: Int64) Bool {
 }
 
 // struct.calcsize of a little-endian format; -1 for one this port does not read.
-fx calcsize: (fmt: Str) Int64 {
+calcsize: (fmt: Str) Int64 {
     if !fmt.startsWith("<") {
         return -1
     }
@@ -117,14 +115,14 @@ fx calcsize: (fmt: Str) Int64 {
 }
 
 // A Python dict's key as json.dumps writes it: a Str as itself, a number, Bool or null as its JSON.
-fx key: (v: Json) Str {
+key: (v: Json) Str {
     if v.isStr() {
         return v.asStr().unwrap()
     }
     return v.dump()
 }
 
-fx byName: (rows: Json, name: Str, value: Str) Json {
+byName: (rows: Json, name: Str, value: Str) Json {
     out: Json = Json.obj()
     mut i: Size = 0
     while i < rows.size() {
@@ -134,7 +132,7 @@ fx byName: (rows: Json, name: Str, value: Str) Json {
     return out
 }
 
-fx rowsBy: (rows: Json, name: Str) Json {
+rowsBy: (rows: Json, name: Str) Json {
     out: Json = Json.obj()
     mut i: Size = 0
     while i < rows.size() {
@@ -144,7 +142,7 @@ fx rowsBy: (rows: Json, name: Str) Json {
     return out
 }
 
-pub fx tables: (path: Str, text: Str) Str {
+pub tables: (path: Str, text: Str) Str {
     data: Json = Json.parse(text)
     if Json.error() != "" {
         return "SpecError: cannot read " + path + ": " + Json.error()
@@ -254,14 +252,14 @@ pub fx tables: (path: Str, text: Str) Str {
     return c.dump()
 }
 
-fx field: (name: Str, kind: Str) Json {
+field: (name: Str, kind: Str) Json {
     f: Json = Json.obj()
     f.put("name", Json.of(name))
     f.put("type", Json.of(kind))
     return f
 }
 
-fx message: (name: Str, id: Int64, fmt: Str, size: Int64, fields: Json) Json {
+message: (name: Str, id: Int64, fmt: Str, size: Int64, fields: Json) Json {
     m: Json = Json.obj()
     m.put("name", Json.of(name))
     m.put("id", Json.of(id))
@@ -273,14 +271,14 @@ fx message: (name: Str, id: Int64, fmt: Str, size: Int64, fields: Json) Json {
     return m
 }
 
-fx row: (a: Str, x: Json, b: Str, y: Json) Json {
+row: (a: Str, x: Json, b: Str, y: Json) Json {
     r: Json = Json.obj()
     r.put(a, x)
     r.put(b, y)
     return r
 }
 
-fx spec: (header: Int64, check: Str, configSize: Int64) Json {
+spec: (header: Int64, check: Str, configSize: Int64) Json {
     d: Json = Json.obj()
     d.put("spec", Json.of("bibo-dbw"))
     d.put("protocol", row("major", Json.of(1), "minor", Json.of(0)))
@@ -338,7 +336,7 @@ fx spec: (header: Int64, check: Str, configSize: Int64) Json {
     return d
 }
 
-fx main: () Void {
+main: () Void {
     trace(tables("dbw.json", spec(10, "0x29B1", 3).pretty(1, true)))
     trace(tables("dbw.json", spec(10, "29b1", 3).dump()))
     trace(tables("dbw.json", spec(11, "0x29B1", 3).dump()))

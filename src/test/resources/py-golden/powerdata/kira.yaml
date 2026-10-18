@@ -1,5 +1,5 @@
 project:
-  name: golden-py-powerdata
+  name: golden.py.powerdata
 srcDir: src
 build:
   target: py

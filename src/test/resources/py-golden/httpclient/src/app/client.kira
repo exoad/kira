@@ -1,40 +1,38 @@
-module "app:client"
-
-use "kira:http"
-use "kira:test"
+kira.http as http
+kira.test as test
 
 // kira:http's client (K7): any status a reply, none when none came, httpError() str(e) until a call that works clears
 // it (D86); the driver's server gives each case its bytes.
 
-pub fx get: (url: Str, ms: Int64) Maybe<HttpReply> {
+pub get: (url: Str, ms: Int64) Maybe<HttpReply> {
     return httpGet(url, ms)
 }
 
-pub fx post: (url: Str, body: View<UInt8>, contentType: Str, ms: Int64) Maybe<HttpReply> {
+pub post: (url: Str, body: View<UInt8>, contentType: Str, ms: Int64) Maybe<HttpReply> {
     return httpPost(url, body, contentType, ms)
 }
 
-pub fx why: () Str {
+pub why: () Str {
     return httpError()
 }
 
-pub fx text: (body: View<UInt8>) Maybe<Str> {
+pub text: (body: View<UInt8>) Maybe<Str> {
     return jsonText(body)
 }
 
-pub fx path: (target: Str) Maybe<Str> {
+pub path: (target: Str) Maybe<Str> {
     return urlPath(target)
 }
 
-pub fx query: (target: Str) Maybe<Str> {
+pub query: (target: Str) Maybe<Str> {
     return urlQuery(target)
 }
 
-pub fx first: (q: Str, key: Str) Maybe<Str> {
+pub first: (q: Str, key: Str) Maybe<Str> {
     return queryFirst(q, key)
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "httpclient - kira:http's client on py" }
     t.check(httpGet("nope", 1000).isNone() && httpError() == "unknown url type: 'nope'", "a URL without a scheme is none, httpError str(e)")
     t.check(httpGet("file:///nope", 1000).isNone() && httpError() == "<urlopen error unknown url type: file>", "only http and https are opened")

@@ -1,11 +1,9 @@
-module "pp:powerdata"
-
-use "kira:json"
+kira.json as json
 
 // powerpage.py's /data body on kira:json. The expected output is main's C++ run.
 
 // powerpage.py's clean(): a float that is no finite number is null.
-fx clean: (v: Maybe<Float64>) Json {
+clean: (v: Maybe<Float64>) Json {
     if v.isNull() {
         return Json.null()
     }
@@ -16,7 +14,7 @@ fx clean: (v: Maybe<Float64>) Json {
     return Json.of(x)
 }
 
-pub fx rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
+pub rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
     p: Json = Json.arr()
     p.add(clean(tS))
     p.add(clean(inW))
@@ -28,7 +26,7 @@ pub fx rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTe
 }
 
 // A minute bucket's point, its start the int key Store.add files it under.
-pub fx bucketPoint: (startS: Int64, avgW: Maybe<Float64>, maxW: Maybe<Float64>, cpuAvg: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
+pub bucketPoint: (startS: Int64, avgW: Maybe<Float64>, maxW: Maybe<Float64>, cpuAvg: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
     p: Json = Json.arr()
     p.add(Json.of(startS))
     p.add(clean(avgW))
@@ -40,7 +38,7 @@ pub fx bucketPoint: (startS: Int64, avgW: Maybe<Float64>, maxW: Maybe<Float64>, 
 }
 
 // j_wh is sum()'s: the int 0 over no buckets.
-pub fx stats: (samples: Size, buckets: Size, jetsonUp: Maybe<Float64>, avgW: Maybe<Float64>, peakW: Maybe<Float64>, wh: Float64, minV: Maybe<Float64>, ocNew: Maybe<Int64>, cpuAvg: Maybe<Float64>, piTempMax: Maybe<Float64>, jTempMax: Maybe<Float64>) Json {
+pub stats: (samples: Size, buckets: Size, jetsonUp: Maybe<Float64>, avgW: Maybe<Float64>, peakW: Maybe<Float64>, wh: Float64, minV: Maybe<Float64>, ocNew: Maybe<Int64>, cpuAvg: Maybe<Float64>, piTempMax: Maybe<Float64>, jTempMax: Maybe<Float64>) Json {
     s: Json = Json.obj()
     s.put("samples", Json.of(samples as Int64))
     s.put("jetson_up", Json.of(jetsonUp))
@@ -59,7 +57,7 @@ pub fx stats: (samples: Size, buckets: Size, jetsonUp: Maybe<Float64>, avgW: May
     return s
 }
 
-pub fx body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<Json>) Str {
+pub body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<Json>) Str {
     b: Json = Json.obj()
     b.put("now", Json.of(nowS))
     b.put("seconds", Json.of(seconds))
@@ -75,7 +73,7 @@ pub fx body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: Lis
     return b.dump()
 }
 
-fx main: () Void {
+main: () Void {
     none: Maybe<Float64> = null
     zero: Float64 = 0.0
     row: Json = Json.obj()

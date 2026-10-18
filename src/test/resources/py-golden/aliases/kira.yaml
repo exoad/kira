@@ -1,5 +1,5 @@
 project:
-  name: golden-py-aliases
+  name: golden.py.aliases
 srcDir: src
 build:
   target: py

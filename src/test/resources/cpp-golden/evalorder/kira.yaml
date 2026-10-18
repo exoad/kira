@@ -1,5 +1,5 @@
 project:
-  name: golden-evalorder
+  name: golden.evalorder
 srcDir: src
 build:
   target: cpp

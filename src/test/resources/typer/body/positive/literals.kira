@@ -1,9 +1,7 @@
-module "fixture:body.literals"
-
 // Design 3.3: a literal takes the type its context expects, range-checked; with no context an
 // integer is an Int32 and a float a Float64. R2 and R3.
 
-pub fx literals: () Void {
+pub literals: () Void {
     a: Int32 = 7                           // @type Int32 const=7:Int32
     b: UInt8 = 255                         // @type UInt8 const=255:UInt8
     c: UInt32 = 0xFFFFFFFF                 // @type UInt32 const=4294967295:UInt32
@@ -36,14 +34,14 @@ pub fx literals: () Void {
     trace("s")                             // @type Str @ "s"
 }
 
-pub fx returned: () UInt8 {
+pub returned: () UInt8 {
     return 200                             // @type UInt8 const=200:UInt8
 }
 
-pub fx maybeReturned: () Maybe<Int64> {
+pub maybeReturned: () Maybe<Int64> {
     return 1                               // @type Int64 coerce=WrapSome(Int64)
 }
 
-pub fx floatReturned: () Float32 {
+pub floatReturned: () Float32 {
     return 1.25                            // @type Float32 const=1.25:Float32
 }

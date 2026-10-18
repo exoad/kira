@@ -1,7 +1,5 @@
-module "app:sys"
-
-use "kira:sync"
-use "kira:test"
+kira.sync as sync
+kira.test as test
 
 // spawn, Mutex.lock (D24's Mutex.with) and kira:test together: a worker
 // thread counts N increments under the mutex, and the main thread reads the
@@ -9,19 +7,19 @@ use "kira:test"
 
 pub N: Int32 = 1000
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "sys - spawn, Mutex.lock and kira:test" }
     total: Mutex<Int32> = Mutex<Int32> { value = 0 }
-    worker: Thread = spawn("adder", fx() Void {
+    worker: Thread = spawn("adder", () Void {
         for i: Int32 in 0..N {
-            total.lock(fx(mut v: Int32) Void {
+            total.lock((mut v: Int32) Void {
                 v += 1
             })
         }
     })
     worker.join()
     seen: Ref<Int32> = Ref<Int32> { value = 0 }
-    total.lock(fx(mut v: Int32) Void {
+    total.lock((mut v: Int32) Void {
         seen.value = v
     })
     t.check(seen.value == N, "1000 increments from a worker, counted under the mutex")

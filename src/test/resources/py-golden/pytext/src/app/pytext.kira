@@ -1,78 +1,76 @@
-module "app:pytext"
-
-use "kira:pytext"
-use "kira:json"
-use "kira:test"
+kira.pytext as pytext
+kira.json as json
+kira.test as test
 
 // kira:pytext (K6): main pins what bibo's fixtures do (critique 7: int() of "8_0", Arabic-Indic digits, " 82" and
 // "+81", and ValueError's own text); the driver holds every function to Python's own on the running interpreter.
 
-pub fx intOf: (text: Str) Maybe<Int64> {
+pub intOf: (text: Str) Maybe<Int64> {
     return pyInt(text)
 }
 
-pub fx floatOf: (text: Str) Maybe<Float64> {
+pub floatOf: (text: Str) Maybe<Float64> {
     return pyFloat(text)
 }
 
-pub fx why: () Str {
+pub why: () Str {
     return pyTextError()
 }
 
-pub fx reprOf: (s: Str) Str {
+pub reprOf: (s: Str) Str {
     return strRepr(s)
 }
 
-pub fx floatText: (v: Float64) Str {
+pub floatText: (v: Float64) Str {
     return floatRepr(v)
 }
 
-pub fx jsonText: (text: Str) Str {
+pub jsonText: (text: Str) Str {
     return jsonRepr(Json.parse(text))
 }
 
-pub fx formatted: (v: Float64, spec: Str) Maybe<Str> {
+pub formatted: (v: Float64, spec: Str) Maybe<Str> {
     return formatFloat(v, spec)
 }
 
-pub fx rounded: (v: Float64, digits: Int32) Float64 {
+pub rounded: (v: Float64, digits: Int32) Float64 {
     return roundTo(v, digits)
 }
 
-pub fx roundedInt: (v: Float64) Maybe<Int64> {
+pub roundedInt: (v: Float64) Maybe<Int64> {
     return roundHalfEven(v)
 }
 
-pub fx cased: (s: Str) List<Str> {
+pub cased: (s: Str) List<Str> {
     return [upper(s), lower(s), strip(s), lstrip(s), rstrip(s)]
 }
 
-pub fx allUpper: (s: Str) Bool {
+pub allUpper: (s: Str) Bool {
     return isUpper(s)
 }
 
-pub fx words: (s: Str) List<Str> {
+pub words: (s: Str) List<Str> {
     return splitSpace(s)
 }
 
-pub fx lines: (s: Str) List<Str> {
+pub lines: (s: Str) List<Str> {
     return splitLines(s)
 }
 
-pub fx found: (s: Str, sub: Str, start: Size) Int64 {
+pub found: (s: Str, sub: Str, start: Size) Int64 {
     return findFrom(s, sub, start)
 }
 
-pub fx wrapped: (text: Str, width: Size) List<Str> {
+pub wrapped: (text: Str, width: Size) List<Str> {
     return wrapWords(text, width)
 }
 
 // isSpace, isAlnum, isAlpha and isDigit of a code point, as 0 and 1 in that order.
-pub fx kinds: (c: Char) Str {
+pub kinds: (c: Char) Str {
     return "${isSpace(c)} ${isAlnum(c)} ${isAlpha(c)} ${isDigit(c)}"
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "pytext - kira:pytext on py" }
     t.check(pyInt("8_0").unwrapOr(0) == 80 && pyInt("٨٠").unwrapOr(0) == 80, "pyInt reads 8_0 and Arabic-Indic digits as 80")
     t.check(pyInt(" 82").unwrapOr(0) == 82 && pyInt("+81").unwrapOr(0) == 81 && pyTextError() == "", "and a space and a sign, with no reason")
@@ -103,11 +101,11 @@ pub fx main: () Int32 {
     return t.finish()
 }
 
-fx zeroOf: (v: Float64) Float64 {
+zeroOf: (v: Float64) Float64 {
     return v
 }
 
-fx ch: (code: Int32) Str {
+ch: (code: Int32) Str {
     c: Char = code as Char
     return "${c}"
 }

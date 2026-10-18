@@ -1,14 +1,7 @@
-module "fixture:body.operators"
-
 // Operators (design 3.3): identical operand types, no widening, a literal side takes the other
 // side's type. R1, R11, R12, R14, R16, R17.
 
-pub enum Mode: Int32 {
-    MODE_OFF = 0,
-    MODE_ON = 1
-}
-
-pub fx arithmetic: (a: Int32, b: Int32, u: UInt8, v: UInt8, x: Float32, y: Float64, n: Size, big: Int64) Void {
+pub arithmetic: (a: Int32, b: Int32, u: UInt8, v: UInt8, x: Float32, y: Float64, n: Size, big: Int64) Void {
     s1: Int32 = a + b                      // @type Int32
     s2: UInt8 = u + v                      // @type UInt8
     s3: UInt8 = u & 7                      // @type UInt8 const=7:UInt8 @ 7
@@ -34,7 +27,7 @@ pub fx arithmetic: (a: Int32, b: Int32, u: UInt8, v: UInt8, x: Float32, y: Float
     s23: Float32 = -x                      // @type Float32
 }
 
-pub fx comparisons: (a: Int32, b: Int32, x: Float32, n: Size, s: Str, ch: Char, m: Mode, flag: Bool) Void {
+pub comparisons: (a: Int32, b: Int32, x: Float32, n: Size, s: Str, ch: Char, flag: Bool) Void {
     c1: Bool = a < b                       // @type Bool
     c2: Bool = n < s.length()              // @type Bool
     c3: Bool = x < 0.0                     // @type Float32 const=0.0:Float32 @ 0.0
@@ -42,7 +35,6 @@ pub fx comparisons: (a: Int32, b: Int32, x: Float32, n: Size, s: Str, ch: Char, 
     c5: Bool = ch < 'z'                    // @type Bool
     c6: Bool = ch == '-'                   // @type Char const='-' @ '-'
     c7: Bool = s == "kira"                 // @type Bool
-    c8: Bool = m == Mode.MODE_ON           // @type Bool
     c9: Bool = 0 < n                       // @type Size const=0:Size @ 0
     c10: Bool = a + b > 250                // @type Int32 const=250:Int32 @ 250
     c11: Bool = flag == c1                 // @type Bool
@@ -54,7 +46,7 @@ pub fx comparisons: (a: Int32, b: Int32, x: Float32, n: Size, s: Str, ch: Char, 
     c17: Bool = s >= s                     // @type Bool
 }
 
-pub fx strings: (s: Str, t: Str, a: Int32) Void {
+pub strings: (s: Str, t: Str, a: Int32) Void {
     j: Str = s + t                         // @type Str
     k: Str = "<" + s + ">"                 // @type Str
     ch: Char = s[0]                        // @type Char place=Index(Param(s), STR)
@@ -68,8 +60,8 @@ pub LIMIT: Int32 = 10
 pub HALF: Float32 = 0.5
 pub SHIFT: UInt32 = 1 << 4
 
-pub fx constants: (a: Int32) Int32 {
-    b: Int32 = a * LIMIT                   // @type Int32 const=10:Int32 sym=fixture:body.operators.LIMIT @ LIMIT
+pub constants: (a: Int32) Int32 {
+    b: Int32 = a * LIMIT                   // @type Int32 const=10:Int32 sym=positive:operators.LIMIT @ LIMIT
     c: Int32 = LIMIT + 1                   // @type Int32 const=11:Int32
     d: Float32 = HALF * 2.0                // @type Float32 const=1.0:Float32
     return b + c                           // @type Int32

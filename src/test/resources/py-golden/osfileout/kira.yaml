@@ -1,5 +1,5 @@
 project:
-  name: golden-py-osfileout
+  name: golden.py.osfileout
 srcDir: src
 build:
   target: py

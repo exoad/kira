@@ -1,5 +1,5 @@
 project:
-  name: golden-py-wsframe
+  name: golden.py.wsframe
 srcDir: src
 build:
   target: py

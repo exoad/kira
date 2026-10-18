@@ -1,7 +1,5 @@
-module "app:quiet"
-
 // A Void main: _k_run() gives Python None, and the program exits 0.
 
-pub fx main: () Void {
+pub main: () Void {
     println("quiet ran")
 }

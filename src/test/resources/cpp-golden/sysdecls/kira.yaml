@@ -1,5 +1,5 @@
 project:
-  name: golden-sysdecls
+  name: golden.sysdecls
 srcDir: src
 build:
   target: cpp

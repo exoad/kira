@@ -1,12 +1,11 @@
-module app:box  profile=HOSTED ns=box imports=[]
+module enums.generics:app.box  profile=HOSTED ns=box imports=[]
   class Box<T>  pub
     field value: T  pub require #0
   fn id<T>: (value: T) T  body
-module app:main  profile=HOSTED ns=main_ imports=[app:status, app:box]
+module enums.generics:app.main  profile=HOSTED ns=main_ imports=[enums.generics:app.status, enums.generics:app.box]
   fn main: () Void  body
-module app:status  profile=HOSTED ns=status imports=[]
-  enum BuildStatus: Int32  pub
-    entry READY = 0:Int32  #0
-    entry RUNNING = 1:Int32  #1
-    entry DONE = 2:Int32  #2
-diag error rules.visibility.module app/main.kira:9:20  Function 'id' is declared in app:box but is not pub, so app:main cannot use it. Mark it `pub`.
+module enums.generics:app.status  profile=HOSTED ns=status imports=[]
+  global READY: Int32  pub const value=0:Int32
+  global RUNNING: Int32  pub const value=1:Int32
+  global DONE: Int32  pub const value=2:Int32
+diag error rules.visibility.module enums.generics/app/main.kira:7:20  Function 'id' is declared in enums.generics:app.box but is not pub, so enums.generics:app.main cannot use it. Mark it `pub`.

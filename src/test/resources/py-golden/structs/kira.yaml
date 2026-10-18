@@ -1,5 +1,5 @@
 project:
-  name: golden-py-structs
+  name: golden.py.structs
 srcDir: src
 build:
   target: py

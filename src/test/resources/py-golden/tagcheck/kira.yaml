@@ -1,5 +1,5 @@
 project:
-  name: golden-py-tagcheck
+  name: golden.py.tagcheck
 srcDir: src
 build:
   target: py

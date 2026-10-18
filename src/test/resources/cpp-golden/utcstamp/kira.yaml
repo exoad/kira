@@ -1,5 +1,5 @@
 project:
-  name: golden-utcstamp
+  name: golden.utcstamp
 srcDir: src
 build:
   target: cpp

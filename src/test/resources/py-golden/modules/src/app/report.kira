@@ -1,19 +1,17 @@
-module "app:report"
-
 // Uses lib:units and lib:tally (which uses lib:units too), and app:ring, which uses this module
 // back.
 
-use "kira:os"
-use "lib:units"
-use "lib:tally"
-use "app:ring"
+kira.os as os
+golden.py.modules.lib.units as units
+golden.py.modules.lib.tally as tally
+golden.py.modules.app.ring as ring
 
 pub mut steps: Int32 = 0
 
 // app:ring's constant, read while this module loads, inside the cycle.
 WIDE: Int32 = HOPS * 10
 
-pub fx isEven: (n: Int32) Bool {
+pub isEven: (n: Int32) Bool {
     steps += 1
     if n == 0 {
         return true
@@ -21,7 +19,7 @@ pub fx isEven: (n: Int32) Bool {
     return isOdd(n - 1)
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     mut i: Size = 0
     while i < xs.size() {
@@ -34,7 +32,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx main: () Void {
+main: () Void {
     // lib:tally read lib:units as it loaded
     start.add(5)
     trace(show(start))

@@ -1,64 +1,62 @@
-module "app:regexes"
-
-use "kira:regex"
-use "kira:test"
-use "app:why"
+kira.regex as regex
+kira.test as test
+golden.py.regexes.app.why as why
 
 // kira:regex (K6): a Regex and a Match are re's own, so the driver hands raw re objects over; regexError is str(e)
 // alone (critique 3), on the reasons every module shares, so app:why reads what compile here left (D86).
 
-pub fx compiled: (pattern: Str, flags: Int32) Maybe<Regex> {
+pub compiled: (pattern: Str, flags: Int32) Maybe<Regex> {
     return compile(pattern, flags)
 }
 
-pub fx searched: (r: Regex, text: Str) Maybe<Match> {
+pub searched: (r: Regex, text: Str) Maybe<Match> {
     return r.search(text)
 }
 
-pub fx atStart: (r: Regex, text: Str) Maybe<Match> {
+pub atStart: (r: Regex, text: Str) Maybe<Match> {
     return r.matchStart(text)
 }
 
-pub fx atPos: (r: Regex, text: Str, pos: Size) Maybe<Match> {
+pub atPos: (r: Regex, text: Str, pos: Size) Maybe<Match> {
     return r.matchAt(text, pos)
 }
 
-pub fx whole: (r: Regex, text: Str) Maybe<Match> {
+pub whole: (r: Regex, text: Str) Maybe<Match> {
     return r.fullMatch(text)
 }
 
-pub fx each: (r: Regex, text: Str) List<Match> {
+pub each: (r: Regex, text: Str) List<Match> {
     return r.findIter(text)
 }
 
-pub fx allOf: (r: Regex, text: Str) List<Str> {
+pub allOf: (r: Regex, text: Str) List<Str> {
     return r.findAll(text)
 }
 
-pub fx replaced: (r: Regex, replacement: Str, text: Str) Str {
+pub replaced: (r: Regex, replacement: Str, text: Str) Str {
     return r.sub(replacement, text)
 }
 
-pub fx pieces: (r: Regex, text: Str) List<Str> {
+pub pieces: (r: Regex, text: Str) List<Str> {
     return r.split(text)
 }
 
-pub fx groupOf: (m: Match, n: Int32) Maybe<Str> {
+pub groupOf: (m: Match, n: Int32) Maybe<Str> {
     return m.group(n)
 }
 
-pub fx namedOf: (m: Match, name: Str) Maybe<Str> {
+pub namedOf: (m: Match, name: Str) Maybe<Str> {
     return m.groupNamed(name)
 }
 
-pub fx span: (m: Match) List<Size> {
+pub span: (m: Match) List<Size> {
     mut out: List<Size> = []
     out.add(m.start())
     out.add(m.end())
     return out
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "regexes - kira:regex on py" }
     r: Regex = compile("(?P<word>[a-z]+)(\\d)?", IGNORE_CASE).value
     hit: Match = r.search("-- Abc7 x").value

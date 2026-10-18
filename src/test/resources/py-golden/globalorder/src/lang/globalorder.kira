@@ -1,5 +1,3 @@
-module "lang:globalorder"
-
 // Globals that start from globals declared after them, directly or through a @_const function:
 // Python runs a module's lines in order, so the py target starts each after every global its
 // initializer reads, as the C++ target's constants are ready before their use. A constant,
@@ -16,11 +14,11 @@ G: Arr<Int32, 3> = table()
 TABLE: Arr<Int32, 3> = [4, 5, 6]
 SEED: List<Int32> = [9, 10]
 
-class Holder {
+Holder: Any {
     pub mut items: List<Int32> = SEED
 }
 
-@_const fx table: () Arr<Int32, 3> {
+@_const table: () Arr<Int32, 3> {
     mut out: Arr<Int32, 3> = Arr<Int32, 3> { }
     mut i: Size = 0
     while i < TABLE.size() {
@@ -30,7 +28,7 @@ class Holder {
     return out
 }
 
-fx sum: (v: View<Int32>) Int32 {
+sum: (v: View<Int32>) Int32 {
     mut s: Int32 = 0
     mut i: Size = 0
     while i < v.size() {
@@ -40,11 +38,11 @@ fx sum: (v: View<Int32>) Int32 {
     return s
 }
 
-fx total: (xs: Arr<Int32, 2>) Int32 {
+total: (xs: Arr<Int32, 2>) Int32 {
     return xs[0] + xs[1]
 }
 
-fx main: () Void {
+main: () Void {
     trace(A[1])
     trace(k[0])
     k[0] = 1

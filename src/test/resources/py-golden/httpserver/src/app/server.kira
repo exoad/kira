@@ -1,21 +1,19 @@
-module "app:server"
-
-use "kira:http"
-use "kira:os"
-use "kira:sync"
-use "kira:test"
-use "kira:time"
+kira.http as http
+kira.os as os
+kira.sync as sync
+kira.test as test
+kira.time as time
 
 // kira:http's server (K7): route and admit answer as the driver's BaseHTTPRequestHandler does, byte for byte, and a
 // throw, panic or exit in a handler ends the process (D76); main serves itself through kira:http's client.
 
-fx withHeader: (name: Str, value: Str) HttpAnswer {
+withHeader: (name: Str, value: Str) HttpAnswer {
     mut h: Map<Str, Str> = Map<Str, Str> { }
     h.put(name, value)
     return HttpAnswer { status = 200, headers = h }
 }
 
-pub fx route: (r: HttpRequest) HttpAnswer {
+pub route: (r: HttpRequest) HttpAnswer {
     if r.path == "/text" {
         return HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
     }
@@ -85,7 +83,7 @@ pub fx route: (r: HttpRequest) HttpAnswer {
 }
 
 // A body of at most 64 bytes is read, any for /open; any other length is refused unread, the length it saw in the body.
-pub fx admit: (path: Str, n: Int64) HttpAnswer {
+pub admit: (path: Str, n: Int64) HttpAnswer {
     if path != "/open" && (n < 0 || n > 64) {
         code: Int32 = if n < 0 {
             400
@@ -97,28 +95,28 @@ pub fx admit: (path: Str, n: Int64) HttpAnswer {
     return HttpAnswer { status = 0 }
 }
 
-pub fx bind: (host: Str, port: Int32, post: Bool) Maybe<HttpServer> {
+pub bind: (host: Str, port: Int32, post: Bool) Maybe<HttpServer> {
     if post {
         return httpServerWithPost(host, port, route, admit)
     }
     return httpServer(host, port, route)
 }
 
-pub fx serveOn: (s: HttpServer) Bool {
+pub serveOn: (s: HttpServer) Bool {
     return s.serve()
 }
 
-pub fx stop: (s: HttpServer) Void {
+pub stop: (s: HttpServer) Void {
     s.shutdown()
 }
 
-pub fx why: () Str {
+pub why: () Str {
     return httpError()
 }
 
 // serve on the main thread, which an onSignal handler ends as it ends kira:os's waits (D78): the driver's SIGINT 300 ms
 // in; the port is free after.
-pub fx serveOnSignal: () Str {
+pub serveOnSignal: () Str {
     flag: Atomic<Bool> = Atomic<Bool> { value = false }
     installed: Bool = onSignal(SIGNAL_INT, flag)
     s: HttpServer = httpServer("127.0.0.1", 0, route).value
@@ -134,14 +132,14 @@ pub fx serveOnSignal: () Str {
     return "installed ${installed}: serve ${served}, the flag ${flag.load()}, early ${took < 5000}, freed ${freed}: ${reason}"
 }
 
-fx bodyOf: (r: Maybe<HttpReply>) Str {
+bodyOf: (r: Maybe<HttpReply>) Str {
     if r.isNone() {
         return "none: " + httpError()
     }
     return "${r.value.status} ${Str.of(r.value.body)}"
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "httpserver - kira:http's server on py" }
     s: HttpServer = httpServerWithPost("127.0.0.1", 0, route, admit).value
     port: Int32 = s.port()
@@ -151,7 +149,7 @@ pub fx main: () Int32 {
     t.check(third.isSome() && httpError() == "", "a bind that works clears the reason")
     third.value.shutdown()
     served: Atomic<Bool> = Atomic<Bool> { value = false }
-    th: Thread = spawn("serve", fx() Void {
+    th: Thread = spawn("serve", () Void {
         served.store(s.serve())
     })
     url: Str = "http://127.0.0.1:${port}"

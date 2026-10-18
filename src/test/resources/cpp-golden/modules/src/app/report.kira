@@ -1,16 +1,14 @@
-module "app:report"
-
-use "lib:units"
+golden.modules.lib.units as units
 
 // A module in another directory: it includes lib/units by relative path, and
 // every name it takes from there is fully qualified.
 
-pub struct Line {
+pub Line: Struct {
     pub label: Str = ""
     pub pct: Int32 = 0
 }
 
-fx bar: (pct: Int32) Str {
+bar: (pct: Int32) Str {
     mut out: Str = ""
     mut i: Int32 = 0
     while i < pct / 10 {
@@ -20,10 +18,10 @@ fx bar: (pct: Int32) Str {
     return out
 }
 
-pub fx line: (label: Str, part: Int32, whole: Int32 = SCALE) Line {
+pub line: (label: Str, part: Int32, whole: Int32 = SCALE) Line {
     return Line { label = label, pct = percent(part, whole) }
 }
 
-pub fx render: (l: Line) Str {
+pub render: (l: Line) Str {
     return "${l.label}: ${l.pct}% ${bar(l.pct)}"
 }

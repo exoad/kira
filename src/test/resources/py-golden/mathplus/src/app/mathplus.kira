@@ -1,36 +1,34 @@
-module "app:mathplus"
-
-use "kira:math"
-use "kira:test"
+kira.math as math
+kira.test as test
 
 // kira:math's K5 additions: hypot, atan2 and exp where every libm agrees to the bit, and floorMod, Python's %.
 
-pub fx mod: (a: Float64, b: Float64) Float64 {
+pub mod: (a: Float64, b: Float64) Float64 {
     return floorMod(a, b)
 }
 
-pub fx hyp: (x: Float64, y: Float64) Float64 {
+pub hyp: (x: Float64, y: Float64) Float64 {
     return hypot(x, y)
 }
 
-pub fx angle: (y: Float64, x: Float64) Float64 {
+pub angle: (y: Float64, x: Float64) Float64 {
     return atan2(y, x)
 }
 
-pub fx power: (v: Float64) Float64 {
+pub power: (v: Float64) Float64 {
     return exp(v)
 }
 
-fx shown: (v: Float64) Str {
+shown: (v: Float64) Str {
     return "${v}"
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     return checks(0.0)
 }
 
 // Infinity and NaN from a zero no compiler sees, as MSVC refuses a constant 0.0 / 0.0.
-fx checks: (zero: Float64) Int32 {
+checks: (zero: Float64) Int32 {
     t: Suite = Suite { title = "mathplus - kira:math hypot, atan2, exp and floorMod" }
     inf: Float64 = 1.0 / zero
     nan: Float64 = zero / zero

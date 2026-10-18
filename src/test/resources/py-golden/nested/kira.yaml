@@ -1,5 +1,5 @@
 project:
-  name: golden-py-nested
+  name: golden.py.nested
 srcDir: src
 build:
   target: py

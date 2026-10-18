@@ -1,5 +1,3 @@
-module "lang:order"
-
 // Kira's evaluation order on the py target. D33: a call's receiver and arguments, and an
 // operator's operands, run left to right, and an assignment locates its target (each index)
 // before its value runs. OQ-1: an immutable value's operand, a compound assignment's target
@@ -12,70 +10,70 @@ mut idx: Size = 0
 mut slots: List<Int32> = List<Int32> { }
 mut gs: Str = "a"
 
-fx next: () Int32 {
+next: () Int32 {
     ticks += 1
     return ticks
 }
 
-fx nextSize: () Size {
+nextSize: () Size {
     idx += 1
     return idx
 }
 
-fx sub: (a: Int32, b: Int32) Int32 {
+sub: (a: Int32, b: Int32) Int32 {
     return a - b
 }
 
-fx bumpIdx: () Int32 {
+bumpIdx: () Int32 {
     idx += 1
     return 99
 }
 
-fx changeS: () Int32 {
+changeS: () Int32 {
     gs = "b"
     return 1
 }
 
-fx pairS: (s: Str, k: Int32) Str {
+pairS: (s: Str, k: Int32) Str {
     return "${s}${k}"
 }
 
-class Box {
-    require pub mut v: Int32
+Box: Any {
+    pub mut v: Int32
 
-    pub fx pair: (a: Int32, b: Int32) Int32 {
+    pub pair: (a: Int32, b: Int32) Int32 {
         return v * 100 + a * 10 + b
     }
 }
 
-fx makeBox: () Box {
+makeBox: () Box {
     ticks += 1
     return Box { ticks }
 }
 
-class Counter {
+Counter: Any {
     pub mut n: Int32 = 0
 
-    pub mut fx bump: () Int32 {
+    pub mut bump: () Int32 {
         n += 10
         return 1
     }
 
-    pub mut fx run: () Int32 {
+    pub mut run: () Int32 {
         n += bump()
         return n
     }
 
-    pub mut fx runPlain: () Int32 {
+    pub mut runPlain: () Int32 {
         n = n + bump()
         return n
     }
 }
 
-class Track {
-    require pub a: Int32
+Track: Any {
+    pub a: Int32
     pub b: Int32 = next()
-    require pub c: Int32
+    pub c: Int32
     pub d: Int32 = next()
     pub mut seen: Int32 = 0
 
@@ -84,11 +82,11 @@ class Track {
     }
 }
 
-fx show: (t: Track) Str {
+show: (t: Track) Str {
     return "a=${t.a} b=${t.b} c=${t.c} d=${t.d} seen=${t.seen}"
 }
 
-fx main: () Void {
+main: () Void {
     trace(sub(next(), next()))
     trace(next() - next())
     trace(sub(sub(next(), next()), next()))

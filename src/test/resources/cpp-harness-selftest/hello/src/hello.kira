@@ -1,6 +1,4 @@
-module "selftest:hello"
-
-pub fx add: (a: Int32, b: Int32) Int32
+pub add: (a: Int32, b: Int32) Int32
 {
     return a + b;
 }

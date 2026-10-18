@@ -1,5 +1,5 @@
 project:
-  name: golden-closures
+  name: golden.closures
 srcDir: src
 build:
   target: cpp

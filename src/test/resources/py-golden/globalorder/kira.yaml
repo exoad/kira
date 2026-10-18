@@ -1,5 +1,5 @@
 project:
-  name: golden-py-globalorder
+  name: golden.py.globalorder
 srcDir: src
 build:
   target: py

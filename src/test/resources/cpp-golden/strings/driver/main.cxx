@@ -59,10 +59,10 @@ int main()
     }
     std::printf("\nstrings - text, interpolation and strict parsing\n\n");
     checkStr(strings::greet("mochi", 3), "hello mochi, you are 3", "interpolation");
-    checkStr(strings::describe(true, 0.1, 0.1f, 'x', 200, strings::Mood::MOOD_BUSY),
-             "b=true f=0.1 g=0.1 c=x u=200 m=MOOD_BUSY", "every piece kind");
-    checkStr(strings::describe(false, 1e21, 3.0e10f, '-', 0, strings::Mood::MOOD_CALM),
-             "b=false f=1e+21 g=3e+10 c=- u=0 m=MOOD_CALM", "and exponents");
+    checkStr(strings::describe(true, 0.1, 0.1f, 'x', 200, strings::MOOD_BUSY),
+             "b=true f=0.1 g=0.1 c=x u=200 m=1", "every piece kind");
+    checkStr(strings::describe(false, 1e21, 3.0e10f, '-', 0, strings::MOOD_CALM),
+             "b=false f=1e+21 g=3e+10 c=- u=0 m=0", "and exponents");
     checkStr(strings::show(2.5), "2.5", "as Str: 2.5, not 2,5");
     checkStr(strings::show(100.0), "100", "as Str: 100");
     checkStr(strings::show(0.1 + 0.2), "0.30000000000000004", "as Str is the shortest text that reads back");

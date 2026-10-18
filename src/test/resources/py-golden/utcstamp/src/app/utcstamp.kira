@@ -1,15 +1,13 @@
-module "app:utcstamp"
-
-use "kira:time"
-use "kira:test"
+kira.time as time
+kira.test as test
 
 // kira:time's utcStamp (K5): C++'s civil_from_days and py's ordinal write the same text, the milliseconds floored.
 
-pub fx stamp: (ns: Int64) Str {
+pub stamp: (ns: Int64) Str {
     return utcStamp(ns)
 }
 
-pub fx main: () Int32 {
+pub main: () Int32 {
     t: Suite = Suite { title = "utcstamp - kira:time utcStamp" }
     t.checkStr(utcStamp(0), "1970-01-01T00:00:00.000Z", "the epoch")
     t.checkStr(utcStamp(1700000000123456789), "2023-11-14T22:13:20.123Z", "a stamp's milliseconds are floored")

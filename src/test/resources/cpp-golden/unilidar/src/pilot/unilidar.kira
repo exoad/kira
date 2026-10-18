@@ -1,5 +1,3 @@
-module "pilot:unilidar"
-
 // unilidar - the Unitree L2's wire protocol, and nothing else. PURE.
 // A slice of the design-C probe: the constants, the CRC, the command frames,
 // the header and the packet walk. Header-only (build.cpp.headerOnly).
@@ -27,10 +25,10 @@ pub STANDBY_OFF: UInt32 = 0
 
 pub USER_CMD_BYTES: Size = 32
 // Every command either family sends is exactly one of these.
-pub alias Frame as Arr<UInt8, USER_CMD_BYTES>
+pub Arr<UInt8, USER_CMD_BYTES> as Frame
 
 // The SDK's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
-pub @_const fx crc32: (buf: View<UInt8>) UInt32 {
+pub @_const crc32: (buf: View<UInt8>) UInt32 {
     mut crc: UInt32 = 0xFFFFFFFF
     for b: UInt8 in buf {
         crc ^= b as UInt32
@@ -41,11 +39,11 @@ pub @_const fx crc32: (buf: View<UInt8>) UInt32 {
     return ~crc
 }
 
-pub @_const fx readU32: (p: View<UInt8>) UInt32 {
+pub @_const readU32: (p: View<UInt8>) UInt32 {
     return (p[0] as UInt32) | ((p[1] as UInt32) << 8) | ((p[2] as UInt32) << 16) | ((p[3] as UInt32) << 24)
 }
 
-pub @_const fx writeU32: (p: MutView<UInt8>, v: UInt32) Void {
+pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
     p[0] = (v & 0xFF) as UInt8
     p[1] = ((v >> 8) & 0xFF) as UInt8
     p[2] = ((v >> 16) & 0xFF) as UInt8
@@ -53,7 +51,7 @@ pub @_const fx writeU32: (p: MutView<UInt8>, v: UInt32) Void {
 }
 
 // A 32-byte command of either family, little-endian, byte by byte.
-pub @_const fx command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
+pub @_const command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
     mut p: Frame = Frame {}
     for i: Size in 0..MAGIC.size() {
         p[i] = MAGIC[i]
@@ -69,36 +67,36 @@ pub @_const fx command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame 
     return p
 }
 
-pub @_const fx userCmd: (cmdType: UInt32, cmdValue: UInt32) Frame {
+pub @_const userCmd: (cmdType: UInt32, cmdValue: UInt32) Frame {
     return command(TYPE_USER_CMD, cmdType, cmdValue)
 }
 
-pub @_const fx standby: () Frame {
+pub @_const standby: () Frame {
     return userCmd(USER_CMD_STANDBY, STANDBY_ON)
 }
 
-pub @_const fx start: () Frame {
+pub @_const start: () Frame {
     return userCmd(USER_CMD_STANDBY, STANDBY_OFF)
 }
 
-pub @_const fx versionRequest: () Frame {
+pub @_const versionRequest: () Frame {
     return command(TYPE_COMMAND, CMD_VERSION_GET, 0)
 }
 
-pub @_const fx autoStandbyFrame: (value: UInt32) Maybe<Frame> {
+pub @_const autoStandbyFrame: (value: UInt32) Maybe<Frame> {
     if value > 1 {
         return null
     }
     return userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value)
 }
 
-pub struct Header {
+pub Header: Struct {
     pub type: UInt32 = 0
     pub size: UInt32 = 0
 }
 
 // True for ONE PACKET: the magic, and a stated size equal to its own length.
-pub @_const fx readHeader: (buf: View<UInt8>, mut out: Header) Bool {
+pub @_const readHeader: (buf: View<UInt8>, mut out: Header) Bool {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
         return false
     }
@@ -112,13 +110,13 @@ pub @_const fx readHeader: (buf: View<UInt8>, mut out: Header) Bool {
     return (out.size as Size) == buf.size()
 }
 
-pub @_const fx tailClosed: (buf: View<UInt8>) Bool {
+pub @_const tailClosed: (buf: View<UInt8>) Bool {
     n: Size = buf.size()
     return n >= 2 && buf[n - 2] == TAIL[0] && buf[n - 1] == TAIL[1]
 }
 
 // The bytes of the whole packet at the start of buf, 0 for none.
-pub @_const fx packetAt: (buf: View<UInt8>) Size {
+pub @_const packetAt: (buf: View<UInt8>) Size {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
         return 0
     }
@@ -134,7 +132,7 @@ pub @_const fx packetAt: (buf: View<UInt8>) Size {
     return size
 }
 
-pub struct Walked {
+pub Walked: Struct {
     pub packets: Size = 0
     pub leftover: Size = 0
 }
@@ -142,7 +140,7 @@ pub struct Walked {
 // Hands each whole packet of a datagram to each, in order, and stops cleanly
 // at the first thing that is not one. `each` does not escape, so it lowers to
 // a template parameter and a lambda costs no heap.
-pub @_const fx eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Walked {
+pub @_const eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Walked {
     mut w: Walked = Walked {}
     mut at: Size = 0
     while at < buf.size() {

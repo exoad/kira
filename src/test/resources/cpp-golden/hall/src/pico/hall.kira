@@ -1,5 +1,3 @@
-module "pico:hall"
-
 // hall - the TT-02's three hall lines decoded into signed ticks. PURE and
 // FREESTANDING: the car's Pico runs this, and the host suites test the same
 // generated header. Header-only (build.cpp.headerOnly).
@@ -13,7 +11,7 @@ pub WINDOW_MS: UInt32 = 50
 pub PERIOD_BELOW_TICKS: Int32 = 10
 pub STOPPED_US: UInt32 = 250000
 
-pub struct Decoder {
+pub Decoder: Struct {
     pub ticks: Int32 = 0
     pub edges: UInt32 = 0
     pub skips: UInt32 = 0
@@ -25,11 +23,11 @@ pub struct Decoder {
     pub lastEdgeUs: UInt64 = 0
     pub periodUs: UInt32 = 0
 
-    pub @_const fx errors: () UInt32 {
+    pub @_const errors: () UInt32 {
         return skips + invalid
     }
 
-    pub mut @_const fx feed: (next: UInt8, nowUs: UInt64) Void {
+    pub mut @_const feed: (next: UInt8, nowUs: UInt64) Void {
         bits: UInt8 = next & 7
         idx: Int8 = INDEX_OF[bits as Size]
         if idx < 0 {
@@ -66,14 +64,14 @@ pub struct Decoder {
     }
 }
 
-pub struct Speed {
+pub Speed: Struct {
     pub windowTps: Int32 = 0
     pub periodTps: Int32 = 0
     pub stopped: Bool = false
     pub usePeriod: Bool = false
 }
 
-pub fx speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
+pub speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
     mut s: Speed = Speed {}
     s.windowTps = windowTicks * ((1000 / WINDOW_MS) as Int32)
     sinceEdge: UInt64 = nowUs - d.lastEdgeUs
@@ -92,7 +90,7 @@ pub fx speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
 
 // A decoder after these states, 1 ms apart from t0. Compile-time, so a
 // static_assert can hold the decoder to a walk.
-pub @_const fx settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
+pub @_const settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
     mut d: Decoder = Decoder {}
     mut t: UInt64 = t0
     for s: UInt8 in steps {

@@ -1,5 +1,3 @@
-module "lang:utf8of"
-
 // Str.of (D55): the text the UTF-8 in a View<UInt8> holds, each maximal ill-formed subpart (a
 // stray or cut sequence, an overlong form, a surrogate, a code point past U+10FFFF) one U+FFFD,
 // as bibo's bytes.decode("utf-8", "replace") reads a page's frames. The expected output is the
@@ -12,7 +10,7 @@ module "lang:utf8of"
 FNV_BASIS: UInt64 = 0x4BF29CE484222325
 FNV_PRIME: UInt64 = 0x100000001B3
 
-fx hex: (v: View<UInt8>) Str {
+hex: (v: View<UInt8>) Str {
     mut s: Str = ""
     mut i: Size = 0
     while i < v.size() {
@@ -25,21 +23,21 @@ fx hex: (v: View<UInt8>) Str {
     return s
 }
 
-pub fx read: (b: View<UInt8>) Str {
+pub read: (b: View<UInt8>) Str {
     return Str.of(b)
 }
 
-fx shown: (b: List<UInt8>) Str {
+shown: (b: List<UInt8>) Str {
     return "[" + hex(b) + "] -> [" + hex(read(b).bytes()) + "]"
 }
 
 // A running digest: what each text reads as, then a 0xFF, which UTF-8 never holds.
-pub class Digest {
+pub Digest: Any {
     pub mut h: UInt64 = FNV_BASIS
     pub mut count: Int64 = 0
     pub mut total: Int64 = 0
 
-    pub mut fx add: (b: View<UInt8>) Void {
+    pub mut add: (b: View<UInt8>) Void {
         text: List<UInt8> = Str.of(b).bytes()
         mut i: Size = 0
         while i < text.size() {
@@ -51,16 +49,16 @@ pub class Digest {
         total += text.size() as Int64
     }
 
-    pub fx said: () Str {
+    pub said: () Str {
         return "${count} sequences, ${total} bytes read, digest ${h.toHex()}"
     }
 }
 
-fx edges: () List<UInt8> {
+edges: () List<UInt8> {
     return [0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC1, 0xC2, 0xDF, 0xE0, 0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF]
 }
 
-fx main: () Void {
+main: () Void {
     trace(shown([0x41, 0x62]))
     trace(shown([0xC3, 0xA9, 0xE2, 0x9C, 0x93, 0xF0, 0x9F, 0x9A, 0x97]))
     trace(shown([0xED, 0x9F, 0xBF, 0xEE, 0x80, 0x80, 0xF4, 0x8F, 0xBF, 0xBF]))

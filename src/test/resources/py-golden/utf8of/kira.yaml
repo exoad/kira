@@ -1,5 +1,5 @@
 project:
-  name: golden-py-utf8of
+  name: golden.py.utf8of
 srcDir: src
 build:
   target: py

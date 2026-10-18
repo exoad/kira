@@ -1,13 +1,12 @@
-module fixture:design  profile=HOSTED ns=design imports=[]
+module dialect:design  profile=HOSTED ns=design imports=[]
   global LIMIT: Size  pub const value=32:Size
   alias Frame = Arr<UInt8, 32>  pub
   alias Sized = Arr<UInt8, 32>  pub
   global SPACE: Char  pub const value=' '
-  enum Kind: Int32  pub
-    entry KIND_OK = 0:Int32  #0
-    entry KIND_ERR = 1:Int32  #1
+  global KIND_OK: Int32  pub const value=0:Int32
+  global KIND_ERR: Int32  pub const value=1:Int32
   struct Reply  pub
-    field kind: Kind  pub default=Kind.KIND_OK #0
+    field kind: Int32  pub default=KIND_OK #0
     field line: Str  pub default="" #1
     field code: Int32  pub require #2
     fn isOk: () Bool  pub body
@@ -24,7 +23,7 @@ module fixture:design  profile=HOSTED ns=design imports=[]
     fn mayDrive: () Bool  pub virtual body
     fn step: (r: Reply) Reply  pub mut virtual
     flat [Behaviour.id, Behaviour.mayDrive, Behaviour.step]
-  class Stop : Behaviour  pub initially finally
+  class Stop : Behaviour  pub initially
     field reason: Str  pub require #0
     fn id: () Str  pub override virtual body overrides=Behaviour.id
     fn step: (r: Reply) Reply  pub mut override virtual body overrides=Behaviour.step

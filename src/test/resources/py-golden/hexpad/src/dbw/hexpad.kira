@@ -1,5 +1,3 @@
-module "dbw:hexpad"
-
 // Zero-padded hex as bibo's drive-by-wire tools print it, with toHex, toUpper and
 // padStart(width, fill: Char): dbwcodec.py's type_name and reason_name fallback f"0x{v:04X}",
 // dbwcli.py's USB ids f"{vid:04x}:{pid:04x}" and build id f"{id:08x}", dbw_gen.py's byte_table
@@ -8,31 +6,31 @@ module "dbw:hexpad"
 // Python's own formats and the hand-written byte_table and crc16.
 
 // f"0x{v:04X}"
-pub fx hex4: (v: UInt16) Str {
+pub hex4: (v: UInt16) Str {
     return "0x" + v.toHex().toUpper().padStart(4, '0')
 }
 
 // '0x%02X' % b
-pub fx hex2: (b: UInt8) Str {
+pub hex2: (b: UInt8) Str {
     return "0x" + b.toHex().toUpper().padStart(2, '0')
 }
 
 // f"{vid:04x}:{pid:04x}"
-pub fx usbIds: (vid: UInt16, pid: UInt16) Str {
+pub usbIds: (vid: UInt16, pid: UInt16) Str {
     return "${vid.toHex().padStart(4, '0')}:${pid.toHex().padStart(4, '0')}"
 }
 
 // f"build {id:08x}"
-pub fx build: (id: UInt32) Str {
+pub build: (id: UInt32) Str {
     return "build ${id.toHex().padStart(8, '0')}"
 }
 
-pub fx crcLine: (crc: UInt16) Str {
+pub crcLine: (crc: UInt16) Str {
     return "0x${crc.toHex().padStart(4, '0')}"
 }
 
 // dbw_gen.py's crc16: MSB first, no reflection.
-pub fx crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt16 {
+pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt16 {
     mut crc: UInt16 = init
     mut i: Size = 0
     while i < data.size() {
@@ -52,7 +50,7 @@ pub fx crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UI
 }
 
 // dbw_gen.py's byte_table: the declaration, a brace, rows of twelve bytes, and the close.
-pub fx byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
+pub byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
     mut out: List<Str> = List<Str> { }
     out.add(ind + decl + " =")
     out.add(ind + "{")
@@ -74,7 +72,7 @@ pub fx byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
     return out
 }
 
-fx main: () Void {
+main: () Void {
     trace(hex4(0))
     trace(hex4(0xF))
     trace(hex4(0x10))

@@ -1,5 +1,5 @@
 project:
-  name: golden-sys
+  name: golden.sys
 srcDir: src
 build:
   target: cpp

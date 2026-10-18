@@ -1,13 +1,11 @@
-module "fixture:body.statements"
-
 // Statements (design 5.4): locals, loops (TyperBodyModelTest checks each LoopPlan),
 // if-expressions (R18), assignments to places, throw and try.
 
-pub struct Cell {
+pub Cell: Struct {
     pub v: Int32 = 0
 }
 
-pub fx loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<Str, Int32>, set: Set<Int32>) Int32 {
+pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<Str, Int32>, set: Set<Int32>) Int32 {
     mut total: Int32 = 0
     for i: Size in 0..4 {                  // @type Size const=0:Size @ 0
         total += 1
@@ -36,13 +34,13 @@ pub fx loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map
     while j < 3 {                          // @type Bool
         j += 1
     }
-    do {
+    while j > 0 {                          // @type Bool
         j -= 1
-    } while j > 0                          // @type Bool
+    }
     return total
 }
 
-pub fx ifs: (a: Int32, neg: Bool) Str {
+pub ifs: (a: Int32, neg: Bool) Str {
     v: Int32 = if neg { -a } else { a }    // @type Int32
     w: Int8 = if a > 0 { 1 } else { -1 }   // @type Int8
     one: Int8 = if a > 0 { 1 } else { 0 }  // @type Int8 const=1:Int8 @ 1
@@ -56,7 +54,7 @@ pub fx ifs: (a: Int32, neg: Bool) Str {
     return label                           // @type Str
 }
 
-pub fx places: () Int32 {
+pub places: () Int32 {
     mut c: Cell = Cell { }
     c.v = 3                                // @type Int32 place=Field(Local(c).v) @ c.v
     c.v += 1                               // @type Void
@@ -73,7 +71,7 @@ pub fx places: () Int32 {
     return c.v + n                         // @type Int32
 }
 
-pub fx throwing: (ok: Bool) Int32 {
+pub throwing: (ok: Bool) Int32 {
     if !ok {
         throw "bad"                        // @type Never @ throw "bad"
     }
@@ -85,7 +83,7 @@ pub fx throwing: (ok: Bool) Int32 {
     return 1
 }
 
-pub fx legacyLoop: (n: Int32) Int32 {
+pub legacyLoop: (n: Int32) Int32 {
     mut t: Int32 = 0
     for mut i: 0..n {                      // @warn types.for.legacy ; @type Int32 const=0:Int32 @ 0
         t += i                             // @type Int32 place=Local(i) @ i
@@ -93,7 +91,7 @@ pub fx legacyLoop: (n: Int32) Int32 {
     return t
 }
 
-pub fx early: (x: Int32) Void {
+pub early: (x: Int32) Void {
     if x > 0 {
         return
     }

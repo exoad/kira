@@ -1,5 +1,5 @@
 project:
-  name: golden-py-importname
+  name: golden.py.importname
 srcDir: src
 build:
   target: py

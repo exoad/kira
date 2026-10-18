@@ -1,8 +1,6 @@
-module "lang:tuples"
+kira.tuples as tuples
 
-use "kira:tuples"
-
-fx minmax: (xs: List<Int32>) Pair<Int32, Int32> {
+minmax: (xs: List<Int32>) Pair<Int32, Int32> {
     mut lo: Int32 = xs[0]
     mut hi: Int32 = xs[0]
     for x: Int32 in xs {
@@ -16,18 +14,18 @@ fx minmax: (xs: List<Int32>) Pair<Int32, Int32> {
     return Pair<Int32, Int32> { lo, hi }
 }
 
-fx tagged: (name: Str, xs: List<Int32>) Tuple3<Str, List<Int32>, Bool> {
+tagged: (name: Str, xs: List<Int32>) Tuple3<Str, List<Int32>, Bool> {
     return Tuple3<Str, List<Int32>, Bool> { name, xs, xs.isEmpty() }
 }
 
-fx checked: (xs: List<Int32>) Result<List<Int32>, Str> {
+checked: (xs: List<Int32>) Result<List<Int32>, Str> {
     if xs.isEmpty() {
         return Result.error("empty")
     }
     return Result.success(xs)
 }
 
-fx show: (xs: List<Int32>) Str {
+show: (xs: List<Int32>) Str {
     mut s: Str = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
@@ -38,7 +36,7 @@ fx show: (xs: List<Int32>) Str {
     return s + "]"
 }
 
-fx main: () Void {
+main: () Void {
     p: Pair<Int32, Int32> = minmax([4, 9, 1, 7])
     trace("${p.first} ${p.second} ${p.size()}")
 

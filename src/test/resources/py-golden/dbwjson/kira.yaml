@@ -1,5 +1,5 @@
 project:
-  name: golden-py-dbwjson
+  name: golden.py.dbwjson
 srcDir: src
 build:
   target: py

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-linkwatch
+  name: golden.py.linkwatch
 srcDir: src
 build:
   target: py

@@ -1,5 +1,5 @@
 project:
-  name: golden-py-osfiles
+  name: golden.py.osfiles
 srcDir: src
 build:
   target: py

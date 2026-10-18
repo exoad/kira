@@ -1,5 +1,5 @@
 project:
-  name: golden-numerics
+  name: golden.numerics
 srcDir: src
 build:
   target: cpp
