@@ -1316,6 +1316,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitTryExpr(tryExpr: TryExpr) {
+        // Stage 3's try value is a new form on this node: refused, never lowered as a statement.
+        if (tryExpr.isValue) throw UnsupportedConstruct(tryExpr, "a try used as a value", TARGET_NAME)
         appendIndentedLine("try {")
         indentLevel++
         tryExpr.tryBlock.forEach { it.accept(this) }

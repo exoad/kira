@@ -2948,6 +2948,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitTryExpr(tryExpr: TryExpr) {
+        // Stage 3's try value is a new form on this node: refused, never lowered as a statement.
+        if (tryExpr.isValue) throw UnsupportedConstruct(tryExpr, "a try used as a value", TARGET_NAME)
         appendIndentedLine("/* try/on: baseline backend lowers try-block only */")
         tryExpr.tryBlock.forEach { it.accept(this) }
     }

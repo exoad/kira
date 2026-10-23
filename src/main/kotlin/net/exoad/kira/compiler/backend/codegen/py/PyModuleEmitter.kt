@@ -709,7 +709,12 @@ class PyModuleEmitter(
     }
 
     private fun statementLines(s: Statement, f: Frame): List<String> = when (s) {
-        is ReturnStatement -> if (s.expr === NoExpr) listOf("return") else listOf("return ${asValue(s.expr, f, Use.RETURN).text}")
+        // A body's last expression that is Never (a panic) is the statement it was written as.
+        is ReturnStatement -> if (s.expr === NoExpr) listOf("return") else if (s.implicit && typeOf(s.expr) == KType.Never) {
+            exprStatement(s, s.expr, f)
+        } else {
+            listOf("return ${asValue(s.expr, f, Use.RETURN).text}")
+        }
         is IfSelectionStatement -> {
             val out = mutableListOf("if ${expr(s.expr, f).text}:")
             out += indent(block(s.thenStatements, f))
@@ -1082,7 +1087,8 @@ class PyModuleEmitter(
         is MemberAccessExpr -> (model.member(e) is MemberRef.Field || borrows(e)) && (use != Use.ARG || sharedWritten)
         is ArrayIndexExpr, is ThisExpr -> use != Use.ARG || sharedWritten
         is FunctionCallExpr -> borrows(e) && (use != Use.ARG || sharedWritten)
-        is IfExpr -> listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, later, sharedWritten, f) }
+        // A def's arms ([valueFn]) return copies already.
+        is IfExpr -> !statementArms(e) && listOfNotNull(branchValue(e.thenBranch), branchValue(e.elseBranch)).any { copies(it, use, later, sharedWritten, f) }
         else -> false
     }
 
@@ -1189,7 +1195,8 @@ class PyModuleEmitter(
             is BinaryExpr -> binary(e, f)
             is UnaryExpr -> unary(e, f)
             is TypeCastExpr -> cast(e, f)
-            is IfExpr -> ternary(e, f)
+            is IfExpr -> if (statementArms(e)) valueFn(e, f) else ternary(e, f)
+            is TryExpr -> if (e.isValue) valueFn(e, f) else refusePy(e, "a try statement used as a value")
             is BuilderExpr -> builder(e, f)
             is LambdaExpr -> lambda(e, f)
             is WithExpr -> withExpr(e, f)
@@ -1982,6 +1989,189 @@ class PyModuleEmitter(
             return null
         }
         return s.expr.takeIf { it !is Decl && it !is AssignmentExpr && it !is CompoundAssignmentExpr && it !is PlaceAssignmentExpr && it !== NoExpr }
+    }
+
+    // ---- value blocks (stage 3) ----------------------------------------------------------------
+
+    /**
+     * An if-expression whose arms hold statements, or a try-expression: a def called in place, so
+     * it runs in its operand's turn (D33), as C++'s lambda does. The def, written before the
+     * statement, is each arm's statements and then `return` of its value.
+     */
+    private fun valueFn(e: Expr, f: Frame): Py {
+        val pre = f.pre ?: return refusePy(e, "an if or try with statements in its arms outside a body")
+        escapingJump(e)?.let { return refusePy(it, "a ${jumpName(it)} inside an arm of an if or try used as a value (its arms become a Python function)") }
+        val name = f.fresh()
+        val body = mutableListOf<String>()
+        outerWrites(e, f).let { (locals, globals) ->
+            if (globals.isNotEmpty()) body += "global ${globals.joinToString(", ")}"
+            if (locals.isNotEmpty()) body += "nonlocal ${locals.joinToString(", ")}"
+        }
+        // The arms' statements are their own: a call statement among them is not the enclosing one.
+        val statement = statementCall
+        statementCall = null
+        try {
+            body += valueLines(e, f)
+        } finally {
+            statementCall = statement
+        }
+        pre += listOf("def $name():") + indent(body)
+        return Py("$name()", PyPrec.POSTFIX)
+    }
+
+    /** An if-expression Python cannot write as `a if c else b`: an arm holds statements. */
+    private fun statementArms(e: Expr): Boolean = e is IfExpr && (branchValue(e.thenBranch) == null || branchValue(e.elseBranch) == null)
+
+    /** The lines that compute [e], an if with statement arms or a try-expression, each arm ending in its `return`. */
+    private fun valueLines(e: Expr, f: Frame): List<String> = when (e) {
+        is IfExpr -> withPre(f) { expr(e.condition, f).text }.let { (pre, cond) -> pre + ifLines(e, cond, f, "if") }
+        is TryExpr -> tryValueLines(e, f)
+        else -> withPre(f) { asValue(e, f, Use.STORE).text }.let { (pre, v) -> pre + "return $v" }
+    }
+
+    /** `if`/`elif`/`else` of [e] whose condition is [cond]; an else-if whose condition needs lines first nests under `else:`. */
+    private fun ifLines(e: IfExpr, cond: String, f: Frame, head: String): List<String> {
+        val out = mutableListOf("$head $cond:")
+        out += indent(armLines(e.thenBranch, f))
+        val nested = e.elseBranch.singleOrNull()?.takeIf { it.javaClass == Statement::class.java }?.expr as? IfExpr
+        if (nested == null || !statementArms(nested)) {
+            out += "else:"
+            out += indent(armLines(e.elseBranch, f))
+            return out
+        }
+        val (pre, next) = withPre(f) { expr(nested.condition, f).text }
+        if (pre.isEmpty()) {
+            out += ifLines(nested, next, f, "elif")
+        } else {
+            out += "else:"
+            out += indent(pre + ifLines(nested, next, f, "if"))
+        }
+        return out
+    }
+
+    /** `try:` / `except` of a try-expression, the handler's name a copy of the error's text as [tryStatement] makes it. */
+    private fun tryValueLines(e: TryExpr, f: Frame): List<String> {
+        val err = helper("_k_Error")
+        val out = mutableListOf("try:")
+        out += indent(armLines(e.tryBlock, f))
+        val name = e.exceptionName ?: return out.also { refuse(e, "a try used as a value without its `on`") }
+        checkLocal(name.value, name)
+        if (f.scopes.any { name.value in it }) {
+            refuse(name, "an error '${name.value}' that shadows a local of its name (Python has one scope per function; rename it)")
+        }
+        val caught = f.fresh()
+        out += "except $err as $caught:"
+        f.scopes.addLast(hashSetOf(name.value))
+        out += indent(listOf("${local(name.value)} = $caught.args[0]") + armLines(e.handlerBlock, f))
+        f.scopes.removeLast()
+        return out
+    }
+
+    /**
+     * A value arm: its statements, then its last one's value returned (a nested if or try as
+     * more lines; a throw or a Never call as the statement it is). The value is copied as a
+     * store would, since it may be a name of the enclosing function, which lives on.
+     */
+    private fun armLines(block: List<Statement>, f: Frame): List<String> {
+        f.scopes.addLast(HashSet())
+        val out = block.dropLast(1).flatMapTo(mutableListOf()) { stmt(it, f) }
+        val last = block.lastOrNull()
+        val value = last?.takeIf { it.javaClass == Statement::class.java }?.expr
+        out += when {
+            last == null -> listOf("pass")
+            value == null || value is ThrowExpr || value is Decl || typeOf(value) == KType.Never -> stmt(last, f)
+            statementArms(value) || (value is TryExpr && value.isValue) -> valueLines(value, f)
+            else -> withPre(f) { asValue(value, f, Use.STORE).text }.let { (pre, v) -> pre + "return $v" }
+        }
+        f.scopes.removeLast()
+        return out
+    }
+
+    /** The text [text] builds, and the lines its own `with`s and value defs need before it. */
+    private fun withPre(f: Frame, text: () -> String): Pair<List<String>, String> {
+        val outer = f.pre
+        val pre = mutableListOf<String>()
+        f.pre = pre
+        val line = try {
+            text()
+        } finally {
+            f.pre = outer
+        }
+        return pre to line
+    }
+
+    /** The enclosing function's locals and the module's globals [e]'s arms assign by name: `nonlocal` and `global` in the def. */
+    private fun outerWrites(e: Expr, f: Frame): Pair<List<String>, List<String>> {
+        val declared = Collections.newSetFromMap(IdentityHashMap<Symbol, Boolean>())
+        val locals = LinkedHashSet<String>()
+        val globals = LinkedHashSet<String>()
+        // A lambda in an arm is a def of its own, whose writes are its own.
+        val nodes = mutableListOf<ASTNode>()
+        val stack = ArrayDeque<ASTNode>(listOf(e))
+        while (stack.isNotEmpty()) {
+            val n = stack.removeLast()
+            nodes += n
+            if (n !is LambdaExpr) AstTree.children(n).asReversed().forEach { stack.addLast(it) }
+        }
+        nodes.forEach { n ->
+            when (n) {
+                is VariableDecl -> model.declSymbol(n)?.let { declared.add(it) }
+                is TryExpr -> n.exceptionName?.let { name -> model.declSymbol(name)?.let { declared.add(it) } }
+                is ForIterationStatement -> model.loop(n)?.variable?.let { declared.add(it) }
+                else -> {}
+            }
+        }
+        nodes.forEach { n ->
+            val target = when (n) {
+                is AssignmentExpr -> n.target
+                is CompoundAssignmentExpr -> n.left
+                else -> null
+            } as? Identifier ?: return@forEach
+            when (val sym = model.symbolOf(target)) {
+                is LocalSymbol -> if (sym !in declared && sym !in f.captured) locals.add(local(sym.name))
+                is ParamSymbol -> locals.add(local(sym.name))
+                is GlobalSymbol -> if (sym.module === module) globals.add(pyName(sym))
+                else -> {}
+            }
+        }
+        return locals.toList() to globals.toList()
+    }
+
+    /** A `return` in [e]'s arms, or a `break` or `continue` outside a loop they hold: a jump out of the def. */
+    private fun escapingJump(e: Expr): Statement? {
+        fun scan(statements: List<Statement>, inLoop: Boolean): Statement? {
+            for (s in statements) {
+                val found: Statement? = when (s) {
+                    is ReturnStatement -> s
+                    is BreakStatement, is ContinueStatement -> if (inLoop) null else s
+                    is WhileIterationStatement -> scan(s.statements, true)
+                    is ForIterationStatement -> scan(s.body, true)
+                    is IfSelectionStatement -> scan(s.thenStatements, inLoop) ?: s.elseBranches.firstNotNullOfOrNull { b ->
+                        when (b) {
+                            is ElseIfBranchStatement -> scan(b.statements, inLoop)
+                            is ElseBranchStatement -> scan(b.statements, inLoop)
+                        }
+                    }
+                    else -> (s.expr as? TryExpr)?.let { scan(it.tryBlock, inLoop) ?: scan(it.handlerBlock, inLoop) }
+                        ?: (s.expr as? IfExpr)?.let { scan(it.thenBranch, inLoop) ?: scan(it.elseBranch, inLoop) }
+                }
+                if (found != null) {
+                    return found
+                }
+            }
+            return null
+        }
+        return when (e) {
+            is IfExpr -> scan(e.thenBranch, false) ?: scan(e.elseBranch, false)
+            is TryExpr -> scan(e.tryBlock, false) ?: scan(e.handlerBlock, false)
+            else -> null
+        }
+    }
+
+    private fun jumpName(s: Statement): String = when (s) {
+        is ReturnStatement -> "return"
+        is BreakStatement -> "break"
+        else -> "continue"
     }
 
     // ---- types, names, values ----------------------------------------------------------------
