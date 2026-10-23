@@ -5,6 +5,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 
@@ -34,11 +36,104 @@ internal class ConformanceTyper(private val c: PhaseC) {
         }
         val v = verdict(value, identity, e) ?: return KType.BOOL
         c.model.conformances[e] = v
-        if (v.always) {
+        val checks = e.checks
+        if (checks != null) {
+            block(e, checks, v, identity, ctx, scope)
+        } else if (v.always) {
             val what = "${article(value)} always conforms to ${identity.display()}: the test is always ${!e.negated}."
             c.report("types.conform.always", what, e, Severity.WARNING)
         }
         return KType.BOOL
+    }
+
+    // ---- test blocks (stage 3b) --------------------------------------------------------------
+
+    private var temps = 0
+
+    /**
+     * `value == T { check, ... }`: each check a Bool that names a member of T bare (with's scope
+     * rule: locals and parameters, then T's members, then the outer scope; a clash refused), typed
+     * where the test has passed, so the subject reads as T. TestBlockPass refuses a check's effect.
+     */
+    private fun block(e: TypeCheckExpr, checks: List<Expr>, v: Conformance, identity: KType, ctx: BodyContext, scope: Scope) {
+        val t = identity as? KType.Nominal
+        if (t == null || !(facts.isClass(t) || facts.isStruct(t) || facts.isTrait(t)) || facts.magicName(t) != null) {
+            c.report(
+                "types.test.identity",
+                "A test block checks the members of a type the program declares; ${identity.display()} is none: test it with '==' and compare outside the block.",
+                e,
+            )
+            return
+        }
+        val members = c.members.memberNames(t)
+        for (outer in scope.withFrames()) {
+            val shared = members.intersect(outer.members)
+            if (shared.isNotEmpty()) {
+                c.report(
+                    "types.test.nested",
+                    "This test block is inside a block whose type also has ${shared.joinToString(", ") { "'$it'" }}, so a bare name would be ambiguous; " +
+                        "check through the value instead: '${KiraUnparser.text(e.value)}.${shared.first()} == ...'.",
+                    e,
+                )
+            }
+        }
+        val seen = v.narrowed ?: v.value
+        val named = (e.value as? Identifier)?.let { c.model.refs[it] }
+        val frame = if (named is LocalSymbol || named is ParamSymbol) {
+            // The subject itself, read as what the test proved (an outer test's narrowing too).
+            val self = Identifier((e.value as Identifier).value)
+            val declared = (named as? LocalSymbol)?.type ?: (named as ParamSymbol).type
+            val place = if (named is LocalSymbol) Place.Local(named) else Place.Param(named as ParamSymbol)
+            c.model.refs[self] = named
+            c.model.places[self] = place
+            c.model.types[self] = seen
+            if (declared != seen) c.model.narrowings[self] = Narrowing(declared, seen)
+            c.model.tests[e] = TestInfo(self, null, path = true)
+            WithFrame(e, t, null, self, members, ctx.lambda, place, named)
+        } else {
+            val temp = LocalSymbol("_k_t${temps++}", ctx.module, e, seen, fn = ctx.fn)
+            ctx.lambda?.let { c.declaredIn[temp] = it }
+            val self = Identifier(temp.name)
+            c.model.refs[self] = temp
+            c.model.places[self] = Place.Local(temp)
+            c.model.types[self] = seen
+            c.model.tests[e] = TestInfo(self, temp, path(e.value))
+            WithFrame(e, t, temp, self, members, ctx.lambda)
+        }
+        // The checks run only once the identity test passed, a `!=` test's too.
+        val inner = into(scope.withBody(frame), e, !e.negated)
+        for (check in checks) {
+            frame.reads = 0
+            val before = c.program.diagnostics.size
+            val ct = c.exprs.type(check, KType.BOOL, ctx, inner)
+            when {
+                // An error inside the check already says what is wrong with it.
+                ct.containsError() || c.program.diagnostics.drop(before).any { it.isError } -> {}
+                ct != KType.BOOL -> c.report(
+                    "types.test.check",
+                    "A check in a test block is a condition on a member of ${t.display()}, 'x == value', never a value by position; " +
+                        "this is ${article(ct).replaceFirstChar { it.lowercase() }}.",
+                    check,
+                )
+                frame.reads == 0 -> c.report(
+                    "types.test.unnamed",
+                    "A check in a test block names a member of ${t.display()} bare, 'x == value'; this one names none.",
+                    check,
+                )
+            }
+        }
+    }
+
+    /** A subject a backend may read again in place of a temporary: a name, `this`, or fields of one. */
+    private fun path(e: Expr): Boolean = when (e) {
+        is ThisExpr -> true
+        is Identifier -> c.model.refs[e].let { it is LocalSymbol || it is ParamSymbol || it is FieldSymbol || it is GlobalSymbol }
+        is MemberAccessExpr -> when (val m = c.model.members[e]) {
+            is MemberRef.Field -> path(e.origin)
+            is MemberRef.ModuleMember -> m.symbol is GlobalSymbol
+            else -> false
+        }
+        else -> false
     }
 
     private fun verdict(value: KType, identity: KType, e: TypeCheckExpr): Conformance? {

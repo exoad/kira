@@ -496,7 +496,8 @@ object KiraUnparser {
     }
 
     private fun endsInType(e: Expr): Boolean = when (e) {
-        is TypeCastExpr, is TypeCheckExpr -> true
+        is TypeCastExpr -> true
+        is TypeCheckExpr -> e.checks == null
         is BinaryExpr -> precedenceOf(e.rightExpr) >= e.operator.precedence + 1 && endsInType(e.rightExpr)
         else -> false
     }
@@ -538,7 +539,10 @@ object KiraUnparser {
             wrap("${e.operator.symbol.rep}${expr(e.operand, p + 1)}", p, parent)
         }
         is TypeCastExpr -> wrap("${expr(e.value, CAST)} as ${type(e.type)}", CAST, parent)
-        is TypeCheckExpr -> wrap("${expr(e.value, 8)} ${if (e.negated) "!=" else "=="} ${type(e.type)}", 8, parent)
+        is TypeCheckExpr -> wrap(
+            "${expr(e.value, 8)} ${if (e.negated) "!=" else "=="} ${type(e.type)}" + (e.checks?.joinToString(", ", " { ", " }") { expr(it, 0) } ?: ""),
+            8, parent,
+        )
         is RangeExpr -> wrap("${expr(e.begin, 15)}..${expr(e.end, 15)}", 14, parent)
         is FunctionCallExpr -> {
             val targs = if (e.typeArguments.isEmpty()) "" else e.typeArguments.joinToString(", ", "<", ">") { type(it) }

@@ -14,6 +14,7 @@ object RulePasses {
     fun default(): MutableList<RulePass> = mutableListOf(
         LentPlaces(),
         EffectsPass(),
+        TestBlockPass(),
         EscapePass(),
         ViewPass(),
         MutabilityPass(),

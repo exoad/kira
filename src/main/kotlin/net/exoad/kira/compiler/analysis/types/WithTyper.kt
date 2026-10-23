@@ -22,6 +22,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
@@ -38,16 +39,34 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
 import java.util.IdentityHashMap
 
-/** One `with` block being typed: its receiver's [members] are reachable bare inside it. */
+/** One `with` block (or test block, [expr] its TypeCheckExpr) being typed: its receiver's [members] are reachable bare inside it. */
 internal class WithFrame(
-    val expr: WithExpr,
+    val expr: Expr,
     val type: KType.Nominal,
-    val temp: LocalSymbol,
+    val temp: LocalSymbol?,
     val self: Identifier,
     val members: Set<String>,
     /** The lambda the `with` is written in, where its temporary lives. */
     val declaredIn: LambdaFrame?,
-)
+    /** Where a member read bare is read from, and what a lambda reading one captures. */
+    val place: Place = Place.Local(temp!!),
+    val captured: Symbol = temp!!,
+) {
+    /** The members a test block's check has read bare so far (a check names one). */
+    var reads = 0
+
+    /** What the frame is, in messages. */
+    val what: String get() = if (expr is TypeCheckExpr) "this test block's ${type.display()}" else "this `with`'s receiver ${type.display()}"
+
+    /** Records [id], a member named bare, for the backends. */
+    fun record(id: Identifier, model: TypedModel) {
+        when (expr) {
+            is WithExpr -> model.withMembers[id] = expr
+            is TypeCheckExpr -> model.testMembers[id] = expr
+        }
+        reads++
+    }
+}
 
 /**
  * `receiver with { ... }`, the builder operator (the owner's rules of 2026-10-15).
@@ -120,9 +139,9 @@ internal class WithTyper(private val c: PhaseC) {
     fun clash(id: Identifier, sym: Symbol, scope: Scope): Boolean {
         val frame = scope.withMember(id.value) ?: return false
         c.report(
-            "types.with.clash",
-            "'${id.value}' is both a ${if (sym is ParamSymbol) "parameter" else "local"} and a member of this `with`'s receiver " +
-                "${frame.type.display()}; rename the ${if (sym is ParamSymbol) "parameter" else "local"}.",
+            if (frame.expr is TypeCheckExpr) "types.test.clash" else "types.with.clash",
+            "'${id.value}' is both a ${if (sym is ParamSymbol) "parameter" else "local"} and a member of ${frame.what}; " +
+                "rename the ${if (sym is ParamSymbol) "parameter" else "local"}.",
             id,
         )
         return true
@@ -132,8 +151,8 @@ internal class WithTyper(private val c: PhaseC) {
     fun declares(name: String, at: ASTNode, scope: Scope) {
         val frame = scope.withMember(name) ?: return
         c.report(
-            "types.with.clash",
-            "'$name' names a member of this `with`'s receiver ${frame.type.display()}, so it cannot name a local here; rename it.",
+            if (frame.expr is TypeCheckExpr) "types.test.clash" else "types.with.clash",
+            "'$name' names a member of ${frame.what}, so it cannot name a local here; rename it.",
             at,
         )
     }

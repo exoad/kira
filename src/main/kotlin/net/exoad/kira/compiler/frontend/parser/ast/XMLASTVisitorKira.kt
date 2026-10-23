@@ -499,6 +499,7 @@ object XMLASTVisitorKira :
             {
                 typeCheckExpr.type.accept(this)
             }
+            typeCheckExpr.checks?.let { checks -> node("Checks") { checks.forEach { it.accept(this) } } }
         }
     }
 
