@@ -1,0 +1,18 @@
+
+conform - type tests on classes and traits, and the narrowing they give
+
+  ok    the rest of an && sees a Circle
+  ok    after an if that leaves, the rest sees a Circle
+  ok    a trait: a Circle is Named, a Square is not
+  ok    != narrows the else branch
+  ok    each else-if branch sees its own test
+  ok    the rest of an || sees the left side false
+  ok    an if-expression's arms
+  ok    after a continue, the rest of the loop body sees a Circle
+  ok    a Maybe holding a Dog is a Dog
+  ok    a Maybe holding an Animal is an Animal, no Dog
+  ok    an empty Maybe is neither
+  ok    a test of a call
+  ok    evaluates the call once
+
+13 checks, 0 failed

@@ -1,0 +1,143 @@
+// Conformance on classes and traits, `shape == Circle`: a run-time test (a dynamic_cast), and a
+// passing one narrows the name for the rest of the `&&`, the body, and after an `if` that leaves.
+
+pub Shape: Any {
+    pub area: () Int32;
+}
+
+pub Named: Any {
+    pub label: () Str;
+}
+
+pub Circle: Shape, Named {
+    pub radius: Int32
+
+    override pub area: () Int32 {
+        return 3 * radius * radius
+    }
+
+    override pub label: () Str {
+        return "circle ${radius}"
+    }
+}
+
+pub Square: Shape {
+    pub side: Int32
+
+    override pub area: () Int32 {
+        return side * side
+    }
+}
+
+pub Animal: Any {
+    pub name: Str
+
+    pub sound: () Str {
+        return "..."
+    }
+}
+
+pub Dog: Animal {
+    pub tricks: Int32 = 2
+
+    override pub sound: () Str {
+        return "woof"
+    }
+}
+
+pub mut made: Int32 = 0
+
+pub make: (r: Int32) Shape {
+    made += 1
+    if r > 0 {
+        return Circle { radius = r }
+    }
+    return Square { side = -r }
+}
+
+// The rest of the `&&` and the body see a Circle.
+pub big: (shape: Shape) Bool {
+    if shape == Circle && shape.radius > 10 {
+        return shape.radius < 100
+    }
+    return false
+}
+
+// After an `if` that always leaves, the rest sees what its failing proved.
+pub describe: (s: Shape) Str {
+    if s != Circle {
+        return "not a circle"
+    }
+    return "circle of ${s.radius}"
+}
+
+// A trait.
+pub tagged: (s: Shape) Str {
+    if s == Named {
+        return s.label()
+    }
+    return "untagged"
+}
+
+// `!=` narrows the else branch.
+pub sideOr: (s: Shape) Int32 {
+    if s != Square {
+        return -1
+    } else {
+        return s.side
+    }
+}
+
+// An else-if chain: each branch sees its own test passing.
+pub kind: (s: Shape) Str {
+    if s == Circle {
+        return "r=${s.radius}"
+    } else if s == Square {
+        return "side=${s.side}"
+    } else {
+        return "other"
+    }
+}
+
+// The rest of an `||` sees the left side false.
+pub smallOrNot: (s: Shape) Bool {
+    return s != Circle || s.radius < 5
+}
+
+// An if-expression's arms.
+pub radiusOr: (s: Shape) Int32 {
+    r: Int32 = if s == Circle {
+        s.radius + 0
+    } else {
+        0
+    }
+    return r
+}
+
+// A Maybe of a class: the test is false when it holds nothing.
+pub tricks: (a: Maybe<Animal>) Int32 {
+    if a == Dog {
+        return a.tricks
+    }
+    if a == Animal {
+        return 0
+    }
+    return -1
+}
+
+// In a loop, after a `continue`.
+pub radii: (xs: List<Shape>) Int32 {
+    mut total: Int32 = 0
+    for s: Shape in xs {
+        if s != Circle {
+            continue
+        }
+        total += s.radius
+    }
+    return total
+}
+
+// The value of a test that is no name is evaluated once.
+pub madeCircle: (r: Int32) Bool {
+    return make(r) == Circle
+}
