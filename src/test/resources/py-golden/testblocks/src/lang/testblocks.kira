@@ -1,0 +1,110 @@
+// Test blocks (stage 3b): `value == T { check, ... }`, the identity test and then each named check,
+// ANDed and short-circuited, the members bare, the subject narrowed inside and after the block.
+// The expected output was worked out by hand.
+
+Pt: Struct {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+
+    pub sum: () Int32 {
+        x + y
+    }
+}
+
+Line: Struct {
+    pub start: Pt
+    pub end: Pt
+    pub closed: Bool = false
+
+    pub length: () Int32 {
+        end.x - start.x
+    }
+}
+
+Seg: Struct {
+    pub tip: Maybe<Pt>
+    pub weight: Int32 = 1
+}
+
+Grid: Struct {
+    pub limit: Int32 = 3
+
+    // The outer scope after the members: the enclosing type's field.
+    pub inside: (p: Pt) Bool {
+        p == Pt { x < limit, y < limit }
+    }
+}
+
+mut made: Int32 = 0
+
+make: (k: Int32) Pt {
+    made += 1
+    Pt { k, k + 1 }
+}
+
+at: (k: Int32) Maybe<Pt> {
+    k > 0 ? Pt { k, k * 2 } : null
+}
+
+// Fields, a method, `||` inside a check, and a Bool member alone.
+fields: (p: Pt, line: Line) Str {
+    a: Bool = p == Pt { x == 1, y > 1 }
+    b: Bool = p == Pt { sum() == 5 }
+    c: Bool = p == Pt { x == 9 || y == 4 }
+    d: Bool = line == Line { closed }
+    "${a} ${b} ${c} ${d}"
+}
+
+// A nested block reads the field it tests; a Maybe field is tested for a value first.
+nested: (line: Line, seg: Seg) Str {
+    a: Bool = line == Line { start == Pt { x == 0 }, length() > 2 }
+    b: Bool = seg == Seg { tip == Pt { y == 4 }, weight > 0 }
+    "${a} ${b}"
+}
+
+// A Maybe subject: tested for a value before any member is read, narrowed in the arm after it.
+maybe: (m: Maybe<Pt>) Str {
+    m == Pt { x > 1 } ? "big ${m.x}" : m == Pt ? "small ${m.y}" : "none"
+}
+
+// `!=`: the else arm sees the block passed.
+negated: (m: Maybe<Pt>) Int32 {
+    m != Pt { y == 4 } ? -1 : m.x * 100
+}
+
+// A value that is no name is evaluated once, then tested.
+held: (k: Int32) Bool {
+    make(k) == Pt { x == 2, y == 3 }
+}
+
+// In a while condition, a ternary's condition and the rest of an `&&`.
+loops: (k: Int32) Int32 {
+    mut i: Int32 = 0
+    mut p: Pt = Pt { 0, 0 }
+    while p == Pt { x < k } && i < 10 {
+        p = Pt { p.x + 1, p.y }
+        i += 1
+    }
+    p == Pt { x == k } ? i * 10 : -1
+}
+
+main: () Void {
+    trace(fields(Pt { 1, 4 }, Line { Pt { 0, 0 }, Pt { 3, 0 }, true }))
+    trace(fields(Pt { 2, 1 }, Line { Pt { 0, 0 }, Pt { 3, 0 } }))
+    trace(nested(Line { Pt { 0, 0 }, Pt { 3, 0 } }, Seg { Pt { 1, 4 } }))
+    trace(nested(Line { Pt { 1, 0 }, Pt { 3, 0 } }, Seg { null }))
+    trace(nested(Line { Pt { 0, 0 }, Pt { 1, 0 } }, Seg { Pt { 1, 4 }, 0 }))
+    trace(maybe(at(3)))
+    trace(maybe(at(1)))
+    trace(maybe(at(0)))
+    trace(negated(at(2)))
+    trace(negated(at(3)))
+    trace(negated(at(0)))
+    trace(held(2))
+    trace(held(5))
+    trace(made)
+    trace(loops(4))
+    g: Grid = Grid { }
+    trace(g.inside(Pt { 1, 2 }))
+    trace(g.inside(Pt { 1, 3 }))
+}
