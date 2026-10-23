@@ -213,11 +213,12 @@ class ConformanceTest {
                 return 1
             }
 
-            f: (m: Maybe<Int32>, p: Pt) Int32 {
+            f: (m: Maybe<Int32>, p: Pt, n: Maybe<Int32>, k: Int32) Int32 {
                 a: Bool = m == Int32
                 b: Bool = m != Int32
                 c: Bool = p == Pt
                 d: Bool = probe() == Maybe<Int32>
+                e: Bool = (if k > 0 { m } else { n }) != Int32
                 if m == Int32 && a {
                     return m + 1
                 }
@@ -229,6 +230,8 @@ class ConformanceTest {
         assertTrue(py.contains("    b = m is None\n"), py)
         assertTrue(py.contains("    c = True\n"), py)
         assertTrue(py.contains("    d = (_probe(), True)[1]\n"), py)
+        // A value that binds looser than `is` is tested whole.
+        assertTrue(py.contains("    e = (m if k > 0 else n) is None\n"), py)
         assertTrue(py.contains("    if m is not None and a:\n        return _k_i32(m + 1)\n"), py)
     }
 

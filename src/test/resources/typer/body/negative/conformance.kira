@@ -45,3 +45,17 @@ pub never: (s: Shape, c: Circle, i: Int32, p: Pt, f: (x: Int32) Int32) Void {
     h: Bool = s == Box<Int32>              // @error types.conform.args
     k: Bool = i == Void                    // @error types.conform.unsupported
 }
+
+// An if whose block can end without leaving proves nothing after it, nor does one that leaves on one path.
+pub notAfter: (s: Shape, m: Maybe<Int32>, k: Int32) Int32 {
+    if m != Int32 {
+        trace(0)
+    }
+    v: Int32 = m                           // @error types.assign.mismatch
+    if s != Circle {
+        if k > 0 {
+            return 0
+        }
+    }
+    return s.radius                        // @error types.member.unknown
+}

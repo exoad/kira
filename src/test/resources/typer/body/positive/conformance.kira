@@ -79,3 +79,25 @@ pub unchanged: (s: Shape, mut q: Shape) Int32 {
     }
     return 0
 }
+
+// A block that ends in a throw, a continue or a break leaves too, whatever runs before it.
+pub leaving: (s: Shape, t: Shape, m: Maybe<Int32>, k: Int32) Int32 {
+    if m != Int32 {
+        trace(k)
+        throw "none"
+    }
+    mut total: Int32 = m                   // @type Int32 place=Param(m) @ m
+    mut i: Int32 = 0
+    while i < k {
+        i += 1
+        if s != Circle {
+            continue
+        }
+        total += s.radius                  // @type Circle place=Param(s) @ s
+        if t != Square {
+            break
+        }
+        total += t.side                    // @type Square place=Param(t) @ t
+    }
+    return total
+}
