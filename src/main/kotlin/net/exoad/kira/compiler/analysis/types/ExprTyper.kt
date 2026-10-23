@@ -20,6 +20,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TernaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
@@ -178,7 +179,7 @@ internal class ExprTyper(private val c: PhaseC) {
     private val facts get() = c.facts
 
     fun check(e: Expr, expected: KType, ctx: BodyContext, scope: Scope, what: String = "this position"): KType {
-        val hint = if (e is IfExpr) expected else (facts.maybeInner(expected) ?: expected)
+        val hint = if (e is IfExpr || (e is TryExpr && e.isValue)) expected else (facts.maybeInner(expected) ?: expected)
         val actual = type(e, hint, ctx, scope)
         c.coercions.assign(e, actual, expected, what)
         return actual
@@ -226,7 +227,7 @@ internal class ExprTyper(private val c: PhaseC) {
             check(e.value, KType.Str, ctx, scope, "a throw")
             KType.Never
         }
-        is TryExpr -> {
+        is TryExpr -> if (e.isValue) tryValue(e, hint, ctx, scope) else {
             c.stmts.tryExpr(e, ctx, scope)
             KType.Void
         }
@@ -758,7 +759,7 @@ internal class ExprTyper(private val c: PhaseC) {
      * expression and none is a `throw`.
      */
     private fun ifExpr(e: IfExpr, expected: KType?, ctx: BodyContext, scope: Scope): KType {
-        check(e.condition, KType.BOOL, ctx, scope, "an if condition")
+        check(e.condition, KType.BOOL, ctx, scope, if (e is TernaryExpr) "the condition of `?:`" else "an if condition")
         if (e.elseBranch.isEmpty()) {
             c.report(
                 "types.if.no-else",
@@ -784,16 +785,17 @@ internal class ExprTyper(private val c: PhaseC) {
                 shape = false
                 continue
             }
-            if (branch.size != 1 || value is ThrowExpr) {
+            if (branch.size != 1 || value is ThrowExpr || value is TryExpr) {
                 shape = false
             }
             if (value is IfExpr && model.ifShape[value] == false) {
                 shape = false
             }
             val want = result
-            val t = if (want != null) check(value, want, ctx, inner, "a branch of the if-expression") else synth(value, ctx, inner)
+            val ternary = e is TernaryExpr
+            val t = if (want != null) check(value, want, ctx, inner, if (ternary) "an arm of `?:`" else "a branch of the if-expression") else synth(value, ctx, inner)
             if (t == KType.Void && !t.containsError()) {
-                c.report("types.if.branch-value", "A branch of an if-expression must produce a value; this one is Void.", value)
+                c.report("types.if.branch-value", "${if (ternary) "An arm of `?:`" else "A branch of an if-expression"} must produce a value; this one is Void.", value)
             }
             if (result == null && t != KType.Never && !t.containsError()) {
                 result = t
@@ -809,9 +811,39 @@ internal class ExprTyper(private val c: PhaseC) {
             return null
         }
         val e = s.expr
-        if (e is Decl || e is AssignmentExpr || e is CompoundAssignmentExpr || e is PlaceAssignmentExpr || e is TryExpr || e === NoExpr) {
+        if (e is Decl || e is AssignmentExpr || e is CompoundAssignmentExpr || e is PlaceAssignmentExpr || (e is TryExpr && !e.isValue) || e === NoExpr) {
             return null
         }
         return e
+    }
+
+    // ---- try-expressions ---------------------------------------------------------------------
+
+    /**
+     * `try { a } on e: Str { b }` as a value: each block ends in an expression of the expected
+     * type (or, with none, of the first block's that has a type), as an if-expression's arms do.
+     */
+    private fun tryValue(e: TryExpr, expected: KType?, ctx: BodyContext, scope: Scope): KType {
+        var result: KType? = expected?.takeIf { it != KType.Void }
+        val handler = c.stmts.handlerScope(e, ctx, scope)
+        for ((block, inner) in listOf(e.tryBlock to scope.child(), e.handlerBlock to handler)) {
+            block.dropLast(1).forEach { c.stmts.statement(it, ctx, inner) }
+            val last = block.lastOrNull()
+            val value = last?.let { branchValue(it) }
+            if (last == null || value == null) {
+                c.report("types.try.value", "A block of a try-expression ends in the value it produces; this one ends in a statement.", last ?: e)
+                last?.let { c.stmts.statement(it, ctx, inner) }
+                continue
+            }
+            val want = result
+            val t = if (want != null) check(value, want, ctx, inner, "a block of the try-expression") else synth(value, ctx, inner)
+            if (t == KType.Void && !t.containsError()) {
+                c.report("types.try.value", "A block of a try-expression must produce a value; this one is Void.", value)
+            }
+            if (result == null && t != KType.Never && !t.containsError()) {
+                result = t
+            }
+        }
+        return result ?: KType.Never
     }
 }

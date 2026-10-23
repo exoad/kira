@@ -1,0 +1,13 @@
+0 4 10
+neg zero pos
+3 -1
+big+4 4 small-7 7
+23 9
+abce 7
+ade 8
+42 ABC
+3 600 -1
+5 0 2 2
+4x3 2x3
+2x8 2x3
+many

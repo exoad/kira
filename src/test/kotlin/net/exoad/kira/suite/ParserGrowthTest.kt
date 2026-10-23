@@ -913,6 +913,8 @@ class ParserGrowthTest {
     private val cliConstructs = listOf(
         "struct declaration" to "S: Struct { x: Int32 = 1 }\nmain: () Int32 { return 0 }",
         "if-expression" to "main: () Int32 { x: Int32 = 1\n return if x > 0 { 1 } else { 2 } }",
+        "if-expression" to "main: () Int32 { x: Int32 = 1\n x > 0 ? 1 : 2 }",
+        "a try used as a value" to "main: () Int32 { x: Int32 = try { 1 } on e: Str { 2 }\n return x }",
         "lambda expression" to "main: () Int32 { trace((x: Int32) Int32 { return x })\n return 0 }",
         "member or index place" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n return p.x }",
         "'this' expression" to "P: Any {\n mut x: Int32 = 0\n pub get: () Int32 { return this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n return p.get() }",

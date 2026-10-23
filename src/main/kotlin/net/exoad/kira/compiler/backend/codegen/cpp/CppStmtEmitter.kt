@@ -136,6 +136,10 @@ class CppStmtEmitter : CppStmtPart {
         if (e === NoExpr) {
             return listOf("return;")
         }
+        // A body's last expression that is Never (a panic) is the statement it was written as.
+        if (s.implicit && ctx.model.typeOrNull(e) == KType.Never) {
+            return expressionStatement(ctx, s, e)
+        }
         val lower = CppLowering.of(ctx)
         if (CppHoister.isSecondClass(ctx.model.typeOrNull(e))) {
             // The return rule (design 30, 2.2): a returned view comes from a view parameter, the receiver or a literal.
