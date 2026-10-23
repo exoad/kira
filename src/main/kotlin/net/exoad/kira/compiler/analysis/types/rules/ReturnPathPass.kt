@@ -46,7 +46,7 @@ internal class ReturnPathPass : RulePass {
             if (fn != null && needsReturn(fn.ret) && !ends(r, b.roots.filterIsInstance<Statement>())) {
                 r.report(
                     "rules.return.missing",
-                    "${b.what} returns ${fn.ret.display()}, but not on every path: add a return (or a throw) at the end.",
+                    "${b.what} returns ${fn.ret.display()}, but not on every path: end it with its value (or a throw).",
                     fn.decl,
                 )
             }
@@ -57,7 +57,7 @@ internal class ReturnPathPass : RulePass {
                     if (needsReturn(ret) && !ends(r, body)) {
                         r.report(
                             "rules.return.missing",
-                            "This lambda returns ${ret.display()}, but not on every path: add a return (or a throw) at the end.",
+                            "This lambda returns ${ret.display()}, but not on every path: end it with its value (or a throw).",
                             n,
                         )
                     }

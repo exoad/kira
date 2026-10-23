@@ -618,7 +618,7 @@ internal class StmtChecker(private val c: PhaseC) {
             c.report("types.return.missing", "${ctx.what} returns ${ret.display()}: this return needs a value.", s)
             return
         }
-        c.exprs.check(e, ret, ctx, scope, "the return value of ${ctx.what}")
+        c.exprs.check(e, ret, ctx, scope, if (s.implicit) "the result of ${ctx.what} (its body's last expression)" else "the return value of ${ctx.what}")
     }
 
     // ---- loops -------------------------------------------------------------------------------
@@ -818,10 +818,12 @@ internal class StmtChecker(private val c: PhaseC) {
 
     fun tryExpr(e: TryExpr, ctx: BodyContext, scope: Scope) {
         block(e.tryBlock, ctx, scope.child())
-        val name = e.exceptionName ?: run {
-            block(e.handlerBlock, ctx, scope.child())
-            return
-        }
+        block(e.handlerBlock, ctx, handlerScope(e, ctx, scope))
+    }
+
+    /** The scope of [e]'s handler: a child of [scope] that declares the caught Str, when `on` names one. */
+    fun handlerScope(e: TryExpr, ctx: BodyContext, scope: Scope): Scope {
+        val name = e.exceptionName ?: return scope.child()
         val declared = e.exceptionType?.let { c.typeOf(it) } ?: KType.Str
         if (!declared.containsError() && declared != KType.Str) {
             c.report("types.try.type", "A thrown value is a Str: write `on ${name.value}: Str`.", e.exceptionType ?: e)
@@ -833,7 +835,7 @@ internal class StmtChecker(private val c: PhaseC) {
         ctx.lambda?.let { c.declaredIn[local] = it }
         handler.declare(name.value, local)
         c.withs.declares(name.value, name, handler)
-        block(e.handlerBlock, ctx, handler)
+        return handler
     }
 
     // ---- D39 ---------------------------------------------------------------------------------

@@ -240,7 +240,20 @@ internal class WithTyper(private val c: PhaseC) {
             }
             is IfExpr -> {
                 value(e.condition, before, conditional, target)
-                firstWith(e.thenBranch + e.elseBranch)?.let { refuse(it, "a branch of an if-expression") }
+                if (oneValueEach(e)) {
+                    // `a if c else b` on py: a `with` of an arm itself would run before the condition.
+                    listOf(e.thenBranch, e.elseBranch).forEach { value(it.single().expr, mutableListOf(), "a branch of an if-expression") }
+                } else {
+                    // Arms with statements run in their own function, in turn: each statement places its own.
+                    valueArm(e.thenBranch)
+                    valueArm(e.elseBranch)
+                }
+                before.add(e)
+            }
+            is TryExpr -> {
+                valueArm(e.tryBlock)
+                valueArm(e.handlerBlock)
+                before.add(e)
             }
             is FunctionCallExpr -> {
                 (e.name as? MemberAccessExpr)?.let { value(it.origin, before, conditional, target) } ?: before.add(e.name)
@@ -265,6 +278,20 @@ internal class WithTyper(private val c: PhaseC) {
             is ThrowExpr -> value(e.value, before, conditional, target)
             else -> AstTree.children(e).forEach { k -> if (k is Expr && k !is Type) value(k, before, conditional, target) }
         }
+    }
+
+    /** Whether each arm of [e] is one plain expression, the shape py writes as `a if c else b`. */
+    private fun oneValueEach(e: IfExpr): Boolean = listOf(e.thenBranch, e.elseBranch).all { b ->
+        val s = b.singleOrNull()
+        s != null && s.javaClass == Statement::class.java &&
+            s.expr.let { it !is Decl && it !is AssignmentExpr && it !is CompoundAssignmentExpr && it !is PlaceAssignmentExpr }
+    }
+
+    /** An arm of an if or try that runs as its own function: its statements, then its value as a statement's. */
+    private fun valueArm(block: List<Statement>) {
+        placement(block.dropLast(1))
+        val last = block.lastOrNull() ?: return
+        if (last.javaClass == Statement::class.java && last.expr !is Decl) value(last.expr) else statement(last)
     }
 
     /** What a `with` may write: locals and parameters by name, and whether it writes through `this`. */

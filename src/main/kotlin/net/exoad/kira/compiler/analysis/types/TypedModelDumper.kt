@@ -30,6 +30,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TernaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
@@ -411,7 +412,7 @@ object KiraUnparser {
     }
 
     private fun statement(s: Statement): String = when (s) {
-        is ReturnStatement -> if (s.expr === NoExpr) "return" else "return ${expr(s.expr, 0)}"
+        is ReturnStatement -> if (s.expr === NoExpr) "return" else if (s.implicit) expr(s.expr, 0) else "return ${expr(s.expr, 0)}"
         is BreakStatement -> "break"
         is ContinueStatement -> "continue"
         is UseStatement -> "${s.uri.value} as ${s.alias?.value}"
@@ -553,6 +554,8 @@ object KiraUnparser {
         is AssignmentExpr -> "${e.target.value} = ${expr(e.value, 0)}"
         is CompoundAssignmentExpr -> "${expr(e.left, 0)} ${op(e.operator)}= ${expr(e.right, 0)}"
         is PlaceAssignmentExpr -> "${expr(e.target, 0)} ${e.operator?.let { op(it) } ?: ""}= ${expr(e.value, 0)}"
+        // `?:` binds below `||` (3): its condition and first arm above it, its second arm a `?:` again.
+        is TernaryExpr -> wrap("${expr(e.condition, 2)} ? ${expr(e.yes, 2)} : ${expr(e.no, 1)}", 1, parent)
         is IfExpr -> {
             val thenValue = e.thenBranch.lastOrNull()?.let { statement(it) } ?: ""
             val nested = e.elseBranch.singleOrNull()?.expr as? IfExpr

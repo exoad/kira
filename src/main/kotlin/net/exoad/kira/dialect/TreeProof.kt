@@ -14,6 +14,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
+import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
@@ -122,6 +123,9 @@ object TreeProof {
                 fields.addAll(o.members.filterIsInstance<VariableDecl>())
                 null
             }
+            // Stage 3's parser reads a value body's last expression as an implicit return: the statement it was.
+            o.javaClass == Statement::class.java && n is ReturnStatement && n.implicit ->
+                value("$path.expr", (o as Statement).expr, n.expr) ?: ""
             else -> null
         }
 

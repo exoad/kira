@@ -339,6 +339,17 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
     }
 
     fun parseStatement(modifier: Map<Modifier, SourcePosition>?): Statement {
+        // A statement in a block inside a `?:`'s first arm (a lambda's body) declares again.
+        val ternary = ternaryThen
+        ternaryThen = 0
+        try {
+            return parseStatementHere(modifier)
+        } finally {
+            ternaryThen = ternary
+        }
+    }
+
+    private fun parseStatementHere(modifier: Map<Modifier, SourcePosition>?): Statement {
         if (modifier != null && modifier.isNotEmpty()) {
             return parseDeclarationStatement()
         }
@@ -431,6 +442,153 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         return statements
     }
+
+    // ---- block values (stage 3) --------------------------------------------------------------
+
+    /** How many `?:` first arms enclose the pointer, where `name :` is the arm's end, not a declaration. */
+    private var ternaryThen = 0
+
+    /** `?:`'s precedence: below `||` (3), above nothing but assignment. */
+    private val ternaryLevel = 1
+
+    private fun isVoid(t: Type): Boolean = (t.identifier as? Identifier)?.value == "Void" && t.children.isEmpty()
+
+    private fun originOf(node: ASTNode): SourcePosition = context.astOrigins[node] ?: here()
+
+    /** A plain statement whose expression is a value: a block's value when it comes last. */
+    private fun isValueStatement(s: Statement): Boolean {
+        if (s.javaClass != Statement::class.java) return false
+        val e = s.expr
+        return !(e is Decl || e is AssignmentExpr || e is CompoundAssignmentExpr || e is PlaceAssignmentExpr ||
+            e is ThrowExpr || (e is TryExpr && !e.isValue) || e === NoExpr)
+    }
+
+    /** A value statement that is one inline expression, with no block of its own (if, try, lambda, `with`): a `?:` arm. */
+    private fun isSingleExpression(s: Statement): Boolean =
+        isValueStatement(s) && s.expr !is TryExpr && s.expr !is LambdaExpr && s.expr !is WithExpr &&
+            (s.expr !is IfExpr || s.expr is TernaryExpr)
+
+    private fun isSingleExpression(block: List<Statement>): Boolean = block.size == 1 && isSingleExpression(block[0])
+
+    /** An if-expression chain whose every arm is a single expression: a ternary's shape. */
+    private fun ternaryShaped(e: IfExpr): Boolean {
+        if (!isSingleExpression(e.thenBranch)) return false
+        val nested = e.elseBranch.singleOrNull()?.takeIf { it.javaClass == Statement::class.java }?.expr as? IfExpr
+        return if (nested != null && nested !is TernaryExpr) ternaryShaped(nested) else isSingleExpression(e.elseBranch)
+    }
+
+    private fun ternaryShaped(s: IfSelectionStatement): Boolean =
+        isSingleExpression(s.thenStatements) && s.elseBranches.all {
+            when (it) {
+                is ElseIfBranchStatement -> isSingleExpression(it.statements)
+                is ElseBranchStatement -> isSingleExpression(it.statements)
+            }
+        }
+
+    /** An if statement with a final `else` and only else-ifs before it: a value on every path. */
+    private fun hasFinalElse(s: IfSelectionStatement): Boolean =
+        s.elseBranches.lastOrNull() is ElseBranchStatement && s.elseBranches.dropLast(1).all { it is ElseIfBranchStatement }
+
+    /** The refusal of an `if` value that is a ternary's shape, once [DialectGates.ternaryOnly] is on. */
+    private fun refuseTernaryShapedIf(at: ASTNode) {
+        if (!DialectGates.ternaryOnly) return
+        Diagnostics.panic(
+            "parse.if.ternary",
+            "An `if` whose value is one expression per arm is written `c ? a : b`; `if` as a value is for arms that need statements.",
+            location = originOf(at),
+            selectorLength = 2,
+            context = context
+        )
+    }
+
+    /**
+     * A value body (a function's or lambda's that returns something): its last expression is its
+     * result, so it becomes an implicit return, through a last `if`/`else` and a last `try`/`on`.
+     */
+    private fun bodyTail(block: List<Statement>): List<Statement> {
+        val last = block.lastOrNull() ?: return block
+        val tail = resultOf(last)
+        if (tail === last) return block
+        // `return a` then `b`: b would never be the value, so the pair is refused rather than read one way.
+        if (block.dropLast(1).any { it is ReturnStatement }) {
+            Diagnostics.panic(
+                "parse.return.tail",
+                "This block's last expression comes after a `return` that always leaves first, so it is never the value: keep one of the two.",
+                location = originOf(last),
+                selectorLength = 1,
+                context = context
+            )
+        }
+        return block.dropLast(1) + tail
+    }
+
+    private fun resultOf(s: Statement): Statement {
+        if (s is IfSelectionStatement) {
+            if (!hasFinalElse(s)) return s
+            if (ternaryShaped(s)) refuseTernaryShapedIf(s)
+            val then = bodyTail(s.thenStatements)
+            var changed = then !== s.thenStatements
+            val branches = s.elseBranches.map { b ->
+                when (b) {
+                    is ElseIfBranchStatement -> bodyTail(b.statements).let {
+                        if (it === b.statements) b else putOrigin(ElseIfBranchStatement(b.condition, it), originOf(b)).also { changed = true }
+                    }
+                    is ElseBranchStatement -> bodyTail(b.statements).let {
+                        if (it === b.statements) b else putOrigin(ElseBranchStatement(it), originOf(b)).also { changed = true }
+                    }
+                }
+            }
+            return if (changed) putOrigin(IfSelectionStatement(s.expr, then, branches), originOf(s)) else s
+        }
+        if (s.javaClass != Statement::class.java) return s
+        val e = s.expr
+        if (e is TryExpr) {
+            if (e.exceptionName == null || e.isValue) return s
+            val tried = bodyTail(e.tryBlock)
+            val handled = bodyTail(e.handlerBlock)
+            if (tried === e.tryBlock && handled === e.handlerBlock) return s
+            val t = putOrigin(TryExpr(tried, e.exceptionName, e.exceptionType, handled), originOf(e))
+            return putOrigin(Statement(t), originOf(s))
+        }
+        if (!isValueStatement(s)) return s
+        return putOrigin(ReturnStatement(e, implicit = true), originOf(s))
+    }
+
+    /**
+     * A value arm (an if-expression's, a try-expression's): its last statement is its value, so a
+     * last `if`/`else` becomes an if-expression and a last `try`/`on` a try-expression.
+     */
+    private fun valueTail(block: List<Statement>): List<Statement> {
+        val last = block.lastOrNull() ?: return block
+        val tail = when {
+            last is IfSelectionStatement && hasFinalElse(last) -> {
+                val value = ifValueOf(last)
+                if (ternaryShaped(value)) refuseTernaryShapedIf(last)
+                putOrigin(Statement(value), originOf(last))
+            }
+            last.javaClass == Statement::class.java && last.expr is TryExpr -> {
+                val e = last.expr as TryExpr
+                if (e.exceptionName == null || e.isValue) last else putOrigin(Statement(tryValueOf(e)), originOf(last))
+            }
+            else -> last
+        }
+        return if (tail === last) block else block.dropLast(1) + tail
+    }
+
+    /** `if a { } else if b { } else { }` as nested if-expressions, each arm a value arm. */
+    private fun ifValueOf(s: IfSelectionStatement): IfExpr {
+        fun rest(i: Int): List<Statement> = when (val b = s.elseBranches[i]) {
+            is ElseBranchStatement -> valueTail(b.statements)
+            is ElseIfBranchStatement -> {
+                val nested = putOrigin(IfExpr(b.condition, valueTail(b.statements), rest(i + 1)), originOf(b))
+                listOf(putOrigin(Statement(nested), originOf(b)))
+            }
+        }
+        return putOrigin(IfExpr(s.expr, valueTail(s.thenStatements), rest(0)), originOf(s))
+    }
+
+    private fun tryValueOf(e: TryExpr): TryExpr =
+        putOrigin(TryExpr(valueTail(e.tryBlock), e.exceptionName, e.exceptionType, valueTail(e.handlerBlock), isValue = true), originOf(e))
 
     /** How many statement blocks enclose the pointer: none at the top level and in a type body. */
     private var functionDepth = 0
@@ -733,7 +891,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         }
         val functionIntrinsics = marks ?: pendingIntrinsicExprs
         pendingIntrinsicExprs = null
-        val body = if (at(Token.Type.S_OPEN_BRACE)) parseStatementBlock() else null
+        val body = if (at(Token.Type.S_OPEN_BRACE)) parseStatementBlock().let { if (isVoid(returnType)) it else bodyTail(it) } else null
         val decl = FunctionDecl(name, FunctionDefExpr(returnType, params, body), modifier?.keys?.toList() ?: emptyList(), generics)
         markIntrinsics(decl, functionIntrinsics)
         attachIntrinsics(decl)
@@ -1068,7 +1226,58 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 else -> BinaryExpr(left, right, binaryOpType)
             }
         }
+        if (minPrecedence <= ternaryLevel && at(Token.Type.S_QUESTION_MARK)) {
+            left = parseTernary(putOrigin(left, origin))
+        }
         return putOrigin(left, origin)
+    }
+
+    /**
+     * `cond ? a : b` after [condition], the pointer on `?`: below every binary operator, the
+     * second arm right-associative (`a ? b : c ? d : e`), a `?:` in the first arm parenthesized.
+     */
+    private fun parseTernary(condition: Expr): Expr {
+        advancePointer()
+        val yesAt = here()
+        ternaryThen++
+        val yes = try {
+            parseExpr(ternaryLevel + 1)
+        } finally {
+            ternaryThen--
+        }
+        if (at(Token.Type.S_QUESTION_MARK)) {
+            Diagnostics.panic(
+                "parse.ternary.nested",
+                "A `?:` inside the first arm of another is written in parentheses: a ? (b ? c : d) : e.",
+                location = here(),
+                selectorLength = 1,
+                context = context
+            )
+        }
+        if (!at(Token.Type.S_COLON)) {
+            Diagnostics.panic(
+                "parse.ternary.colon",
+                "A `?` takes two arms: `cond ? a : b`; ${EnglishUtils.prependIndefiniteArticle(peek().type.diagnosticsName())} follows the first.",
+                location = here(),
+                selectorLength = max(1, peek().content.length),
+                context = context
+            )
+        }
+        advancePointer()
+        val noAt = here()
+        val no = parseExpr(ternaryLevel)
+        for ((arm, at) in listOf(yes to yesAt, no to noAt)) {
+            if (arm is AssignmentExpr || arm is CompoundAssignmentExpr || arm is PlaceAssignmentExpr) {
+                Diagnostics.panic(
+                    "parse.ternary.arm",
+                    "An arm of `?:` is a value, not an assignment; write an if statement to assign in one branch.",
+                    location = at,
+                    selectorLength = 1,
+                    context = context
+                )
+            }
+        }
+        return TernaryExpr(condition, putOrigin(Statement(yes), yesAt), putOrigin(Statement(no), noAt))
     }
 
     /** `operand as Type`, with the pointer just past the `as` at [asAt]. */
@@ -1167,9 +1376,9 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         return expr
     }
 
-    /** `foo<T>(...)`, not a comparison: type arguments at the pointer, then `(`. */
+    /** `foo<T>(...)`, not a comparison: type arguments at the pointer, then `(`; no `:` (`c ? a < b : d > (e)`). */
     private fun looksLikeGenericCall(): Boolean =
-        typeArgumentsEnd(0)?.let { peek(it + 1).type == Token.Type.S_OPEN_PARENTHESIS } ?: false
+        typeArgumentsEnd(0)?.let { end -> peek(end + 1).type == Token.Type.S_OPEN_PARENTHESIS && (1 until end).none { peek(it).type == Token.Type.S_COLON } } ?: false
 
     /** The offset of the `>` closing the `<` at [start], when every token between can be part of a type argument. */
     private fun typeArgumentsEnd(start: Int): Int? {
@@ -1286,6 +1495,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 context = context
             )
             Token.Type.K_IF -> parseIfExpr()
+            Token.Type.K_TRY -> parseTryValue()
             Token.Type.K_THIS -> {
                 // A fresh node per use: the typed model keys nodes by identity.
                 val origin = here()
@@ -1371,6 +1581,15 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 expr
             }
 
+            // Loops stay statements (stage 3): their answer goes through a local.
+            Token.Type.K_WHILE, Token.Type.K_FOR -> Diagnostics.panic(
+                "parse.loop.value",
+                "A loop is a statement, not a value: put its answer in a `mut` local before the loop, assign it inside, then `break`.",
+                location = here(),
+                selectorLength = peek().content.length,
+                context = context
+            )
+
             else ->
                 Diagnostics.panic(
                     "KiraParser::parsePrimaryExpr",
@@ -1385,13 +1604,14 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
     /**
      * `if c { a } else { b }` in expression position (design 2.4). The else is
      * required, since the expression must have a value for both outcomes; an
-     * `else if` nests another [IfExpr] as the single else statement.
+     * `else if` nests another [IfExpr] as the single else statement. Each arm is a value
+     * arm ([valueTail]); a chain whose every arm is one expression is a ternary's ([DialectGates]).
      */
-    private fun parseIfExpr(): Expr {
+    private fun parseIfExpr(nested: Boolean = false): Expr {
         val origin = here()
         expectThenAdvance(Token.Type.K_IF)
         val condition = parseConditionHead()
-        val thenBranch = parseStatementBlock()
+        val thenBranch = valueTail(parseStatementBlock())
         if (!at(Token.Type.K_ELSE)) {
             Diagnostics.panic(
                 "KiraParser::parseIfExpr",
@@ -1405,11 +1625,29 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         advancePointer()
         val elseBranch = if (at(Token.Type.K_IF)) {
             val nestedOrigin = here()
-            listOf(putOrigin(Statement(parseIfExpr()), nestedOrigin))
+            listOf(putOrigin(Statement(parseIfExpr(nested = true)), nestedOrigin))
         } else {
-            parseStatementBlock()
+            valueTail(parseStatementBlock())
         }
-        return putOrigin(IfExpr(condition, thenBranch, elseBranch), origin)
+        val e = putOrigin(IfExpr(condition, thenBranch, elseBranch), origin)
+        if (!nested && ternaryShaped(e)) refuseTernaryShapedIf(e)
+        return e
+    }
+
+    /** `try { a } on e: Str { b }` where a value goes: both blocks are value arms, and the `on` is required. */
+    private fun parseTryValue(): Expr {
+        val origin = here()
+        val e = (parseTryStatement().expr as TryExpr)
+        if (e.exceptionName == null) {
+            Diagnostics.panic(
+                "parse.try.value",
+                "A `try` used as a value needs its `on e: Str { ... }`: the value when the block throws.",
+                location = origin,
+                selectorLength = 3,
+                context = context
+            )
+        }
+        return tryValueOf(e)
     }
 
     /** `shapes.Impl {` or `shapes.Box<T> {` at the pointer, outside a bare condition head: a construction. */
@@ -1428,7 +1666,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         val origin = here()
         val params = parseFunctionDeclParameters()
         val returnType = parseType()
-        val body = parseStatementBlock()
+        val body = parseStatementBlock().let { if (isVoid(returnType)) it else bodyTail(it) }
         return putOrigin(LambdaExpr(putOrigin(FunctionDefExpr(returnType, params, body), origin)), origin)
     }
 
@@ -1680,7 +1918,8 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         }
         return when (peek(1).type) {
             Token.Type.S_EQUAL -> parseAssignmentExpr()
-            Token.Type.S_COLON -> parseDeclaration(modifier)
+            // In a `?:`'s first arm, `a :` ends the arm (`c ? a : b`).
+            Token.Type.S_COLON -> if (ternaryThen > 0) parseIdentifier() else parseDeclaration(modifier)
             else -> parseIdentifier()
         }
     }
