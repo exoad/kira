@@ -12,6 +12,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import java.util.IdentityHashMap
@@ -77,6 +78,15 @@ data class WithInfo(
     val copy: Boolean,
     val reinit: Boolean,
 )
+
+/**
+ * `value == Identity`: [always] when the types decide it, else a run-time test, that the object is [subtype]
+ * (a class or trait; an empty Maybe is none) or, with none, that a Maybe holds a value; [narrowed] is what passing makes it.
+ */
+data class Conformance(val value: KType, val always: Boolean, val subtype: Symbol?, val narrowed: KType?)
+
+/** A read of a local or parameter that a passing conformance test narrowed from [from] to [to]. */
+data class Narrowing(val from: KType, val to: KType)
 
 /**
  * Purity (EffectsPass), ordered: what evaluating an expression (or calling a function) does
@@ -229,6 +239,12 @@ class TypedModel {
 
     /** What each stage 1 `[...]` literal ([Builder.INFER]) was typed as: a List or an Arr (kira-dialect reads it). */
     val inferred: IdentityHashMap<BuilderExpr, Builder> = IdentityHashMap()
+
+    /** Each conformance test, `value == Identity` (stage 3), keyed by its node. */
+    val conformances: IdentityHashMap<TypeCheckExpr, Conformance> = IdentityHashMap()
+
+    /** Each read of a local or parameter that a conformance test around it narrowed. */
+    val narrowings: IdentityHashMap<Identifier, Narrowing> = IdentityHashMap()
 
     /** The classes some `with` copies. */
     val withCopied: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())

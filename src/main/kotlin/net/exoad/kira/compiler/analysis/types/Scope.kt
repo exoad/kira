@@ -41,6 +41,9 @@ internal class LambdaFrame(val lambda: LambdaExpr, val parent: LambdaFrame?, val
 internal class Scope private constructor(val parent: Scope?, val lambda: LambdaFrame?, val with: WithFrame? = null) {
     private val names = LinkedHashMap<String, Symbol>()
 
+    /** The locals and parameters a passing conformance test narrowed here, by symbol identity. */
+    private val narrowed = java.util.IdentityHashMap<Symbol, KType>()
+
     /** A name found by [find]: the symbol, and the lambda whose body declared it (null: none). */
     data class Found(val symbol: Symbol, val declaredIn: LambdaFrame?)
 
@@ -51,6 +54,21 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
         var s: Scope? = this
         while (s != null) {
             s.names[name]?.let { return Found(it, s.lambda) }
+            s = s.parent
+        }
+        return null
+    }
+
+    /** [sym] reads as [type] from here on in this scope (a conformance test passed). */
+    fun narrow(sym: Symbol, type: KType) {
+        narrowed[sym] = type
+    }
+
+    /** The type the innermost narrowing gives [sym], or null. */
+    fun narrowing(sym: Symbol): KType? {
+        var s: Scope? = this
+        while (s != null) {
+            s.narrowed[sym]?.let { return it }
             s = s.parent
         }
         return null

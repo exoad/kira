@@ -153,7 +153,6 @@ class LexerSuiteTest {
             "pub" to Token.Type.K_MODIFIER_PUBLIC,
             "for" to Token.Type.K_FOR,
             "as" to Token.Type.K_AS,
-            "is" to Token.Type.K_IS,
             "break" to Token.Type.K_BREAK,
             "continue" to Token.Type.K_CONTINUE,
             "with" to Token.Type.K_WITH,
@@ -166,7 +165,7 @@ class LexerSuiteTest {
             assertLexes(word, type to word)
         }
         // The words the clean dialect removed are names.
-        for (word in listOf("do", "require", "class", "struct", "module", "use", "enum", "fx", "trait", "variant", "alias", "finally")) {
+        for (word in listOf("do", "require", "class", "struct", "module", "use", "enum", "fx", "trait", "variant", "alias", "finally", "is")) {
             assertLexes(word, Token.Type.IDENTIFIER to word)
         }
     }

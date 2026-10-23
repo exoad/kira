@@ -489,7 +489,7 @@ object KiraUnparser {
         is BinaryExpr -> e.operator.precedence
         is UnaryExpr -> e.operator.precedence
         is TypeCastExpr -> CAST
-        is TypeCheckExpr -> BinaryOp.TYPE_CHECK.precedence
+        is TypeCheckExpr -> BinaryOp.EQUALS.precedence
         is RangeExpr -> BinaryOp.RANGE.precedence
         else -> POSTFIX
     }
@@ -537,7 +537,7 @@ object KiraUnparser {
             wrap("${e.operator.symbol.rep}${expr(e.operand, p + 1)}", p, parent)
         }
         is TypeCastExpr -> wrap("${expr(e.value, CAST)} as ${type(e.type)}", CAST, parent)
-        is TypeCheckExpr -> wrap("${expr(e.value, 9)} is ${type(e.type)}", 9, parent)
+        is TypeCheckExpr -> wrap("${expr(e.value, 8)} ${if (e.negated) "!=" else "=="} ${type(e.type)}", 8, parent)
         is RangeExpr -> wrap("${expr(e.begin, 15)}..${expr(e.end, 15)}", 14, parent)
         is FunctionCallExpr -> {
             val targs = if (e.typeArguments.isEmpty()) "" else e.typeArguments.joinToString(", ", "<", ">") { type(it) }

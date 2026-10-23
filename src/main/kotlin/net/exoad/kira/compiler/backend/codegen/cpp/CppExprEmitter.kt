@@ -16,6 +16,7 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.MemberRef
+import net.exoad.kira.compiler.analysis.types.Narrowing
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.Prim
@@ -48,6 +49,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentEx
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
@@ -354,6 +356,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is BinaryExpr -> binary(e)
             is UnaryExpr -> unary(e)
             is TypeCastExpr -> cast(e)
+            is TypeCheckExpr -> conformance(e)
             is IfExpr -> ifExpr(e)
             is LambdaExpr -> CppEx(ctx.lambda(e, CppPrec.NONE), CppPrec.PRIMARY)
             is AssignmentExpr -> assignment(e.target, e.value, e)
@@ -460,7 +463,49 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun identifier(id: Identifier): CppEx {
         val sym = model.symbolOf(id) ?: return internal(id, "no symbol was recorded for '${id.value}'")
-        return CppEx(nameOfSymbol(sym, id) ?: return internal(id, "'${id.value}' names ${sym.javaClass.simpleName}, which is not a value"), CppPrec.PRIMARY)
+        val name = nameOfSymbol(sym, id) ?: return internal(id, "'${id.value}' names ${sym.javaClass.simpleName}, which is not a value")
+        return model.narrowings[id]?.let { narrowedRead(name, it) } ?: CppEx(name, CppPrec.PRIMARY)
+    }
+
+    /** A narrowed read (stage 3): the value a Maybe holds, or the object as the class or trait a test proved. */
+    private fun narrowedRead(name: String, n: Narrowing): CppEx {
+        val from = n.from as? KType.Nominal
+        if (from?.sym?.name == "Maybe" && from.typeArgs().firstOrNull() == n.to) {
+            return CppEx("kira::unwrap($name)", CppPrec.POSTFIX)
+        }
+        val sym = (n.to as KType.Nominal).sym as Symbol
+        return CppEx("std::dynamic_pointer_cast<${ctx.qualified(sym)}>($name)", CppPrec.POSTFIX)
+    }
+
+    /** `value == Identity` (stage 3): a constant the types decided, kira::isSome of a Maybe, or a dynamic_cast. */
+    private fun conformance(e: TypeCheckExpr): CppEx {
+        val v = model.conformances[e] ?: return internal(e, "no conformance was recorded")
+        val value = coerced(e.value)
+        val test = when {
+            v.always -> {
+                // The value is still evaluated unless it is a name.
+                val k = (!e.negated).toString()
+                return if (e.value is Identifier || e.value is ThisExpr) CppEx(k, CppPrec.PRIMARY)
+                else CppEx("(static_cast<void>(${value.text}), $k)", CppPrec.PRIMARY)
+            }
+            v.subtype != null && freestanding -> return unsupported(e, "a run-time type test in a freestanding module (no RTTI)")
+            v.subtype != null && !polymorphic(v.value) ->
+                return unsupported(e, "a run-time type test on ${v.value.display()} (a C++ class without virtual methods)")
+            v.subtype != null -> CppEx("(dynamic_cast<const ${ctx.qualified(v.subtype)}*>(${wrap(value, CppPrec.POSTFIX)}.get()) != nullptr)", CppPrec.PRIMARY)
+            else -> CppEx("kira::isSome(${value.text})", CppPrec.POSTFIX)
+        }
+        return if (e.negated) CppEx("!${wrap(test, CppPrec.UNARY)}", CppPrec.UNARY) else test
+    }
+
+    /** C++ gives [t] (or the class its Maybe holds) a vtable: a trait, or a trait or virtual method up a class's chain. */
+    private fun polymorphic(t: KType): Boolean {
+        val held = (t as? KType.Nominal)?.takeIf { it.sym.name == "Maybe" }?.typeArgs()?.firstOrNull() ?: t
+        val sym = (held as? KType.Nominal)?.sym
+        var c = sym as? ClassSymbol ?: return sym is TraitSymbol
+        while (true) {
+            if (c.traits.isNotEmpty() || c.methods.any { it.isVirtual }) return true
+            c = c.superclass?.sym as? ClassSymbol ?: return false
+        }
     }
 
     /** The C++ text that names the value [sym] from the body being written. */

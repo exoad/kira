@@ -20,6 +20,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
@@ -532,20 +533,27 @@ internal class StmtChecker(private val c: PhaseC) {
             is ReturnStatement -> returnStatement(s, ctx, scope)
             is IfSelectionStatement -> {
                 c.exprs.check(s.expr, KType.BOOL, ctx, scope, "an if condition")
-                block(s.thenStatements, ctx, scope.child())
+                block(s.thenStatements, ctx, c.conforms.into(scope.child(), s.expr, true))
+                // Each later branch sees what the conditions before it failing proves.
+                var rest = c.conforms.into(scope.child(), s.expr, false)
                 for (b in s.elseBranches) {
                     when (b) {
                         is ElseIfBranchStatement -> {
-                            c.exprs.check(b.condition, KType.BOOL, ctx, scope, "an else-if condition")
-                            block(b.statements, ctx, scope.child())
+                            c.exprs.check(b.condition, KType.BOOL, ctx, rest, "an else-if condition")
+                            block(b.statements, ctx, c.conforms.into(rest.child(), b.condition, true))
+                            rest = c.conforms.into(rest.child(), b.condition, false)
                         }
-                        is ElseBranchStatement -> block(b.statements, ctx, scope.child())
+                        is ElseBranchStatement -> block(b.statements, ctx, rest.child())
                     }
+                }
+                // An if that always leaves its block: what its failing proves holds after it.
+                if (s.elseBranches.isEmpty() && leaves(s.thenStatements)) {
+                    c.conforms.into(scope, s.expr, false)
                 }
             }
             is WhileIterationStatement -> {
                 c.exprs.check(s.condition, KType.BOOL, ctx, scope, "a while condition")
-                loopBody(s.statements, ctx, scope.child())
+                loopBody(s.statements, ctx, c.conforms.into(scope.child(), s.condition, true))
             }
             is ForIterationStatement -> forLoop(s, ctx, scope)
             is BreakStatement, is ContinueStatement -> {
@@ -561,6 +569,13 @@ internal class StmtChecker(private val c: PhaseC) {
             is UseStatement -> c.report("types.use.position", "A use statement goes at the top of a module.", s)
             else -> expressionStatement(s.expr, ctx, scope)
         }
+    }
+
+    /** [statements] end in a return, a throw, a break or a continue: control never runs past them. */
+    private fun leaves(statements: List<Statement>): Boolean = when (val last = statements.lastOrNull()) {
+        null -> false
+        is ReturnStatement, is BreakStatement, is ContinueStatement -> true
+        else -> last.javaClass == Statement::class.java && last.expr is ThrowExpr
     }
 
     private fun loopBody(statements: List<Statement>, ctx: BodyContext, scope: Scope) {

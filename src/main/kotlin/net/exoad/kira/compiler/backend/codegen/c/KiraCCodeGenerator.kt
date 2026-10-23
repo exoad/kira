@@ -3012,9 +3012,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
-        buffer.append("/* type-check */(")
-        typeCheckExpr.value.accept(this)
-        buffer.append(")")
+        throw UnsupportedConstruct(typeCheckExpr, "a conformance test 'x == T'", TARGET_NAME)
     }
 
     override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {
