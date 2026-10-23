@@ -1,0 +1,175 @@
+// Stage 3's expressions: a block's last expression is its value, `if` and `try` give values, `c ? a : b`.
+// py only: C++ does not lower a try used as a value.
+
+mut calls: Int32 = 0
+
+Box: Struct {
+    pub w: Int32
+    pub h: Int32
+}
+
+show: (b: Box) Str {
+    "${b.w}x${b.h}"
+}
+
+// An early return still leaves first; the last expression is the result.
+clamp: (x: Int32, hi: Int32) Int32 {
+    if x > hi {
+        return hi
+    }
+    x < 0 ? 0 : x
+}
+
+// A last if/else: each arm's last expression is the result.
+sign: (x: Int32) Str {
+    if x < 0 {
+        "neg"
+    } else if x == 0 {
+        z: Str = "zero"
+        z
+    } else {
+        "pos"
+    }
+}
+
+parse: (s: Str) Int32 {
+    if s == "" {
+        throw "empty"
+    }
+    s.size() as Int32
+}
+
+// A last try: the block's value, or the handler's.
+safeSize: (s: Str) Int32 {
+    try {
+        parse(s)
+    } on e: Str {
+        -1
+    }
+}
+
+// An if value whose arms need statements, writing a local of the function.
+bucket: (x: Int32) Str {
+    mut seen: Int32 = 0
+    label: Str = if x > 10 {
+        seen = x - 10
+        "big+${seen}"
+    } else {
+        seen = 10 - x
+        "small-${seen}"
+    }
+    "${label} ${seen}"
+}
+
+// Try values inside a larger expression.
+sizes: (a: Str, b: Str) Int32 {
+    n: Int32 = try {
+        parse(a)
+    } on e: Str {
+        0
+    }
+    n * 10 + (try {
+        parse(b)
+    } on err: Str {
+        9
+    })
+}
+
+// Prints its tag, so the output shows the order the calls run in.
+say: (tag: Str, v: Int32) Int32 {
+    print(tag)
+    v
+}
+
+// Operands run left to right, an arm's statements in its operand's turn.
+order: (c: Bool) Int32 {
+    say("a", 1) + (if c {
+        say("b", 0)
+        say("c", 2)
+    } else {
+        say("d", 3)
+    }) + say("e", 4)
+}
+
+// A lambda's last expression is its result.
+twice: (x: Int32) Int32 {
+    f: (n: Int32) Int32 = (n: Int32) Int32 {
+        m: Int32 = n * 2
+        m
+    }
+    f(x)
+}
+
+grade: (n: Int32) Str {
+    n >= 90 ? "A" : n >= 80 ? "B" : "C"
+}
+
+// A loop inside an arm; a nested if as an arm's last expression.
+total: (upTo: Int32, enabled: Bool) Int32 {
+    v: Int32 = if enabled {
+        mut s: Int32 = 0
+        for i: Int32 in 0..upTo {
+            s += i
+        }
+        if s > 5 {
+            s * 100
+        } else {
+            s
+        }
+    } else {
+        -1
+    }
+    v
+}
+
+// A module's state written in an arm.
+counted: (x: Int32) Int32 {
+    v: Int32 = if x > 0 {
+        calls += 1
+        x
+    } else {
+        0
+    }
+    v
+}
+
+// A `with` as an arm's value, in a last if and in an if value.
+widen: (b: Box, wide: Bool) Box {
+    if wide {
+        b with {
+            w = w * 2
+        }
+    } else {
+        b
+    }
+}
+
+taller: (b: Box, tall: Bool) Str {
+    r: Box = if tall {
+        t: Box = b with {
+            h = h + 5
+        }
+        t
+    } else {
+        b
+    }
+    "${show(r)} ${show(b)}"
+}
+
+main: () Void {
+    println("${clamp(-3, 10)} ${clamp(4, 10)} ${clamp(12, 10)}")
+    println("${sign(-2)} ${sign(0)} ${sign(7)}")
+    println("${safeSize("abc")} ${safeSize("")}")
+    println("${bucket(14)} ${bucket(3)}")
+    println("${sizes("ab", "xyz")} ${sizes("", "")}")
+    println(" ${order(true)}")
+    println(" ${order(false)}")
+    println("${twice(21)} ${grade(95)}${grade(85)}${grade(10)}")
+    println("${total(3, true)} ${total(4, true)} ${total(4, false)}")
+    println("${counted(5)} ${counted(-1)} ${counted(2)} ${calls}")
+    b: Box = Box { 2, 3 }
+    println("${show(widen(b, true))} ${show(widen(b, false))}")
+    println(taller(b, true))
+    mode: Str = calls > 1 ? "many" : "few"
+    println(mode)
+}
