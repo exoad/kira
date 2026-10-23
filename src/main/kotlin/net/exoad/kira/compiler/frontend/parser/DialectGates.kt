@@ -9,6 +9,10 @@ object DialectGates {
     @Volatile
     var ternaryOnly: Boolean = false
 
+    /** `return` is refused: a block's last expression is its value. kira-dialect's reading of old text keeps it. */
+    @Volatile
+    var noReturn: Boolean = false
+
     /** [block] with [ternaryOnly] set to [on], restored after. */
     fun <T> ternaryOnly(on: Boolean, block: () -> T): T {
         val saved = ternaryOnly
@@ -17,6 +21,17 @@ object DialectGates {
             return block()
         } finally {
             ternaryOnly = saved
+        }
+    }
+
+    /** [block] with both of stage 3's refusals set to [on], restored after. */
+    fun <T> stage3(on: Boolean, block: () -> T): T {
+        val saved = noReturn
+        noReturn = on
+        try {
+            return ternaryOnly(on, block)
+        } finally {
+            noReturn = saved
         }
     }
 }

@@ -29,8 +29,10 @@ import kotlin.properties.Delegates
  *
  * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals it parses as
  * [Builder.INFER] builders, and stage 2's `x is T`; the clean dialect refuses both.
+ * [returns]: kira-dialect reads stage 2's text, its `return`s and its if values of one
+ * expression an arm, which the clean dialect refuses.
  */
-class KiraParser(private val context: SourceContext, private val literals: Boolean = false) {
+class KiraParser(private val context: SourceContext, private val literals: Boolean = false, private val returns: Boolean = literals) {
     private val buffer = TokenBuffer(context.tokens)
 
     init {
@@ -491,7 +493,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
 
     /** The refusal of an `if` value that is a ternary's shape, once [DialectGates.ternaryOnly] is on. */
     private fun refuseTernaryShapedIf(at: ASTNode) {
-        if (!DialectGates.ternaryOnly) return
+        if (!DialectGates.ternaryOnly || returns) return
         Diagnostics.panic(
             "parse.if.ternary",
             "An `if` whose value is one expression per arm is written `c ? a : b`; `if` as a value is for arms that need statements.",
@@ -1072,6 +1074,16 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
     fun parseReturnStatement(): Statement // y dont they just call it a return expr? lol beats me tho, just another way to represent an astnode
     {
         val origin = here()
+        // Stage 3: a block's last expression is its value; only kira-dialect's reading of old text keeps `return`.
+        if (!returns && DialectGates.noReturn) {
+            Diagnostics.panic(
+                "parse.removed",
+                "'return' is not part of Kira any more: a block's last expression is its value (`if c { a } else { b }`, `c ? a : b`); a loop's answer goes in a `mut` local, then `break`.",
+                location = origin,
+                selectorLength = 6,
+                context = context
+            )
+        }
         expectThenAdvance(Token.Type.K_RETURN)
         // A bare `return` (Void functions) carries NoExpr. Newlines are not
         // tokens, so "bare" means the next token closes the statement: `}`,

@@ -128,13 +128,14 @@ class ConformanceTest {
             val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
             val body = "f: (s: Shape) Bool {\n    // s is Circle, said a comment\n    t: Str = \"it is so\"\n    return s is Circle && !(s is Pt)\n}\n"
             file.writeText("$types\n\n$body")
-            val untouched = File(dir, "src/app/other.kira").apply { writeText("g: () Int32 {\n    return 1\n}\n") }
+            val untouched = File(dir, "src/app/other.kira").apply { writeText("g: () Int32 {\n    1\n}\n") }
             assertEquals(1, Stage3.convertAll(listOf(dir.path), check = true), "--check sees the change")
             assertEquals(0, Stage3.convertAll(listOf(dir.path), check = false))
             val text = file.readText()
-            assertTrue(text.contains("    return s == Circle && !(s == Pt)\n"), text)
+            // And, stage 3's returns going with it, the last return is the body's value.
+            assertTrue(text.contains("    s == Circle && !(s == Pt)\n") && !text.contains("return"), text)
             assertTrue(text.contains("// s is Circle, said a comment") && text.contains("\"it is so\""), text)
-            assertEquals("g: () Int32 {\n    return 1\n}\n", untouched.readText())
+            assertEquals("g: () Int32 {\n    1\n}\n", untouched.readText())
             assertEquals(0, Stage3.convertAll(listOf(dir.path), check = true), "a converted file converts to itself")
         } finally {
             dir.deleteRecursively()
