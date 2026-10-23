@@ -61,6 +61,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
@@ -1195,6 +1196,7 @@ class PyModuleEmitter(
             is BinaryExpr -> binary(e, f)
             is UnaryExpr -> unary(e, f)
             is TypeCastExpr -> cast(e, f)
+            is TypeCheckExpr -> conformance(e, f)
             is IfExpr -> if (statementArms(e)) valueFn(e, f) else ternary(e, f)
             is TryExpr -> if (e.isValue) valueFn(e, f) else refusePy(e, "a try statement used as a value")
             is BuilderExpr -> builder(e, f)
@@ -1797,6 +1799,22 @@ class PyModuleEmitter(
             }
             else -> refusePy(e, "the operator ${spelled(op)}")
         }
+    }
+
+    /** `value == Identity` (stage 3): a constant the types decided, `isinstance`, or a Maybe's `is not None`. */
+    private fun conformance(e: TypeCheckExpr, f: Frame): Py {
+        val v = model.conformances[e] ?: return refusePy(e, "a conformance test the typer did not decide")
+        val value = expr(e.value, f)
+        if (v.always) {
+            // The value is still evaluated unless it is a name.
+            val k = if (e.negated) "False" else "True"
+            return if (e.value is Identifier || e.value is ThisExpr) Py(k, PyPrec.ATOM) else Py("(${wrap(value, PyPrec.TERNARY)}, $k)[1]", PyPrec.POSTFIX)
+        }
+        v.subtype?.let { sub ->
+            val test = Py("isinstance(${wrap(value, PyPrec.TERNARY)}, ${ref(sub, e) ?: "None"})", PyPrec.POSTFIX)
+            return if (e.negated) Py("not ${wrap(test, PyPrec.NOT)}", PyPrec.NOT) else test
+        }
+        return Py("${wrap(value, PyPrec.CMP + 1)} ${if (e.negated) "is" else "is not"} None", PyPrec.CMP)
     }
 
     /** A comparison of numbers, Bools or Strs, or `==` and `!=` of two structs (their `__eq__`, C++'s defaulted operator==). */

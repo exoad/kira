@@ -110,7 +110,7 @@ udp: (t: Suite) Void {
     t.check(d.isSome() && d.value.size == 5, "recvFrom returns the datagram's size")
     t.checkStr(text(buf, 5), "hello", "and its bytes")
     t.checkStr(d.value.host, "127.0.0.1", "and the sender's host")
-    t.check(d.value.port == pa && d.value == Datagram { 5, "127.0.0.1", pa }, "and the sender's port, a Datagram compared by field")
+    t.check(d.value.port == pa && d.value == (Datagram { 5, "127.0.0.1", pa }), "and the sender's port, a Datagram compared by field")
     t.check(a.sendTo("x".bytes(), "not-a-host", pb) == -1 && lastError() == "address: not a numeric IPv4 host", "sendTo a name is -1: hosts are numeric")
     t.check(b.recvFrom(buf.from(0)).isNone() && lastError() == "", "a quiet recvFrom after that error is none with lastError cleared")
     t.check(!UdpSocket {}.bind("127.0.0.1", 70000) && lastError() == "address: port out of range", "a port past 65535 is refused")

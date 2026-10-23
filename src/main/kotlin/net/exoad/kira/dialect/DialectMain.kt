@@ -22,7 +22,7 @@ import kotlin.system.exitProcess
  * the clean one, in place, each proved by its tree; `kt [--check] PATH...` does the same for the
  * Kira in Kotlin string literals (`--force-wrong`: also the old Kira a test means to be wrong, by
  * its words; `kt --stage2`: stage 1's Kira in them to stage 2's); `stage2 [--check] PATH...` takes
- * stage 1's text to stage 2's ([Stage2]). `--check`
+ * stage 1's text to stage 2's ([Stage2]), `stage3` stage 2's to stage 3's ([Stage3]). `--check`
  * writes nothing and exits 1 when anything would change or cannot be converted.
  */
 object DialectMain {
@@ -38,8 +38,8 @@ object DialectMain {
             println(if (nc == null) "NEW-PARSE: $err" else "parsed")
             return
         }
-        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2")) {
-            println("usage: kira-dialect convert|kt|yaml|stage2 [--check] PATH...")
+        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2", "stage3")) {
+            println("usage: kira-dialect convert|kt|yaml|stage2|stage3 [--check] PATH...")
             exitProcess(2)
         }
         val check = "--check" in args
@@ -50,6 +50,7 @@ object DialectMain {
             "convert" -> convertKira(paths, check)
             "yaml" -> YamlGlobs.convertAll(paths, check)
             "stage2" -> Stage2.convertAll(paths, check)
+            "stage3" -> Stage3.convertAll(paths, check)
             else -> KotlinStrings.convertAll(paths, check, stage2)
         }
         exitProcess(code)

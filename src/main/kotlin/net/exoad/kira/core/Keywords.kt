@@ -8,7 +8,8 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 object Keywords {
     /**
      * The clean dialect's keywords. `mut` and `return` stay until their stages; the kind words
-     * (class, trait, struct, fx, module, use, alias, require, enum, variant, do, finally) are gone.
+     * (class, trait, struct, fx, module, use, alias, require, enum, variant, do, finally) are gone,
+     * and `is` (a type test is `x == T`).
      */
     val reserved = mapOf(
         "if" to Token.Type.K_IF,
@@ -19,7 +20,6 @@ object Keywords {
         "pub" to Token.Type.K_MODIFIER_PUBLIC,
         "for" to Token.Type.K_FOR,
         "as" to Token.Type.K_AS,
-        "is" to Token.Type.K_IS,
         "break" to Token.Type.K_BREAK,
         "continue" to Token.Type.K_CONTINUE,
         "with" to Token.Type.K_WITH,

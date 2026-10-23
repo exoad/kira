@@ -2990,7 +2990,7 @@ class PyEmitterTest {
                 xs: List<Ready> = @listOf(r)
                 ys: List<Ready> = xs
                 s: Seen = Seen { }
-                return e == d && ys[0] != r && s.last == Datagram { host = "h" }
+                return e == d && ys[0] != r && s.last == (Datagram { host = "h" })
             }
             """
         )

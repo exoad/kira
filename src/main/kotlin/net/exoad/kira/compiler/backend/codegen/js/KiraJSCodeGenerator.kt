@@ -1381,10 +1381,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
-        // Runtime type checks are meaningless in untyped JS; keep the value.
-        buffer.append("(")
-        typeCheckExpr.value.accept(this)
-        buffer.append(")")
+        throw UnsupportedConstruct(typeCheckExpr, "a conformance test 'x == T'", TARGET_NAME)
     }
 
     override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {

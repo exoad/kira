@@ -59,11 +59,11 @@ class FrontendServiceTest {
                 overlays = mapOf(main.toAbsolutePath().normalize().toString() to broken)
             )
             assertFalse(result.isOk, "expected diagnostics for broken overlay")
-            // The overlay's own parse error: its trailing `!!!` finds no operand before the `}`.
+            // The overlay's own parse error: its `is` is no operator any more (`x == T` is the type test).
             assertTrue(
                 result.diagnostics.any {
-                    it.tag == "KiraParser::parsePrimaryExpr" && it.file.endsWith("main.kira") && it.start.lineNumber == 3 &&
-                        it.message.contains("'}' (Closing Brace) is not allowed here")
+                    it.tag == "parse.removed" && it.file.endsWith("main.kira") && it.start.lineNumber == 2 &&
+                        it.message.contains("'is' is not part of Kira any more")
                 },
                 result.diagnostics.toString(),
             )

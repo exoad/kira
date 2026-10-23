@@ -28,7 +28,7 @@ import kotlin.properties.Delegates
  * valid grammar.
  *
  * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals it parses as
- * [Builder.INFER] builders; the clean dialect refuses them.
+ * [Builder.INFER] builders, and stage 2's `x is T`; the clean dialect refuses both.
  */
 class KiraParser(private val context: SourceContext, private val literals: Boolean = false) {
     private val buffer = TokenBuffer(context.tokens)
@@ -916,7 +916,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
     }
 
     /** `(a: T, mut b: U) R` in a type position: the function type `Fx<Tuple2<T, mut U>, R>`. */
-    private fun parseFunctionType(): Type {
+    private fun parseFunctionType(namesOptional: Boolean = false): Type {
         val at = here()
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
         val args = mutableListOf<Type>()
@@ -926,8 +926,11 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             }
             val isMut = at(Token.Type.K_MODIFIER_MUTABLE)
             if (isMut) advancePointer()
-            parseIdentifier()
-            expectThenAdvance(Token.Type.S_COLON)
+            // A function shape after `==` may leave its parameters unnamed: `(Int32) Int32`.
+            if (!namesOptional || peek(1).type == Token.Type.S_COLON) {
+                parseIdentifier()
+                expectThenAdvance(Token.Type.S_COLON)
+            }
             val t = parseType()
             args += if (isMut) putOrigin(Type(t.identifier, t.constraint, t.children, true), context.astOrigins[t] ?: at) else t
         }
@@ -1194,7 +1197,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             }
         }
         while (true) {
-            val binOpTokens = tryBinaryOps() ?: arrayOf(peek().type)
+            val binOpTokens = tryBinaryOps() ?: arrayOf(removedIs() ?: peek().type)
             val binaryOpType = BinaryOp.byTokenTypeMaybe(binOpTokens)
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
@@ -1206,6 +1209,10 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             // the following binary operators require special parsing of the right hand side so they are put before the others
             if (binaryOpType == BinaryOp.TYPE_CHECK) {
                 left = putOrigin(TypeCheckExpr(left, parseType()), origin)
+                continue
+            }
+            if ((binaryOpType == BinaryOp.EQUALS || binaryOpType == BinaryOp.NOT_EQUAL) && startsIdentity()) {
+                left = putOrigin(TypeCheckExpr(left, parseIdentity(), binaryOpType == BinaryOp.NOT_EQUAL), origin)
                 continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
@@ -1295,6 +1302,65 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             )
         }
         return putOrigin(TypeCastExpr(operand, parseType()), origin)
+    }
+
+    /** `x is T` at the pointer: K_IS for kira-dialect's older text ([literals]), else refused. */
+    private fun removedIs(): Token.Type? {
+        if (!at(Token.Type.IDENTIFIER) || peek().content != "is") return null
+        if (peek(1).type != Token.Type.IDENTIFIER && peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return null
+        if (literals) return Token.Type.K_IS
+        Diagnostics.panic(
+            "parse.removed",
+            "'is' is not part of Kira any more: a type test is 'x == T', and 'x != T' its negation.",
+            location = here(),
+            selectorLength = 2,
+            context = context
+        )
+    }
+
+    /** Types are PascalCase with a lowercase letter; UPPER_SNAKE (and one capital) are values (the split-case rule). */
+    private fun isIdentitySpelling(name: String): Boolean =
+        name.firstOrNull()?.isUpperCase() == true && name.any { it.isLowerCase() } && !name.contains(Symbols.UNDERSCORE.rep)
+
+    /**
+     * After `==` or `!=`: an identity, by its spelling, so the test is a conformance test and no
+     * equality: `Circle`, `Box<Int32>`, `shapes.Circle`, or a function shape `(Int32) Int32`.
+     * `Str.of(b)` and `Circle(...)` stay values.
+     */
+    private fun startsIdentity(): Boolean = when (peek().type) {
+        Token.Type.IDENTIFIER -> {
+            val name = peek().content
+            val open = setOf(Token.Type.S_DOT, Token.Type.S_OPEN_PARENTHESIS)
+            when {
+                isIdentitySpelling(name) -> peek(1).type !in open
+                name.first().isLowerCase() -> peek(1).type == Token.Type.S_DOT && peek(2).type == Token.Type.IDENTIFIER &&
+                    isIdentitySpelling(peek(2).content) && peek(3).type !in open
+                else -> false
+            }
+        }
+        Token.Type.S_OPEN_PARENTHESIS -> when (peek(1).type) {
+            Token.Type.S_CLOSE_PARENTHESIS, Token.Type.K_MODIFIER_MUTABLE -> true
+            Token.Type.IDENTIFIER -> peek(2).type == Token.Type.S_COLON || (isIdentitySpelling(peek(1).content) &&
+                peek(2).type in setOf(Token.Type.S_COMMA, Token.Type.S_CLOSE_PARENTHESIS, Token.Type.S_OPEN_ANGLE))
+            else -> false
+        }
+        else -> false
+    }
+
+    /** The identity [startsIdentity] saw; a test block after it (`x == T { f == v }`) is stage 3b's. */
+    private fun parseIdentity(): Type {
+        val type = if (at(Token.Type.S_OPEN_PARENTHESIS)) parseFunctionType(namesOptional = true) else parseType()
+        if (at(Token.Type.S_OPEN_BRACE) && !noObjectInit) {
+            Diagnostics.panic(
+                "parse.conform.block",
+                "A test block, 'x == T { field == value }', is not part of Kira yet (stage 3b). " +
+                    "To compare with a value you build, put it in parentheses: 'x == (T { ... })'.",
+                location = here(),
+                selectorLength = 1,
+                context = context
+            )
+        }
+        return type
     }
 
     /**

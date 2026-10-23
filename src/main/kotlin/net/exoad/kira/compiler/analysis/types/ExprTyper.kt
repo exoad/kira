@@ -60,6 +60,7 @@ internal class PhaseC(val program: TypedProgram) {
     val stmts = StmtChecker(this)
     val withs = WithTyper(this)
     val builders = BuilderTyper(this)
+    val conforms = ConformanceTyper(this)
     val bindings = MagicBindings()
 
     /** The lambda whose body declares each local or parameter (absent: declared outside every lambda). */
@@ -241,11 +242,7 @@ internal class ExprTyper(private val c: PhaseC) {
             )
             KType.Error
         }
-        is TypeCheckExpr -> {
-            synth(e.value, ctx, scope)
-            c.report("types.is.unsupported", "`is` needs run-time type information, which is deferred (D43).", e)
-            KType.Error
-        }
+        is TypeCheckExpr -> c.conforms.test(e, ctx, scope)
         is WithExpr -> c.withs.with(e, hint, ctx, scope)
         NoExpr -> KType.Void
         is Type -> {
@@ -274,6 +271,10 @@ internal class ExprTyper(private val c: PhaseC) {
         return c.program.graph.lookup(ctx.module, id.value) { it is GlobalSymbol || it is FnSymbol } !is ModuleGraph.Lookup.Missing
     }
 
+    /** [declared], or what a conformance test around [id] narrowed [sym] to (recorded for the backends). */
+    private fun narrowed(id: Identifier, sym: Symbol, declared: KType, scope: Scope): KType =
+        scope.narrowing(sym)?.also { model.narrowings[id] = Narrowing(declared, it) } ?: declared
+
     /** A name in value position: a local, a field of the implicit receiver, a global, or a function. */
     fun identifier(id: Identifier, ctx: BodyContext, scope: Scope): KType {
         val name = id.value
@@ -284,11 +285,11 @@ internal class ExprTyper(private val c: PhaseC) {
             return when (sym) {
                 is LocalSymbol -> {
                     model.places[id] = Place.Local(sym)
-                    sym.type
+                    narrowed(id, sym, sym.type, scope)
                 }
                 is ParamSymbol -> {
                     model.places[id] = Place.Param(sym)
-                    sym.type
+                    narrowed(id, sym, sym.type, scope)
                 }
                 else -> KType.Error
             }
@@ -538,7 +539,8 @@ internal class ExprTyper(private val c: PhaseC) {
         return when (op) {
             BinaryOp.AND, BinaryOp.OR -> {
                 check(e.leftExpr, KType.BOOL, ctx, scope, "the left side of ${sym(op)}")
-                check(e.rightExpr, KType.BOOL, ctx, scope, "the right side of ${sym(op)}")
+                val right = c.conforms.into(scope.child(), e.leftExpr, op == BinaryOp.AND)
+                check(e.rightExpr, KType.BOOL, ctx, right, "the right side of ${sym(op)}")
                 KType.BOOL
             }
             in LiteralTyper.SHIFTS -> {
@@ -771,7 +773,7 @@ internal class ExprTyper(private val c: PhaseC) {
         var shape = true
         val branches = listOf(e.thenBranch, e.elseBranch).filter { it.isNotEmpty() }
         for (branch in branches) {
-            val inner = scope.child()
+            val inner = c.conforms.into(scope.child(), e.condition, branch === e.thenBranch)
             branch.dropLast(1).forEach { c.stmts.statement(it, ctx, inner) }
             val last = branch.last()
             val value = branchValue(last)

@@ -390,7 +390,7 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun parsesPostfixMemberIndexCallCastIs() {
+    fun parsesPostfixMemberIndexCallCastAndTypeTest() {
         parseModule(
             """
             main: () Void {
@@ -398,7 +398,7 @@ class ParserSuiteTest {
                 first: Int32 = values[0]
                 length: Int32 = values.size()
                 typed: Int32 = first as Int32
-                isArr: Bool = values is Arr<Int32>
+                isArr: Bool = values == Arr<Int32>
                 obj: Any = values
                 cast: Arr<Int32> = obj as Arr<Int32>
             }
