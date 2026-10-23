@@ -744,7 +744,7 @@ class ParserGrowthTest {
                 "    c: Str = \"plain\"",
                 "    d: Str = \"cost \\\$5 and \\\${not a hole}\"",
                 "    e: Str = \"\${(f > 0.0 ? \"pos\" : \"neg\")}!\"",
-                "    return a",
+                "    a",
                 "}",
             ).joinToString("\n")
         )
@@ -827,6 +827,17 @@ class ParserGrowthTest {
             assertTrue(message.contains(construct), "'$message' should name $construct")
             assertTrue(message.contains("C backend"), "'$message' should name the C target")
         }
+    }
+
+    @Test
+    fun aReturnedTernaryIsTheIfElseOfReturnsOnCAndJs() {
+        // A body's last `c ? a : d ? b : e` (kira-dialect writes one for each if/else of returns), and nothing else of an if value.
+        val src = "f: (a: Int32) Int32 { a < 0 ? -1 : a > 0 ? 1 : 0 }"
+        val c = emitC(src)
+        assertTrue(c.contains("if((a < 0))") && c.contains("else if((a > 0))") && c.contains("return 0;"), c)
+        val js = emitJS(src)
+        assertTrue(js.contains("a < 0") && js.contains("a > 0") && js.contains("return -1;") && js.contains("return 0;"), js)
+        assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
     }
 
     @Test

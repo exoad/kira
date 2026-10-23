@@ -627,9 +627,8 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun parsesBareReturn() {
-        val ast = parseModule(
-            """
+    fun aReturnIsRefusedButOldTextStillReadsABareOne() {
+        val src = """
             stop: (n: Int32) Void {
                 if n < 0 {
                     return
@@ -638,7 +637,10 @@ class ParserSuiteTest {
                 return;
             }
             """
-        )
+        val refused = assertThrows<DiagnosticsException> { parseModule(src) }
+        assertEquals("parse.removed", refused.tag)
+        // With the refusal off, as kira-dialect reads stage 2's text: a bare return is NoExpr.
+        val ast = net.exoad.kira.compiler.frontend.parser.DialectGates.stage3(false) { parseModule(src) }
         val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
         val returns = mutableListOf<ReturnStatement>()
         fun walk(statements: List<Statement>?) {

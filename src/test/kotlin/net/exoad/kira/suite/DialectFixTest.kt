@@ -66,7 +66,7 @@ class DialectFixTest {
             module(
                 "probe:b.shapes",
                 "pub Handler: Any {\n    pub handle: () Str\n}\npub Impl: Handler {\n    pub tag: Str = \"impl\"\n\n" +
-                    "    pub override handle: () Str {\n        return tag\n    }\n}\npub run: (h: Handler) Str {\n    return h.handle()\n}",
+                    "    pub override handle: () Str {\n        tag\n    }\n}\npub run: (h: Handler) Str {\n    h.handle()\n}",
             ),
             module("probe:main", "probe.b.shapes as shapes\n\nmain: () Void {\n    i: Impl = Impl { }\n    println(shapes.run(i))\n}"),
         )

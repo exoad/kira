@@ -93,9 +93,9 @@ class ReturnPathPassTest {
             """
             pub sign: (v: Int32) Int32 {
                 if v < 0 {
-                    return -1
+                    -1
                 } else if v > 0 {
-                    return 1
+                    1
                 }
             }
             pub empty: () Int32 {
@@ -113,12 +113,11 @@ class ReturnPathPassTest {
                 mut i: Int32 = 0
                 while i < n {
                     i += 1
-                    return i
                 }
             }
             pub first: (xs: Arr<Int32>) Int32 {
                 for x: Int32 in xs {
-                    return x
+                    trace(x)
                 }
             }
             pub broken: () Int32 {
@@ -136,9 +135,9 @@ class ReturnPathPassTest {
         val p = snippet(
             """
             pub f: (b: Bool) Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
+                (x: Int32) Int32 {
                     if b {
-                        return x
+                        x
                     }
                 }
             }

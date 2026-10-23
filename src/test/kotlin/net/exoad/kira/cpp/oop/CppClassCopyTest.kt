@@ -896,7 +896,7 @@ class CppClassCopyTest {
                     c: Box = h
                     $build
                     bumpHeld(mut h.item.count, held)
-                    return h.item.count
+                    h.item.count
                 }
                 """,
                 what,
@@ -939,7 +939,7 @@ class CppClassCopyTest {
             "pub inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub later: (c: Box, h: Box) Int32 {\n    inspect(c.item, () Void {\n        h.reset()\n    })\n}",
             "pub later: (c: Box, h: Box) Int32 {\n    measure(c.item.label, () Void {\n        h.reset()\n    })\n}",
         ) + holders.map { (_, param, build) ->
-            "$wrap\n\npub measureHeld: (s: Str, $param) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    $build\n    return measureHeld(s, held)\n}"
+            "$wrap\n\npub measureHeld: (s: Str, $param) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    $build\n    measureHeld(s, held)\n}"
         }
         for (p in programs) {
             val e = OopTestSupport.emit(OopTestSupport.module(uri, "$externItem\n\n$p"))

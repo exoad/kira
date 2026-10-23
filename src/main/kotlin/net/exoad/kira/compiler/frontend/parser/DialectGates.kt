@@ -1,17 +1,17 @@
 package net.exoad.kira.compiler.frontend.parser
 
 /**
- * Refusals of stage 3 that old text still breaks: each waits for the corpus to be converted, then
- * is switched on with `return`'s refusal.
+ * Stage 3's refusals of old text, on since the corpus was converted. kira-dialect's reading of
+ * old text (KiraParser's `returns`) is never refused; a test may switch one off for a block.
  */
 object DialectGates {
     /** An `if` used as a value whose arms are all single expressions is refused: `c ? a : b` is its spelling. */
     @Volatile
-    var ternaryOnly: Boolean = false
+    var ternaryOnly: Boolean = true
 
     /** `return` is refused: a block's last expression is its value. kira-dialect's reading of old text keeps it. */
     @Volatile
-    var noReturn: Boolean = false
+    var noReturn: Boolean = true
 
     /** [block] with [ternaryOnly] set to [on], restored after. */
     fun <T> ternaryOnly(on: Boolean, block: () -> T): T {

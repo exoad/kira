@@ -172,7 +172,7 @@ class TyperBodyNegativeTest {
         // sync.kira: a body captures the Atomic and the BlockingQueue it shares by reference.
         val p = snippet(
             "kira.sync as sync\npub lam: () Fx<Tuple0, Void> {\n    hits: Atomic<Int64> = Atomic<Int64> { value = 0 }\n" +
-                "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { }\n    return () Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
+                "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { };\n    () Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
         )
         TyperTestSupport.expectNoErrors(p)
     }

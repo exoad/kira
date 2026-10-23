@@ -100,7 +100,7 @@ class ConformanceTest {
 
     @Test
     fun aTestBlockIsStage3bAndAnIfBodyIsNoTestBlock() {
-        val e = parseError("f: (p: Pt) Bool {\n    return p == Pt { x == 1 }\n}")
+        val e = parseError("f: (p: Pt) Bool {\n    p == Pt { x == 1 }\n}")
         assertEquals("parse.conform.block", e.tag)
         assertTrue(e.message.contains("not part of Kira yet") && e.message.contains("x == (T { ... })"), e.message)
         // A construction to compare with goes in parentheses.
@@ -113,7 +113,7 @@ class ConformanceTest {
 
     @Test
     fun isIsRemovedAndNamesTheReplacement() {
-        val e = parseError("f: (s: Shape) Bool {\n    return s is Circle\n}")
+        val e = parseError("f: (s: Shape) Bool {\n    s is Circle\n}")
         assertEquals("parse.removed", e.tag)
         assertTrue(e.message.contains("'x == T'") && e.message.contains("'x != T'"), e.message)
         // It is a plain name now.

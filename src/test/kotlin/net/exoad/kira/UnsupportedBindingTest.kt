@@ -67,7 +67,7 @@ class UnsupportedBindingTest {
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
             "kira.path as path\nkira.pytext as pytext\nkira.regex as regex\nkira.random as random\nkira.csv as csv\n\n" +
                 "main: () Int32 {\n    line: Str = csvLine(@listOf(\"b\"))\n    p: Str = joinPath(\"a\", line)\n    ok: Bool = compile(p, 0).isSome()\n" +
-                "    n: Maybe<Int64> = pyInt(p)\n    g: Random = newRandom(1)\n    return g.below(2) as Int32\n}\n"
+                "    n: Maybe<Int64> = pyInt(p)\n    g: Random = newRandom(1)\n    g.below(2) as Int32\n}\n"
         )
         val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
         assertEquals(1, cpp.exitCode, cpp.all)
@@ -120,7 +120,7 @@ class UnsupportedBindingTest {
             "kira.http as http\nkira.args as args\n\n" +
                 "handle: (r: HttpRequest) HttpAnswer {\n    HttpAnswer { status = 404 }\n}\n\n" +
                 "main: () Int32 {\n    r: Maybe<HttpReply> = httpGet(\"http://h/\", 5)\n    ok: Bool = httpServer(\"\", 0, handle).isSome()\n" +
-                "    spec: ArgSpec = argSpec(\"tool\", \"\")\n    p: Parsed = spec.parse(@listOf(\"x\"))\n    if p.isSet(\"--x\") {\n        return 1\n    }\n    return 0\n}\n"
+                "    spec: ArgSpec = argSpec(\"tool\", \"\")\n    p: Parsed = spec.parse(@listOf(\"x\"))\n    p.isSet(\"--x\") ? 1 : 0\n}\n"
         )
         val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
         assertEquals(1, cpp.exitCode, cpp.all)

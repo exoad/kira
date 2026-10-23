@@ -74,34 +74,34 @@ class LentPlacesTest {
     fun eachSpellingOfALentResultGetsTheSameVerdict() {
         val pairs = listOf(
             // A view of an element of a mut global beside a call that replaces it (4b: any impure call, a mut global).
-            Pair("global element", "return sumK(gll[0].view(), clobber())", "return sumK(gll.get(0).view(), clobber())", listOf("rules.view.write")),
+            Pair("global element", "sumK(gll[0].view(), clobber())", "sumK(gll.get(0).view(), clobber())", listOf("rules.view.write")),
             // A nested accessor, and the mixed spelling.
-            Pair("nested", "return sumK(g3[0][1].view(), clobber())", "return sumK(g3.get(0).get(1).view(), clobber())", listOf("rules.view.write")),
-            Pair("nested, mixed", "return sumK(g3[0].get(1).view(), clobber())", "return sumK(g3.get(0)[1].view(), clobber())", listOf("rules.view.write")),
+            Pair("nested", "sumK(g3[0][1].view(), clobber())", "sumK(g3.get(0).get(1).view(), clobber())", listOf("rules.view.write")),
+            Pair("nested, mixed", "sumK(g3[0].get(1).view(), clobber())", "sumK(g3.get(0)[1].view(), clobber())", listOf("rules.view.write")),
             // A Maybe's payload beside a call that nulls it.
-            Pair("Maybe payload", "return sumK(gm.value.view(), clobberM())", "return sumK(gm.unwrap().view(), clobberM())", listOf("rules.view.write")),
+            Pair("Maybe payload", "sumK(gm.value.view(), clobberM())", "sumK(gm.unwrap().view(), clobberM())", listOf("rules.view.write")),
             // A for over an element whose body replaces the owner.
             Pair(
                 "loop",
-                "mut s: Int32 = 0\n for x: Int32 in gll[0] {\n gll = List<List<Int32>> { }\n s += x\n }\n return s",
-                "mut s: Int32 = 0\n for x: Int32 in gll.get(0) {\n gll = List<List<Int32>> { }\n s += x\n }\n return s",
+                "mut s: Int32 = 0\n for x: Int32 in gll[0] {\n gll = List<List<Int32>> { }\n s += x\n }\ns",
+                "mut s: Int32 = 0\n for x: Int32 in gll.get(0) {\n gll = List<List<Int32>> { }\n s += x\n }\ns",
                 listOf("rules.exclusivity.loop"),
             ),
             // A class field's element beside the class's own mut fx that replaces the field.
-            Pair("class field", "h: Holder = Holder { }\n return h.wipeThen(h.items[0].view())", "h: Holder = Holder { }\n return h.wipeThen(h.items.get(0).view())", listOf("rules.view.write")),
+            Pair("class field", "h: Holder = Holder { }\nh.wipeThen(h.items[0].view())", "h: Holder = Holder { }\nh.wipeThen(h.items.get(0).view())", listOf("rules.view.write")),
             // D37: a MutView of a local beside a view of its element, through a view expression (q10d's shape; before
             // R-A both spellings were accepted, and the call spelling was a heap-use-after-free).
             Pair(
                 "D37 through a view",
-                "mut xs: List<List<Int32>> = List<List<Int32>> { }\n return both(xs.view().from(0), xs.view()[0].view())",
-                "mut xs: List<List<Int32>> = List<List<Int32>> { }\n return both(xs.view().from(0), xs.view().get(0).view())",
+                "mut xs: List<List<Int32>> = List<List<Int32>> { }\nboth(xs.view().from(0), xs.view()[0].view())",
+                "mut xs: List<List<Int32>> = List<List<Int32>> { }\nboth(xs.view().from(0), xs.view().get(0).view())",
                 listOf("rules.exclusivity.argument"),
             ),
             // A by-value element beside a mut write of its owner: an Int32 D33 copies first (F1), both accepted.
             Pair(
                 "by-value element",
-                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\n return sub(xs[0], pushTo(mut xs))",
-                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\n return sub(xs.get(0), pushTo(mut xs))",
+                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\nsub(xs[0], pushTo(mut xs))",
+                "mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }\nsub(xs.get(0), pushTo(mut xs))",
                 emptyList(),
             ),
         )

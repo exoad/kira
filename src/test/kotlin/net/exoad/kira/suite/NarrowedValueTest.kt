@@ -102,7 +102,8 @@ class NarrowedValueTest {
             assertEquals(listOf("s:Shape->Circle"), narrowed(ternary))
             assertEquals("parse.if.ternary", assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", text(ifValue))) }.tag)
         }
-        assertEquals(narrowed(ifValue), narrowed(ternary))
+        // With the rule off, as kira-dialect reads stage 2's text, the if it was narrows the same.
+        assertEquals(DialectGates.ternaryOnly(false) { narrowed(ifValue) }, narrowed(ternary))
         // A Maybe test of a ternary binds below it, so py tests the ternary whole.
         val py = PyTestSupport.emit("f: (m: Maybe<Int32>, n: Maybe<Int32>, k: Int32) Bool {\n    e: Bool = (k > 0 ? m : n) != Int32\n    e\n}").python()
         assertTrue(py.contains("    e = (m if k > 0 else n) is None\n"), py)

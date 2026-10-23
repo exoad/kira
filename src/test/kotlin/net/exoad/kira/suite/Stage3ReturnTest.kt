@@ -268,4 +268,28 @@ class Stage3ReturnTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun aValueFunctionThatCanEndWithNoValueKeepsItsReturns() {
+        // A for may run no time: its result's literal start would hide the typer's "no value on every path".
+        val forLoop = Stage3.convertText("first: (xs: List<Int32>) Int32 {\n    for x: Int32 in xs {\n        return x\n    }\n}\n", "p.kira", "test:main")
+        assertTrue(forLoop.hand.single().second.contains("can end with no value"), forLoop.hand.toString())
+        // `while true` with no break of its own ends only by its return: that one converts.
+        val endless = convert("next: (n: Int32) Int32 {\n    mut i: Int32 = n\n    while true {\n        i += 1\n        if i > 9 {\n            return i\n        }\n    }\n}\n")
+        assertTrue(endless.contains("result = i\n") && endless.endsWith("    }\n    result\n}\n"), endless)
+    }
+
+    @Test
+    fun aFileWhoseErrorsWouldChangeIsNotConverted() {
+        val dir = Files.createTempDirectory("stage3-typed").toFile()
+        try {
+            // The else arm's last call would become the result: the old file's missing value turns into another error.
+            val text = "f: (b: Bool) Int32 {\n    if b {\n        return 1\n    } else {\n        trace(1)\n    }\n}\n"
+            val file = File(dir, "main.kira").apply { writeText(text) }
+            assertEquals(1, Stage3.convertAll(listOf(dir.path), check = false))
+            assertEquals(text, file.readText(), "left as it was")
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
