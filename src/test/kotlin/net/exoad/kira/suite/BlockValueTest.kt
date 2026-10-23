@@ -324,6 +324,28 @@ class BlockValueTest {
     }
 
     @Test
+    fun aParenthesizedTryValueEndsABodyAsItsReturnDoes() {
+        val h = "h: (s: Str) Int32 {\n    if s == \"\" {\n        throw \"empty\"\n    }\n    s.size() as Int32\n}\n\n"
+        val tried = "try {\n        h(s)\n    } on e: Str {\n        -1\n    }"
+        val bare = "${h}f: (s: Str) Int32 {\n    ($tried)\n}"
+        val explicit = "${h}f: (s: Str) Int32 {\n    return ($tried)\n}"
+        assertTrue(assertIs<TryExpr>(tail(body(bare).last()).expr).isValue, "the try value is the result whole")
+        expectNoErrors(TyperTestSupport.snippet(bare))
+        val py = PyTestSupport.emit(bare).python()
+        assertTrue(py.contains("            return -1\n    return _k_t0()\n"), py)
+        assertEquals(PyTestSupport.emit(explicit).python(), py)
+    }
+
+    @Test
+    fun aTryValueInAMaybeSlotTakesNullFromItsHandler() {
+        val src = "h: (s: Str) Int32 {\n    return 1\n}\n\n" +
+            "f: (s: Str) Bool {\n    m: Maybe<Int32> = try {\n        h(s)\n    } on e: Str {\n        null\n    }\n    m.isSome()\n}"
+        expectNoErrors(TyperTestSupport.snippet(src))
+        val py = PyTestSupport.emit(src).python()
+        assertTrue(py.contains("            return _h(s)\n") && py.contains("            return None\n    m = _k_t0()\n"), py)
+    }
+
+    @Test
     fun onPyALoopVariableInAnArmIsTheDefsOwn() {
         val py = PyTestSupport.emit(
             "f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        mut s: Int32 = 0\n        for i: Int32 in 0..3 {\n            s += i\n        }\n        s\n    } else {\n        0\n    }\n    v\n}",

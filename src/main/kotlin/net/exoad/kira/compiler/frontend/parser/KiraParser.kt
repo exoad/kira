@@ -542,8 +542,9 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         }
         if (s.javaClass != Statement::class.java) return s
         val e = s.expr
-        if (e is TryExpr) {
-            if (e.exceptionName == null || e.isValue) return s
+        // A try value already (`(try { } on e { })`) is the result as a whole: the implicit return below.
+        if (e is TryExpr && !e.isValue) {
+            if (e.exceptionName == null) return s
             val tried = bodyTail(e.tryBlock)
             val handled = bodyTail(e.handlerBlock)
             if (tried === e.tryBlock && handled === e.handlerBlock) return s
