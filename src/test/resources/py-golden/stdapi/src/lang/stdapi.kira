@@ -13,7 +13,7 @@ pub Rng: Any {
         s = s ^ (s << 13)
         s = s ^ (s >> 7)
         s = s ^ (s << 17)
-        return s % n
+        s % n
     }
 }
 
@@ -33,7 +33,7 @@ pub Digest: Any {
     }
 
     pub said: () Str {
-        return "${count} values, digest ${h.toHex()}"
+        "${count} values, digest ${h.toHex()}"
     }
 }
 
@@ -49,7 +49,7 @@ vis: (s: Str) Str {
         }
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 visAll: (xs: List<Str>) Str {
@@ -59,27 +59,16 @@ visAll: (xs: List<Str>) Str {
         out = out + " " + vis(xs[i])
         i += 1
     }
-    return out
+    out
 }
 
 maybeText: (m: Maybe<Int64>) Str {
-    if m.isNone() {
-        return "none"
-    }
-    return m.value as Str
+    m.isNone() ? "none" : m.value as Str
 }
 
 order: (a: Str, b: Str) Str {
-    if a < b && a <= b && b > a && b >= a {
-        return "<"
-    }
-    if a > b && a >= b && b < a && b <= a {
-        return ">"
-    }
-    if a <= b && a >= b {
-        return "="
-    }
-    return "?"
+    a < b && a <= b && b > a && b >= a ? "<"
+        : a > b && a >= b && b < a && b <= a ? ">" : a <= b && a >= b ? "=" : "?"
 }
 
 strOrder: () Void {
@@ -106,11 +95,11 @@ strOrder: () Void {
 }
 
 pieces: () List<Str> {
-    return @listOf("a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓")
+    @listOf("a", "b", " ", "\t", "\n", "\r", "${11 as Char}", "${12 as Char}", "${28 as Char}", "é", "ab", "ba", "✓")
 }
 
 pub radixOf: (s: Str, radix: Int32) Str {
-    return maybeText(s.toInt64Radix(radix))
+    maybeText(s.toInt64Radix(radix))
 }
 
 strText: () Void {
@@ -157,8 +146,9 @@ strText: () Void {
         trims.text(s.trimEnd())
         trims.text(s.trim())
         pick: UInt64 = r.below((ps.size() as UInt64) + 2)
-        needle: Str = if pick < (ps.size() as UInt64) { ps[pick as Size] } else { "" }
-        repl: Str = if r.below(4) == 0 { "" } else { ps[r.below(ps.size() as UInt64) as Size] }
+        needle: Str = pick < (ps.size() as UInt64) ? ps[pick as Size] : ""
+        repl: Str = r.below(4) == 0 ? ""
+            : ps[r.below(ps.size() as UInt64) as Size]
         swaps.text(s.replace(needle, repl))
         n += 1
     }
@@ -171,14 +161,15 @@ strText: () Void {
     while n < 3000 {
         mut s: Str = ""
         long: Bool = r.below(8) == 0
-        want: UInt64 = if long { 60 + r.below(8) } else { r.below(21) }
+        want: UInt64 = long ? 60 + r.below(8) : r.below(21)
         mut k: UInt64 = 0
         while k < want {
-            at: Size = if long { r.below(2) as Size } else { r.below(digits.length() as UInt64) as Size }
+            at: Size = long ? r.below(2) as Size
+                : r.below(digits.length() as UInt64) as Size
             s = s + digits.substring(at, at + 1)
             k += 1
         }
-        radix: Int32 = if long { 2 } else { (r.below(35) as Int32) + 2 }
+        radix: Int32 = long ? 2 : (r.below(35) as Int32) + 2
         radixes.text(radixOf(s, radix))
         n += 1
     }
@@ -250,7 +241,7 @@ charTests: () Void {
 }
 
 rem: (a: Float64, b: Float64) Str {
-    return "${fmod(a, b)}"
+    "${fmod(a, b)}"
 }
 
 remainders: () Void {
@@ -270,8 +261,8 @@ remainders: () Void {
         kind: UInt64 = r.below(10)
         over: Float64 = (r.below(20001) as Float64) - 10000.0
         under: Float64 = (r.below(89) as Float64) + 1.0
-        b: Float64 = if kind == 0 { zero } else if kind == 1 { inf } else if kind == 2 { a / 7.0 } else { over / under }
-        big: Float64 = if r.below(4) == 0 { a * 1e17 } else { a }
+        b: Float64 = kind == 0 ? zero : kind == 1 ? inf : kind == 2 ? a / 7.0 : over / under
+        big: Float64 = r.below(4) == 0 ? a * 1e17 : a
         rems.text(rem(big, b))
         n += 1
     }
@@ -279,67 +270,67 @@ remainders: () Void {
 }
 
 pub sum32: (xs: List<Int32>) Int32 {
-    return xs.sum()
+    xs.sum()
 }
 
 pub sum64: (xs: List<Int64>) Int64 {
-    return xs.sum()
+    xs.sum()
 }
 
 ints: (xs: List<Int32>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
-        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        out = out + (i > 0 ? " " : "") + "${xs[i]}"
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 floats: (xs: List<Float64>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
-        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        out = out + (i > 0 ? " " : "") + "${xs[i]}"
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 codes: (xs: List<Char>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
-        out = out + (if i > 0 { " " } else { "" }) + "${xs[i] as UInt8}"
+        out = out + (i > 0 ? " " : "") + "${xs[i] as UInt8}"
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 bytes8: (xs: List<UInt8>) Str {
     mut out: Str = "["
     mut i: Size = 0
     while i < xs.size() {
-        out = out + (if i > 0 { " " } else { "" }) + "${xs[i]}"
+        out = out + (i > 0 ? " " : "") + "${xs[i]}"
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 mi: (m: Maybe<Int32>) Str {
-    return if m.isNone() { "none" } else { "${m.value}" }
+    m.isNone() ? "none" : "${m.value}"
 }
 
 mf: (m: Maybe<Float64>) Str {
-    return if m.isNone() { "none" } else { "${m.value}" }
+    m.isNone() ? "none" : "${m.value}"
 }
 
 ms: (m: Maybe<Str>) Str {
-    return if m.isNone() { "none" } else { vis(m.value) }
+    m.isNone() ? "none" : vis(m.value)
 }
 
 mc: (m: Maybe<Char>) Str {
-    return if m.isNone() { "none" } else { "${m.value as UInt8}" }
+    m.isNone() ? "none" : "${m.value as UInt8}"
 }
 
 listOrder: () Void {
@@ -402,7 +393,12 @@ listOrder: () Void {
             xi.add((r.below(2001) as Int32) - 1000)
             kind: UInt64 = r.below(12)
             num: Float64 = (r.below(41) as Float64) - 20.0
-            xf.add(if kind == 0 { nan } else if kind == 1 { zero } else if kind == 2 { -zero } else if kind == 3 { inf } else if kind == 4 { -inf } else { num / 4.0 })
+            xf.add(kind == 0 ? nan
+                : kind == 1 ? zero
+                : kind == 2 ? -zero
+                : kind == 3 ? inf
+                : kind == 4 ? -inf
+                : num / 4.0)
             head: Str = ps[r.below(ps.size() as UInt64) as Size]
             xs.add(head + ps[r.below(ps.size() as UInt64) as Size])
             xc.add(r.below(256) as Char)

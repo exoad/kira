@@ -35,13 +35,13 @@ pub literals: () Void {
 }
 
 pub returned: () UInt8 {
-    return 200                             // @type UInt8 const=200:UInt8
+    200                             // @type UInt8 const=200:UInt8
 }
 
 pub maybeReturned: () Maybe<Int64> {
-    return 1                               // @type Int64 coerce=WrapSome(Int64)
+    1                               // @type Int64 coerce=WrapSome(Int64)
 }
 
 pub floatReturned: () Float32 {
-    return 1.25                            // @type Float32 const=1.25:Float32
+    1.25                            // @type Float32 const=1.25:Float32
 }

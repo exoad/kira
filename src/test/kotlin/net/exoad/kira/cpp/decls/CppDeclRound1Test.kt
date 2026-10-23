@@ -140,9 +140,9 @@ class CppDeclRound1Test {
             pub LIMIT: Int32 = 7
             pub Box: Struct {
                 pub LIMIT: Int32 = 1
-                pub limit: () Int32 { return LIMIT }
+                pub limit: () Int32 { LIMIT }
             }
-            pub limit: () Int32 { return LIMIT }
+            pub limit: () Int32 { LIMIT }
             """,
         )
         val errors = emitted.diagnostics.filter { it.isError }
@@ -161,7 +161,7 @@ class CppDeclRound1Test {
             pub LIMIT: Int32 = 7
             pub Holder: Any {
                 pub n: Int32 = 1
-                pub limit: () Int32 { return LIMIT }
+                pub limit: () Int32 { LIMIT }
             }
             pub Sized: Any {
                 size: () Int32
@@ -231,7 +231,7 @@ class CppDeclRound1Test {
 
     @Test
     fun aNestedNamespaceCollidesWithADeclarationOfItsName() {
-        val a = DeclTestSupport.module("test:a", "pub text: () Int32 {\n    return 1\n}")
+        val a = DeclTestSupport.module("test:a", "pub text: () Int32 {\n    1\n}")
         val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 = 1")
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:a" to "bibo", "test:b" to "bibo::text"))
         val emitted = DeclTestSupport.emit(a, b, options = options)

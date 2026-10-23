@@ -15,7 +15,7 @@ pub Answer: Any {
 }
 
 space: (c: Char) Bool {
-    return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
+    c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
 strip: (s: Str) Str {
@@ -27,18 +27,18 @@ strip: (s: Str) Str {
     while b > a && space(s[b - 1]) {
         b -= 1
     }
-    return s.substring(a, b)
+    s.substring(a, b)
 }
 
 // [\x00-\x1f\x7f]
 control: (c: Char) Bool {
-    return c < ' ' || c == (127 as Char)
+    c < ' ' || c == (127 as Char)
 }
 
 // repr(s): single quotes unless s holds one and no double quote; a backslash, the quote, \t,
 // \n and \r escaped, any other control character as \xNN.
 pub pyRepr: (s: Str) Str {
-    q: Char = if s.contains("'") && !s.contains("\"") { '"' } else { '\'' }
+    q: Char = s.contains("'") && !s.contains("\"") ? '"' : '\''
     mut out: Str = "${q}"
     mut i: Size = 0
     while i < s.length() {
@@ -58,62 +58,68 @@ pub pyRepr: (s: Str) Str {
         }
         i += 1
     }
-    return out + "${q}"
+    out + "${q}"
 }
 
 // ^(0|[1-9][0-9]{0,5})$, where $ also stands before one last \n.
 idText: (text: Str) Bool {
-    body: Str = if text.endsWith("\n") { text.substring(0, text.length() - 1) } else { text }
+    body: Str = text.endsWith("\n") ? text.substring(0, text.length() - 1)
+        : text
     if body == "0" {
-        return true
-    }
-    if body.isEmpty() || body.length() > 6 || body[0] < '1' || body[0] > '9' {
-        return false
-    }
-    mut i: Size = 1
-    while i < body.length() {
-        if body[i] < '0' || body[i] > '9' {
-            return false
+        true
+    } else if body.isEmpty() || body.length() > 6 || body[0] < '1' || body[0] > '9' {
+        false
+    } else {
+        mut i: Size = 1
+        mut result: Bool = true
+        while i < body.length() {
+            if body[i] < '0' || body[i] > '9' {
+                result = false
+                break
+            }
+            i += 1
         }
-        i += 1
+        result
     }
-    return true
 }
 
 pub tagOf: (text: Str) Answer {
+    mut result: Maybe<Answer> = null
+    mut found: Bool = false
     if idText(text) {
         id: Int64 = strip(text).toInt64().unwrapOr(-1)
         if id >= 0 && id < TAGS {
-            return Answer { true, id as Str }
+            result = Answer { true, id as Str }
+            found = true
         }
     }
-    return Answer { false, "no tag " + pyRepr(text) }
+    found ? result.value : Answer { false, "no tag " + pyRepr(text) }
 }
 
 pub label: (v: Str) Answer {
-    if !LABEL_IDS.contains(v) {
-        return Answer { false, "unknown label " + pyRepr(v) }
-    }
-    return Answer { true, v }
+    !LABEL_IDS.contains(v) ? Answer { false, "unknown label " + pyRepr(v) }
+        : Answer { true, v }
 }
 
 pub note: (v: Str) Answer {
     s: Str = strip(v)
     mut i: Size = 0
+    mut result: Maybe<Answer> = null
+    mut found: Bool = false
     while i < s.length() {
         if control(s[i]) {
-            return Answer { false, "note not one line" }
+            result = Answer { false, "note not one line" }
+            found = true
+            break
         }
         i += 1
     }
-    if s.length() > NOTE_MAX {
-        return Answer { false, "note over ${NOTE_MAX} characters" }
-    }
-    return Answer { true, s }
+    found ? result.value : s.length() > NOTE_MAX ? Answer { false, "note over ${NOTE_MAX} characters" }
+        : Answer { true, s }
 }
 
 said: (a: Answer) Str {
-    return if a.ok { "ok " + a.text } else { "refused: " + a.text }
+    a.ok ? "ok " + a.text : "refused: " + a.text
 }
 
 main: () Void {

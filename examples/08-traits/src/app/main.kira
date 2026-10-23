@@ -2,12 +2,12 @@ traits.app.animals as animals
 
 makeDog: () Dog {
     dog: Dog = Dog { "Rex" }
-    return dog
+    dog
 }
 
 makeSpeaker: () Speaker {
     cat: Cat = Cat { "Luna" }
-    return cat
+    cat
 }
 
 main: () Void {

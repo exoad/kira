@@ -27,7 +27,7 @@ pub Message: Any {
             total += width(fields[i])
             i += 1
         }
-        return total
+        total
     }
 }
 
@@ -54,14 +54,14 @@ pub Spec: Any {
         m: Message = Message { n, msgId, msgDir, msgSize }
         messages[n] = m
         byId[msgId] = m
-        return m
+        m
     }
 
     pub mut enumTable: (n: Str) Table {
         if !enums.containsKey(n) {
             enums[n] = Table { }
         }
-        return enums.get(n).value
+        enums.get(n).value
     }
 }
 
@@ -77,78 +77,60 @@ pub Unpacked: Any {
 }
 
 width: (f: Field) Size {
-    if f.kind == "u8" || f.kind == "i8" {
-        return 1
-    } else if f.kind == "u16" || f.kind == "i16" {
-        return 2
-    } else if f.kind == "u32" || f.kind == "i32" {
-        return 4
-    }
-    return f.count
+    f.kind == "u8" || f.kind == "i8" ? 1
+        : f.kind == "u16" || f.kind == "i16" ? 2
+        : f.kind == "u32" || f.kind == "i32" ? 4
+        : f.count
 }
 
 lowest: (kind: Str) Int64 {
-    if kind == "i8" {
-        return -128
-    } else if kind == "i16" {
-        return -32768
-    } else if kind == "i32" {
-        return -2147483648
-    }
-    return 0
+    kind == "i8" ? -128 : kind == "i16" ? -32768 : kind == "i32" ? -2147483648 : 0
 }
 
 highest: (kind: Str) Int64 {
-    if kind == "u8" {
-        return 255
-    } else if kind == "i8" {
-        return 127
-    } else if kind == "u16" {
-        return 65535
-    } else if kind == "i16" {
-        return 32767
-    } else if kind == "u32" {
-        return 4294967295
-    }
-    return 2147483647
+    kind == "u8" ? 255
+        : kind == "i8" ? 127
+        : kind == "u16" ? 65535
+        : kind == "i16" ? 32767
+        : kind == "u32" ? 4294967295
+        : 2147483647
 }
 
 // bytes.fromhex: pairs of hex digits, ASCII whitespace between pairs.
 space: (c: Char) Bool {
     code: Int32 = c as Int32
-    return c == ' ' || (code >= 9 && code <= 13)
+    c == ' ' || (code >= 9 && code <= 13)
 }
 
 digit: (c: Char) Int32 {
-    if c >= '0' && c <= '9' {
-        return (c as Int32) - 48
-    } else if c >= 'a' && c <= 'f' {
-        return (c as Int32) - 87
-    } else if c >= 'A' && c <= 'F' {
-        return (c as Int32) - 55
-    }
-    return -1
+    c >= '0' && c <= '9' ? (c as Int32) - 48
+        : c >= 'a' && c <= 'f' ? (c as Int32) - 87
+        : c >= 'A' && c <= 'F' ? (c as Int32) - 55
+        : -1
 }
 
 pub fromHex: (text: Str, mut out: List<UInt8>) Bool {
     mut i: Size = 0
+    mut result: Bool = true
     while i < text.size() {
         if space(text.at(i)) {
             i += 1
             continue
         }
         if i + 1 >= text.size() {
-            return false
+            result = false
+            break
         }
         top: Int32 = digit(text.at(i))
         bot: Int32 = digit(text.at(i + 1))
         if top < 0 || bot < 0 {
-            return false
+            result = false
+            break
         }
         out.add((top * 16 + bot) as UInt8)
         i += 2
     }
-    return true
+    result
 }
 
 pub hexOf: (b: View<UInt8>) Str {
@@ -158,7 +140,7 @@ pub hexOf: (b: View<UInt8>) Str {
         s = s + b[i].toHex().padStart(2, '0')
         i += 1
     }
-    return s
+    s
 }
 
 listText: (names: List<Str>) Str {
@@ -171,18 +153,20 @@ listText: (names: List<Str>) Str {
         s = s + "'" + names[i] + "'"
         i += 1
     }
-    return s + "]"
+    s + "]"
 }
 
 isField: (m: Message, n: Str) Bool {
     mut i: Size = 0
+    mut result: Bool = false
     while i < m.fields.size() {
         if m.fields[i].name == n {
-            return true
+            result = true
+            break
         }
         i += 1
     }
-    return false
+    result
 }
 
 collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
@@ -198,13 +182,17 @@ collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
 // Kira's Str has no <: code point order, as sorted() puts ASCII names.
 before: (a: Str, b: Str) Bool {
     mut i: Size = 0
+    mut result: Bool = false
+    mut found: Bool = false
     while i < a.size() && i < b.size() {
         if a.at(i) != b.at(i) {
-            return a.at(i) < b.at(i)
+            result = a.at(i) < b.at(i)
+            found = true
+            break
         }
         i += 1
     }
-    return a.size() < b.size()
+    found ? result : a.size() < b.size()
 }
 
 sortNames: (mut names: List<Str>) Void {
@@ -235,81 +223,106 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
         out.error = "unknown message '${name}'"
-        return out
-    }
-    m: Message = found.unwrap()
-    mut extra: List<Str> = List<Str> { }
-    collectExtra(m, ints.keys(), mut extra)
-    collectExtra(m, hex.keys(), mut extra)
-    if !extra.isEmpty() {
-        sortNames(mut extra)
-        out.error = "${m.name}: unknown field(s) ${listText(extra)}"
-        return out
-    }
-    mut missing: List<Str> = List<Str> { }
-    mut i: Size = 0
-    while i < m.fields.size() {
-        n: Str = m.fields[i].name
-        if !ints.containsKey(n) && !hex.containsKey(n) {
-            missing.add(n)
-        }
-        i += 1
-    }
-    if !missing.isEmpty() {
-        out.error = "${m.name}: missing field(s) ${listText(missing)}"
-        return out
-    }
-    mut raw: List<UInt8> = List<UInt8> { }
-    i = 0
-    while i < m.fields.size() {
-        f: Field = m.fields[i]
-        if f.kind == "bytes" {
-            given: Maybe<Str> = hex.get(f.name)
-            if given.isNone() {
-                out.error = "${m.name}: ${f.name} is not bytes"
-                return out
-            }
-            mut b: List<UInt8> = List<UInt8> { }
-            if !fromHex(given.value, mut b) {
-                out.error = "${f.name}: not hex"
-                return out
-            }
-            if b.size() != f.count {
-                out.error = "${f.name}: ${b.size()} bytes, the field is ${f.count}"
-                return out
-            }
-            raw.addAll(b.toArr())
-        }
-        i += 1
-    }
-    mut payload: List<UInt8> = List<UInt8> { }
-    mut at: Size = 0
-    i = 0
-    while i < m.fields.size() {
-        f: Field = m.fields[i]
-        if f.kind == "bytes" {
-            mut j: Size = 0
-            while j < f.count {
-                payload.add(raw[at + j])
-                j += 1
-            }
-            at += f.count
+        out
+    } else {
+        m: Message = found.unwrap()
+        mut extra: List<Str> = List<Str> { }
+        collectExtra(m, ints.keys(), mut extra)
+        collectExtra(m, hex.keys(), mut extra)
+        if !extra.isEmpty() {
+            sortNames(mut extra)
+            out.error = "${m.name}: unknown field(s) ${listText(extra)}"
+            out
         } else {
-            v: Maybe<Int64> = ints.get(f.name)
-            if v.isNone() {
-                out.error = "${m.name}: ${f.name} is not an integer"
-                return out
+            mut missing: List<Str> = List<Str> { }
+            mut i: Size = 0
+            while i < m.fields.size() {
+                n: Str = m.fields[i].name
+                if !ints.containsKey(n) && !hex.containsKey(n) {
+                    missing.add(n)
+                }
+                i += 1
             }
-            if v.value < lowest(f.kind) || v.value > highest(f.kind) {
-                out.error = "${m.name}: ${f.name} ${v.value} is out of range for ${f.kind}"
-                return out
+            if !missing.isEmpty() {
+                out.error = "${m.name}: missing field(s) ${listText(missing)}"
+                out
+            } else {
+                mut raw: List<UInt8> = List<UInt8> { }
+                i = 0
+                mut result: Maybe<Packed> = null
+                mut found2: Bool = false
+                while i < m.fields.size() {
+                    f: Field = m.fields[i]
+                    if f.kind == "bytes" {
+                        given: Maybe<Str> = hex.get(f.name)
+                        if given.isNone() {
+                            out.error = "${m.name}: ${f.name} is not bytes"
+                            result = out
+                            found2 = true
+                            break
+                        }
+                        mut b: List<UInt8> = List<UInt8> { }
+                        if !fromHex(given.value, mut b) {
+                            out.error = "${f.name}: not hex"
+                            result = out
+                            found2 = true
+                            break
+                        }
+                        if b.size() != f.count {
+                            out.error = "${f.name}: ${b.size()} bytes, the field is ${f.count}"
+                            result = out
+                            found2 = true
+                            break
+                        }
+                        raw.addAll(b.toArr())
+                    }
+                    i += 1
+                }
+                if found2 {
+                    result.value
+                } else {
+                    mut payload: List<UInt8> = List<UInt8> { }
+                    mut at: Size = 0
+                    i = 0
+                    mut result2: Maybe<Packed> = null
+                    mut found3: Bool = false
+                    while i < m.fields.size() {
+                        f: Field = m.fields[i]
+                        if f.kind == "bytes" {
+                            mut j: Size = 0
+                            while j < f.count {
+                                payload.add(raw[at + j])
+                                j += 1
+                            }
+                            at += f.count
+                        } else {
+                            v: Maybe<Int64> = ints.get(f.name)
+                            if v.isNone() {
+                                out.error = "${m.name}: ${f.name} is not an integer"
+                                result2 = out
+                                found3 = true
+                                break
+                            }
+                            if v.value < lowest(f.kind) || v.value > highest(f.kind) {
+                                out.error = "${m.name}: ${f.name} ${v.value} is out of range for ${f.kind}"
+                                result2 = out
+                                found3 = true
+                                break
+                            }
+                            addLe(mut payload, v.value, width(f))
+                        }
+                        i += 1
+                    }
+                    if found3 {
+                        result2.value
+                    } else {
+                        out.payload = payload
+                        out
+                    }
+                }
             }
-            addLe(mut payload, v.value, width(f))
         }
-        i += 1
     }
-    out.payload = payload
-    return out
 }
 
 pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
@@ -317,37 +330,39 @@ pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
         out.error = "unknown message '${name}'"
-        return out
-    }
-    m: Message = found.unwrap()
-    if payload.size() != m.size {
-        out.error = "${m.name}: ${payload.size()} payload bytes, the message is ${m.size}"
-        return out
-    }
-    mut at: Size = 0
-    mut i: Size = 0
-    while i < m.fields.size() {
-        f: Field = m.fields[i]
-        k: Str = f.kind
-        if k == "bytes" {
-            out.hex[f.name] = hexOf(payload.slice(at, f.count))
-        } else if k == "u8" {
-            out.ints[f.name] = payload[at] as Int64
-        } else if k == "i8" {
-            out.ints[f.name] = (payload[at] as Int8) as Int64
-        } else if k == "u16" {
-            out.ints[f.name] = readU16Le(payload, at) as Int64
-        } else if k == "i16" {
-            out.ints[f.name] = (readU16Le(payload, at) as Int16) as Int64
-        } else if k == "u32" {
-            out.ints[f.name] = readU32Le(payload, at) as Int64
+        out
+    } else {
+        m: Message = found.unwrap()
+        if payload.size() != m.size {
+            out.error = "${m.name}: ${payload.size()} payload bytes, the message is ${m.size}"
+            out
         } else {
-            out.ints[f.name] = (readU32Le(payload, at) as Int32) as Int64
+            mut at: Size = 0
+            mut i: Size = 0
+            while i < m.fields.size() {
+                f: Field = m.fields[i]
+                k: Str = f.kind
+                if k == "bytes" {
+                    out.hex[f.name] = hexOf(payload.slice(at, f.count))
+                } else if k == "u8" {
+                    out.ints[f.name] = payload[at] as Int64
+                } else if k == "i8" {
+                    out.ints[f.name] = (payload[at] as Int8) as Int64
+                } else if k == "u16" {
+                    out.ints[f.name] = readU16Le(payload, at) as Int64
+                } else if k == "i16" {
+                    out.ints[f.name] = (readU16Le(payload, at) as Int16) as Int64
+                } else if k == "u32" {
+                    out.ints[f.name] = readU32Le(payload, at) as Int64
+                } else {
+                    out.ints[f.name] = (readU32Le(payload, at) as Int32) as Int64
+                }
+                at += width(f)
+                i += 1
+            }
+            out
         }
-        at += width(f)
-        i += 1
     }
-    return out
 }
 
 pub bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
@@ -366,46 +381,47 @@ pub bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
         }
         b += 1
     }
-    return out
+    out
 }
 
 // none where Python raises KeyError.
 pub bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
     mut m: Int64 = 0
     mut i: Size = 0
+    mut result: Maybe<Int64> = null
+    mut found: Bool = false
     while i < names.size() {
         bit: Maybe<Int64> = table.get(names[i])
         if bit.isNone() {
-            return null
+            result = null
+            found = true
+            break
         }
         m = m | (1 << bit.value)
         i += 1
     }
-    return m
+    found ? result : m
 }
 
 hex4: (v: Int64) Str {
-    return "0x" + v.toHex().toUpper().padStart(4, '0')
+    "0x" + v.toHex().toUpper().padStart(4, '0')
 }
 
 pub typeName: (spec: Spec, typ: Int64) Str {
     m: Maybe<Message> = spec.byId.get(typ)
-    if m.isSome() {
-        return m.value.name
-    }
-    return hex4(typ)
+    m.isSome() ? m.value.name : hex4(typ)
 }
 
 pub reasonName: (spec: Spec, code: Int64) Str {
-    return spec.reasons.byValue.get(code).unwrapOr(hex4(code))
+    spec.reasons.byValue.get(code).unwrapOr(hex4(code))
 }
 
 pub nackName: (spec: Spec, code: Int64) Str {
-    return spec.nacks.byValue.get(code).unwrapOr("NACK${code}")
+    spec.nacks.byValue.get(code).unwrapOr("NACK${code}")
 }
 
 pub stateName: (spec: Spec, value: Int64) Str {
-    return spec.enums.get("State").value.byValue.get(value).unwrapOr("STATE${value}")
+    spec.enums.get("State").value.byValue.get(value).unwrapOr("STATE${value}")
 }
 
 pub Ev: Any {
@@ -431,25 +447,26 @@ pub rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
             out.add(((e.tUs - t0.value) as Float64) / 1000.0 - (e.hbAgeMs as Float64))
         }
     }
-    return out
+    out
 }
 
 show: (u: Unpacked, m: Message) Str {
     if u.error != "" {
-        return u.error
-    }
-    mut s: Str = ""
-    mut i: Size = 0
-    while i < m.fields.size() {
-        n: Str = m.fields[i].name
-        if m.fields[i].kind == "bytes" {
-            s = s + " ${n}=${u.hex.get(n).value}"
-        } else {
-            s = s + " ${n}=${u.ints.get(n).value}"
+        u.error
+    } else {
+        mut s: Str = ""
+        mut i: Size = 0
+        while i < m.fields.size() {
+            n: Str = m.fields[i].name
+            if m.fields[i].kind == "bytes" {
+                s = s + " ${n}=${u.hex.get(n).value}"
+            } else {
+                s = s + " ${n}=${u.ints.get(n).value}"
+            }
+            i += 1
         }
-        i += 1
+        s
     }
-    return s
 }
 
 joined: (names: List<Str>) Str {
@@ -462,7 +479,7 @@ joined: (names: List<Str>) Str {
         s = s + names[i]
         i += 1
     }
-    return s
+    s
 }
 
 main: () Void {

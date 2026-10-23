@@ -18,7 +18,7 @@ pub main: () Void {
             throw "a handler threw on ${line}"
         }
         served.add(1)
-        return line.toUpper()
+        line.toUpper()
     })
     if a.size() > 1 {
         line: Str = a[1]

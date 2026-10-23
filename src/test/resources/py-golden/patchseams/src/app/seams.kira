@@ -5,15 +5,15 @@ kira.time as time
 // The stdlib seams a test patches, each read by the runtime where it is called (D88).
 
 pub mono: () Int64 {
-    return monoNowNs()
+    monoNowNs()
 }
 
 pub monoMs: () Int64 {
-    return monoNowMs()
+    monoNowMs()
 }
 
 pub wall: () Int64 {
-    return wallNowNs()
+    wallNowNs()
 }
 
 pub nap: (ms: Int64) Void {
@@ -21,17 +21,17 @@ pub nap: (ms: Int64) Void {
 }
 
 pub argCount: () Size {
-    return args().size()
+    args().size()
 }
 
 pub waitNever: (ms: Int64) Bool {
     m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
-    return m.waitUntil((xs: List<Int32>) Bool {
-        return xs.size() > 0
+    m.waitUntil((xs: List<Int32>) Bool {
+        xs.size() > 0
     }, ms)
 }
 
 pub popNone: (ms: Int64) Bool {
     q: BlockingQueue<Int32> = BlockingQueue<Int32> { }
-    return q.pop(ms).isNone()
+    q.pop(ms).isNone()
 }

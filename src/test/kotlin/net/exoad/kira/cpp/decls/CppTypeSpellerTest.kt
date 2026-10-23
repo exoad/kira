@@ -39,7 +39,7 @@ class CppTypeSpellerTest {
         pub strings: (s: Str, mut t: Str) Str;
         pub arrays: (fixed: Arr<UInt8, 4>, mut fixedOut: Arr<UInt8, 4>, grow: Arr<Int32>, xs: List<Str>, mut ys: List<Str>) List<Int32>;
         pub maps: (m: Map<Str, Int32>, s: Set<Int32>, d: Deque<Int32>, st: Stack<Int32>, q: Queue<Int32>, mut mm: Map<Str, Int32>) Map<Str, Int32>;
-        pub views: (v: View<UInt8>, w: MutView<UInt8>) View<Char> { return "x" }
+        pub views: (v: View<UInt8>, w: MutView<UInt8>) View<Char> { "x" }
         pub maybes: (a: Maybe<Int32>, b: Maybe<Pt>, c: Maybe<Node>, d: Maybe<Shape>, mut e: Maybe<Int32>) Maybe<Node>;
         pub nominals: (p: Pt, mut q: Pt, n: Node, mut o: Node, s: Shape) Node;
         pub handles: (h: Handle, w: Weak<Node>, r: Ref<Int32>, u: Unsafe<Int32>, mut v: Unsafe<Int32>) Weak<Node>;

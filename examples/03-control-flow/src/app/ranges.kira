@@ -3,5 +3,5 @@ sumTo: (limit: Int32) Int32 {
     for mut i: 0..limit {
         total = total + i
     }
-    return total
+    total
 }

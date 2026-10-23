@@ -1,8 +1,8 @@
 // Str methods lower to the Str_* helpers in the runtime prelude.
 pub shout: (value: Str) Str {
-    return value.toUpper()
+    value.toUpper()
 }
 
 pub initials: (value: Str) Str {
-    return value.charAt(0)
+    value.charAt(0)
 }

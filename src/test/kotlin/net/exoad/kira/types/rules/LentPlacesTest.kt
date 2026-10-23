@@ -31,35 +31,35 @@ class LentPlacesTest {
         pub clobber: () Int32 {
             gll = List<List<Int32>> { }
             g3 = List<List<List<Int32>>> { }
-            return 0
+            0
         }
         pub clobberM: () Int32 {
             gm = null
-            return 0
+            0
         }
         pub clobberV: (mv: MutView<List<Int32>>) Int32 {
             mv[0] = List<Int32> { }
-            return 5
+            5
         }
         pub both: (mv: MutView<List<Int32>>, v: View<Int32>) Int32 {
             mv[0] = List<Int32> { }
-            return v[0]
+            v[0]
         }
         pub sumK: (v: View<Int32>, k: Int32) Int32 {
-            return v[0] + k
+            v[0] + k
         }
         pub sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
         pub pushTo: (mut xs: List<Int32>) Int32 {
             xs.add(3)
-            return 0
+            0
         }
         pub Holder: Any {
             pub mut items: List<List<Int32>> = List<List<Int32>> { }
             pub mut wipeThen: (v: View<Int32>) Int32 {
                 items = List<List<Int32>> { }
-                return v[0]
+                v[0]
             }
         }
     """
@@ -121,7 +121,7 @@ class LentPlacesTest {
         // order clause caught only the call spelling, by accident; both are the view rule's now. So is the spelling that
         // goes through a lender first (mv.from(0)[0], mv.from(0).get(0)): rule 1, a place lent from the parameter.
         for (use in listOf("mv[0]", "mv.get(0)", "mv.from(0)[0]", "mv.from(0).get(0)")) {
-            val p = snippet(prelude + "pub f: (mv: MutView<List<Int32>>) Int32 {\n return sumK($use.view(), clobberV(mv))\n}\n")
+            val p = snippet(prelude + "pub f: (mv: MutView<List<Int32>>) Int32 {\n sumK($use.view(), clobberV(mv))\n}\n")
             assertEquals(listOf("rules.view.write"), errors(p), "$use:\n${TyperTestSupport.render(p)}")
         }
     }
@@ -135,7 +135,7 @@ class LentPlacesTest {
                     mut xs: List<List<Int32>> = List<List<Int32>> {}
                     xs.add(List<Int32> {})
                     xs[0].add(1000)
-                    return both(xs.view().from(0 as Size), xs.view().get(0 as Size).view())
+                    both(xs.view().from(0 as Size), xs.view().get(0 as Size).view())
                 }
             """, listOf("rules.exclusivity.argument")),
             "q10c" to Probe("""
@@ -143,19 +143,19 @@ class LentPlacesTest {
                     mut xs: List<List<Int32>> = List<List<Int32>> {}
                     xs.add(List<Int32> {})
                     xs[0].add(1000)
-                    return sumK(xs[0].view(), clobberV(xs.view()))
+                    sumK(xs[0].view(), clobberV(xs.view()))
                 }
             """, listOf("rules.view.write")),
             // w2-5 #0 (1): q13a, a mut global viewed through get and replaced by the consumer.
             "q13a" to Probe("""
                 pub clobberG: (v: View<Int32>) Int32 {
                     gll = List<List<Int32>> {}
-                    return v[0]
+                    v[0]
                 }
                 pub f: () Int32 {
                     gll.add(List<Int32> {})
                     gll[0].add(1000)
-                    return clobberG(gll.get(0 as Size).view())
+                    clobberG(gll.get(0 as Size).view())
                 }
             """, listOf("rules.view.write")),
             // w2-5 #0 (2): q13b, a class field through get, replaced by the consumer, a mut fx of the class.
@@ -164,45 +164,45 @@ class LentPlacesTest {
                     h: Holder = Holder {}
                     h.items.add(List<Int32> {})
                     h.items[0].add(1000)
-                    return h.wipeThen(h.items.get(0 as Size).view())
+                    h.wipeThen(h.items.get(0 as Size).view())
                 }
             """, listOf("rules.view.write")),
             // w2-5 #0 (3): q14a, a Maybe's payload through unwrap, nulled by the consumer.
             "q14a" to Probe("""
                 pub clobberN: (v: View<Int32>) Int32 {
                     gm = null
-                    return v[0]
+                    v[0]
                 }
                 pub f: () Int32 {
                     mut xs: List<Int32> = List<Int32> {}
                     xs.add(1000)
                     gm = xs
-                    return clobberN(gm.unwrap().view())
+                    clobberN(gm.unwrap().view())
                 }
             """, listOf("rules.view.write")),
             // w2-6 #2: c2, c2b (a consumer that replaces the global), c2c (an extern handed a lambda that does).
             "c2" to Probe("""
                 pub sumAndClear: (v: View<Int32>) Int32 {
                     gll = List<List<Int32>> { }
-                    return v[0]
+                    v[0]
                 }
                 pub f: () Int32 {
-                    return sumAndClear(gll.get(0).view())
+                    sumAndClear(gll.get(0).view())
                 }
             """, listOf("rules.view.write")),
             "c2b" to Probe("""
                 pub sumAndClearM: (v: View<Int32>) Int32 {
                     gm = null
-                    return v[0]
+                    v[0]
                 }
                 pub f: () Int32 {
-                    return sumAndClearM(gm.unwrap().view())
+                    sumAndClearM(gm.unwrap().view())
                 }
             """, listOf("rules.view.write")),
             "c2c" to Probe("""
                 pub @_extern(cpp = "w::sumVF", header = "w.hxx") sumVF: (v: View<Int32>, f: Fx<Tuple0, Void>) Int32;
                 pub f: () Int32 {
-                    return sumVF(gll.get(0).view(), () Void { gll = List<List<Int32>> { } })
+                    sumVF(gll.get(0).view(), () Void { gll = List<List<Int32>> { } })
                 }
             """, listOf("rules.view.write")),
             // w2-6 #3: c4, c4b, a for over an accessor result whose body replaces the owner.
@@ -213,7 +213,7 @@ class LentPlacesTest {
                         gll = List<List<Int32>> { }
                         s += x
                     }
-                    return s
+                    s
                 }
             """, listOf("rules.exclusivity.loop")),
             "c4b" to Probe("""
@@ -223,14 +223,14 @@ class LentPlacesTest {
                         gm = null
                         s += x
                     }
-                    return s
+                    s
                 }
             """, listOf("rules.exclusivity.loop")),
             // q12a: accepted on the trial (a D33 spill copied the element); R-A makes it the index spelling's
             // literal-4b refusal (a view of a mut global beside an impure sibling).
             "q12a" to Probe("""
                 pub f: () Int32 {
-                    return sumK(gll.get(0).view(), clobber())
+                    sumK(gll.get(0).view(), clobber())
                 }
             """, listOf("rules.view.write")),
         )
@@ -257,10 +257,10 @@ class LentPlacesTest {
                 e: Size = xs.view()[1].size()
                 g: Size = v.from(1).get(0).size()
                 h: Int32 = mk().get(0)
-                return d + h
+                d + h
             }
             pub mk: () List<Int32> {
-                return List<Int32> { values = @arrOf(1) }
+                List<Int32> { values = @arrOf(1) }
             }
             """,
         )
@@ -320,22 +320,22 @@ class LentPlacesTest {
         val p = snippet(
             prelude + """
             pub pick: (a: View<List<Int32>>, b: View<List<Int32>>) View<List<Int32>> {
-                return a
+                a
             }
             pub mkLL: () List<List<Int32>> {
-                return List<List<Int32>> { }
+                List<List<Int32>> { }
             }
             pub locals: () Int32 {
                 mut a: List<List<Int32>> = List<List<Int32>> { }
                 mut b: List<List<Int32>> = List<List<Int32>> { }
-                return sumK(pick(a.view(), b.view()).get(0).view(), clobber())
+                sumK(pick(a.view(), b.view()).get(0).view(), clobber())
             }
             pub temp: () Int32 {
-                return sumK(mkLL().view().get(0).view(), clobber())
+                sumK(mkLL().view().get(0).view(), clobber())
             }
             pub global: () Int32 {
                 mut a: List<List<Int32>> = List<List<Int32>> { }
-                return sumK(pick(a.view(), gll.view()).get(0).view(), clobber())
+                sumK(pick(a.view(), gll.view()).get(0).view(), clobber())
             }
             """,
         )

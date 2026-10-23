@@ -2282,6 +2282,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
+        // A returned `c ? a : b` lowers as the if/else of returns it reads as.
+        (returnStatement.expr as? net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr)?.let { returnsOf(it) }?.let {
+            it.accept(this)
+            return
+        }
         // Releases must precede the `return`, or they are dead code. The
         // returned local (if any) keeps its +1 -- ownership moves to the caller.
         val moved = if (returnStatement.expr !is NoExpr) {

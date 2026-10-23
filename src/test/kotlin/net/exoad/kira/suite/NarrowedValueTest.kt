@@ -33,7 +33,7 @@ class NarrowedValueTest {
             pub radius: Int32
 
             override pub area: () Int32 {
-                return radius
+                radius
             }
         }
     """.trimIndent()
@@ -119,7 +119,7 @@ class NarrowedValueTest {
 
     @Test
     fun aBodysTailAfterAnIfThatLeavesSeesTheNarrowedName() {
-        val src = "f: (s: Shape) Int32 {\n    if s != Circle {\n        return 0\n    }\n    s.radius\n}"
+        val src = "f: (s: Shape) Int32 {\n    s != Circle ? 0 : s.radius\n}"
         assertTrue(assertIs<ReturnStatement>(tailOf(src)).implicit)
         assertEquals(listOf("s:Shape->Circle"), narrowed(src))
         // An if that can fall through proves nothing for the tail.
@@ -128,7 +128,7 @@ class NarrowedValueTest {
 
     @Test
     fun aBodysLastIfChainNarrowsEachArmItEnds() {
-        val src = "f: (s: Shape, m: Maybe<Int32>) Int32 {\n    if s == Circle {\n        s.radius\n    } else if m == Int32 {\n        m\n    } else {\n        -1\n    }\n}"
+        val src = "f: (s: Shape, m: Maybe<Int32>) Int32 {\n    s == Circle ? s.radius : m == Int32 ? m : -1\n}"
         assertEquals(listOf("m:Maybe<Int32>->Int32", "s:Shape->Circle"), narrowed(src))
     }
 
@@ -144,14 +144,13 @@ class NarrowedValueTest {
     // ---- lowering ----------------------------------------------------------------------------
 
     @Test
-    fun onPyANarrowingGuardAndItsTailGiveTheSamePythonAsWithReturn() {
-        val explicit = "f: (m: Maybe<Int32>, k: Int32) Int32 {\n    if m != Int32 {\n        return -k\n    }\n    return m * k\n}\n\n" +
-            "g: (m: Maybe<Int32>) Int32 {\n    return m == Int32 ? m + 1 : 0\n}"
-        val bare = explicit.replace("    return m * k", "    m * k").replace("    return m == Int32", "    m == Int32")
-        val py = PyTestSupport.emit(bare).python()
-        assertTrue(py.contains("    if m is None:\n        return _k_i32(-k)\n    return _k_i32(m * k)\n"), py)
+    fun onPyANarrowingGuardAsATernaryNarrowsItsElseArm() {
+        // The guard `if m != Int32 { return -k }` and its tail, as kira-dialect stage3 writes them.
+        val src = "f: (m: Maybe<Int32>, k: Int32) Int32 {\n    m != Int32 ? -k : m * k\n}\n\n" +
+            "g: (m: Maybe<Int32>) Int32 {\n    m == Int32 ? m + 1 : 0\n}"
+        val py = PyTestSupport.emit(src).python()
+        assertTrue(py.contains("    return _k_i32(-k) if m is None else _k_i32(m * k)\n"), py)
         assertTrue(py.contains("    return _k_i32(m + 1) if m is not None else 0\n"), py)
-        assertEquals(PyTestSupport.emit(explicit).python(), py)
     }
 
     @Test
@@ -169,7 +168,8 @@ class NarrowedValueTest {
             ternary.contains("return (dynamic_cast<const Circle*>(s.get()) != nullptr) ? std::dynamic_pointer_cast<Circle>(s)->radius : kira::isSome(m) ? kira::unwrap(m) : 0;"),
             ternary,
         )
-        val guard = cpp("pub f: (s: Shape) Int32 {\n    if s != Circle {\n        return 0\n    }\n    s.radius\n}")
-        assertTrue(guard.contains("return std::dynamic_pointer_cast<Circle>(s)->radius;"), guard)
+        val guard = cpp("pub f: (s: Shape) Int32 {\n    s != Circle ? 0 : s.radius\n}")
+        // A guard is a ternary now: its else arm narrows as the code after the guard did.
+        assertTrue(guard.contains(" ? 0 : std::dynamic_pointer_cast<Circle>(s)->radius;"), guard)
     }
 }

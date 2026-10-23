@@ -17,7 +17,7 @@ pub Reply: Struct {
     pub code: Int32
 
     pub isOk: () Bool {
-        return kind == KIND_OK
+        kind == KIND_OK
     }
 
     pub mut reset: () Void {
@@ -34,14 +34,14 @@ pub Band: Struct, Measured {
     pub hi: Int32 = 10
 
     override pub width: () Int32 {
-        return hi - lo
+        hi - lo
     }
 }
 
 pub Behaviour: Any {
     pub id: () Str;
     pub mayDrive: () Bool {
-        return false
+        false
     }
     pub mut step: (r: Reply) Reply;
 }
@@ -54,16 +54,16 @@ pub Stop: Behaviour {
     }
 
     override pub id: () Str {
-        return "stop"
+        "stop"
     }
 
     override pub mut step: (r: Reply) Reply {
-        return r
+        r
     }
 }
 
 pub command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
-    return verb
+    verb
 }
 
 pub apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
@@ -71,9 +71,9 @@ pub apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
 }
 
 pub isSpace: (c: Char) Bool {
-    return c == SPACE
+    c == SPACE
 }
 
 pub frame: () Frame {
-    return @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }

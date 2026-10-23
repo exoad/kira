@@ -15,12 +15,15 @@ namespace bytesplus
         {
             return "none";
         }
-        kira::List<kira::Str> parts = {};
-        for(const std::uint8_t b : kira::unwrap(got))
+        else
         {
-            parts.push_back(kira::Str(kira::hex(b)));
+            kira::List<kira::Str> parts = {};
+            for(const std::uint8_t b : kira::unwrap(got))
+            {
+                parts.push_back(kira::Str(kira::hex(b)));
+            }
+            return kira::Str("[") + kira::Str(kira::list::joinToString(parts, " ")) + "]";
         }
-        return kira::Str("[") + kira::Str(kira::list::joinToString(parts, " ")) + "]";
     }
 
     kira::Str hexes(const kira::List<kira::Str>& texts)

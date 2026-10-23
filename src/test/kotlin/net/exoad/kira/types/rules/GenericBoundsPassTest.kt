@@ -14,7 +14,7 @@ class GenericBoundsPassTest {
         pub Sq: Struct, Shape {
             pub s: Int32 = 1
             override pub area: () Int32 {
-                return s * s
+                s * s
             }
         }
         pub Pt: Struct {
@@ -24,10 +24,10 @@ class GenericBoundsPassTest {
             pub v: T
         }
         pub bigger<T: Shape>: (a: T, b: T) Int32 {
-            return a.area() + b.area()
+            a.area() + b.area()
         }
         pub half<T: FloatNum>: (v: T) T {
-            return v
+            v
         }
     """
 
@@ -40,10 +40,10 @@ class GenericBoundsPassTest {
                 decls + """
                 pub f: () Int32 {
                     b: Box<Sq> = Box<Sq> { v = Sq {} }
-                    return bigger<Sq>(b.v, Sq {})
+                    bigger<Sq>(b.v, Sq {})
                 }
                 pub g: (v: Float32) Float32 {
-                    return half<Float32>(v) + half<Float32>(v)
+                    half<Float32>(v) + half<Float32>(v)
                 }
                 """,
             ),
@@ -56,7 +56,7 @@ class GenericBoundsPassTest {
             snippet(
                 decls + """
                 pub wrap<U: Shape>: (u: U) Box<U> {
-                    return Box<U> { v = u }
+                    Box<U> { v = u }
                 }
                 pub Pair<A: Shape, B: Shape>: Any {
                     pub a: Box<A>
@@ -78,7 +78,7 @@ class GenericBoundsPassTest {
                 pub f: () Int32 {
                     a: Any<Str> = Any<Str> { v = "x" }
                     b: Any<List<Int32>> = Any<List<Int32>> { v = List<Int32> {} }
-                    return 1
+                    1
                 }
                 """,
             ),
@@ -92,7 +92,7 @@ class GenericBoundsPassTest {
         val p = snippet(
             decls + """
             pub f: (b: Box<Str>) Box<Pt> {
-                return Box<Pt> { v = Pt {} }
+                Box<Pt> { v = Pt {} }
             }
             """,
         )
@@ -105,10 +105,10 @@ class GenericBoundsPassTest {
         val p = snippet(
             decls + """
             pub f: () Int32 {
-                return bigger<Pt>(Pt {}, Pt {})
+                bigger<Pt>(Pt {}, Pt {})
             }
             pub g: (v: Int32) Int32 {
-                return half<Int32>(v)
+                half<Int32>(v)
             }
             """,
         )
@@ -120,7 +120,7 @@ class GenericBoundsPassTest {
         val p = snippet(
             decls + """
             pub f: (xs: List<Box<Pt>>) Int32 {
-                return 1
+                1
             }
             """,
         )

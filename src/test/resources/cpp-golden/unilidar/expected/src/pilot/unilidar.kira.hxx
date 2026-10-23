@@ -120,11 +120,7 @@ namespace unilidar
 
   constexpr kira::Maybe<Frame> autoStandbyFrame(std::uint32_t value)
   {
-      if(value > 1u)
-      {
-          return kira::none;
-      }
-      return userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value);
+      return value > 1u ? kira::Maybe<std::array<std::uint8_t, 32>>(kira::none) : kira::Maybe<std::array<std::uint8_t, 32>>(userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value));
   }
 
   constexpr bool readHeader(kira::View<std::uint8_t> buf, Header& out)
@@ -133,16 +129,30 @@ namespace unilidar
       {
           return false;
       }
-      for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
+      else
       {
-          if(kira::at(buf, i) != kira::at(MAGIC, i))
+          bool result{false};
+          bool found{false};
+          for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
           {
-              return false;
+              if(kira::at(buf, i) != kira::at(MAGIC, i))
+              {
+                  result = false;
+                  found = true;
+                  break;
+              }
+          }
+          if(found)
+          {
+              return result;
+          }
+          else
+          {
+              out.type = readU32(buf.from(4));
+              out.size = readU32(buf.from(8));
+              return static_cast<kira::Size>(out.size) == buf.size();
           }
       }
-      out.type = readU32(buf.from(4));
-      out.size = readU32(buf.from(8));
-      return static_cast<kira::Size>(out.size) == buf.size();
   }
 
   constexpr bool tailClosed(kira::View<std::uint8_t> buf)
@@ -157,19 +167,29 @@ namespace unilidar
       {
           return 0;
       }
-      for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
+      else
       {
-          if(kira::at(buf, i) != kira::at(MAGIC, i))
+          kira::Size result{0};
+          bool found{false};
+          for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
           {
-              return 0;
+              if(kira::at(buf, i) != kira::at(MAGIC, i))
+              {
+                  result = 0;
+                  found = true;
+                  break;
+              }
+          }
+          if(found)
+          {
+              return result;
+          }
+          else
+          {
+              const kira::Size size{static_cast<kira::Size>(readU32(buf.from(8)))};
+              return size < HEADER_BYTES + TAIL_BYTES || size > buf.size() || !tailClosed(buf.slice(0, size)) ? kira::Size{0} : size;
           }
       }
-      const kira::Size size{static_cast<kira::Size>(readU32(buf.from(8)))};
-      if(size < HEADER_BYTES + TAIL_BYTES || size > buf.size() || !tailClosed(buf.slice(0, size)))
-      {
-          return 0;
-      }
-      return size;
   }
 
   template<typename F_each>

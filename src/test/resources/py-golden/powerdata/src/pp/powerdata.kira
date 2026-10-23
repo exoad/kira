@@ -5,13 +5,11 @@ kira.json as json
 // powerpage.py's clean(): a float that is no finite number is null.
 clean: (v: Maybe<Float64>) Json {
     if v.isNull() {
-        return Json.null()
+        Json.null()
+    } else {
+        x: Float64 = v.value
+        x != x || x - x != 0.0 ? Json.null() : Json.of(x)
     }
-    x: Float64 = v.value
-    if x != x || x - x != 0.0 {
-        return Json.null()
-    }
-    return Json.of(x)
 }
 
 pub rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTempC: Maybe<Float64>, jTempC: Maybe<Float64>) Json {
@@ -22,7 +20,7 @@ pub rawPoint: (tS: Float64, inW: Maybe<Float64>, cpuPct: Maybe<Float64>, piTempC
     p.add(clean(cpuPct))
     p.add(clean(piTempC))
     p.add(clean(jTempC))
-    return p
+    p
 }
 
 // A minute bucket's point, its start the int key Store.add files it under.
@@ -34,7 +32,7 @@ pub bucketPoint: (startS: Int64, avgW: Maybe<Float64>, maxW: Maybe<Float64>, cpu
     p.add(clean(cpuAvg))
     p.add(clean(piTempC))
     p.add(clean(jTempC))
-    return p
+    p
 }
 
 // j_wh is sum()'s: the int 0 over no buckets.
@@ -54,7 +52,7 @@ pub stats: (samples: Size, buckets: Size, jetsonUp: Maybe<Float64>, avgW: Maybe<
     s.put("pi_cpu_avg", Json.of(cpuAvg))
     s.put("pi_temp_max", Json.of(piTempMax))
     s.put("j_temp_max", Json.of(jTempMax))
-    return s
+    s
 }
 
 pub body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<Json>) Str {
@@ -70,7 +68,7 @@ pub body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<J
         i += 1
     }
     b.put("series", s)
-    return b.dump()
+    b.dump()
 }
 
 main: () Void {

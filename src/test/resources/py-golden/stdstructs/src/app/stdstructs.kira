@@ -9,7 +9,7 @@ pub Seen: Struct {
 }
 
 pub made: (size: Size, host: Str) Datagram {
-    return Datagram { size = size, host = host }
+    Datagram { size = size, host = host }
 }
 
 bump: (mut d: Datagram) Void {
@@ -65,5 +65,5 @@ pub main: () Int32 {
     bump(mut f)
     bump(mut f)
     show(f)
-    return f.port
+    f.port
 }

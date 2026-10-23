@@ -59,7 +59,7 @@ class BlockValueTest {
 
     @Test
     fun aVoidBodyDropsItsLastValue() {
-        val src = "g: () Int32 {\n    return 1\n}\n\nf: () Void {\n    g()\n}"
+        val src = "g: () Int32 {\n    1\n}\n\nf: () Void {\n    g()\n}"
         assertFalse(body(src).last() is ReturnStatement)
         expectNoErrors(TyperTestSupport.snippet(src))
     }
@@ -70,7 +70,7 @@ class BlockValueTest {
         val s = assertIs<IfSelectionStatement>(chain.single())
         tail(s.thenStatements.single())
         tail(s.elseBranches.first().let { (it as net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement).statements.last() })
-        val tried = body("h: (s: Str) Int32 {\n    return 1\n}\n\nf: (s: Str) Int32 {\n    try {\n        h(s)\n    } on e: Str {\n        -1\n    }\n}")
+        val tried = body("h: (s: Str) Int32 {\n    1\n}\n\nf: (s: Str) Int32 {\n    try {\n        h(s)\n    } on e: Str {\n        -1\n    }\n}")
         val t = assertIs<TryExpr>(tried.single().expr)
         assertFalse(t.isValue, "a body's last try stays a statement whose blocks return")
         tail(t.tryBlock.single())
@@ -125,7 +125,7 @@ class BlockValueTest {
 
     @Test
     fun anIfValuesArmsEndInValuesThroughANestedIfAndTry() {
-        val src = "h: () Int32 {\n    return 1\n}\n\n" +
+        val src = "h: () Int32 {\n    1\n}\n\n" +
             "f: (c: Bool, d: Bool) Int32 {\n    x: Int32 = if c {\n        h()\n        if d {\n            h()\n            1\n        } else {\n            2\n        }\n" +
             "    } else {\n        try {\n            h()\n        } on e: Str {\n            0\n        }\n    }\n    x\n}"
         val e = assertIs<IfExpr>(value(src))
@@ -308,7 +308,7 @@ class BlockValueTest {
     @Test
     fun onPyAnIfWithStatementArmsIsADefCalledInPlace() {
         val py = PyTestSupport.emit(
-            "note: () Int32 {\n    return 1\n}\n\n" +
+            "note: () Int32 {\n    1\n}\n\n" +
                 "f: (c: Bool) Int32 {\n    mut total: Int32 = 0\n    v: Int32 = if c {\n        total = note()\n        total * 10\n    } else {\n        -1\n    }\n    v + total\n}",
         ).python()
         assertTrue(py.contains("    def _k_t0():\n        nonlocal total\n        if c:\n            total = _note()\n"), py)
@@ -318,7 +318,7 @@ class BlockValueTest {
     @Test
     fun onPyATryValueIsADefWhoseHandlerReturnsItsValue() {
         val py = PyTestSupport.emit(
-            "h: (s: Str) Int32 {\n    return 1\n}\n\nf: (s: Str) Int32 {\n    n: Int32 = try {\n        h(s)\n    } on e: Str {\n        0\n    }\n    n\n}",
+            "h: (s: Str) Int32 {\n    1\n}\n\nf: (s: Str) Int32 {\n    n: Int32 = try {\n        h(s)\n    } on e: Str {\n        0\n    }\n    n\n}",
         ).python()
         assertTrue(py.contains("    def _k_t0():\n        try:\n            return _h(s)\n        except _k_Error as _k_t1:\n            e = _k_t1.args[0]\n            return 0\n    n = _k_t0()\n"), py)
     }
@@ -328,7 +328,7 @@ class BlockValueTest {
         val h = "h: (s: Str) Int32 {\n    if s == \"\" {\n        throw \"empty\"\n    }\n    s.size() as Int32\n}\n\n"
         val tried = "try {\n        h(s)\n    } on e: Str {\n        -1\n    }"
         val bare = "${h}f: (s: Str) Int32 {\n    ($tried)\n}"
-        val explicit = "${h}f: (s: Str) Int32 {\n    return ($tried)\n}"
+        val explicit = "${h}f: (s: Str) Int32 {\n    ($tried)\n}"
         assertTrue(assertIs<TryExpr>(tail(body(bare).last()).expr).isValue, "the try value is the result whole")
         expectNoErrors(TyperTestSupport.snippet(bare))
         val py = PyTestSupport.emit(bare).python()
@@ -338,7 +338,7 @@ class BlockValueTest {
 
     @Test
     fun aTryValueInAMaybeSlotTakesNullFromItsHandler() {
-        val src = "h: (s: Str) Int32 {\n    return 1\n}\n\n" +
+        val src = "h: (s: Str) Int32 {\n    1\n}\n\n" +
             "f: (s: Str) Bool {\n    m: Maybe<Int32> = try {\n        h(s)\n    } on e: Str {\n        null\n    }\n    m.isSome()\n}"
         expectNoErrors(TyperTestSupport.snippet(src))
         val py = PyTestSupport.emit(src).python()
@@ -356,7 +356,7 @@ class BlockValueTest {
     @Test
     fun onPyAnElseIfWhoseConditionNeedsLinesNestsUnderElse() {
         val py = PyTestSupport.emit(
-            "note: () Int32 {\n    return 1\n}\n\n" +
+            "note: () Int32 {\n    1\n}\n\n" +
                 "f: (a: Bool, b: Bool) Int32 {\n    v: Int32 = if a {\n        note()\n        1\n    } else if (if b {\n        note()\n        true\n    } else {\n        false\n    }) {\n        note()\n        2\n    } else {\n        3\n    }\n    v\n}",
         ).python()
         assertTrue(py.contains("        else:\n            def _k_t1():\n"), py)

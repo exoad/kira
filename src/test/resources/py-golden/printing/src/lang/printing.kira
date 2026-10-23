@@ -6,7 +6,7 @@ kira.os as os
 stop: (code: Int32) Int32 {
     println("stopping")
     exit(code)
-    return 1
+    1
 }
 
 main: () Void {

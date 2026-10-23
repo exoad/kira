@@ -132,10 +132,10 @@ class CppDeclEmitterTest {
                 """
                 mut calls: Int32 = 0
                 LOCAL: Float32 = 0.10
-                helper: (v: Float32) Float32 { return v * LOCAL }
+                helper: (v: Float32) Float32 { v * LOCAL }
                 orphan: () Void { }
                 pub go: () Void { calls += 1 }
-                pub useIt: () Float32 { return helper(1.0) }
+                pub useIt: () Float32 { helper(1.0) }
                 """,
             ),
             uri = "test:main",
@@ -238,8 +238,8 @@ class CppDeclEmitterTest {
                 "test:main",
                 """
                 pub SCALE: Int32 = 100
-                pub command: (verb: Str, args: Str = "", n: Int32 = SCALE) Str { return "${'$'}{verb} ${'$'}{args} ${'$'}{n}" }
-                isSpace: (c: Char) Bool { return c == ' ' }
+                pub command: (verb: Str, args: Str = "", n: Int32 = SCALE) Str { "${'$'}{verb} ${'$'}{args} ${'$'}{n}" }
+                isSpace: (c: Char) Bool { c == ' ' }
                 pub tell: (unused: Int32, used: Int32) Void { trace(used) }
                 """,
             ),
@@ -263,9 +263,9 @@ class CppDeclEmitterTest {
                 "lib:units",
                 """
                 pub SCALE: Int32 = 100
-                clampPct: (v: Int32) Int32 { return v }
-                pub percent: (part: Int32, whole: Int32) Int32 { return part * whole }
-                pub @_const crc: (v: UInt32) UInt32 { return v }
+                clampPct: (v: Int32) Int32 { v }
+                pub percent: (part: Int32, whole: Int32) Int32 { part * whole }
+                pub @_const crc: (v: UInt32) UInt32 { v }
                 """,
             ),
             uri = "lib:units",
@@ -286,8 +286,8 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub @_const crc32: (buf: View<UInt8>) UInt32 { return buf.size() as UInt32 }
-                pub id<T>: (v: T) T { return v }
+                pub @_const crc32: (buf: View<UInt8>) UInt32 { buf.size() as UInt32 }
+                pub id<T>: (v: T) T { v }
                 pub plain: () Void { }
                 """,
             ),
@@ -312,7 +312,7 @@ class CppDeclEmitterTest {
                 """
                 pub Pt: Struct {
                     pub x: Int32 = 0
-                    pub width: () Int32 { return x }
+                    pub width: () Int32 { x }
                     pub mut @_const grow: (by: Int32) Void { x += by }
                 }
                 """,
@@ -329,7 +329,7 @@ class CppDeclEmitterTest {
     @Test
     fun fxMainIsDeclaredInTheHeaderAndWrappedByIntMain() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("programs:forward", "CREEP: Float32 = 0.10\nmain: () Int32 { return 0 }"),
+            DeclTestSupport.module("programs:forward", "CREEP: Float32 = 0.10\nmain: () Int32 { 0 }"),
             uri = "programs:forward",
             parts = fakeBodies,
         )
@@ -424,7 +424,7 @@ class CppDeclEmitterTest {
 
     @Test
     fun aStaticAssertGoesThroughTheExpressionPart() {
-        val h = header("pub @_const crc: (v: UInt32) UInt32 { return v }\n@_static_assert(crc(1) == 1, \"crc\")", parts = fakeBodies)
+        val h = header("pub @_const crc: (v: UInt32) UInt32 { v }\n@_static_assert(crc(1) == 1, \"crc\")", parts = fakeBodies)
         assertContains(h, "  static_assert(<BinaryExpr>, \"crc\");\n}")
     }
 

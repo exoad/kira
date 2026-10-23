@@ -79,20 +79,20 @@ waiting: () Void {
         })
     })
     held: Bool = ready.waitUntil((xs: List<Int32>) Bool {
-        return xs.size() > 0
+        xs.size() > 0
     }, -1)
     filler.join()
     never: Bool = ready.waitUntil((xs: List<Int32>) Bool {
-        return xs.size() > 5
+        xs.size() > 5
     }, 30)
     now: Bool = ready.waitUntil((xs: List<Int32>) Bool {
-        return xs.size() == 1
+        xs.size() == 1
     }, 0)
     println("waitUntil ${held} ${never} ${now}")
     calls: Atomic<Int32> = Atomic<Int32> { value = 0 }
     once: Bool = ready.waitUntil((xs: List<Int32>) Bool {
         calls.add(1)
-        return xs.size() > 5
+        xs.size() > 5
     }, 0)
     println("a zero timeout asks a false predicate ${calls.load()} time: ${once}")
 }
@@ -119,7 +119,7 @@ atomics: () Void {
 }
 
 nanOf: (zero: Float64) Float64 {
-    return zero / zero
+    zero / zero
 }
 
 stopping: () Void {
@@ -140,7 +140,7 @@ stopping: () Void {
 
 pub main: () Int32 {
     a: List<Str> = args()
-    how: Str = if a.size() > 1 { a[1] } else { "all" }
+    how: Str = a.size() > 1 ? a[1] : "all"
     if how == "all" {
         counting()
         queueing()
@@ -175,5 +175,5 @@ pub main: () Int32 {
         t.join()
     }
     println("${how} done")
-    return 0
+    0
 }

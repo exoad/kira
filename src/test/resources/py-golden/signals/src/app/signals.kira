@@ -9,7 +9,7 @@ kira.time as time
 
 pub main: () Int32 {
     a: List<Str> = args()
-    how: Str = if a.size() > 1 { a[1] } else { "flag" }
+    how: Str = a.size() > 1 ? a[1] : "flag"
     stop: Atomic<Bool> = Atomic<Bool> { value = false }
     if how == "flag" {
         onInt: Bool = onSignal(SIGNAL_INT, stop)
@@ -53,5 +53,5 @@ pub main: () Int32 {
         println("never")
     }
     println("${how} done")
-    return 0
+    0
 }

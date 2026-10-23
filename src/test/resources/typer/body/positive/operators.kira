@@ -64,5 +64,5 @@ pub constants: (a: Int32) Int32 {
     b: Int32 = a * LIMIT                   // @type Int32 const=10:Int32 sym=positive:operators.LIMIT @ LIMIT
     c: Int32 = LIMIT + 1                   // @type Int32 const=11:Int32
     d: Float32 = HALF * 2.0                // @type Float32 const=1.0:Float32
-    return b + c                           // @type Int32
+    b + c                           // @type Int32
 }

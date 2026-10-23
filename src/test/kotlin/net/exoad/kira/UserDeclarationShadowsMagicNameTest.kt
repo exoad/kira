@@ -77,7 +77,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         parseInt64: (x: Int32) Int32 {
-            return x + 1
+            x + 1
         }
 
         main: () Void {
@@ -95,7 +95,7 @@ class UserDeclarationShadowsMagicNameTest {
         mathNameUri,
         """
         ceil: (x: Float64) Float64 {
-            return x + 100.0
+            x + 100.0
         }
 
         main: () Void {
@@ -110,7 +110,7 @@ class UserDeclarationShadowsMagicNameTest {
         renamedUri,
         """
         min: (a: Int32, b: Int32) Int32 {
-            return a
+            a
         }
 
         main: () Void {
@@ -130,7 +130,7 @@ class UserDeclarationShadowsMagicNameTest {
         stdlibBodyUri,
         """
         min: (a: Int32, b: Int32) Int32 {
-            return a
+            a
         }
 
         main: () Void {
@@ -150,7 +150,7 @@ class UserDeclarationShadowsMagicNameTest {
         return unitOf(
             utilUri to """
                 ${visibility}min: (a: Float64, b: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
             """.trimIndent(),
             twoModuleMainUri to """
@@ -212,7 +212,7 @@ class UserDeclarationShadowsMagicNameTest {
         return unitOf(
             libcUri to """
                 ${visibility}floor: (x: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
             """.trimIndent(),
             libcMainUri to """
@@ -231,7 +231,7 @@ class UserDeclarationShadowsMagicNameTest {
         ownLibcNameUri,
         """
         sqrt: (x: Float64) Float64 {
-            return x + 100.0
+            x + 100.0
         }
 
         main: () Void {
@@ -256,7 +256,7 @@ class UserDeclarationShadowsMagicNameTest {
                 pub id: Int32
 
                 run: () Float64 {
-                    return min(1.0, 2.0)
+                    min(1.0, 2.0)
                 }
             }
         """.trimIndent()
@@ -264,15 +264,15 @@ class UserDeclarationShadowsMagicNameTest {
         return unitOf(
             scopeUtilUri to """
                 max: (a: Float64, b: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
 
                 pub min: (a: Float64, b: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
 
                 pub pick<T>: (a: Float64, b: Float64) Float64 {
-                    return max(a, b)
+                    max(a, b)
                 }
             """.trimIndent(),
             scopeMainUri to """
@@ -309,7 +309,7 @@ class UserDeclarationShadowsMagicNameTest {
         return unitOf(
             constUtilUri to """
                 pub min: (a: Float64, b: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
             """.trimIndent(),
             constMainUri to """
@@ -335,7 +335,7 @@ class UserDeclarationShadowsMagicNameTest {
         return unitOf(
             constUtilUri to """
                 min: (a: Float64, b: Float64) Float64 {
-                    return 0.0
+                    0.0
                 }
             """.trimIndent(),
             constMainUri to """
@@ -359,7 +359,7 @@ class UserDeclarationShadowsMagicNameTest {
         intAbsUri,
         """
         abs: (x: Int32) Int32 {
-            return x + 100
+            x + 100
         }
 
         main: () Void {
@@ -374,7 +374,7 @@ class UserDeclarationShadowsMagicNameTest {
         floatAbsUri,
         """
         abs: (x: Float64) Float64 {
-            return x + 100.0
+            x + 100.0
         }
 
         main: () Void {

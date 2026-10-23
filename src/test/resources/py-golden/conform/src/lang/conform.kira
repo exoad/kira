@@ -9,63 +9,49 @@ Pt: Struct {
 mut calls: Int32 = 0
 
 find: (xs: List<Int32>, v: Int32) Maybe<Int32> {
+    mut result: Maybe<Int32> = null
     for i: Size in 0..xs.size() {
         if xs[i] == v {
-            return i as Int32
+            result = i as Int32
+            break
         }
     }
-    return null
+    result
 }
 
 counted: () Maybe<Int32> {
     calls += 1
-    return calls
+    calls
 }
 
 // The rest of an `&&`, and the body after it.
 far: (m: Maybe<Int32>) Bool {
-    return m == Int32 && m > 1
+    m == Int32 && m > 1
 }
 
 // `!=` narrows the else branch; an else-if sees what the conditions before it failing proved.
 describe: (m: Maybe<Int32>) Str {
-    if m != Int32 {
-        return "none"
-    } else if m > 1 {
-        return "far ${m + 1}"
-    } else {
-        return "near ${m * 10}"
-    }
+    m != Int32 ? "none" : m > 1 ? "far ${m + 1}" : "near ${m * 10}"
 }
 
 // After an `if` that always leaves, the rest of the block sees what its failing proved.
 scaled: (m: Maybe<Int32>, k: Int32) Int32 {
-    if m != Int32 {
-        return -1
-    }
-    return m * k
+    m != Int32 ? -1 : m * k
 }
 
 // The rest of an `||` sees the left side false; `!` turns a test around.
 small: (m: Maybe<Int32>) Bool {
-    return m != Int32 || m < 2
+    m != Int32 || m < 2
 }
 
 flipped: (m: Maybe<Int32>) Int32 {
-    if !(m != Int32) {
-        return m + 1000
-    }
-    return 0
+    !(m != Int32) ? m + 1000 : 0
 }
 
 // An if-expression's arms, and a while loop's body.
 orZero: (m: Maybe<Int32>) Int32 {
-    v: Int32 = if m == Int32 {
-        m + 1
-    } else {
-        0
-    }
-    return v
+    v: Int32 = m == Int32 ? m + 1 : 0
+    v
 }
 
 countdown: (m: Maybe<Int32>) Int32 {
@@ -73,11 +59,11 @@ countdown: (m: Maybe<Int32>) Int32 {
     while m == Int32 && steps < m {
         steps += 1
     }
-    return steps
+    steps
 }
 
 twice: (x: Int32) Int32 {
-    return x * 2
+    x * 2
 }
 
 main: () Void {

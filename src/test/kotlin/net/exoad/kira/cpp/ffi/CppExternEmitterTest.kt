@@ -352,7 +352,7 @@ class CppExternEmitterTest {
                 drawList().addLine(7)
                 mut bytes: List<UInt8> = List<UInt8> { values = @arrOf(1, 2, 3, 4) }
                 fill(bytes.view(), 4)
-                return hypot(3, 4) + cOnly(1)
+                hypot(3, 4) + cOnly(1)
             }
             """
         )
@@ -404,7 +404,7 @@ class CppExternEmitterTest {
 
             pub Dog: Named {
                 override pub nm: () Str {
-                    return "d"
+                    "d"
                 }
             }
 
@@ -431,7 +431,7 @@ class CppExternEmitterTest {
             pub protoPick: (m: Maybe<Str>) Int32;
 
             two: () Int32 {
-                return 2
+                2
             }
 
             main: () Int32 {
@@ -440,7 +440,7 @@ class CppExternEmitterTest {
                 s: Str = "abc"
                 n: Int32 = 5
                 drawList().addText(s)
-                return nameLen(k) + nmLen(d) + maybeNameLen(k) + pick(s) + pickNull(null) + pickN(n) + callKind(two) + protoPick(s)
+                nameLen(k) + nmLen(d) + maybeNameLen(k) + pick(s) + pickNull(null) + pickN(n) + callKind(two) + protoPick(s)
             }
             """
         )
@@ -494,7 +494,7 @@ class CppExternEmitterTest {
                 s: Str = name()
                 m: Maybe<Int32> = find()
                 p: Buffer = buffer()
-                return count()
+                count()
             }
             """
         )
@@ -788,7 +788,7 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::fillBuf", header = "probe.hxx") fillBuf: (mut p: Unsafe<UInt8>, n: Size) Void;
 
             read: (v: View<UInt8>) Int64 {
-                return readBuf(v, 4)
+                readBuf(v, 4)
             }
 
             fill: (v: MutView<UInt8>) Void {
@@ -858,21 +858,21 @@ class CppExternEmitterTest {
                 l: Int32 = sumListL(GL, fs)
                 h: Int32 = lenAfterL("hi", fs)
                 k: Int32 = lenAfterL(GREETING, fs)
-                return a + b + l + h + k
+                a + b + l + h + k
             }
             inField: (c: Cb) Int32 {
-                return lenAfterCb(GS, c)
+                lenAfterCb(GS, c)
             }
             direct: () Int32 {
-                return lenAfter(GS, () Void { GS = "" })
+                lenAfter(GS, () Void { GS = "" })
             }
             viaMut: (mut o: Str, mut n: Int32) Int32 {
                 a: Int32 = appendLen(GS, mut o)
                 b: Int32 = appendLenI(GS, mut n)
-                return a + b + lengthOfS(GS)
+                a + b + lengthOfS(GS)
             }
             inside: (mut n: Int32) Int32 {
-                return ptNAfterMut(GP, mut n)
+                ptNAfterMut(GP, mut n)
             }
             """
         )
@@ -921,7 +921,7 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::sumP", header = "probe.hxx") sumP: (p: Unsafe<Int32>, n: Size) Int32;
             cat: () Int32 {
                 ys: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
-                return sumP(ys, ys.size())
+                sumP(ys, ys.size())
             }
             """
         )
@@ -940,7 +940,7 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::sumP", header = "probe.hxx") sumP: (p: Unsafe<Int32>, n: Size) Int32;
             cat: () Int32 {
                 xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
-                return sumP(xs, 4)
+                sumP(xs, 4)
             }
             """
         )
@@ -950,7 +950,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::lenBuf", header = "probe.hxx") lenBuf: (p: Unsafe<Char>) Int32;
             cat: () Int32 {
-                return lenBuf("abc")
+                lenBuf("abc")
             }
             """
         )
@@ -968,7 +968,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::sumP", header = "probe.hxx") sumP: (p: Unsafe<Int32>, n: Size) Int32;
             cat: (ys: List<Int64>) Int32 {
-                return sumP(ys, ys.size())
+                sumP(ys, ys.size())
             }
             """
         ).diagnostics.map { it.message }
@@ -1018,7 +1018,7 @@ class CppExternEmitterTest {
             cat: () Int32 {
                 xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
                 mut ys: List<Int32> = List<Int32> { values = @arrOf(3, 4) }
-                return peek(xs.view(), ys.view())
+                peek(xs.view(), ys.view())
             }
         """
         val pub = TyperTestSupport.snippet(body).diagnostics.map { it.message }
@@ -1033,7 +1033,7 @@ class CppExternEmitterTest {
             """
             pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
             cat: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
-                return peek(xs.view(), ys.view())
+                peek(xs.view(), ys.view())
             }
             """
         ).diagnostics.map { it.code }
@@ -1045,7 +1045,7 @@ class CppExternEmitterTest {
             cat: () Int32 {
                 xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
                 mut ys: List<Int32> = List<Int32> { values = @arrOf(3, 4) }
-                return peek(xs.view(), ys.view())
+                peek(xs.view(), ys.view())
             }
             """
         ).diagnostics.map { it.message }
@@ -1206,13 +1206,13 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::openHandle", header = "probe.hxx") openHandle: () Handle;
 
             kira: () Int32 {
-                return 1
+                1
             }
 
             all: () Int32 {
                 car: Car = openCar()
                 h: Handle = openHandle()
-                return ext() + car.speed() + proto() + h.size() + kira()
+                ext() + car.speed() + proto() + h.size() + kira()
             }
             """
         )
@@ -1261,7 +1261,7 @@ class CppExternEmitterTest {
                 fillP(xs.view(), xs.size(), 7)
                 fillP(arr.view(), 3, 1)
                 n: Int32 = setFirst(xs.view(), 9)
-                return n + peek(ys.view(), xs.view())
+                n + peek(ys.view(), xs.view())
             }
             """
         )

@@ -3,5 +3,5 @@ golden.py.externload.app.missing as missing
 // A use of a module whose import failed raises that import's error again, never the half-loaded module (D85).
 
 pub viaMissing: (n: Int32) Int32 {
-    return present(n)
+    present(n)
 }

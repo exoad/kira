@@ -63,12 +63,12 @@ class KiraCppBackendTest {
         val stdlibCpp = PlumbingTestSupport.fakeStdlib(root)
         val proto = PlumbingTestSupport.write(root, "src/pilot/proto.kira", PlumbingTestSupport.source("""
             pub command: (verb: Str) Str {
-                return verb
+                verb
             }
         """))
         val text = PlumbingTestSupport.write(root, "lib/text.kira", PlumbingTestSupport.source("""
             pub isSpace: (c: Int32) Bool {
-                return c == 32
+                c == 32
             }
         """))
         val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = ".", build = BuildOptions(target = "cpp", cpp = options))
@@ -316,7 +316,7 @@ class KiraCppBackendTest {
         PlumbingTestSupport.write(p.stdlibCpp, "kira/std/geometry.kira.hxx", "// shipped by hand\n")
         val geometry = PlumbingTestSupport.write(p.root, "stdlib/geometry.kira", PlumbingTestSupport.source("""
             pub clamp: (v: Int32, lo: Int32, hi: Int32) Int32 {
-                return v
+                v
             }
         """))
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
@@ -409,7 +409,7 @@ class KiraCppBackendTest {
         // A URI the repository's own stdlib (bootstrapped into every CompilationUnit) does not declare.
         val geometry = PlumbingTestSupport.write(p.root, "stdlib/geometry.kira", PlumbingTestSupport.source("""
             pub clamp: (v: Int32, lo: Int32, hi: Int32) Int32 {
-                return v
+                v
             }
         """))
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
@@ -433,7 +433,7 @@ class KiraCppBackendTest {
         val p = project("backend-std-unreached")
         val geometry = PlumbingTestSupport.write(p.root, "stdlib/geometry.kira", PlumbingTestSupport.source("""
             pub clamp: (v: Int32, lo: Int32, hi: Int32) Int32 {
-                return v
+                v
             }
         """))
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""

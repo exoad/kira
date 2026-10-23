@@ -15,13 +15,13 @@ bar: (pct: Int32) Str {
         out = out + "#"
         i += 1
     }
-    return out
+    out
 }
 
 pub line: (label: Str, part: Int32, whole: Int32 = SCALE) Line {
-    return Line { label = label, pct = percent(part, whole) }
+    Line { label = label, pct = percent(part, whole) }
 }
 
 pub render: (l: Line) Str {
-    return "${l.label}: ${l.pct}% ${bar(l.pct)}"
+    "${l.label}: ${l.pct}% ${bar(l.pct)}"
 }

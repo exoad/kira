@@ -1,5 +1,5 @@
 golden.py.builtinnames.app.main as main
 
 pub twice: () Int32 {
-    return globals * 2
+    globals * 2
 }

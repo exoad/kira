@@ -11,7 +11,7 @@ pub Point: Struct {
 pub UInt16 as Id
 
 pub count<K>: (m: Map<K, Int32>) Size {
-    return m.size()
+    m.size()
 }
 
 pub keys: () Void {

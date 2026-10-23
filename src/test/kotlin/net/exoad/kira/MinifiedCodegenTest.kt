@@ -53,7 +53,7 @@ class MinifiedCodegenTest {
             val result = compile(
                 """
                 add: (a: Int32, b: Int32) Int32 {
-                    return a + b
+                    a + b
                 }
 
                 main: () Void {

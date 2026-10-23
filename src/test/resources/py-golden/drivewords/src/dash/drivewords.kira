@@ -6,7 +6,7 @@
 // (D55), against the hand-written reader.
 
 space: (c: Char) Bool {
-    return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
+    c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
 // s.split()
@@ -27,52 +27,46 @@ pub words: (s: Str) List<Str> {
         out.add(s.substring(i, j))
         i = j
     }
-    return out
+    out
 }
 
 // words[1:7] as ints, joined by spaces, or none when one is not an int.
 sixInts: (w: List<Str>) Maybe<Str> {
     mut out: Str = ""
     mut k: Size = 1
+    mut result: Maybe<Str> = null
+    mut found: Bool = false
     while k < 7 {
         v: Maybe<Int64> = w[k].toInt64()
         if v.isNone() {
-            return null
+            result = null
+            found = true
+            break
         }
         out = out + " ${v.value}"
         k += 1
     }
-    return out
+    found ? result : out
 }
 
 // One frame's words as what the fake car does with them.
 pub read: (text: Str) Str {
     w: List<Str> = words(text)
     if w.isEmpty() {
-        return "nothing"
+        "nothing"
+    } else {
+        w0: Str = w[0]
+        w0 == "c" && w.size() >= 7 ? "control" + sixInts(w).unwrapOr(" dropped")
+            : w0 == "hold" && w.size() >= 2 ? (w[1] == "1" ? "hold take" : "hold release")
+            : w0 == "cmd" && w.size() >= 7 ? "command" + sixInts(w).unwrapOr(" dropped")
+            : w0 == "p" && w.size() >= 2 ? "ping " + w[1]
+            : w0 == "hidden" ? "hidden" : "ignored"
     }
-    w0: Str = w[0]
-    if w0 == "c" && w.size() >= 7 {
-        return "control" + sixInts(w).unwrapOr(" dropped")
-    }
-    if w0 == "hold" && w.size() >= 2 {
-        return if w[1] == "1" { "hold take" } else { "hold release" }
-    }
-    if w0 == "cmd" && w.size() >= 7 {
-        return "command" + sixInts(w).unwrapOr(" dropped")
-    }
-    if w0 == "p" && w.size() >= 2 {
-        return "ping " + w[1]
-    }
-    if w0 == "hidden" {
-        return "hidden"
-    }
-    return "ignored"
 }
 
 // A frame as the loop reads it: data.decode("utf-8", "replace") (Str.of, D55), then read.
 pub readFrame: (data: View<UInt8>) Str {
-    return read(Str.of(data))
+    read(Str.of(data))
 }
 
 main: () Void {

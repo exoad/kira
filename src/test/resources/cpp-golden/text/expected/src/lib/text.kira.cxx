@@ -20,16 +20,19 @@ namespace bibo::text
       {
           return kira::none;
       }
-      if(s.size() > n && kira::at(s, n) != ' ')
+      else if(s.size() > n && kira::at(s, n) != ' ')
       {
           return kira::none;
       }
-      kira::Size at{n};
-      while(at < s.size() && kira::at(s, at) == ' ')
+      else
       {
-          at += 1;
+          kira::Size at{n};
+          while(at < s.size() && kira::at(s, at) == ' ')
+          {
+              at += 1;
+          }
+          return at;
       }
-      return at;
   }
 
   kira::Size trimEnd(kira::View<char> s)
@@ -54,13 +57,19 @@ namespace bibo::text
       {
           return false;
       }
-      const kira::Maybe<std::int64_t> v = kira::parseInt64(s.slice(from, end - from));
-      if(!kira::isSome(v))
+      else
       {
-          return false;
+          const kira::Maybe<std::int64_t> v = kira::parseInt64(s.slice(from, end - from));
+          if(!kira::isSome(v))
+          {
+              return false;
+          }
+          else
+          {
+              out = static_cast<std::int32_t>(kira::unwrap(v));
+              return true;
+          }
       }
-      out = static_cast<std::int32_t>(kira::unwrap(v));
-      return true;
   }
 
   void driveReply(std::int32_t servo, std::int32_t esc, kira::StrBuf<32>& out)

@@ -114,7 +114,7 @@ class JSCodeGeneratorSmokeTest {
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {
@@ -145,7 +145,7 @@ class JSCodeGeneratorSmokeTest {
                 pub sound: Str
 
                 pub speak: () Str {
-                    return sound
+                    sound
                 }
             }
 
@@ -180,7 +180,7 @@ class JSCodeGeneratorSmokeTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return label
+                    label
                 }
             }
 

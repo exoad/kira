@@ -13,28 +13,29 @@ pub Account: Any {
     pub mut deposit: (amount: Int32) Int32 {
         balance += amount
         history.add(amount)
-        return balance
+        balance
     }
 
     pub mut withdraw: (amount: Int32) Maybe<Int32> {
         if balance - amount < -limit {
-            return null
+            null
+        } else {
+            balance -= amount
+            history.add(-amount)
+            balance
         }
-        balance -= amount
-        history.add(-amount)
-        return balance
     }
 
     pub moves: () Size {
-        return history.size()
+        history.size()
     }
 
     pub move: (i: Size) Int32 {
-        return history[i]
+        history[i]
     }
 
     pub noteOr: (fallback: Str) Str {
-        return note.unwrapOr(fallback)
+        note.unwrapOr(fallback)
     }
 }
 
@@ -44,45 +45,42 @@ pub Point: Any {
     pub y: Float64
 
     pub plus: (other: Point) Point {
-        return Point { x + other.x, y + other.y }
+        Point { x + other.x, y + other.y }
     }
 }
 
 pub div: (a: Int32, b: Int32) Int32 {
-    return a / b
+    a / b
 }
 
 pub rem: (a: Int32, b: Int32) Int32 {
-    return a % b
+    a % b
 }
 
 pub add: (a: Int32, b: Int32) Int32 {
-    return a + b
+    a + b
 }
 
 pub mul64: (a: Int64, b: Int64) Int64 {
-    return a * b
+    a * b
 }
 
 pub valueOf: (m: Maybe<Float64>) Float64 {
-    return m.value
+    m.value
 }
 
 pub orZero: (m: Maybe<Float64>) Float64 {
-    if m.isNull() {
-        return 0.0
-    }
-    return m.value
+    m.isNull() ? 0.0 : m.value
 }
 
 pub isSome: (m: Maybe<Int32>) Bool {
-    return m.isSome()
+    m.isSome()
 }
 
 pub isNone: (m: Maybe<Int32>) Bool {
-    return m.isNone()
+    m.isNone()
 }
 
 pub ratio: (a: Float64, b: Float64) Float64 {
-    return a / b
+    a / b
 }

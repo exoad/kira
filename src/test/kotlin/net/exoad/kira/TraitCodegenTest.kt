@@ -20,15 +20,15 @@ class TraitCodegenTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return "woof"
+                    "woof"
                 }
 
                 pub name: () Str {
-                    return label
+                    label
                 }
 
                 pub loudness: () Int32 {
-                    return 8
+                    8
                 }
             }
 
@@ -36,11 +36,11 @@ class TraitCodegenTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return "meow"
+                    "meow"
                 }
 
                 pub name: () Str {
-                    return label
+                    label
                 }
             }
 
@@ -50,7 +50,7 @@ class TraitCodegenTest {
             }
 
             noiseLevel: (s: Noisy) Int32 {
-                return s.loudness()
+                s.loudness()
             }
 
             main: () Void {
@@ -67,7 +67,7 @@ class TraitCodegenTest {
 
             makeCatSpeaker: () Speaker {
                 c: Cat = Cat { "Mochi" }
-                return c
+                c
             }
         """.trimIndent()
 

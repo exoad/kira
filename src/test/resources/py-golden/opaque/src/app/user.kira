@@ -10,9 +10,9 @@ Pair: Any {
 
 labelOf: (c: Counter) Str {
     try {
-        return c.label()
+        c.label()
     } on e: Str {
-        return "no label, ${e}"
+        "no label, ${e}"
     }
 }
 

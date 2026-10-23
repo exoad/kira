@@ -9,8 +9,8 @@ pub Rectangle: Any {
 
     pub perimeter: () Int32 {
         width: Int32 = bottomRight.x - topLeft.x
-        height: Int32 = topLeft.y - bottomRight.y
-        return (width + height) * 2
+        height: Int32 = topLeft.y - bottomRight.y;
+        (width + height) * 2
     }
 }
 
@@ -19,6 +19,6 @@ pub Pet: Any {
     pub sound: Str
 
     pub speak: () Str {
-        return sound
+        sound
     }
 }

@@ -5,7 +5,7 @@
 pub Speaker: Any {
     pub speak: () Str;
     pub loud: () Str {
-        return speak() + "!"               // @type Str call=TRAIT(Speaker.speak) @ speak()
+        speak() + "!"               // @type Str call=TRAIT(Speaker.speak) @ speak()
     }
 }
 
@@ -14,11 +14,11 @@ pub Animal: Any {
     pub mut age: Int32 = 0
 
     pub describe: () Str {
-        return name                        // @type Str place=Field(This(Animal).name) sym=Animal.name
+        name                        // @type Str place=Field(This(Animal).name) sym=Animal.name
     }
 
     pub sound: () Str {
-        return "..."                       // @type Str
+        "..."                       // @type Str
     }
 
     pub mut birthday: () Void {
@@ -30,23 +30,23 @@ pub Dog: Animal, Speaker {
     pub mut tricks: Int32 = 0
 
     override pub sound: () Str {
-        return "woof"                      // @type Str
+        "woof"                      // @type Str
     }
 
     override pub speak: () Str {
-        return sound()                     // @type Str call=VIRTUAL(Dog.sound)
+        sound()                     // @type Str call=VIRTUAL(Dog.sound)
     }
 
     pub me: () Dog {
-        return this                        // @type Dog place=This(Dog)
+        this                        // @type Dog place=This(Dog)
     }
 
     pub next: () Int32 {
-        return this.tricks + 1             // @type Int32 member=Field(Dog.tricks: Int32) @ this.tricks
+        this.tricks + 1             // @type Int32 member=Field(Dog.tricks: Int32) @ this.tricks
     }
 
     pub greet: () Str {
-        return "${name} (${age})"          // @type Str place=Field(This(Dog).name) @ name
+        "${name} (${age})"          // @type Str place=Field(This(Dog).name) @ name
     }
 }
 
@@ -55,7 +55,7 @@ pub Point: Struct {
     pub y: Int32 = 0
 
     pub sum: () Int32 {
-        return x + y                       // @type Int32
+        x + y                       // @type Int32
     }
 
     pub mut shift: (dx: Int32) Void {
@@ -67,7 +67,7 @@ pub Box<T>: Any {
     pub value: T
 
     pub get: () T {
-        return value                       // @type T
+        value                       // @type T
     }
 }
 

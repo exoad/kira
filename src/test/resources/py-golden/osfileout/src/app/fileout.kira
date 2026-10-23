@@ -7,24 +7,25 @@ kira.test as test
 pub append: (path: Str, line: Str) Bool {
     opened: Maybe<FileOut> = openAppend(path)
     if opened.isNone() {
-        return false
+        false
+    } else {
+        f: FileOut = opened.value
+        ok: Bool = (f.size() > 0 || f.write("# header\n".bytes())) && f.write((line + "\n").bytes()) && f.sync()
+        f.close()
+        ok
     }
-    f: FileOut = opened.value
-    ok: Bool = (f.size() > 0 || f.write("# header\n".bytes())) && f.write((line + "\n").bytes()) && f.sync()
-    f.close()
-    return ok
 }
 
 pub handle: (path: Str) Maybe<FileOut> {
-    return openAppend(path)
+    openAppend(path)
 }
 
 pub reason: () Str {
-    return lastError()
+    lastError()
 }
 
 pub kind: () Str {
-    return lastErrorKind()
+    lastErrorKind()
 }
 
 pub main: () Int32 {
@@ -45,5 +46,5 @@ pub main: () Int32 {
     t.check(append(log, "four") && Str.of(readFile(log).value) == "new\nfour\n", "and the next append adds no header to it")
     t.check(openWrite(root + "/nope/x").isNone() && lastErrorKind() == "NotFound", "openWrite in a missing directory is none, NotFound")
     t.check(removeTree(root), "the directory is removed")
-    return t.finish()
+    t.finish()
 }

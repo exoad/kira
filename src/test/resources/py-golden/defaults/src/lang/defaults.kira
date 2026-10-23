@@ -7,15 +7,15 @@ mut made: Int32 = 0
 tick: (v: Int32) Int32 {
     made += 1
     trace("tick ${v}")
-    return v
+    v
 }
 
 scale: (x: Int32, k: Int32 = 2) Int32 {
-    return x * k
+    x * k
 }
 
 mid: (a: Int32, b: Int32 = STEP, c: Int32 = 1) Int32 {
-    return a * 100 + b * 10 + c
+    a * 100 + b * 10 + c
 }
 
 words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, m: Maybe<Int32> = null) Str {
@@ -23,7 +23,7 @@ words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, 
     if loud {
         out = out.toUpper()
     }
-    return "${out}${mark as UInt8} ${w} ${m.unwrapOr(-1)}"
+    "${out}${mark as UInt8} ${w} ${m.unwrapOr(-1)}"
 }
 
 total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
@@ -31,7 +31,7 @@ total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
     for x: Int32 in xs {
         t += x
     }
-    return t
+    t
 }
 
 Knob: Any {
@@ -43,14 +43,11 @@ Knob: Any {
     mut hidden: Int32 = tick(9)
 
     pub shift: (by: Int32 = 1, twice: Bool = false) Int32 {
-        if twice {
-            return level + by * 2
-        }
-        return level + by
+        twice ? level + by * 2 : level + by
     }
 
     pub peek: () Int32 {
-        return hidden
+        hidden
     }
 }
 
@@ -62,7 +59,7 @@ show: (xs: List<Int32>) Str {
         }
         s = s + "${xs[i]}"
     }
-    return s + "]"
+    s + "]"
 }
 
 main: () Void {

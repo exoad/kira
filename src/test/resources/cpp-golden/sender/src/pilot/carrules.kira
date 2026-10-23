@@ -13,24 +13,25 @@ pub Sender: Any {
     pub mut send: (line: Str, waitMs: Int32 = WRITE_WAIT_MS) Int32 {
         r: Int32 = write(line, waitMs)
         if r != LINK_OK {
-            return r
+            r
+        } else {
+            now: Int64 = clock()
+            gap: Int64 = lastMs >= 0 ? now - lastMs : 0
+            lastMs = now
+            if gap > worstMs {
+                worstMs = gap
+            }
+            r
         }
-        now: Int64 = clock()
-        gap: Int64 = if lastMs >= 0 { now - lastMs } else { 0 }
-        lastMs = now
-        if gap > worstMs {
-            worstMs = gap
-        }
-        return r
     }
 
     // When the port last accepted a line; -1 before the first.
     pub sentMs: () Int64 {
-        return lastMs
+        lastMs
     }
 
     // The longest gap between two accepted lines.
     pub worstGapMs: () Int64 {
-        return worstMs
+        worstMs
     }
 }

@@ -5,7 +5,7 @@ pub Pt: Struct {
     pub y: Int32 = 0
 
     pub sum: () Int32 {
-        return x + y
+        x + y
     }
 
     pub mut shift: (dx: Int32) Void {
@@ -15,7 +15,7 @@ pub Pt: Struct {
     pub moved: (dx: Int32) Pt {
         mut p: Pt = this
         p.shift(dx)
-        return p
+        p
     }
 }
 
@@ -30,7 +30,7 @@ Holder: Any {
     pub mut at: Pt = Pt { }
 
     pub get: () Pt {
-        return at
+        at
     }
 }
 
@@ -45,7 +45,7 @@ reset: (mut p: Pt) Void {
 }
 
 norm: (p: Pt) Int32 {
-    return p.x * p.x + p.y * p.y
+    p.x * p.x + p.y * p.y
 }
 
 main: () Void {

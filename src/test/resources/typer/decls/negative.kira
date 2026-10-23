@@ -22,5 +22,5 @@ pub Second: Any {
 pub Both: First, Second { }
 
 // A parent that holds state after a stateless one.
-pub Marker: Any { pub tag: () Int32 { return 0 } }
+pub Marker: Any { pub tag: () Int32 { 0 } }
 pub Late: Marker, First { }

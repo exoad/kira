@@ -10,5 +10,5 @@ pub run: () Int32 {
     d: Int32 = xlib.SCALE                  // @type Int32 member=Module(crossmodule:lib.SCALE) const=100:Int32
     m: Meter = Meter { 30 }                // @type Meter
     h: Int32 = m.half()                    // @type Int32 call=METHOD(Meter.half)
-    return a + b + c + d + h               // @type Int32
+    a + b + c + d + h               // @type Int32
 }

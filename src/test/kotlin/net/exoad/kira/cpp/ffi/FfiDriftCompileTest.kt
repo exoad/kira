@@ -299,7 +299,7 @@ class FfiDriftCompileTest {
             pub @_extern(cpp = "probe::none", header = "probe.hxx") none: () Str;
 
             run: () Str {
-                return none()
+                none()
             }
             """.trimIndent(),
             "none",
@@ -346,7 +346,7 @@ class FfiDriftCompileTest {
             pub @_extern(c = "pt_mode", header = "pt.h") ptMode: () Int32;
 
             run: () Int32 {
-                return ptMode()
+                ptMode()
             }
             """.trimIndent(),
             "ptMode",
@@ -427,7 +427,7 @@ class FfiDriftCompileTest {
             pub @_extern(cpp = "probe::on_s", header = "probe.hxx") onS: () Fx<Tuple1<CStr>, Void>;
 
             run: () Fx<Tuple1<CStr>, Void> {
-                return onS()
+                onS()
             }
             """.trimIndent(),
             "onS",
@@ -505,7 +505,7 @@ class FfiDriftCompileTest {
             pub @_extern(cpp = "probe::name", header = "probe.hxx") name: () Str;
 
             run: () Bool {
-                return name() == "abc"
+                name() == "abc"
             }
         """.trimIndent()
         val (emitted, ctx) = DeclTestSupport.emitWith(DeclTestSupport.module(uri, decls), uri = uri, options = CppOptions(lineDirectives = false))

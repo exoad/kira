@@ -52,15 +52,7 @@ namespace jsondoc
     {
         const std::uint64_t k{r->below(24)};
         const kira::List<kira::Str> p = pieces();
-        if(k < static_cast<std::uint64_t>(p.size()))
-        {
-            return kira::at(p, static_cast<kira::Size>(k));
-        }
-        if(k < 22)
-        {
-            return kira::cat(static_cast<char>(static_cast<std::uint8_t>(r->below(32))));
-        }
-        return kira::cat(static_cast<char>(127));
+        return k < static_cast<std::uint64_t>(p.size()) ? kira::Str(kira::at(p, static_cast<kira::Size>(k))) : k < 22 ? kira::cat(static_cast<char>(static_cast<std::uint8_t>(r->below(32)))) : kira::cat(static_cast<char>(127));
     }
 
     kira::Str words(const kira::Rc<Rng>& r)
@@ -85,16 +77,19 @@ namespace jsondoc
             kira::writeU64Le(kira::mutView(buf), 0, r->next());
             return kira::readF64Le(buf, 0);
         }
-        if(k < 7)
+        else if(k < 7)
         {
             return static_cast<double>(r->below(2000000)) / 1000.0 - 1000.0;
         }
-        if(k < 8)
+        else if(k < 8)
         {
             return static_cast<double>(static_cast<std::int64_t>(r->next()));
         }
-        const kira::List<double> edges = floatEdges(0.0);
-        return kira::at(edges, static_cast<kira::Size>(r->below(static_cast<std::uint64_t>(edges.size()))));
+        else
+        {
+            const kira::List<double> edges = floatEdges(0.0);
+            return kira::at(edges, static_cast<kira::Size>(r->below(static_cast<std::uint64_t>(edges.size()))));
+        }
     }
 
     kira::List<double> floatEdges(double zero)
@@ -121,11 +116,10 @@ namespace jsondoc
             const kira::List<std::int64_t> edges = intEdges();
             return kira::at(edges, static_cast<kira::Size>(r->below(static_cast<std::uint64_t>(edges.size()))));
         }
-        if(k == 1)
+        else
         {
-            return static_cast<std::int64_t>(r->next());
+            return k == 1 ? static_cast<std::int64_t>(r->next()) : static_cast<std::int64_t>(r->below(2001)) - 1000;
         }
-        return static_cast<std::int64_t>(r->below(2001)) - 1000;
     }
 
     kira::Rc<kira::json::Json> value(const kira::Rc<Rng>& r, std::int32_t depth)
@@ -134,62 +128,52 @@ namespace jsondoc
         if(depth >= 4 || k < 5)
         {
             const std::uint64_t c{r->below(8)};
-            if(c == 0)
-            {
-                return kira::json::null();
-            }
-            if(c == 1)
-            {
-                return kira::json::ofBool(r->below(2) == 0);
-            }
-            if(c < 4)
-            {
-                return kira::json::ofInt(anInt(r));
-            }
-            if(c < 6)
-            {
-                return kira::json::ofFloat(aFloat(r));
-            }
-            return kira::json::ofStr(words(r));
+            return c == 0 ? kira::json::null() : c == 1 ? kira::json::ofBool(r->below(2) == 0) : c < 4 ? kira::json::ofInt(anInt(r)) : c < 6 ? kira::json::ofFloat(aFloat(r)) : kira::json::ofStr(words(r));
         }
-        const std::uint64_t n{r->below(6)};
-        std::uint64_t i{0};
-        if(k < 8)
+        else
         {
-            const kira::Rc<kira::json::Json> a = kira::json::arr();
-            while(i < n)
+            const std::uint64_t n{r->below(6)};
+            std::uint64_t i{0};
+            if(k < 8)
             {
-                a->add(value(r, depth + 1));
-                i += 1;
-            }
-            return a;
-        }
-        const kira::Rc<kira::json::Json> o = kira::json::obj();
-        const kira::List<kira::Str> keys = {words(r), words(r)};
-        while(i < n)
-        {
-            if(r->below(3) == 0)
-            {
-                [&]() -> void
+                const kira::Rc<kira::json::Json> a = kira::json::arr();
+                while(i < n)
                 {
-                    const kira::Size t0_ = static_cast<kira::Size>(r->below(2));
-                    const kira::Str t1_ = kira::at(keys, t0_);
-                    const kira::Rc<kira::json::Json> t2_ = value(r, depth + 1);
-                    o->put(t1_, t2_);
-                }();
+                    a->add(value(r, depth + 1));
+                    i += 1;
+                }
+                return a;
             }
             else
             {
-                [&]() -> void
+                const kira::Rc<kira::json::Json> o = kira::json::obj();
+                const kira::List<kira::Str> keys = {words(r), words(r)};
+                while(i < n)
                 {
-                    const kira::Str t0_ = words(r);
-                    const kira::Rc<kira::json::Json> t1_ = value(r, depth + 1);
-                    o->put(t0_, t1_);
-                }();
+                    if(r->below(3) == 0)
+                    {
+                        [&]() -> void
+                        {
+                            const kira::Size t0_ = static_cast<kira::Size>(r->below(2));
+                            const kira::Str t1_ = kira::at(keys, t0_);
+                            const kira::Rc<kira::json::Json> t2_ = value(r, depth + 1);
+                            o->put(t1_, t2_);
+                        }();
+                    }
+                    else
+                    {
+                        [&]() -> void
+                        {
+                            const kira::Str t0_ = words(r);
+                            const kira::Rc<kira::json::Json> t1_ = value(r, depth + 1);
+                            o->put(t0_, t1_);
+                        }();
+                    }
+                    i += 1;
+                }
+                return o;
             }
-            i += 1;
         }
-        return o;
     }
 
     kira::List<std::uint8_t> junk()
@@ -229,11 +213,7 @@ namespace jsondoc
     kira::Str reason(const kira::Str& text)
     {
         const kira::Rc<kira::json::Json> v = kira::json::parse(text);
-        if(kira::Str(kira::json::error()) == "")
-        {
-            return kira::Str("ok ") + kira::Str(v->dump());
-        }
-        return kira::json::error();
+        return kira::Str(kira::json::error()) == "" ? kira::Str("ok ") + kira::Str(v->dump()) : kira::json::error();
     }
 
     kira::Str deep(std::int32_t n, const kira::Str& inner)

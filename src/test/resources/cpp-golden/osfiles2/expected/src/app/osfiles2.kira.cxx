@@ -21,41 +21,31 @@ namespace osfiles2
         {
             kept.push_back(kira::at(parts, i));
         }
-        if(kept.empty())
-        {
-            return ".";
-        }
-        return kira::list::joinToString(kept, "/");
+        return kept.empty() ? kira::Str(".") : kira::list::joinToString(kept, "/");
     }
 
     kira::Str textOf(const kira::Maybe<kira::Str>& m)
     {
-        if(kira::isSome(m))
-        {
-            return kira::unwrap(m);
-        }
-        return "<none>";
+        return kira::isSome(m) ? kira::Str(kira::unwrap(m)) : kira::Str("<none>");
     }
 
     kira::Str bytesOf(const kira::Maybe<kira::List<std::uint8_t>>& m)
     {
-        if(kira::isSome(m))
-        {
-            return kira::str::of(kira::unwrap(m));
-        }
-        return "<none>";
+        return kira::isSome(m) ? kira::str::of(kira::unwrap(m)) : kira::Str("<none>");
     }
 
     bool temporaryIn(const kira::Str& dir)
     {
+        bool result{false};
         for(const kira::Str& name : kira::List<kira::Str>(kira::os::listDir(dir)))
         {
             if(kira::str::endsWith(name, ".tmp"))
             {
-                return true;
+                result = true;
+                break;
             }
         }
-        return false;
+        return result;
     }
   }
 
@@ -138,25 +128,28 @@ namespace osfiles2
       {
           return t->finish();
       }
-      const kira::Rc<kira::os::FileOut> f = kira::unwrap(opened);
-      t->check(f->size() == 0 && !f->isStale(), "empty, and not stale");
-      t->check(f->write(kira::List<std::uint8_t>(kira::str::bytes("ab"))) && f->size() == 2 && f->sync(), "write, size and sync");
-      const kira::Rc<kira::os::FileOut> g = kira::unwrap(kira::os::openAppend(log));
-      t->check(g->write(kira::List<std::uint8_t>(kira::str::bytes("cd"))) && f->write(kira::List<std::uint8_t>(kira::str::bytes("ef"))), "two appenders write in turn");
-      t->checkStr(textOf(kira::Maybe<kira::Str>(kira::os::readText(log))), "abcdef", "each at the file's end");
-      f->close();
-      t->check(f->isStale() && !f->write(kira::List<std::uint8_t>(kira::str::bytes("x"))) && kira::Str(kira::os::lastErrorKind()) == "Other", "a closed FileOut is stale and refuses a write");
-      t->check(f->size() == -1 && !f->sync(), "and has no size and no sync");
-      g->close();
-      const kira::Rc<kira::os::FileOut> w = kira::unwrap(kira::os::openWrite(log));
-      t->check(w->size() == 0 && w->write(kira::List<std::uint8_t>(kira::str::bytes("z"))), "openWrite truncates");
-      w->close();
-      t->checkStr(textOf(kira::Maybe<kira::Str>(kira::os::readText(log))), "z", "and writes from the start");
-      t->check(!kira::isSome(kira::Maybe<kira::Rc<kira::os::FileOut>>(kira::os::openAppend(nope + "/x"))) && kira::Str(kira::os::lastErrorKind()) == "NotFound", "openAppend in a missing directory is none, NotFound");
-      t->check(kira::isSome(kira::Maybe<kira::Str>(kira::os::env("PATH"))) && !kira::isSome(kira::Maybe<kira::Str>(kira::os::env("KIRA_OSFILES2_NO_SUCH_VARIABLE"))), "env finds PATH and nothing for a name that is not set");
-      t->check(kira::os::setAffinity(0, kira::List<std::int32_t>{0}) || kira::Str(kira::os::lastError()) != "", "setAffinity pins this process, or says why it cannot");
-      t->check(kira::isSome(kira::Maybe<std::int32_t>(kira::os::nice(0))) || kira::Str(kira::os::lastError()) != "", "nice(0) is the niceness, or none with a reason");
-      return t->finish();
+      else
+      {
+          const kira::Rc<kira::os::FileOut> f = kira::unwrap(opened);
+          t->check(f->size() == 0 && !f->isStale(), "empty, and not stale");
+          t->check(f->write(kira::List<std::uint8_t>(kira::str::bytes("ab"))) && f->size() == 2 && f->sync(), "write, size and sync");
+          const kira::Rc<kira::os::FileOut> g = kira::unwrap(kira::os::openAppend(log));
+          t->check(g->write(kira::List<std::uint8_t>(kira::str::bytes("cd"))) && f->write(kira::List<std::uint8_t>(kira::str::bytes("ef"))), "two appenders write in turn");
+          t->checkStr(textOf(kira::Maybe<kira::Str>(kira::os::readText(log))), "abcdef", "each at the file's end");
+          f->close();
+          t->check(f->isStale() && !f->write(kira::List<std::uint8_t>(kira::str::bytes("x"))) && kira::Str(kira::os::lastErrorKind()) == "Other", "a closed FileOut is stale and refuses a write");
+          t->check(f->size() == -1 && !f->sync(), "and has no size and no sync");
+          g->close();
+          const kira::Rc<kira::os::FileOut> w = kira::unwrap(kira::os::openWrite(log));
+          t->check(w->size() == 0 && w->write(kira::List<std::uint8_t>(kira::str::bytes("z"))), "openWrite truncates");
+          w->close();
+          t->checkStr(textOf(kira::Maybe<kira::Str>(kira::os::readText(log))), "z", "and writes from the start");
+          t->check(!kira::isSome(kira::Maybe<kira::Rc<kira::os::FileOut>>(kira::os::openAppend(nope + "/x"))) && kira::Str(kira::os::lastErrorKind()) == "NotFound", "openAppend in a missing directory is none, NotFound");
+          t->check(kira::isSome(kira::Maybe<kira::Str>(kira::os::env("PATH"))) && !kira::isSome(kira::Maybe<kira::Str>(kira::os::env("KIRA_OSFILES2_NO_SUCH_VARIABLE"))), "env finds PATH and nothing for a name that is not set");
+          t->check(kira::os::setAffinity(0, kira::List<std::int32_t>{0}) || kira::Str(kira::os::lastError()) != "", "setAffinity pins this process, or says why it cannot");
+          t->check(kira::isSome(kira::Maybe<std::int32_t>(kira::os::nice(0))) || kira::Str(kira::os::lastError()) != "", "nice(0) is the niceness, or none with a reason");
+          return t->finish();
+      }
   }
 }
 #include "kira/macro_pop.hxx"

@@ -56,36 +56,38 @@ namespace hall
           invalid += 1u;
           state = bits;
           primed = false;
-          return;
       }
-      if(primed && bits == state)
+      else if(primed && bits == state)
       {
           repeats += 1u;
-          return;
       }
-      if(!primed)
+      else if(!primed)
       {
           primed = true;
           state = bits;
           lastEdgeUs = nowUs;
-          return;
       }
-      const std::int32_t was{static_cast<std::int32_t>(kira::at(INDEX_OF, static_cast<kira::Size>(state)))};
-      const std::int32_t step{(static_cast<std::int32_t>(idx) - was + 6) % 6};
-      state = bits;
-      if(step == 1 || step == 5)
+      else
       {
-          const std::int8_t dir{(step == 1) == FORWARD_ASCENDING ? std::int8_t{1} : std::int8_t{-1}};
-          ticks += static_cast<std::int32_t>(dir);
-          lastDir = dir;
-          edges += 1u;
-          const std::uint64_t gap{nowUs - lastEdgeUs};
-          periodUs = gap > 0xFFFFFFFF ? 0xFFFFFFFFu : static_cast<std::uint32_t>(gap);
-          lastEdgeUs = nowUs;
-          return;
+          const std::int32_t was{static_cast<std::int32_t>(kira::at(INDEX_OF, static_cast<kira::Size>(state)))};
+          const std::int32_t step{(static_cast<std::int32_t>(idx) - was + 6) % 6};
+          state = bits;
+          if(step == 1 || step == 5)
+          {
+              const std::int8_t dir{(step == 1) == FORWARD_ASCENDING ? std::int8_t{1} : std::int8_t{-1}};
+              ticks += static_cast<std::int32_t>(dir);
+              lastDir = dir;
+              edges += 1u;
+              const std::uint64_t gap{nowUs - lastEdgeUs};
+              periodUs = gap > 0xFFFFFFFF ? 0xFFFFFFFFu : static_cast<std::uint32_t>(gap);
+              lastEdgeUs = nowUs;
+          }
+          else
+          {
+              skips += 1u;
+              lastEdgeUs = nowUs;
+          }
       }
-      skips += 1u;
-      lastEdgeUs = nowUs;
   }
 
   inline Speed speed(std::int32_t windowTicks, const Decoder& d, std::uint64_t nowUs)

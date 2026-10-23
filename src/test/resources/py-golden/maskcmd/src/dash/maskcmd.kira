@@ -17,40 +17,41 @@ clean: (v: Float64) Float64 {
     if BOX_LIMIT_M < c {
         c = BOX_LIMIT_M
     }
-    return c.fixed(3).toFloat64().unwrapOr(c)
+    c.fixed(3).toFloat64().unwrapOr(c)
 }
 
 // Neither NaN nor an infinity.
 finite: (v: Float64) Bool {
-    return v - v == 0.0
+    v - v == 0.0
 }
 
 pub command: (words: List<Str>) Str {
     if words.size() == 1 {
         w: Str = words[0]
-        if w == "capture" || w == "clear" || w == "on" || w == "off" {
-            return w
+        w == "capture" || w == "clear" || w == "on" || w == "off" ? w : "refused"
+    } else if words.size() != 5 || words[0] != "box" {
+        "refused"
+    } else {
+        mut out: Str = "box"
+        mut i: Size = 1
+        mut result: Str = ""
+        mut found: Bool = false
+        while i < 5 {
+            v: Maybe<Float64> = words[i].toFloat64()
+            if v.isNone() || !finite(v.value) {
+                result = "refused"
+                found = true
+                break
+            }
+            out = out + " ${clean(v.value)}"
+            i += 1
         }
-        return "refused"
+        found ? result : out
     }
-    if words.size() != 5 || words[0] != "box" {
-        return "refused"
-    }
-    mut out: Str = "box"
-    mut i: Size = 1
-    while i < 5 {
-        v: Maybe<Float64> = words[i].toFloat64()
-        if v.isNone() || !finite(v.value) {
-            return "refused"
-        }
-        out = out + " ${clean(v.value)}"
-        i += 1
-    }
-    return out
 }
 
 said: (text: Str) Str {
-    return "[" + text + "] " + command(text.split(" "))
+    "[" + text + "] " + command(text.split(" "))
 }
 
 main: () Void {

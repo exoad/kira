@@ -17,7 +17,7 @@ total: (xs: List<Int64>) Int64 {
     for x: Int64 in xs {
         t += x
     }
-    return t
+    t
 }
 
 join: (xs: Arr<Str>) Str {
@@ -25,7 +25,7 @@ join: (xs: Arr<Str>) Str {
     for s: Str in xs {
         out += s
     }
-    return out
+    out
 }
 
 main: () Void {

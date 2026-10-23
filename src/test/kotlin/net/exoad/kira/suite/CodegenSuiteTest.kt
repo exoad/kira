@@ -54,11 +54,11 @@ class CodegenSuiteTest {
         val output = emit(
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             greet: (name: Str) Str {
-                return name
+                name
             }
 
             main: () Void {
@@ -179,7 +179,7 @@ class CodegenSuiteTest {
                 pub sound: Str
 
                 pub speak: () Str {
-                    return sound
+                    sound
                 }
             }
             """
@@ -204,7 +204,7 @@ class CodegenSuiteTest {
                 pub name: Str
 
                 pub speak: () Str {
-                    return name
+                    name
                 }
             }
 
@@ -251,7 +251,7 @@ class CodegenSuiteTest {
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {
@@ -290,7 +290,7 @@ class CodegenSuiteTest {
     fun namedArgumentsAreOrderedByTheCalleeNotByTheCall() {
         val output = emit(
             """
-            sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
                 trace(sub(b = 3, a = 10))
@@ -303,7 +303,7 @@ class CodegenSuiteTest {
         val e = assertThrows<IllegalStateException> {
             emit(
                 """
-                sub: (a: Int32, b: Int32) Int32 { return a - b }
+                sub: (a: Int32, b: Int32) Int32 { a - b }
 
                 main: () Void {
                     trace(sub(a = 10, c = 3))
@@ -342,7 +342,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {
@@ -372,7 +372,7 @@ class CodegenSuiteTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return "woof"
+                    "woof"
                 }
             }
 
@@ -457,7 +457,7 @@ class CodegenSuiteTest {
 
             main: () Int32 {
                 h: FileHandle = openFile("x")
-                return 0
+                0
             }
             """
         )

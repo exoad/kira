@@ -24,11 +24,11 @@ class EffectsPassTest {
             pub P: Struct {
                 pub x: Int32 = 0
                 pub doubled: () Int32 {
-                    return x * 2
+                    x * 2
                 }
             }
             pub twice: (v: Int32) Int32 {
-                return v * 2
+                v * 2
             }
             pub quad: (v: Int32) Int32 {
                 mut acc: Int32 = twice(v)
@@ -37,11 +37,11 @@ class EffectsPassTest {
                 p.x = acc
                 mut xs: Arr<Int32, 2> = @arrOf(1, 2)
                 xs[0] = p.x
-                return xs[0] + LIMIT + p.doubled()
+                xs[0] + LIMIT + p.doubled()
             }
             pub len: (s: Str, xs: List<Int32>) Size {
                 mut ys: List<Int32> = List<Int32> {}
-                return s.length() + xs.size() + ys.size()
+                s.length() + xs.size() + ys.size()
             }
             """,
         )
@@ -62,16 +62,10 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub even: (n: Int32) Bool {
-                if n == 0 {
-                    return true
-                }
-                return odd(n - 1)
+                n == 0 ? true : odd(n - 1)
             }
             pub odd: (n: Int32) Bool {
-                if n == 0 {
-                    return false
-                }
-                return even(n - 1)
+                n == 0 ? false : even(n - 1)
             }
             """,
         )
@@ -87,16 +81,16 @@ class EffectsPassTest {
             pub mut STATE: Int32 = 0
             pub bump: () Int32 {
                 STATE += 1
-                return STATE
+                STATE
             }
             pub twice: (v: Int32) Int32 {
-                return v * 2
+                v * 2
             }
             pub f: (a: Int32) Int32 {
                 g: Fx<Tuple0, Int32> = () Int32 {
-                    return bump()
+                    bump()
                 }
-                return twice(a) + bump() + a * 2
+                twice(a) + bump() + a * 2
             }
             """,
         )
@@ -122,7 +116,7 @@ class EffectsPassTest {
                     n += 1
                 }
                 pub peek: () Int32 {
-                    return n
+                    n
                 }
             }
             pub global: () Void {
@@ -140,7 +134,7 @@ class EffectsPassTest {
             pub ref: () Int32 {
                 r: Ref<Int32> = Ref<Int32> { value = 0 }
                 r.value = 1
-                return r.value
+                r.value
             }
             """,
         )
@@ -166,25 +160,25 @@ class EffectsPassTest {
                 pub mut n: Int32 = 0
             }
             pub readG: () Int32 {
-                return STATE
+                STATE
             }
             pub byRef: (mut x: Int32) Int32 {
-                return x
+                x
             }
             pub element: (v: View<UInt8>) Int32 {
-                return v[0] as Int32
+                v[0] as Int32
             }
             pub through: (v: View<UInt8>) Size {
-                return v.size()
+                v.size()
             }
             pub field: (c: C) Int32 {
-                return c.n
+                c.n
             }
             pub parse: (s: Str) Int32 {
                 if s.isEmpty() {
                     throw "empty"
                 }
-                return 1
+                1
             }
             """,
         )
@@ -204,19 +198,19 @@ class EffectsPassTest {
             pub mut STATE: Int32 = 0
             pub bump: () UInt32 {
                 STATE += 1
-                return 1
+                1
             }
             pub readU16: (p: View<UInt8>) UInt32 {
-                return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
+                (p[0] as UInt32) | ((p[1] as UInt32) << 8)
             }
             pub mixed: (p: View<UInt8>) UInt32 {
-                return (p[0] as UInt32) + bump()
+                (p[0] as UInt32) + bump()
             }
             pub viaCall: (p: View<UInt8>) UInt32 {
-                return readU16(p) + 1
+                readU16(p) + 1
             }
             pub sizes: (out: Size, buf: View<UInt8>) Bool {
-                return out == buf.size()
+                out == buf.size()
             }
             """,
         )
@@ -241,18 +235,18 @@ class EffectsPassTest {
             pub mut STATE: Int32 = 0
             pub bump: () Int32 {
                 STATE += 1
-                return STATE
+                STATE
             }
             pub uses: (v: Int32) Int32 {
-                return v + bump()
+                v + bump()
             }
             pub usesUses: (v: Int32) Int32 {
-                return uses(v)
+                uses(v)
             }
             pub builds: () Size {
                 mut xs: List<Int32> = List<Int32> {}
                 xs.add(1)
-                return xs.size()
+                xs.size()
             }
             """,
         )
@@ -274,16 +268,16 @@ class EffectsPassTest {
                 pub a: Int32 = 0
             }
             pub st: (p: S) Int32 {
-                return p.a
+                p.a
             }
             pub str: (s: Str) Size {
-                return s.size()
+                s.size()
             }
             pub arr: (xs: Arr<Int32, 2>) Int32 {
-                return xs[0]
+                xs[0]
             }
             pub sc: (n: Int32, v: View<Int32>) Int32 {
-                return n + (v.size() as Int32)
+                n + (v.size() as Int32)
             }
             """,
         )
@@ -308,13 +302,13 @@ class EffectsPassTest {
                 trace(v)
             }
             pub externs: () Int32 {
-                return read()
+                read()
             }
             pub virtuals: (s: Shape) Int32 {
-                return s.area()
+                s.area()
             }
             pub values: (f: Fx<Tuple0, Int32>) Int32 {
-                return f()
+                f()
             }
             """,
         )
@@ -348,25 +342,25 @@ class EffectsPassTest {
             }
             pub clobber: (mv: MutView<List<Int32>>) Int32 {
                 mv[0] = List<Int32> {}
-                return 0
+                0
             }
             pub formsAndLends: () Int32 {
-                return clobber(GXSS.view())
+                clobber(GXSS.view())
             }
             pub nested: () Int32 {
-                return applyAll(@arrOf(() Void {}))
+                applyAll(@arrOf(() Void {}))
             }
             pub prototype: () Int32 {
-                return proto()
+                proto()
             }
             pub made: () Int32 {
-                return (Maker {}).n
+                (Maker {}).n
             }
             pub finds: (ids: List<Id>, id: Id, ns: List<Int32>) Bool {
-                return ids.contains(id)
+                ids.contains(id)
             }
             pub findsInts: (ns: List<Int32>) Bool {
-                return ns.contains(3)
+                ns.contains(3)
             }
             """,
         )
@@ -384,14 +378,14 @@ class EffectsPassTest {
             """
             mut GL: List<Int32> = List<Int32> { values = @arrOf(1) }
             pub g: () Int32 {
-                return GL.get(0)
+                GL.get(0)
             }
             pub i: () Int32 {
-                return GL[0]
+                GL[0]
             }
             pub l: () Int32 {
                 xs: List<Int32> = List<Int32> { values = @arrOf(1) }
-                return xs.get(0) + xs[0]
+                xs.get(0) + xs[0]
             }
             """,
         )
@@ -418,11 +412,11 @@ class EffectsPassTest {
                     gs = "new"
                     gi = 30
                 } }
-                return 0
+                0
             }
 
             pub both: (s: Str, n: Int32) Int32 {
-                return (s.length() as Int32) + n
+                (s.length() as Int32) + n
             }
 
             main: () Void {
@@ -456,19 +450,19 @@ class EffectsPassTest {
             }
             pub idle: () Int32 {
                 t: Thread = Thread { name = "w", body = () Void { } }
-                return 0
+                0
             }
             pub viaInitially: () Int32 {
                 r: Runner = Runner { f = () Void {
                     G = 30
                 } }
-                return 0
+                0
             }
             pub kept: () Int32 {
                 k: Keeper = Keeper { f = () Void {
                     G = 30
                 } }
-                return 0
+                0
             }
             """,
         )

@@ -24,5 +24,5 @@ pub main: () Int32 {
     })
     t.check(seen.value == N, "1000 increments from a worker, counted under the mutex")
     t.checkStr("${seen.value}", "1000", "and the count reads back as text")
-    return t.finish()
+    t.finish()
 }

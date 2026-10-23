@@ -5,24 +5,15 @@
 // for text, a length counting code points.
 
 sizeText: (m: Maybe<Size>) Str {
-    if m.isNone() {
-        return "none"
-    }
-    return m.value as Str
+    m.isNone() ? "none" : m.value as Str
 }
 
 intText: (m: Maybe<Int64>) Str {
-    if m.isNone() {
-        return "none"
-    }
-    return m.value as Str
+    m.isNone() ? "none" : m.value as Str
 }
 
 floatText: (m: Maybe<Float64>) Str {
-    if m.isNone() {
-        return "none"
-    }
-    return m.value as Str
+    m.isNone() ? "none" : m.value as Str
 }
 
 // The pieces between bars, and how many.
@@ -36,55 +27,55 @@ joined: (xs: List<Str>) Str {
         out = out + xs[i]
         i += 1
     }
-    return out + "]"
+    out + "]"
 }
 
 pub lengthOf: (s: Str) Size {
-    return s.length()
+    s.length()
 }
 
 pub substringOf: (s: Str, start: Size, end: Size) Str {
-    return s.substring(start, end)
+    s.substring(start, end)
 }
 
 pub charAtOf: (s: Str, i: Size) Str {
-    return s.charAt(i)
+    s.charAt(i)
 }
 
 pub findOf: (s: Str, v: Str) Maybe<Size> {
-    return s.find(v)
+    s.find(v)
 }
 
 pub splitOf: (s: Str, d: Str) List<Str> {
-    return s.split(d)
+    s.split(d)
 }
 
 pub trimOf: (s: Str) Str {
-    return s.trim()
+    s.trim()
 }
 
 pub lowerOf: (s: Str) Str {
-    return s.toLower()
+    s.toLower()
 }
 
 pub upperOf: (s: Str) Str {
-    return s.toUpper()
+    s.toUpper()
 }
 
 pub intOf: (s: Str) Maybe<Int64> {
-    return s.toInt64()
+    s.toInt64()
 }
 
 pub floatOf: (s: Str) Maybe<Float64> {
-    return s.toFloat64()
+    s.toFloat64()
 }
 
 pub hashOf: (s: Str) Int64 {
-    return s.hashCode()
+    s.hashCode()
 }
 
 parsed: (s: Str) Str {
-    return "[" + s + "] " + intText(s.toInt64()) + " " + floatText(s.toFloat64())
+    "[" + s + "] " + intText(s.toInt64()) + " " + floatText(s.toFloat64())
 }
 
 main: () Void {

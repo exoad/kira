@@ -40,7 +40,7 @@ pub encode: (opcode: UInt8, payload: View<UInt8>) List<UInt8> {
         out.add(payload[i])
         i += 1
     }
-    return out
+    out
 }
 
 // What a page sends: the payload masked with a 4-byte key.
@@ -58,7 +58,7 @@ pub encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) List<U
         out.add(payload[i] ^ key[i % 4])
         i += 1
     }
-    return out
+    out
 }
 
 // read_frames(buf): every complete frame at the start of buf goes into out, unmasked; the
@@ -84,7 +84,7 @@ pub readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
             head = 10
         }
         masked: Bool = (b2 & 0x80) != 0
-        keyBytes: Size = if masked { 4 } else { 0 }
+        keyBytes: Size = masked ? 4 : 0
         if buf.size() - at < head + keyBytes + n {
             break
         }
@@ -100,7 +100,7 @@ pub readFrames: (buf: View<UInt8>, mut out: List<Frame>) Size {
         out.add(Frame { b1 & 0x0F, data })
         at = start + n
     }
-    return at
+    at
 }
 
 // ---- main: each form, and a stream of them read back -------------------------------------------
@@ -112,7 +112,7 @@ pattern: (n: Size, seed: UInt8) List<UInt8> {
         out.add(b)
         b = b * 31 + 7
     }
-    return out
+    out
 }
 
 hex: (v: View<UInt8>, n: Size) Str {
@@ -125,7 +125,7 @@ hex: (v: View<UInt8>, n: Size) Str {
         s = s + v[i].toHex()
         i += 1
     }
-    return s
+    s
 }
 
 sum: (v: View<UInt8>) UInt32 {
@@ -135,21 +135,24 @@ sum: (v: View<UInt8>) UInt32 {
         s = s * 33 + (v[i] as UInt32)
         i += 1
     }
-    return s
+    s
 }
 
 same: (a: View<UInt8>, b: View<UInt8>) Bool {
     if a.size() != b.size() {
-        return false
-    }
-    mut i: Size = 0
-    while i < a.size() {
-        if a[i] != b[i] {
-            return false
+        false
+    } else {
+        mut i: Size = 0
+        mut result: Bool = true
+        while i < a.size() {
+            if a[i] != b[i] {
+                result = false
+                break
+            }
+            i += 1
         }
-        i += 1
+        result
     }
-    return true
 }
 
 KEY: Arr<UInt8, 4> = @arrOf(0x37, 0xFA, 0x21, 0x3D)

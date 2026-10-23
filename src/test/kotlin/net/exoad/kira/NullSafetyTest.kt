@@ -152,8 +152,8 @@ class NullSafetyTest {
             second: (s: Str) Size {
                 mut b: Size = s.length()
                 trace(s.length())
-                c: Size = if b > 0 { s.length() } else { b }
-                return c
+                c: Size = b > 0 ? s.length() : b
+                c
             }
             """,
             "test:nullsafety.scope"
@@ -170,17 +170,18 @@ class NullSafetyTest {
         val messages = diagnosticsFor(
             """
             find: () Maybe<Str> {
-                return null
+                null
             }
 
             read: () Str {
                 m: Maybe<Str> = find()
                 if m.isNull() {
-                    return ""
+                    ""
+                } else {
+                    x: Str = m.value
+                    y: Bool = m.isNull()
+                    x
                 }
-                x: Str = m.value
-                y: Bool = m.isNull()
-                return x
             }
             """,
             "test:nullsafety.d40"
@@ -216,7 +217,7 @@ class NullSafetyTest {
                     0
                 }
                 n: Size = s.size()
-                return n + k + a + b
+                n + k + a + b
             }
             """,
             "test:nullsafety.branches"
@@ -233,7 +234,7 @@ class NullSafetyTest {
 
             f: (p: Maybe<Pet>) Str {
                 q: Str = p.name
-                return q
+                q
             }
             """,
             "test:nullsafety.param"

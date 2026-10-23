@@ -47,15 +47,15 @@ class PyEmitterTest {
         val py = python(
             """
             pub q: (a: Int32, b: Int32) Int32 {
-                return a / b
+                a / b
             }
 
             pub r: (a: Int64, b: Int64) Int64 {
-                return a % b
+                a % b
             }
 
             pub u: (a: UInt32, b: UInt32) UInt32 {
-                return a / b
+                a / b
             }
             """
         )
@@ -70,27 +70,27 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: UInt8, y: UInt8) UInt8 {
-                return x + y
+                x + y
             }
 
             pub b: (x: Int32, y: Int32) Int32 {
-                return x * y
+                x * y
             }
 
             pub c: (x: Int8) Int8 {
-                return -x
+                -x
             }
 
             pub d: (x: Size) Size {
-                return x - 1
+                x - 1
             }
 
             pub e: (x: UInt16) UInt16 {
-                return ~x
+                ~x
             }
 
             pub f: (x: Int64) Int32 {
-                return x as Int32
+                x as Int32
             }
             """
         )
@@ -107,11 +107,11 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Float64, y: Float64) Float64 {
-                return x / y
+                x / y
             }
 
             pub b: (x: Float64) Float64 {
-                return x / 2.0
+                x / 2.0
             }
             """
         )
@@ -124,11 +124,11 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Int32, y: Int32, z: Bool) Bool {
-                return (x < y) == z
+                (x < y) == z
             }
 
             pub b: (x: Bool, y: Bool) Bool {
-                return !x == y
+                !x == y
             }
             """
         )
@@ -143,7 +143,7 @@ class PyEmitterTest {
             kira.math as math
 
             pub f: (a: Float64, b: Float64) Float64 {
-                return max(a, min(b, 1.0))
+                max(a, min(b, 1.0))
             }
             """
         )
@@ -156,27 +156,27 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: UInt32) UInt32 {
-                return x << 2
+                x << 2
             }
 
             pub b: (x: UInt32, n: Int64) UInt32 {
-                return x >> n
+                x >> n
             }
 
             pub c: (x: UInt8, n: UInt8) UInt8 {
-                return x << n
+                x << n
             }
 
             pub d: (x: UInt32) UInt32 {
-                return x << 32
+                x << 32
             }
 
             pub e: (x: Int64) Int64 {
-                return x >> -1
+                x >> -1
             }
 
             pub g: (x: Size) Size {
-                return x << 40
+                x << 40
             }
             """
         )
@@ -194,27 +194,27 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Int32, n: Int32) Int32 {
-                return x << n
+                x << n
             }
 
             pub b: (x: Int64) Int64 {
-                return x << 63
+                x << 63
             }
 
             pub c: (x: Int8, n: Int32) Int8 {
-                return x >>> n
+                x >>> n
             }
 
             pub d: (x: Int16) Int16 {
-                return x >> 3
+                x >> 3
             }
 
             pub e: (x: UInt16) UInt16 {
-                return x >>> 15
+                x >>> 15
             }
 
             pub g: (x: Int64) Int64 {
-                return 1 << x
+                1 << x
             }
             """
         )
@@ -232,15 +232,15 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: UInt16, y: UInt16) UInt16 {
-                return (x << 4 | y >> 4) ^ (x & y) << 2
+                (x << 4 | y >> 4) ^ (x & y) << 2
             }
 
             pub b: (x: UInt32, y: UInt32) UInt32 {
-                return (x + y) >> 1
+                (x + y) >> 1
             }
 
             pub c: (x: Int32) Int32 {
-                return (x & 0xFF) >>> 4
+                (x & 0xFF) >>> 4
             }
             """
         )
@@ -263,7 +263,7 @@ class PyEmitterTest {
                 x >>= n
                 x >>>= 1
                 x >>>= n
-                return x
+                x
             }
             """
         )
@@ -285,11 +285,11 @@ class PyEmitterTest {
 
             next: () Size {
                 at += 1
-                return at
+                at
             }
 
             bit: () Int32 {
-                return 3
+                3
             }
 
             Flags: Any {
@@ -326,17 +326,17 @@ class PyEmitterTest {
 
             holderOf: (h: Holder) Holder {
                 trace("holder")
-                return h
+                h
             }
 
             key: () Str {
                 trace("key")
-                return "k"
+                "k"
             }
 
             val: () Int32 {
                 trace("val")
-                return 1
+                1
             }
 
             f: (h: Holder) Void {
@@ -360,7 +360,7 @@ class PyEmitterTest {
             kira.math as math
 
             pub f: (a: Float64, b: Float64) Float64 {
-                return fmod(a, b) + fmod(a + b, 2.0)
+                fmod(a, b) + fmod(a + b, 2.0)
             }
             """
         )
@@ -375,7 +375,7 @@ class PyEmitterTest {
             kira.math as math
 
             pub f: (a: Float64, b: Float64) Float64 {
-                return sqrt(a) + pow(a, b) + floor(a) + ceil(b) + round(a) + sin(a) + cos(b) + tan(a) + abs(b)
+                sqrt(a) + pow(a, b) + floor(a) + ceil(b) + round(a) + sin(a) + cos(b) + tan(a) + abs(b)
             }
             """
         )
@@ -401,7 +401,7 @@ class PyEmitterTest {
             kira.math as math
 
             pub f: (a: Float64) Float64 {
-                return abs(a)
+                abs(a)
             }
             """
         )
@@ -416,11 +416,11 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Float64) Str {
-                return "x=${'$'}{x} m"
+                "x=${'$'}{x} m"
             }
 
             pub b: (x: Float64) Str {
-                return x as Str
+                x as Str
             }
             """
         )
@@ -436,11 +436,11 @@ class PyEmitterTest {
         val py = python(
             """
             pub speed: (mps: Float64) Str {
-                return "${'$'}{mps.fixed(1)} m/s"
+                "${'$'}{mps.fixed(1)} m/s"
             }
 
             pub ids: (build: UInt32, seq: Int16) Str {
-                return build.toHex() + ":" + (seq as UInt16).toHex()
+                build.toHex() + ":" + (seq as UInt16).toHex()
             }
             """
         )
@@ -455,23 +455,23 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (s: Str, t: Str) Size {
-                return s.length() + s.size() + s.find(t).unwrapOr(0)
+                s.length() + s.size() + s.find(t).unwrapOr(0)
             }
 
             pub b: (s: Str, t: Str) Bool {
-                return s.isEmpty() || s.contains(t) || s.startsWith(t) || s.endsWith("x") || s.equals(t)
+                s.isEmpty() || s.contains(t) || s.startsWith(t) || s.endsWith("x") || s.equals(t)
             }
 
             pub c: (s: Str) Str {
-                return s.substring(1, 3) + s.charAt(0) + s.trim().toLower() + ("a" + s).toUpper()
+                s.substring(1, 3) + s.charAt(0) + s.trim().toLower() + ("a" + s).toUpper()
             }
 
             pub d: (s: Str) List<Str> {
-                return s.split(",")
+                s.split(",")
             }
 
             pub e: (s: Str) Int64 {
-                return s.toInt64().unwrapOr(0) + s.hashCode() + (s.toFloat64().unwrapOr(0.0) as Int64)
+                s.toInt64().unwrapOr(0) + s.hashCode() + (s.toFloat64().unwrapOr(0.0) as Int64)
             }
             """
         )
@@ -490,7 +490,7 @@ class PyEmitterTest {
             """
             f: (s: Str) Size {
                 b: List<UInt8> = s.bytes()
-                return b.size() + s.bytes().size()
+                b.size() + s.bytes().size()
             }
             """
         )
@@ -503,13 +503,13 @@ class PyEmitterTest {
         val py = python(
             """
             f: (v: View<UInt8>, xs: List<UInt8>) Str {
-                return Str.of(v) + Str.of(xs.from(1)) + Str.of(xs)
+                Str.of(v) + Str.of(xs.from(1)) + Str.of(xs)
             }
             """
         )
         assertTrue(py.contains("return _k_strof(v) + _k_strof(_k_from(xs, 1)) + _k_strof(xs)"), py)
         assertTrue(py.contains("return bytes(v).decode(\"utf-8\", \"replace\")"), py)
-        assertTrue(python("g: (v: View<UInt8>) Str {\n    return Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
+        assertTrue(python("g: (v: View<UInt8>) Str {\n    Str.of(bytes = v)\n}").contains("return _k_strof(v)"), "a named argument in its parameter's place")
     }
 
     @Test
@@ -517,15 +517,15 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (s: Str, fill: Char) Str {
-                return s.padEnd(4, fill) + s.trimStart() + s.trimEnd() + s.replace("a", "")
+                s.padEnd(4, fill) + s.trimStart() + s.trimEnd() + s.replace("a", "")
             }
 
             pub b: (s: Str) List<Str> {
-                return s.splitWhitespace()
+                s.splitWhitespace()
             }
 
             pub c: (s: Str) Int64 {
-                return s.toInt64Radix(16).unwrapOr(0)
+                s.toInt64Radix(16).unwrapOr(0)
             }
             """
         )
@@ -539,7 +539,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (xs: List<Str>, sep: Str) Str {
-                return xs.joinToString(sep) + "a b".splitWhitespace().joinToString(",")
+                xs.joinToString(sep) + "a b".splitWhitespace().joinToString(",")
             }
             """
         )
@@ -552,7 +552,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (s: Str, i: Size, c: Char) Bool {
-                return s[i].isDigit() || c.isWhitespace() || 'x'.isLetter()
+                s[i].isDigit() || c.isWhitespace() || 'x'.isLetter()
             }
             """
         )
@@ -571,13 +571,13 @@ class PyEmitterTest {
                 pub mut tidy: () Float64 {
                     fs.sort()
                     bs.sort()
-                    return fs.sum() + (bs.sum() as Float64)
+                    fs.sum() + (bs.sum() as Float64)
                 }
             }
 
             f: (mut xs: List<Int32>, names: List<Str>) Int32 {
                 xs.sort()
-                return xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
+                xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
             }
             """
         )
@@ -593,7 +593,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (a: Str, b: Str) Bool {
-                return a < b || a >= "m"
+                a < b || a >= "m"
             }
             """
         )
@@ -623,10 +623,8 @@ class PyEmitterTest {
                 a.add(d.body.get("k").at(2))
                 o.put("a", a)
                 d.items.add(o)
-                if d.body.isObj() && d.body.has("k") && d.body.get("k").isArr() {
-                    return o.pretty(2, false) + Json.error()
-                }
-                return "${'$'}{d.body.get("v").asInt64().unwrapOr(-1)} ${'$'}{d.body.size()} ${'$'}{d.body.keys().size()}" + o.dump()
+                d.body.isObj() && d.body.has("k") && d.body.get("k").isArr() ? o.pretty(2, false) + Json.error()
+                    : "${'$'}{d.body.get("v").asInt64().unwrapOr(-1)} ${'$'}{d.body.size()} ${'$'}{d.body.keys().size()}" + o.dump()
             }
             """
         )
@@ -635,8 +633,7 @@ class PyEmitterTest {
         assertTrue(py.contains("_k_jput(o, \"n\", n)") && py.contains("_k_jput(o, \"m\", _k_jmaybef(m))") && py.contains("_k_jput(o, \"s\", s)"), py)
         assertTrue(py.contains("_k_jput(o, \"z\", None)") && py.contains("o = {}") && py.contains("a = []"), py)
         assertTrue(py.contains("_k_jadd(a, _k_jat(_k_jget(d.body, \"k\"), 2))"), py)
-        assertTrue(py.contains("if (d.body.__class__ is dict) and _k_jhas(d.body, \"k\") and (_k_jget(d.body, \"k\").__class__ is list):"), py)
-        assertTrue(py.contains("return _k_jpretty(o, 2, False) + _k_jerror()"), py)
+        assertTrue(py.contains("return _k_jpretty(o, 2, False) + _k_jerror() if (d.body.__class__ is dict) and _k_jhas(d.body, \"k\") and (_k_jget(d.body, \"k\").__class__ is list) else "), py)
         assertTrue(py.contains("_k_or(_k_jasint(_k_jget(d.body, \"v\")), -1)") && py.contains("_k_jsize(d.body)") && py.contains("_k_jkeys(d.body)"), py)
         assertTrue(py.contains("text = _k_json.dumps(j, indent=indent, ensure_ascii=ascii)") && py.contains("import json as _k_json") && py.contains("import threading as _k_threading"), py)
     }
@@ -653,23 +650,23 @@ class PyEmitterTest {
             }
 
             pub digit: (s: Str, i: Size) Bool {
-                return s[i] >= '0' && s.at(i) <= '9' && s[i] != SEP
+                s[i] >= '0' && s.at(i) <= '9' && s[i] != SEP
             }
 
             pub value: (c: Char) Int32 {
-                return (c as Int32) - ('0' as Int32)
+                (c as Int32) - ('0' as Int32)
             }
 
             pub byte: (c: Char) UInt8 {
-                return c as UInt8
+                c as UInt8
             }
 
             pub char: (n: Int32, b: UInt8) Str {
-                return "${'$'}{n as Char}${'$'}{b as Char}${'$'}{'\n'}" + ((9 as Char) as Str)
+                "${'$'}{n as Char}${'$'}{b as Char}${'$'}{'\n'}" + ((9 as Char) as Str)
             }
 
             pub hex: (crc: UInt16) Str {
-                return "0x${'$'}{crc.toHex().padStart(4, '0')}"
+                "0x${'$'}{crc.toHex().padStart(4, '0')}"
             }
 
             pub show: (c: Char) Void {
@@ -692,7 +689,7 @@ class PyEmitterTest {
         refused(
             """
             ord: (c: Char) Int32 {
-                return c as Int32
+                c as Int32
             }
             """,
             "the name 'ord', which generated Python uses, is not supported",
@@ -704,15 +701,15 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Bool, y: Bool, z: Bool) Bool {
-                return (x || y) && z
+                (x || y) && z
             }
 
             pub b: (x: Bool, y: Bool, z: Bool) Bool {
-                return x || y && z
+                x || y && z
             }
 
             pub c: (p: Int32, q: Int32) Int32 {
-                return -(p * q) - (p - q)
+                -(p * q) - (p - q)
             }
             """
         )
@@ -734,16 +731,16 @@ class PyEmitterTest {
                 pub mut tick: () Int32 {
                     ticks += 1
                     reading = start + ticks * scale
-                    return reading
+                    reading
                 }
 
                 hidden: () Int32 {
-                    return ticks
+                    ticks
                 }
             }
 
             helper: () Int32 {
-                return 1
+                1
             }
 
             LIMIT: Int32 = 3
@@ -766,24 +763,16 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (m: Maybe<Float64>) Float64 {
-                if m.isNull() {
-                    return 0.0
-                }
-                return m.value
+                m.isNull() ? 0.0 : m.value
             }
 
             pub b: (x: Float64) Maybe<Float64> {
-                if x < 0.0 {
-                    return null
-                }
-                return x
+                x < 0.0 ? null : x
             }
             """
         )
-        assertTrue(py.contains("if (m is None):"), py)
-        assertTrue(py.contains("return _k_value(m)"), py)
-        assertTrue(py.contains("return None"), py)
-        assertTrue(py.contains("return x"), py)
+        assertTrue(py.contains("return 0.0 if (m is None) else _k_value(m)"), py)
+        assertTrue(py.contains("return None if x < 0.0 else x"), py)
     }
 
     @Test
@@ -795,7 +784,7 @@ class PyEmitterTest {
 
             bump: () Int32 {
                 at += 1
-                return 7
+                7
             }
 
             f: (i: Size) Void {
@@ -842,45 +831,45 @@ class PyEmitterTest {
                 pub mut items: List<Int32>
 
                 pub snapshot: () List<Int32> {
-                    return items
+                    items
                 }
 
                 pub mut grow: () Int32 {
                     items.add(0)
-                    return 1
+                    1
                 }
             }
 
             size: (xs: List<Int32>) Size {
-                return xs.size()
+                xs.size()
             }
 
             count: (xs: List<Int32>) Size {
                 seed.add(1)
-                return xs.size()
+                xs.size()
             }
 
             lenOf: (xs: List<Int32>, k: Int32) Size {
-                return xs.size() + (k as Size)
+                xs.size() + (k as Size)
             }
 
             push: (mut xs: List<Int32>) Int32 {
                 xs.add(1)
-                return 1
+                1
             }
 
             echo: (xs: List<Int32>) List<Int32> {
-                return xs
+                xs
             }
 
             fresh: () List<Int32> {
                 mut out: List<Int32> = List<Int32> { }
                 out.add(1)
-                return out
+                out
             }
 
             pick: (c: Bool, a: List<Int32>) List<Int32> {
-                return if c { a } else { fresh() }
+                c ? a : fresh()
             }
 
             f: (h: Holder) Void {
@@ -913,12 +902,12 @@ class PyEmitterTest {
             """
             show: (xs: List<Int32>) Size {
                 trace(xs.size())
-                return xs.size()
+                xs.size()
             }
 
             into: (xs: List<Int32>, mut out: List<Int32>) Size {
                 out.add(1)
-                return xs.size()
+                xs.size()
             }
 
             Holder: Any {
@@ -926,7 +915,7 @@ class PyEmitterTest {
 
                 pub mut f: () Size {
                     mut out: List<Int32> = List<Int32> { }
-                    return show(items) + into(items, mut out)
+                    show(items) + into(items, mut out)
                 }
             }
             """
@@ -943,21 +932,21 @@ class PyEmitterTest {
 
             next: () Size {
                 cursor += 1
-                return cursor - 1
+                cursor - 1
             }
 
             at: (v: List<UInt8>, i: Size) UInt32 {
-                return v[i] as UInt32
+                v[i] as UInt32
             }
 
             fill: (p: MutView<UInt8>) Size {
                 p[0] = 1
-                return 0
+                0
             }
 
             push: (mut xs: List<UInt8>) Size {
                 xs.add(1)
-                return 0
+                0
             }
 
             walk: (n: Size) UInt32 {
@@ -970,7 +959,7 @@ class PyEmitterTest {
                 s += at(buf, push(mut buf))
                 s += at(buf, fill(buf.from(0)))
                 s += at(buf, buf.removeAt(0) as Size)
-                return s
+                s
             }
             """
         )
@@ -990,11 +979,11 @@ class PyEmitterTest {
             KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
 
             total: (xs: Arr<Int32, 2>) Int32 {
-                return xs[0] + xs[1]
+                xs[0] + xs[1]
             }
 
             f: () Int32 {
-                return total(A) + total(B)
+                total(A) + total(B)
             }
             """
         )
@@ -1048,7 +1037,7 @@ class PyEmitterTest {
                 mut xs: List<Float64> = List<Float64> { }
                 xs.add(x)
                 xs.set(0, x + 1.0)
-                return xs.contains(x)
+                xs.contains(x)
             }
             """
         )
@@ -1065,7 +1054,7 @@ class PyEmitterTest {
 
             key: () Int32 {
                 at += 1
-                return at
+                at
             }
 
             f: (k: Str, x: Float64) Size {
@@ -1086,7 +1075,7 @@ class PyEmitterTest {
                 if m.containsKey(k) && f.containsValue(x) && !m.isEmpty() {
                     m.clear()
                 }
-                return m.size()
+                m.size()
             }
             """
         )
@@ -1107,14 +1096,14 @@ class PyEmitterTest {
 
             key: () Str {
                 at += 1
-                return "k"
+                "k"
             }
 
             Holder: Any {
                 pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
 
                 pub mine: () Holder {
-                    return this
+                    this
                 }
 
                 pub mut f: (xs: List<Int32>, k: Str) Bool {
@@ -1122,7 +1111,7 @@ class PyEmitterTest {
                     items.put(key(), 1)
                     items.put(k + "x", xs[1])
                     mine().items.put(k, 2)
-                    return items.containsKey(k + "y") && items.containsKey(key())
+                    items.containsKey(k + "y") && items.containsKey(key())
                 }
             }
             """
@@ -1144,7 +1133,7 @@ class PyEmitterTest {
                 pub mut items: Map<Str, Int32>
 
                 pub snapshot: () Map<Str, Int32> {
-                    return items
+                    items
                 }
 
                 pub mut reset: (mut xs: Map<Str, Int32>) Void {
@@ -1155,7 +1144,7 @@ class PyEmitterTest {
 
             count: (xs: Map<Str, Int32>) Size {
                 seed["n"] = 1
-                return xs.size()
+                xs.size()
             }
 
             fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
@@ -1171,7 +1160,7 @@ class PyEmitterTest {
                 h.reset(mut h.items)
                 seed = a
                 k: Holder = Holder { a }
-                return count(seed) + b.size()
+                count(seed) + b.size()
             }
             """
         )
@@ -1205,7 +1194,7 @@ class PyEmitterTest {
                 out.addAll(xs.toArr())
                 out.addAll(a.clone())
                 ys: List<UInt8> = xs
-                return out
+                out
             }
             """
         )
@@ -1226,7 +1215,7 @@ class PyEmitterTest {
                 pub mut buf: List<UInt8> = List<UInt8> { }
 
                 pub head: () UInt16 {
-                    return readU16Le(buf, 0)
+                    readU16Le(buf, 0)
                 }
             }
 
@@ -1237,7 +1226,7 @@ class PyEmitterTest {
                     s += v[i] as UInt32
                     i += 1
                 }
-                return s + (v.from(1).size() as UInt32) + (v.slice(0, 1).get(0) as UInt32)
+                s + (v.from(1).size() as UInt32) + (v.slice(0, 1).get(0) as UInt32)
             }
 
             fill: (p: MutView<UInt8>, v: UInt8) Void {
@@ -1252,7 +1241,7 @@ class PyEmitterTest {
                 fill(xs.view(), 1)
                 fill(xs.from(2), 1)
                 ints: List<Int32> = @listOf(1, 2)
-                return sum(xs) + sum(xs.slice(0, 2)) + readU32Le(xs, 0) + (readF64Le(xs.from(1), 0) as UInt32)
+                sum(xs) + sum(xs.slice(0, 2)) + readU32Le(xs, 0) + (readF64Le(xs.from(1), 0) as UInt32)
             }
             """
         )
@@ -1279,7 +1268,7 @@ class PyEmitterTest {
                 writeU32Be(p, 2, readU32Be(v, 2))
                 writeU64Be(p, 6, readU64Be(v, 6))
                 writeF64Be(p, 14, readF64Be(v, 14))
-                return readU64Be(p.from(6), 0)
+                readU64Be(p.from(6), 0)
             }
             """
         )
@@ -1298,7 +1287,7 @@ class PyEmitterTest {
                 mut c: List<UInt8> = List<UInt8> { }
                 c.add(1)
                 d: List<UInt8> = c.from(0).toList()
-                return a.size() + b.size() + d.size()
+                a.size() + b.size() + d.size()
             }
             """
         )
@@ -1312,12 +1301,12 @@ class PyEmitterTest {
         val py = python(
             """
             at: (v: View<Int32>, i: Size) Int32 {
-                return v[i]
+                v[i]
             }
 
             f: () Int32 {
                 mut xs: List<Int32> = @listOf(1, 2, 3)
-                return at(xs.from(1), 0) + at(xs, 2)
+                at(xs.from(1), 0) + at(xs, 2)
             }
             """
         )
@@ -1329,7 +1318,7 @@ class PyEmitterTest {
         val py = python(
             """
             pub a: (x: Float64, y: Float64) Float64 {
-                return x / y
+                x / y
             }
             """
         )
@@ -1413,14 +1402,14 @@ class PyEmitterTest {
                     a: Pt = Pt { 1 }
                     mut b: Pt = a
                     b.x = type
-                    return globals + o() + b.x
+                    globals + o() + b.x
                 }
                 """,
             "app:other" to """
                 app.main as main
 
                 pub o: () Int32 {
-                    return 1
+                    1
                 }
                 """,
         )
@@ -1443,7 +1432,7 @@ class PyEmitterTest {
             val py = python(
                 """
                 pub a: (x: Int32, y: Int32) Int32 {
-                    return x / y
+                    x / y
                 }
                 """
             )
@@ -1482,7 +1471,7 @@ class PyEmitterTest {
                     for h: Int32 in log {
                         t += h
                     }
-                    return t
+                    t
                 }
             }
 
@@ -1494,7 +1483,7 @@ class PyEmitterTest {
                 for b: UInt8 in v {
                     t += b as UInt32
                 }
-                return t
+                t
             }
             """
         )
@@ -1527,17 +1516,17 @@ class PyEmitterTest {
             }
 
             scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
-                return x * k
+                x * k
             }
 
             total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
-                return xs.size()
+                xs.size()
             }
 
             f: () Int32 {
                 a: Knob = Knob { "a" }
                 b: Knob = Knob { "b", 4 }
-                return scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
+                scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
             }
             """
         )
@@ -1587,7 +1576,7 @@ class PyEmitterTest {
             kira.json as json
 
             pub f: (m: Maybe<Json>) Bool {
-                return m.isSome()
+                m.isSome()
             }
             """,
             "a Maybe<Json> (none and JSON null are both None on the py target)",
@@ -1598,7 +1587,7 @@ class PyEmitterTest {
 
             pub f: () Size {
                 m: Map<Str, Json> = Map<Str, Json> { }
-                return m.size()
+                m.size()
             }
             """,
             "a Map<Str, Json> (get's None could not tell a missing key from JSON null)",
@@ -1622,7 +1611,7 @@ class PyEmitterTest {
         refused(
             """
             pub f: (x: Float32) Float32 {
-                return x
+                x
             }
             """,
             "Float32",
@@ -1681,7 +1670,7 @@ class PyEmitterTest {
                 pub tags: List<Int32> = List<Int32> { }
 
                 pub me: () Pt {
-                    return this
+                    this
                 }
             }
 
@@ -1696,7 +1685,7 @@ class PyEmitterTest {
                 move(mut a)
                 ps[0] = a
                 b: Maybe<Pt> = a
-                return a.x + ps.get(0).x
+                a.x + ps.get(0).x
             }
             """
         )
@@ -1720,7 +1709,7 @@ class PyEmitterTest {
                 mut q: Queue<Node> = Queue<Node> { }
                 q.enqueue(n)
                 mut more: Queue<Node> = q
-                return n
+                n
             }
             """
         )
@@ -1748,7 +1737,7 @@ class PyEmitterTest {
             }
 
             f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
-                return xs.contains(Pt { 1 }) && s != t && o.x == 0
+                xs.contains(Pt { 1 }) && s != t && o.x == 0
             }
             """
         )
@@ -1767,24 +1756,37 @@ class PyEmitterTest {
             }
 
             first: (xs: List<Pt>) Pt {
+                mut result: Maybe<Pt> = null
+                mut found: Bool = false
                 for p: Pt in xs {
-                    return p
+                    result = p
+                    found = true
+                    break
                 }
-                return Pt { }
+                found ? result.value : Pt { }
             }
 
             row: (v: View<List<Int32>>, c: Bool) List<Int32> {
+                mut result: List<Int32> = List<Int32> { }
+                mut found: Bool = false
                 for r: List<Int32> in v {
-                    return if c { r } else { List<Int32> { } }
+                    result = c ? r : List<Int32> { }
+                    found = true
+                    break
                 }
-                mut own: List<Int32> = List<Int32> { }
-                return own
+                if found {
+                    result
+                } else {
+                    mut own: List<Int32> = List<Int32> { }
+                    own
+                }
             }
             """
         )
-        assertTrue(py.contains("    for p in xs:\n        return p._k_clone()"), py)
-        assertTrue(py.contains("        return list(r if c else [])"), py)
-        assertTrue(py.contains("    return own\n"), "a local that owns its value is returned as itself:\n$py")
+        // Stage 3: the loop's answer goes in a local, so the copy is where the loop variable is kept.
+        assertTrue(py.contains("    for p in xs:\n        result = p._k_clone()"), py)
+        assertTrue(py.contains("        result = list(r if c else [])"), py)
+        assertTrue(py.contains("        return own\n"), "a local that owns its value is returned as itself:\n$py")
     }
 
     @Test
@@ -1825,11 +1827,11 @@ class PyEmitterTest {
         refused(
             """
             n: (v: View<Char>) Size {
-                return v.size()
+                v.size()
             }
 
             f: () Size {
-                return n("abc")
+                n("abc")
             }
             """,
             "the parameter 'v': a View<Char> (text is a Str on the py target)",
@@ -1844,9 +1846,10 @@ class PyEmitterTest {
                 x: Int32 = 1
                 if x > 0 {
                     x: Int32 = 2
-                    return x
+                    x
+                } else {
+                    x
                 }
-                return x
             }
             """,
             "a local 'x' that shadows another",
@@ -1859,7 +1862,7 @@ class PyEmitterTest {
             """
             f: (from: Int32) Int32 {
                 len: Int32 = 1
-                return len + from
+                len + from
             }
             """
         )
@@ -1879,7 +1882,7 @@ class PyEmitterTest {
         refused(
             """
             pub ValueError: () Int32 {
-                return 1
+                1
             }
             """,
             "the name 'ValueError', which generated Python uses, is not supported",
@@ -1894,7 +1897,7 @@ class PyEmitterTest {
                 hidden: Int32 = 0
 
                 pub again: () Box {
-                    return Box { hidden = 3 }
+                    Box { hidden = 3 }
                 }
             }
             """,
@@ -1908,12 +1911,12 @@ class PyEmitterTest {
             """
             f: (k: Int32, xs: List<Int32>) Int32 {
                 g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
-                    return x
+                    x
                 }
                 h: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
-                    return x * k + xs.size() as Int32
+                    x * k + xs.size() as Int32
                 }
-                return g(1) + h(2)
+                g(1) + h(2)
             }
             """
         )
@@ -1930,24 +1933,24 @@ class PyEmitterTest {
                 pub x: Int32 = 0
 
                 pub later: () Fx<Tuple0, Int32> {
-                    return () Int32 {
-                        return x
+                    () Int32 {
+                        x
                     }
                 }
 
                 pub whole: () Fx<Tuple0, Pt> {
-                    return () Pt {
-                        return this
+                    () Pt {
+                        this
                     }
                 }
             }
 
             f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
-                return () List<Int32> {
+                () List<Int32> {
                     inner: Fx<Tuple0, Size> = () Size {
-                        return xs.size()
+                        xs.size()
                     }
-                    return xs
+                    xs
                 }
             }
             """
@@ -1967,12 +1970,12 @@ class PyEmitterTest {
                 pub onAdd: Fx<Tuple1<Int32>, Int32>
 
                 pub add: (v: Int32) Int32 {
-                    return onAdd(v)
+                    onAdd(v)
                 }
             }
 
             pub double: (x: Int32) Int32 {
-                return x * 2
+                x * 2
             }
 
             f: (b: Bank) Int32 {
@@ -1983,7 +1986,7 @@ class PyEmitterTest {
                 }
                 mut xs: List<Int32> = List<Int32> { }
                 fill(mut xs)
-                return Bank { double }.add(n.value)
+                Bank { double }.add(n.value)
             }
             """
         )
@@ -2013,7 +2016,7 @@ class PyEmitterTest {
         val e = PyTestSupport.emit(
             """
             f: (x: Float64, y: Float64) Float64 {
-                return x % y
+                x % y
             }
             """
         )
@@ -2028,13 +2031,13 @@ class PyEmitterTest {
         decided(
             """
             f: (x: Int32) Int32 {
-                return x.abs()
+                x.abs()
             }
             """,
             "'Num.abs'",
             "an integer's abs wraps its lowest value by its width, which the binding cannot see; kira:math's abs takes a Float64",
         )
-        decided("f: (u: UInt64) Float64 {\n    return bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
+        decided("f: (u: UInt64) Float64 {\n    bitCast<Float64>(u)\n}", "'bitCast'", "a bit cast (writeF64Le then readU64Le gives a Float64's bits)")
     }
 
     /** Num's own methods bind on py (D83) by the receiver's Kira type: golden numcalls runs them against the C++ target's output. */
@@ -2043,15 +2046,15 @@ class PyEmitterTest {
         val py = python(
             """
             f: (x: Int32, v: Float64) Float64 {
-                return x.toFloat64() + v.toInt32().toFloat64() + (x.hashCode() + v.toInt64()) as Float64
+                x.toFloat64() + v.toInt32().toFloat64() + (x.hashCode() + v.toInt64()) as Float64
             }
 
             g: (x: Int32) Bool {
-                return x.equals(3)
+                x.equals(3)
             }
 
             h: (v: Float64, n: Int64) Int64 {
-                return v.hashCode() + n.toInt32().toInt64()
+                v.hashCode() + n.toInt32().toInt64()
             }
             """
         )
@@ -2064,7 +2067,7 @@ class PyEmitterTest {
     /** A decided call whose result type py also refuses is refused with its decision's reason. */
     @Test
     fun aDecisionIsNamedBeforeTheTypeItReturns() {
-        decided("f: (s: Str) Size {\n    return s.view().size()\n}", "'Str.view'", "a View<Char> (text is a Str on the py target)")
+        decided("f: (s: Str) Size {\n    s.view().size()\n}", "'Str.view'", "a View<Char> (text is a Str on the py target)")
     }
 
     @Test
@@ -2074,7 +2077,7 @@ class PyEmitterTest {
             kira.math as math
 
             f: (x: Float32) Float32 {
-                return sqrt(x)
+                sqrt(x)
             }
             """,
             "Float32",
@@ -2112,40 +2115,44 @@ class PyEmitterTest {
                 if v.isNone() {
                     throw "bad ${'$'}{s}"
                 }
-                return v.unwrap()
+                v.unwrap()
             }
 
             pick: (ok: Bool) Int32 {
-                return if ok { 1 } else { throw "no" }
+                (if ok { 1 } else { throw "no" })
             }
 
             check: (x: Int32) Result<Int32, Str> {
-                if x < 0 {
-                    return Result.error("negative")
-                }
-                return Result.success(x)
+                x < 0 ? Result.error("negative") : Result.success(x)
             }
 
             f: () Int64 {
+                mut result: Int64 = 0
+                mut found: Bool = false
                 try {
-                    return parse("x")
+                    result = parse("x")
+                    found = true
                 } on e: Str {
                     trace(e)
                 }
-                r: Result<Int32, Str> = check(1)
-                if r.isOk() && !r.isErr() {
-                    return (r.unwrap() + r.value) as Int64
+                if found {
+                    result
+                } else {
+                    r: Result<Int32, Str> = check(1)
+                    if r.isOk() && !r.isErr() {
+                        (r.unwrap() + r.value) as Int64
+                    } else {
+                        trace(r.unwrapErr());
+                        -1
+                    }
                 }
-                trace(r.unwrapErr())
-                return -1
             }
             """
         )
         assertTrue(py.contains("        raise _k_Error(\"bad \" + s)"), py)
         assertTrue(py.contains("    return 1 if ok else _k_throw(\"no\")"), py)
-        assertTrue(py.contains("    try:\n        return _parse(\"x\")\n    except _k_Error as _k_t0:\n        e = _k_t0.args[0]\n        print(e)"), py)
-        assertTrue(py.contains("return (False, \"negative\")"), py)
-        assertTrue(py.contains("return (True, x)"), py)
+        assertTrue(py.contains("    try:\n        result = _parse(\"x\")\n        found = True\n    except _k_Error as _k_t0:\n        e = _k_t0.args[0]\n        print(e)"), py)
+        assertTrue(py.contains("return (False, \"negative\") if x < 0 else (True, x)"), py)
         assertTrue(py.contains("if r[0] and not (not r[0]):"), py)
         assertTrue(py.contains("_k_i32(_k_unwrap(r) + _k_unwrap(r))"), py)
         assertTrue(py.contains("print(_k_unwrap_err(r))"), py)
@@ -2168,7 +2175,7 @@ class PyEmitterTest {
                     trace(e.first)
                 }
                 r: Result<List<Int32>, Str> = Result.success(xs)
-                return t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
+                t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
             }
             """
         )
@@ -2186,7 +2193,7 @@ class PyEmitterTest {
             """
             f: () Size {
                 m: Map<Float64, Int32> = Map<Float64, Int32> { }
-                return m.size()
+                m.size()
             }
             """,
             "a Map<Float64, Int32> (a float key: a NaN key differs between kira::Map and a dict)",
@@ -2202,7 +2209,7 @@ class PyEmitterTest {
             }
 
             f: (m: Map<Box, Int32>) Size {
-                return m.size()
+                m.size()
             }
             """
         )
@@ -2222,7 +2229,7 @@ class PyEmitterTest {
                 mut copy: Map<Str, List<UInt8>> = m
                 o: Maybe<List<Int32>> = row
                 vs: Arr<List<UInt8>> = m.valuesArr()
-                return copy.size() + h.size() + vs.size() + o.unwrap().size()
+                copy.size() + h.size() + vs.size() + o.unwrap().size()
             }
             """
         )
@@ -2237,7 +2244,7 @@ class PyEmitterTest {
         refused(
             """
             f: (m: Map<Str, Maybe<Int32>>) Bool {
-                return m.get("a").isSome()
+                m.get("a").isSome()
             }
             """,
             "a Maybe<Maybe<Int32>>",
@@ -2257,7 +2264,7 @@ class PyEmitterTest {
                 d.pushFront(2)
                 mut copy: Queue<Int32> = q
                 copy.enqueue(3)
-                return st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
+                st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
             }
             """
         )
@@ -2272,7 +2279,7 @@ class PyEmitterTest {
         refused(
             """
             f: (s: Set<Float64>) Size {
-                return s.size()
+                s.size()
             }
             """,
             "a Set<Float64> (a float key: a NaN key differs between kira::Map and a dict)",
@@ -2287,12 +2294,12 @@ class PyEmitterTest {
 
             two: () Int32 {
                 trace("two")
-                return 2
+                2
             }
 
             f: () Int32 {
                 t: Tuple2<Int32, Int32> = Tuple2<Int32, Int32> { second = two(), first = 1 }
-                return t.first
+                t.first
             }
             """,
             "a Tuple whose values, written out of their order, have effects",
@@ -2306,7 +2313,7 @@ class PyEmitterTest {
             f: () Size {
                 mut m: Map<Str, Int32> = Map<Str, Int32> { }
                 m["a"] += 1
-                return m.size()
+                m.size()
             }
             """
         )
@@ -2320,7 +2327,7 @@ class PyEmitterTest {
         refused(
             """
             pub dict: () Int32 {
-                return 1
+                1
             }
             """,
             "the name 'dict', which generated Python uses, is not supported",
@@ -2335,18 +2342,18 @@ class PyEmitterTest {
                 pub LIMIT: List<Int32> = List<Int32> { }
 
                 pub g: (from: Int32, count: List<Int32> = LIMIT) Int32 {
-                    return from
+                    from
                 }
                 """,
             "app:main" to """
                 lib.span as span
 
                 pub count: () Int32 {
-                    return 1
+                    1
                 }
 
                 f: () Int32 {
-                    return g(from = count()) + g(1)
+                    g(from = count()) + g(1)
                 }
                 """,
         )
@@ -2360,11 +2367,11 @@ class PyEmitterTest {
         refused(
             """
             pub helper: () Int32 {
-                return 1
+                1
             }
 
             pub span: (from: Int32, helper: Int32 = 2) Int32 {
-                return from + helper
+                from + helper
             }
             """,
             "a parameter named like the module's own 'helper'",
@@ -2379,15 +2386,15 @@ class PyEmitterTest {
                 pub n: Int32 = 2
 
                 pub twice: () Int32 {
-                    return n * 2
+                    n * 2
                 }
 
                 pub run: () Int32 {
                     f: Fx<Tuple0, Int32> = () Int32 {
                         self: Int32 = twice()
-                        return self
+                        self
                     }
-                    return f()
+                    f()
                 }
             }
             """
@@ -2398,7 +2405,7 @@ class PyEmitterTest {
     @Test
     fun aUnicodeEscapeIsFourHexDigitsOfACodePoint() {
         listOf("\\u-001", "\\u+0e9", "\\u00", "\\u0000", "\\ud800").forEach { esc ->
-            val e = assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("f: () Str {\n    return \"x${esc}y\"\n}") }
+            val e = assertFailsWith<DiagnosticsException>(esc) { PyTestSupport.emit("f: () Str {\n    \"x${esc}y\"\n}") }
             assertTrue(e.tag == "KiraParser::parseStringLiteral" && e.message.contains("takes four hex digits"), e.message)
         }
     }
@@ -2416,13 +2423,13 @@ class PyEmitterTest {
                     pub label: Str
 
                     pub scaled: (x: Int32) Int32 {
-                        return x * SCALE
+                        x * SCALE
                     }
                 }
 
                 pub bump: () Int32 {
                     calls += 1
-                    return calls
+                    calls
                 }
                 """,
             "app:main" to """
@@ -2432,7 +2439,7 @@ class PyEmitterTest {
                     m: Meter = Meter { "a" }
                     calls = 5
                     units.calls = units.calls + 1
-                    return m.scaled(bump()) + units.bump() + SCALE
+                    m.scaled(bump()) + units.bump() + SCALE
                 }
                 """,
         )
@@ -2460,14 +2467,14 @@ class PyEmitterTest {
                 pub K: Int32 = 2
 
                 pub isEven: (n: Int32) Bool {
-                    return n == 0 || isOdd(n - 1)
+                    n == 0 || isOdd(n - 1)
                 }
                 """,
             "app:odd" to """
                 app.even as even
 
                 pub isOdd: (n: Int32) Bool {
-                    return n != 0 && isEven(n - 1)
+                    n != 0 && isEven(n - 1)
                 }
                 """,
         )
@@ -2485,18 +2492,18 @@ class PyEmitterTest {
         val (py, errors) = PyTestSupport.emitProgram(
             "kira:extra" to """
                 pub inner: (v: Float64) Float64 {
-                    return v * 2.0
+                    v * 2.0
                 }
 
                 pub outer: (v: Float64) Float64 {
-                    return inner(v) + 1.0
+                    inner(v) + 1.0
                 }
                 """,
             "app:main" to """
                 kira.extra as extra
 
                 pub f: (v: Float64) Float64 {
-                    return outer(v)
+                    outer(v)
                 }
                 """,
         )
@@ -2514,11 +2521,11 @@ class PyEmitterTest {
             kira.os as os
 
             f: (x: Float64) Float64 {
-                return clamp(deg2rad(x), lerp(0.0, -1.0, 0.5), 1.0)
+                clamp(deg2rad(x), lerp(0.0, -1.0, 0.5), 1.0)
             }
 
             g: () Int32 {
-                return POLL_WRITE + SIGNAL_TERM
+                POLL_WRITE + SIGNAL_TERM
             }
             """
         )
@@ -2549,7 +2556,7 @@ class PyEmitterTest {
             pub @_extern globSorted: (pattern: Str) List<Str>
 
             f: () Size {
-                return globSorted(readText("p")).size()
+                globSorted(readText("p")).size()
             }
             """,
             "wrapper",
@@ -2601,7 +2608,7 @@ class PyEmitterTest {
 
             f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
                 kept: List<Sock> = socks
-                return s.recv(4).size() + kept.size()
+                s.recv(4).size() + kept.size()
             }
             """,
             "handle",
@@ -2637,7 +2644,7 @@ class PyEmitterTest {
             "@_extern f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
             "@_extern f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
             "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
-            "@_extern f: () Int32 {\n    return 1\n}" to "the extern 'f' with a body",
+            "@_extern f: () Int32 {\n    1\n}" to "the extern 'f' with a body",
             "pub f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
             "@_extern f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
             "@_extern f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
@@ -2678,11 +2685,11 @@ class PyEmitterTest {
             @_extern each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
 
             size: (s: Str, n: Maybe<Int64>) List<UInt8> {
-                return s.bytes()
+                s.bytes()
             }
 
             g: () Int32 {
-                return each(@listOf("a"), size)
+                each(@listOf("a"), size)
             }
             """,
             "fxarg",
@@ -2746,7 +2753,7 @@ class PyEmitterTest {
                     })
                 })
                 t.join()
-                return q.size() as Int64 + hits.load() as Int64
+                q.size() as Int64 + hits.load() as Int64
             }
             """
         )
@@ -2770,7 +2777,7 @@ class PyEmitterTest {
 
             f: () Bool {
                 stop: Atomic<Bool> = Atomic<Bool> { value = false }
-                return onSignal(SIGNAL_INT, stop) && onSignal(SIGNAL_TERM, stop)
+                onSignal(SIGNAL_INT, stop) && onSignal(SIGNAL_TERM, stop)
             }
             """
         )
@@ -2799,17 +2806,17 @@ class PyEmitterTest {
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
         refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map, a struct or a class)")
         refused("kira.sync as sync\nf: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
-        refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    return a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
+        refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
     }
 
     @Test
     fun anOpaqueHandleIsComparedNeitherThroughAStructNorByContains() {
         val handle = "pub @_opaque Sock: Any {\n    pub id: () Int32\n}\n"
         listOf(
-            "${handle}Peer: Struct {\n    pub s: Sock\n}\nf: (a: Peer, b: Peer) Bool {\n    return a == b\n}" to "a comparison of Peer, which holds an opaque handle",
-            "${handle}Peer: Struct {\n    pub s: List<Sock>\n}\nf: (a: Peer, b: Peer) Bool {\n    return a != b\n}" to "a comparison of Peer, which holds an opaque handle",
-            "${handle}f: (xs: List<Sock>, s: Sock) Bool {\n    return xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
-            "${handle}f: (m: Map<Str, Sock>, s: Sock) Bool {\n    return m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
+            "${handle}Peer: Struct {\n    pub s: Sock\n}\nf: (a: Peer, b: Peer) Bool {\n    a == b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}Peer: Struct {\n    pub s: List<Sock>\n}\nf: (a: Peer, b: Peer) Bool {\n    a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}f: (xs: List<Sock>, s: Sock) Bool {\n    xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
+            "${handle}f: (m: Map<Str, Sock>, s: Sock) Bool {\n    m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
         ).forEach { (body, construct) -> refused(body, construct) }
     }
 
@@ -2836,7 +2843,7 @@ class PyEmitterTest {
                 r: Runner = Runner { t }
                 both(r.t, 3)
                 kept: List<Suite> = @listOf(t, Suite { "other" })
-                return kept[0].finish()
+                kept[0].finish()
             }
             """
         )
@@ -2860,7 +2867,7 @@ class PyEmitterTest {
                 ok: Bool = s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0
                 out: Maybe<FileOut> = openAppend(path)
                 ran: Maybe<Ran> = runCapture(@listOf(path), null, 0)
-                return ok && lastErrorKind() == "" && out.isSome() && ran.value.code == 0
+                ok && lastErrorKind() == "" && out.isSome() && ran.value.code == 0
             }
             """
         )
@@ -2869,7 +2876,7 @@ class PyEmitterTest {
         assertTrue(py.contains("_k_oserrkind() == \"\""), py)
         assertTrue(py.contains("\nclass _k_UdpSocket:\n") && py.contains("\nclass _k_FileOut:\n") && py.contains("\nclass _k_Ran:\n"), py)
         assertTrue(py.contains("\n_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_threading.local())\n"), py)
-        val reads = python("kira.os as os\n\nf: (path: Str) Str {\n    return readText(path).value + lastError()\n}")
+        val reads = python("kira.os as os\n\nf: (path: Str) Str {\n    readText(path).value + lastError()\n}")
         listOf("subprocess", "socket", "select", "shutil").forEach { assertFalse(reads.contains("import $it as"), "a module that reads a file imports no $it:\n$reads") }
     }
 
@@ -2888,17 +2895,17 @@ class PyEmitterTest {
                 r: Maybe<Regex> = compile("a+", IGNORE_CASE)
                 g: Random = newRandom(7)
                 rows: Maybe<CsvReader> = openCsv(joinPath(p, "x.csv"))
-                return r.isSome() && pyInt(p).isSome() && g.below(3) >= 0 && rows.isSome() && rx.search(p).isSome() && strRepr(p) != regexError()
+                r.isSome() && pyInt(p).isSome() && g.below(3) >= 0 && rows.isSome() && rx.search(p).isSome() && strRepr(p) != regexError()
             }
             """
         )
         assertTrue(py.contains("    r = _k_recompile(\"a+\", 2)\n    g = _k_Random(7)\n    rows = _k_opencsv(_k_os.path.join(p, \"x.csv\"))\n"), py)
         assertTrue(py.contains("(_k_pyint(p) is not None) and _k_below(g, 3) >= 0") && py.contains("(rx.search(p) is not None) and _k_builtins.repr(p) != _k_reerror()"), py)
         assertTrue(py.contains("\n_k_Random = _k_random.Random\n") && py.contains("\nclass _k_CsvReader:\n") && py.contains("import csv as _k_csv"), py)
-        val path = python("kira.path as path\n\nf: (p: Str) Str {\n    return slashed(normPath(p))\n}")
+        val path = python("kira.path as path\n\nf: (p: Str) Str {\n    slashed(normPath(p))\n}")
         assertTrue(path.contains("    return _k_os.path.normpath(p).replace(_k_os.sep, \"/\")\n"), path)
         listOf("csv", "random", "re", "textwrap", "datetime", "binascii").forEach { assertFalse(path.contains("import $it as"), "a module of paths imports no $it:\n$path") }
-        val plus = python("kira.math as math\nkira.bytes as bytes\nkira.time as time\n\nf: (b: List<UInt8>) Str {\n    return utcStamp(findBytes(b, b, 0) + crc16Xmodem(b, 0) as Int64) + \"${'$'}{floorMod(-1.0, 3.0)} ${'$'}{exp(1.0)}\"\n}")
+        val plus = python("kira.math as math\nkira.bytes as bytes\nkira.time as time\n\nf: (b: List<UInt8>) Str {\n    utcStamp(findBytes(b, b, 0) + crc16Xmodem(b, 0) as Int64) + \"${'$'}{floorMod(-1.0, 3.0)} ${'$'}{exp(1.0)}\"\n}")
         assertTrue(plus.contains("_k_utcstamp(_k_i64(_k_findbytes(b, b, 0) + _k_binascii.crc_hqx(b, 0)))") && plus.contains("_k_floormod(-1.0, 3.0)") && plus.contains("_k_exp(1.0)"), plus)
     }
 
@@ -2911,7 +2918,7 @@ class PyEmitterTest {
             kira.args as args
 
             pub handle: (r: HttpRequest) HttpAnswer {
-                return HttpAnswer { status = 404 }
+                HttpAnswer { status = 404 }
             }
 
             pub f: (url: Str) Bool {
@@ -2920,14 +2927,14 @@ class PyEmitterTest {
                 spec: ArgSpec = argSpec("tool", "what it does")
                 spec.whole("--n", 3, "how many")
                 b: List<UInt8> = "x".bytes()
-                return got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(@listOf("--n", "4")).isSet("--n")
+                got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(@listOf("--n", "4")).isSet("--n")
             }
             """
         )
         assertTrue(py.contains("    got = _k_httpcall(url, None, None, 500)\n    s = _k_httpbind(\"127.0.0.1\", 0, handle, None)\n    spec = _k_ArgSpec(\"tool\", \"what it does\")\n    spec.whole(\"--n\", 3, \"how many\")\n"), py)
         assertTrue(py.contains("    return _k_HttpAnswer(404, \"application/json\", bytearray(()), {})\n") && py.contains("_k_httpcall(url, b, \"text/plain\", 0)"), py)
         assertTrue(py.contains("\nclass _k_HttpGet(_k_httpserver.BaseHTTPRequestHandler):\n") && py.contains("\nclass _k_ArgSpec:\n") && py.contains("import argparse as _k_argparse"), py)
-        val split = python("kira.http as http\n\nf: (t: Str) Str {\n    return urlPath(t).unwrapOr(\"/\") + queryFirst(urlQuery(t).unwrapOr(\"\"), \"s\").unwrapOr(\"\")\n}")
+        val split = python("kira.http as http\n\nf: (t: Str) Str {\n    urlPath(t).unwrapOr(\"/\") + queryFirst(urlQuery(t).unwrapOr(\"\"), \"s\").unwrapOr(\"\")\n}")
         assertTrue(split.contains("_k_urlpart(t, \"path\")") && split.contains("import urllib.parse as _k_urlparse"), split)
         listOf("http.server", "http.client", "urllib.request", "argparse").forEach { assertFalse(split.contains("import $it as"), "a module that splits a URL imports no $it:\n$split") }
     }
@@ -2935,22 +2942,22 @@ class PyEmitterTest {
     /** A stdlib class that is Python's own is made only by its module's calls: Regex { } would be re.Pattern(), a TypeError. */
     @Test
     fun aStdlibClassThatIsPythonsOwnIsNeverConstructed() {
-        decided("kira.regex as regex\n\nf: () Regex {\n    return Regex { }\n}", "a construction of Regex", "Regex is Python's re.Pattern, which only its module's calls make")
-        decided("kira.random as random\n\nf: () Random {\n    return Random { }\n}", "a construction of Random", "Random is Python's random.Random, which only its module's calls make")
+        decided("kira.regex as regex\n\nf: () Regex {\n    Regex { }\n}", "a construction of Regex", "Regex is Python's re.Pattern, which only its module's calls make")
+        decided("kira.random as random\n\nf: () Random {\n    Random { }\n}", "a construction of Random", "Random is Python's random.Random, which only its module's calls make")
         val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
         assertEquals("re.Match", runtime.aliasOf("_k_Match"))
         listOf("_k_CsvReader", "_k_Process", "_k_Error", "_k_reasons").forEach { assertNull(runtime.aliasOf(it), it) }
-        assertTrue(python("kira.csv as csv\n\nf: () CsvReader {\n    return CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
+        assertTrue(python("kira.csv as csv\n\nf: () CsvReader {\n    CsvReader { }\n}").contains("    return _k_CsvReader()\n"))
     }
 
     /** A runtime class whose __init__ needs more than its fields is made only by its module's calls: ArgSpec { } has no prog. */
     @Test
     fun aStdlibClassThatNeedsItsModulesCallIsNeverConstructed() {
-        decided("kira.args as args\n\nf: () ArgSpec {\n    return ArgSpec { }\n}", "a construction of ArgSpec", "ArgSpec is made only by its module's calls")
-        decided("kira.args as args\n\nf: () Parsed {\n    return Parsed { }\n}", "a construction of Parsed", "Parsed is made only by its module's calls")
+        decided("kira.args as args\n\nf: () ArgSpec {\n    ArgSpec { }\n}", "a construction of ArgSpec", "ArgSpec is made only by its module's calls")
+        decided("kira.args as args\n\nf: () Parsed {\n    Parsed { }\n}", "a construction of Parsed", "Parsed is made only by its module's calls")
         val runtime = PyRuntime(File(PyTestSupport.repoRoot, "kira/py/runtime.py").readText())
         assertEquals(listOf(2, 2, 0, 0, 2, 1), listOf("_k_ArgSpec", "_k_Parsed", "_k_HttpServer", "_k_Serial", "_k_Thread", "_k_Suite").map { runtime.requiredArgs(it) })
-        assertTrue(python("kira.http as http\n\nf: () HttpServer {\n    return HttpServer { }\n}").contains("    return _k_HttpServer()\n"))
+        assertTrue(python("kira.http as http\n\nf: () HttpServer {\n    HttpServer { }\n}").contains("    return _k_HttpServer()\n"))
     }
 
     @Test
@@ -2969,7 +2976,7 @@ class PyEmitterTest {
         )
         assertEquals(emptyList(), errors)
         assertTrue(py.getValue("app:main").contains("    t = _k_Suite(\"x\")\n"), py.getValue("app:main"))
-        val ref = python("f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    return r.value\n}")
+        val ref = python("f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    r.value\n}")
         assertTrue(ref.contains("    r = _k_Ref(1)\n"), "a Ref keeps its own construction:\n$ref")
     }
 
@@ -2990,7 +2997,7 @@ class PyEmitterTest {
                 xs: List<Ready> = @listOf(r)
                 ys: List<Ready> = xs
                 s: Seen = Seen { }
-                return e == d && ys[0] != r && s.last == (Datagram { host = "h" })
+                e == d && ys[0] != r && s.last == (Datagram { host = "h" })
             }
             """
         )

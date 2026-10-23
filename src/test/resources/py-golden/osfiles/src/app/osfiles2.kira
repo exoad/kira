@@ -11,50 +11,43 @@ dirOf: (path: Str) Str {
     for i: Size in 0..last {
         kept.add(parts[i])
     }
-    if kept.isEmpty() {
-        return "."
-    }
-    return kept.joinToString("/")
+    kept.isEmpty() ? "." : kept.joinToString("/")
 }
 
 textOf: (m: Maybe<Str>) Str {
-    if m.isSome() {
-        return m.value
-    }
-    return "<none>"
+    m.isSome() ? m.value : "<none>"
 }
 
 bytesOf: (m: Maybe<List<UInt8>>) Str {
-    if m.isSome() {
-        return Str.of(m.value)
-    }
-    return "<none>"
+    m.isSome() ? Str.of(m.value) : "<none>"
 }
 
 temporaryIn: (dir: Str) Bool {
+    mut result: Bool = false
     for name: Str in listDir(dir) {
         if name.endsWith(".tmp") {
-            return true
+            result = true
+            break
         }
     }
-    return false
+    result
 }
 
 // A missing file's read, for the driver: its reason is the thread's, whichever module reads it.
 pub missing: (path: Str) Bool {
-    return readFile(path).isNone()
+    readFile(path).isNone()
 }
 
 pub head: (path: Str, n: Size) Maybe<List<UInt8>> {
-    return readFileHead(path, n)
+    readFileHead(path, n)
 }
 
 pub changed: (path: Str) Maybe<Float64> {
-    return modifiedS(path)
+    modifiedS(path)
 }
 
 pub atomic: (path: Str, text: Str) Bool {
-    return writeFileAtomic(path, text.bytes())
+    writeFileAtomic(path, text.bytes())
 }
 
 pub main: () Int32 {
@@ -104,26 +97,27 @@ pub main: () Int32 {
     opened: Maybe<FileOut> = openAppend(log)
     t.check(opened.isSome(), "openAppend opens a new file")
     if opened.isNone() {
-        return t.finish()
-    }
-    f: FileOut = opened.value
-    t.check(f.size() == 0 && !f.isStale(), "empty, and not stale")
-    t.check(f.write("ab".bytes()) && f.size() == 2 && f.sync(), "write, size and sync")
-    g: FileOut = openAppend(log).value
-    t.check(g.write("cd".bytes()) && f.write("ef".bytes()), "two appenders write in turn")
-    t.checkStr(textOf(readText(log)), "abcdef", "each at the file's end")
-    f.close()
-    t.check(f.isStale() && !f.write("x".bytes()) && lastErrorKind() == "Other", "a closed FileOut is stale and refuses a write")
-    t.check(f.size() == -1 && !f.sync(), "and has no size and no sync")
-    g.close()
-    w: FileOut = openWrite(log).value
-    t.check(w.size() == 0 && w.write("z".bytes()), "openWrite truncates")
-    w.close()
-    t.checkStr(textOf(readText(log)), "z", "and writes from the start")
-    t.check(openAppend(nope + "/x").isNone() && lastErrorKind() == "NotFound", "openAppend in a missing directory is none, NotFound")
+        t.finish()
+    } else {
+        f: FileOut = opened.value
+        t.check(f.size() == 0 && !f.isStale(), "empty, and not stale")
+        t.check(f.write("ab".bytes()) && f.size() == 2 && f.sync(), "write, size and sync")
+        g: FileOut = openAppend(log).value
+        t.check(g.write("cd".bytes()) && f.write("ef".bytes()), "two appenders write in turn")
+        t.checkStr(textOf(readText(log)), "abcdef", "each at the file's end")
+        f.close()
+        t.check(f.isStale() && !f.write("x".bytes()) && lastErrorKind() == "Other", "a closed FileOut is stale and refuses a write")
+        t.check(f.size() == -1 && !f.sync(), "and has no size and no sync")
+        g.close()
+        w: FileOut = openWrite(log).value
+        t.check(w.size() == 0 && w.write("z".bytes()), "openWrite truncates")
+        w.close()
+        t.checkStr(textOf(readText(log)), "z", "and writes from the start")
+        t.check(openAppend(nope + "/x").isNone() && lastErrorKind() == "NotFound", "openAppend in a missing directory is none, NotFound")
 
-    t.check(env("PATH").isSome() && env("KIRA_OSFILES2_NO_SUCH_VARIABLE").isNone(), "env finds PATH and nothing for a name that is not set")
-    t.check(setAffinity(0, @listOf(0)) || lastError() != "", "setAffinity pins this process, or says why it cannot")
-    t.check(nice(0).isSome() || lastError() != "", "nice(0) is the niceness, or none with a reason")
-    return t.finish()
+        t.check(env("PATH").isSome() && env("KIRA_OSFILES2_NO_SUCH_VARIABLE").isNone(), "env finds PATH and nothing for a name that is not set")
+        t.check(setAffinity(0, @listOf(0)) || lastError() != "", "setAffinity pins this process, or says why it cannot")
+        t.check(nice(0).isSome() || lastError() != "", "nice(0) is the niceness, or none with a reason")
+        t.finish()
+    }
 }

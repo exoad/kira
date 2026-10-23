@@ -5,8 +5,5 @@ golden.py.modules.app.report as report
 pub HOPS: Int32 = 2
 
 pub isOdd: (n: Int32) Bool {
-    if n == 0 {
-        return false
-    }
-    return isEven(n - 1)
+    n == 0 ? false : isEven(n - 1)
 }

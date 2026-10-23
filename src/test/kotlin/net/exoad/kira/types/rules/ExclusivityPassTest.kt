@@ -40,30 +40,30 @@ class ExclusivityPassTest {
             xs.set(0, 1)
         }
         pub sum: (v: View<Int32>) Int32 {
-            return 0
+            0
         }
         pub fill: (mut xs: Arr<Int32>, v: View<Int32>) Void {
             xs.set(0, v[0])
         }
         pub sz: (n: Size, v: Int32) Int32 {
-            return v
+            v
         }
         pub pair: (a: Int32, b: Int32) Int32 {
-            return a + b
+            a + b
         }
         pub bump: (mut x: Int32) Int32 {
             x += 1
-            return x
+            x
         }
         pub Counter: Struct {
             pub a: Int32 = 0
             pub items: Arr<Int32> = @arrOf()
             pub mut grow: () Int32 {
                 a += 1
-                return a
+                a
             }
             pub peek: () Int32 {
-                return a
+                a
             }
             pub mut reset: () Void {
                 a = 0
@@ -76,7 +76,7 @@ class ExclusivityPassTest {
             }
             pub mut grown: () Int32 {
                 items.add(1)
-                return 1
+                1
             }
         }
     """
@@ -136,7 +136,7 @@ class ExclusivityPassTest {
                     for y: Int32 in s.items {
                         s.a += y
                     }
-                    return total
+                    total
                 }
                 """,
             ),
@@ -162,7 +162,7 @@ class ExclusivityPassTest {
                     mut c: Cache = Cache {}
                     c.items.add(c.grown())
                     c.push(bump(mut n))
-                    return t + u + v + w
+                    t + u + v + w
                 }
                 """,
             ),
@@ -187,7 +187,7 @@ class ExclusivityPassTest {
                 w: Int32 = pair(b.grow(), b.grow())
                 mut c: Cache = Cache {}
                 x: Int32 = sz(c.items.size(), bump(mut n))
-                return t + u + v + w + x
+                t + u + v + w + x
             }
             """,
         )
@@ -242,17 +242,17 @@ class ExclusivityPassTest {
             """
             pub fill: (v: MutView<UInt8>) UInt8 {
                 v.set(0, 9)
-                return 1
+                1
             }
             pub pair8: (a: UInt8, b: UInt8) UInt8 {
-                return a
+                a
             }
             pub both: (xs: Arr<UInt8, 4>, v: MutView<UInt8>) UInt8 {
                 v.set(0, 9)
-                return xs[0]
+                xs[0]
             }
             pub viaParam: (mv: MutView<UInt8>) UInt8 {
-                return pair8(mv[0], fill(mv))
+                pair8(mv[0], fill(mv))
             }
             pub f: () UInt8 {
                 mut arr: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
@@ -260,7 +260,7 @@ class ExclusivityPassTest {
                 c: UInt8 = arr[0] + fill(arr.view())
                 d: UInt8 = pair8(arr.get(0), fill(arr.from(0)))
                 g: UInt8 = both(arr, arr.view())
-                return a + c + d + g
+                a + c + d + g
             }
             """,
         )
@@ -278,7 +278,7 @@ class ExclusivityPassTest {
                 mut xs: Arr<Int32> = @arrOf(1, 2)
                 a: Int32 = pair(xs.view()[0], bump(mut xs[1]))
                 put(mut xs[0], bump(mut xs[1]))
-                return a
+                a
             }
             """,
         )
@@ -304,20 +304,20 @@ class ExclusivityPassTest {
             }
             pub app: (mut s: Str) Size {
                 s = s + "x"
-                return 1 as Size
+                1 as Size
             }
             pub bumpS: (mut x: Size) Size {
                 x += 1 as Size
-                return x
+                x
             }
             pub Ctr: Struct {
                 pub mut a: Int32 = 0
                 pub mut grow: () Int32 {
                     a += 1
-                    return a
+                    a
                 }
                 pub plus: (v: Int32) Int32 {
-                    return a + v
+                    a + v
                 }
             }
             pub f: () Int32 {
@@ -338,16 +338,16 @@ class ExclusivityPassTest {
                 v: Int32 = c.plus(c.grow())
                 mut k: CCtr = CCtr {}
                 w: Int32 = k.plus(k.grow())
-                return n + bx.a + pt.a + arr[0] + xs[0] + w
+                n + bx.a + pt.a + arr[0] + xs[0] + w
             }
             pub CCtr: Any {
                 pub mut a: Int32 = 0
                 pub mut grow: () Int32 {
                     a += 1
-                    return a
+                    a
                 }
                 pub plus: (v: Int32) Int32 {
-                    return a + v
+                    a + v
                 }
             }
             """,
@@ -372,11 +372,11 @@ class ExclusivityPassTest {
                 LOG.add(1)
             }
             pub quiet: () Int32 {
-                return LOG.size() as Int32
+                LOG.size() as Int32
             }
             pub fill: (v: MutView<Int32>) Int32 {
                 v.set(0, 9)
-                return 1
+                1
             }
             pub Box: Any {
                 pub mut items: List<Int32> = List<Int32> {}
@@ -399,7 +399,7 @@ class ExclusivityPassTest {
                     for z: Int32 in items {
                         push(z)
                     }
-                    return n
+                    n
                 }
             }
             pub f: () Int32 {
@@ -420,7 +420,7 @@ class ExclusivityPassTest {
                 for x: Int32 in b.other {
                     b.pushOther(x)
                 }
-                return n
+                n
             }
             """,
         )
@@ -461,7 +461,7 @@ class ExclusivityPassTest {
                 }
             }
             pub run: (f: Fx<Tuple0, Int32>) Int32 {
-                return f()
+                f()
             }
             pub l1: (a: A) Int32 {
                 mut n: Int32 = 0
@@ -469,7 +469,7 @@ class ExclusivityPassTest {
                     a.act()
                     n += x
                 }
-                return n
+                n
             }
             pub l2: (t: T) Int32 {
                 mut n: Int32 = 0
@@ -477,37 +477,37 @@ class ExclusivityPassTest {
                     t.act()
                     n += x
                 }
-                return n
+                n
             }
             pub l3: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
                     n += run(() Int32 {
                         LOG.add(1)
-                        return 1
+                        1
                     })
                 }
-                return n
+                n
             }
             pub l4: () Int32 {
                 mut n: Int32 = 0
                 g: Fx<Tuple0, Int32> = () Int32 {
                     LOG.add(1)
-                    return 1
+                    1
                 }
                 for x: Int32 in LOG {
                     n += g()
                 }
-                return n
+                n
             }
             pub ok: () Int32 {
                 mut n: Int32 = 0
                 for x: Int32 in LOG {
                     n += run(() Int32 {
-                        return 1
+                        1
                     })
                 }
-                return n
+                n
             }
             """,
         )
@@ -527,7 +527,7 @@ class ExclusivityPassTest {
             """
             pub mut GL: List<Int32> = List<Int32> {}
             pub half: (a: View<Int32>) View<Int32> {
-                return a
+                a
             }
             pub set5: (mv: MutView<Int32>) Void {
                 mv[0 as Size] = 5
@@ -540,7 +540,7 @@ class ExclusivityPassTest {
                 for x: Int32 in half(xs) {
                     xs.add(x)
                 }
-                return 0
+                0
             }
             pub l2: () Int32 {
                 mut n: Int32 = 0
@@ -548,7 +548,7 @@ class ExclusivityPassTest {
                     poke()
                     n += x
                 }
-                return n
+                n
             }
             """,
         )
@@ -575,22 +575,22 @@ class ExclusivityPassTest {
             pub mut GT: S = S {}
             pub bumpGS: () Int32 {
                 GS.a += 1
-                return GS.a
+                GS.a
             }
             pub f: (p: S) Int32 {
                 n: Int32 = bumpGS()
-                return p.a + n
+                p.a + n
             }
             pub g: (p: Int32) Int32 {
                 GN += 1
-                return p
+                p
             }
             pub h: (p: S) Int32 {
                 GN += 1
-                return p.a
+                p.a
             }
             pub main: () Int32 {
-                return f(GS) + g(GN) + h(GS) + f(GT)
+                f(GS) + g(GN) + h(GS) + f(GT)
             }
             """,
         )
@@ -649,45 +649,45 @@ class ExclusivityPassTest {
                 pub mut n: Int32 = 0
                 pub mut grow: () Int32 {
                     n += 1
-                    return n
+                    n
                 }
                 pub plus: (v: Int32) Int32 {
-                    return n + v
+                    n + v
                 }
                 pub mut add: (v: Int32) Int32 {
                     n += v
-                    return n
+                    n
                 }
             }
             pub Holder: Struct {
                 pub k: K
                 pub mut swap: () Int32 {
                     k = K { n = 9 }
-                    return 1
+                    1
                 }
             }
             pub rebind: (mut k: K) Int32 {
                 k = K { n = 5 }
-                return 1
+                1
             }
             pub reset: (mut h: Holder) Int32 {
                 h = Holder { k = K {} }
-                return 1
+                1
             }
             pub bumpI: (mut i: Size) Int32 {
                 i += 1 as Size
-                return 1
+                1
             }
             pub mk: () K {
-                return K {}
+                K {}
             }
             pub c1: () Int32 {
                 mut k: K = K {}
-                return k.plus(rebind(mut k))
+                k.plus(rebind(mut k))
             }
             pub c3: (c: Bool) Int32 {
                 mut k: K = K {}
-                return k.plus(if c {
+                k.plus(if c {
                     k = K { n = 5 }
                     1
                 } else {
@@ -696,7 +696,7 @@ class ExclusivityPassTest {
             }
             pub c4: (c: Bool) Int32 {
                 mut k: K = K {}
-                return k.add(if c {
+                k.add(if c {
                     k = K { n = 5 }
                     1
                 } else {
@@ -707,7 +707,7 @@ class ExclusivityPassTest {
                 mut st: Holder = Holder { k = K {} }
                 a: Int32 = st.k.plus(reset(mut st))
                 b: Int32 = st.k.plus(st.swap())
-                return a + b
+                a + b
             }
             pub ok: () Int32 {
                 mut k: K = K {}
@@ -720,7 +720,7 @@ class ExclusivityPassTest {
                 b: Int32 = st.k.plus(st.k.grow())
                 c: Int32 = ks[i].plus(bumpI(mut i))
                 d: Int32 = mk().plus(rebind(mut k2))
-                return a + b + c + d
+                a + b + c + d
             }
             """,
         )
@@ -737,7 +737,7 @@ class ExclusivityPassTest {
             pub Node: Any {
                 pub mut n: Int32 = 0
                 pub plus: (v: Int32) Int32 {
-                    return n + v
+                    n + v
                 }
             }
             pub Scene: Any {
@@ -750,24 +750,24 @@ class ExclusivityPassTest {
                 }
                 pub read: (k: Node) Int32 {
                     bump()
-                    return k.n
+                    k.n
                 }
                 pub mut readSwapped: (k: Node) Int32 {
                     swap()
-                    return k.n
+                    k.n
                 }
                 pub mut go: () Int32 {
                     a: Int32 = read(child)
                     b: Int32 = readSwapped(child)
                     c: Int32 = child.plus(1)
-                    return a + b + c
+                    a + b + c
                 }
             }
             pub outside: (sc: Scene) Int32 {
                 a: Int32 = sc.read(sc.child)
                 b: Int32 = sc.readSwapped(sc.child)
                 c: Int32 = sc.child.plus(1)
-                return a + b + c
+                a + b + c
             }
             """,
         )
@@ -786,7 +786,7 @@ class ExclusivityPassTest {
             pub K: Any {
                 pub mut n: Int32 = 0
                 pub plus: (v: Int32) Int32 {
-                    return n + v
+                    n + v
                 }
             }
             pub Sc: Any {
@@ -797,58 +797,58 @@ class ExclusivityPassTest {
                 }
                 pub mut bumpC: () Int32 {
                     c += 1
-                    return 1
+                    1
                 }
                 pub mut swapOut: () Int32 {
                     k = K { n = 5 }
-                    return 1
+                    1
                 }
                 pub mut go: () Int32 {
-                    return k.plus(swapOut())
+                    k.plus(swapOut())
                 }
             }
             pub resetVia: (sc: Sc) Int32 {
                 sc.resetK()
-                return 1
+                1
             }
             pub resetDirect: (sc: Sc) Int32 {
                 sc.k = K { n = 5 }
-                return 1
+                1
             }
             pub readAfter: (k: K, sc: Sc) Int32 {
                 sc.resetK()
-                return k.n
+                k.n
             }
             pub r1: () Int32 {
                 sc: Sc = Sc {}
-                return sc.k.plus(resetVia(sc))
+                sc.k.plus(resetVia(sc))
             }
             pub r2: () Int32 {
                 sc: Sc = Sc {}
-                return sc.k.plus(resetDirect(sc))
+                sc.k.plus(resetDirect(sc))
             }
             pub r3: () Int32 {
                 sc: Sc = Sc {}
-                return sc.k.plus(sc.swapOut())
+                sc.k.plus(sc.swapOut())
             }
             pub r4: () Int32 {
                 sc: Sc = Sc {}
                 g: Fx<Tuple0, Int32> = () Int32 {
                     sc.k = K { n = 5 }
-                    return 1
+                    1
                 }
-                return sc.k.plus(g())
+                sc.k.plus(g())
             }
             pub r5: () Int32 {
                 sc: Sc = Sc {}
-                return readAfter(sc.k, sc)
+                readAfter(sc.k, sc)
             }
             pub ok: () Int32 {
                 sc: Sc = Sc {}
                 a: Int32 = sc.k.plus(sc.bumpC())
                 b: Int32 = sc.k.plus(sc.k.n)
                 c: Int32 = readAfter(sc.k, Sc {})
-                return a + b + c
+                a + b + c
             }
             """,
         )
@@ -866,41 +866,41 @@ class ExclusivityPassTest {
             pub K: Any {
                 pub mut n: Int32 = 0
                 pub plus: (v: Int32) Int32 {
-                    return n + v
+                    n + v
                 }
             }
             pub rebindM: (mut m: Maybe<K>) Int32 {
                 m = K { n = 5 }
-                return 1
+                1
             }
             pub rebindList: (mut ks: List<K>) Int32 {
                 ks = List<K> {}
-                return 1
+                1
             }
             pub bumpI: (mut i: Size) Int32 {
                 i += 1 as Size
-                return 1
+                1
             }
             pub rebind: (mut k: K) Int32 {
                 k = K { n = 5 }
-                return 1
+                1
             }
             pub mk: () K {
-                return K {}
+                K {}
             }
             pub g1: () Int32 {
                 mut m: Maybe<K> = K {}
-                return m.unwrap().plus(rebindM(mut m))
+                m.unwrap().plus(rebindM(mut m))
             }
             pub g2: () Int32 {
                 mut ks: List<K> = List<K> {}
                 ks.add(K {})
-                return ks.get(0 as Size).plus(rebindList(mut ks))
+                ks.get(0 as Size).plus(rebindList(mut ks))
             }
             pub g3: (c: Bool) Int32 {
                 mut ks: List<K> = List<K> {}
                 ks.add(K {})
-                return ks.get(0 as Size).plus(if c {
+                ks.get(0 as Size).plus(if c {
                     ks.add(K {})
                     1
                 } else {
@@ -914,7 +914,7 @@ class ExclusivityPassTest {
                 mut k: K = K {}
                 a: Int32 = ks.get(i).plus(bumpI(mut i))
                 b: Int32 = mk().plus(rebind(mut k))
-                return a + b
+                a + b
             }
             """,
         )
@@ -930,7 +930,7 @@ class ExclusivityPassTest {
             pub K: Any {
                 pub mut n: Int32 = 0
                 pub plus: (v: Int32) Int32 {
-                    return n + v
+                    n + v
                 }
             }
             pub Node: Any {
@@ -941,29 +941,29 @@ class ExclusivityPassTest {
             }
             pub rebindList: (mut ks: List<Node>) Int32 {
                 ks = List<Node> {}
-                return 1
+                1
             }
             pub rebindM: (mut m: Maybe<Node>) Int32 {
                 m = Node {}
-                return 1
+                1
             }
             pub rebindHs: (mut hs: List<Holder>) Int32 {
                 hs = List<Holder> {}
-                return 1
+                1
             }
             pub g1: () Int32 {
                 mut ks: List<Node> = List<Node> {}
                 ks.add(Node {})
-                return ks.get(0 as Size).child.plus(rebindList(mut ks))
+                ks.get(0 as Size).child.plus(rebindList(mut ks))
             }
             pub g2: () Int32 {
                 mut m: Maybe<Node> = Node {}
-                return m.unwrap().child.plus(rebindM(mut m))
+                m.unwrap().child.plus(rebindM(mut m))
             }
             pub g3: () Int32 {
                 mut hs: List<Holder> = List<Holder> {}
                 hs.add(Holder {})
-                return hs.get(0 as Size).k.plus(rebindHs(mut hs))
+                hs.get(0 as Size).k.plus(rebindHs(mut hs))
             }
             """,
         )
@@ -986,18 +986,18 @@ class ExclusivityPassTest {
             pub mut GL: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
             pub bumpG: () Int32 {
                 G += 1
-                return 0
+                0
             }
             pub growS: () Str {
                 S = S + "c"
-                return "a"
+                "a"
             }
             pub bumpL: () Size {
                 GL.set(0, 50)
-                return 0
+                0
             }
             pub add2: (x: Int32, y: Int32) Int32 {
-                return x + y
+                x + y
             }
             pub f: () Int32 {
                 mut xs: Arr<Int32> = @arrOf(1, 2, 3)
@@ -1008,7 +1008,7 @@ class ExclusivityPassTest {
                 c: Bool = S.startsWith(growS())
                 d: Int32 = GL[bumpL()]
                 e: Int32 = GL.get(bumpL())
-                return a + b + d + e
+                a + b + d + e
             }
             """,
         )
@@ -1025,48 +1025,48 @@ class ExclusivityPassTest {
         pub mut gm: Map<Int32, Int32> = Map<Int32, Int32> { }
         pub next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
         pub sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
         pub inc: (mut x: Int32) Int32 {
             x += 1
-            return x
+            x
         }
         pub lenOf: (xs: List<Int32>, n: Int32) Int32 {
-            return xs.size() as Int32 + n
+            xs.size() as Int32 + n
         }
         pub pushTo: (mut xs: List<Int32>) Int32 {
             xs.add(3)
-            return 0
+            0
         }
         pub poke: (v: MutView<Int32>) Int32 {
             v.set(0, 9)
-            return 0
+            0
         }
         pub putKey: () Int32 {
             gm.put(1, 99)
-            return 1
+            1
         }
         pub setFirst: () Size {
             gl.set(0, 50)
-            return 0
+            0
         }
         pub Acc: Struct {
             pub n: Int32 = 1
             pub mut bump: () Int32 {
                 n = 2
-                return 10
+                10
             }
             pub plus: (k: Int32) Int32 {
-                return n * 100 + k
+                n * 100 + k
             }
         }
         pub mut ga: Acc = Acc { }
         pub bumpA: () Int32 {
             ga.bump()
-            return 10
+            10
         }
     """
 
@@ -1090,7 +1090,7 @@ class ExclusivityPassTest {
                 d: Int32 = gl[setFirst()]
                 ticks = ticks + next()
                 e: Int32 = sub(ticks, next())
-                return a + b + c + d + e + z
+                a + b + c + d + e + z
             }
             """,
         )
@@ -1108,23 +1108,23 @@ class ExclusivityPassTest {
                 pub n: Int32 = 1
                 pub mut bump: () Int32 {
                     n = 2
-                    return 10
+                    10
                 }
                 pub plus: (k: Int32) Int32 {
-                    return n * 100 + k
+                    n * 100 + k
                 }
                 pub mut viaThis: () Int32 {
-                    return this.plus(bump())
+                    this.plus(bump())
                 }
                 pub mut viaImplicit: () Int32 {
-                    return plus(bump())
+                    plus(bump())
                 }
             }
             pub f: () Int32 {
                 a: Int32 = gm.get(putKey()).unwrapOr(-1)
                 b: Int32 = gl.get(setFirst())
                 c: Int32 = ga.plus(bumpA())
-                return a + b + c
+                a + b + c
             }
             """,
         )
@@ -1146,17 +1146,17 @@ class ExclusivityPassTest {
             pub mut G: Int32 = 0
             pub bumpG: () Int32 {
                 G += 1
-                return 0
+                0
             }
             pub two: (mut x: Int32, y: Int32) Int32 {
                 x += y
-                return x
+                x
             }
             pub f: () Int32 {
                 mut x: Int32 = 1
                 a: Int32 = two(mut x, inc(mut x))
                 b: Int32 = two(mut G, bumpG())
-                return a + b
+                a + b
             }
             """,
         )
@@ -1175,15 +1175,15 @@ class ExclusivityPassTest {
             pub mut GA: Arr<Int32, 2> = @arrOf(1, 2)
             pub resetL: () List<Int32> {
                 gl = List<Int32> { }
-                return List<Int32> { values = @arrOf(3) }
+                List<Int32> { values = @arrOf(3) }
             }
             pub resetA: () Arr<Int32, 2> {
                 GA = @arrOf(5, 6)
-                return @arrOf(1, 2)
+                @arrOf(1, 2)
             }
             pub growS: () Str {
                 S = S + "b"
-                return "a"
+                "a"
             }
             pub f: () Bool {
                 a: Bool = gl == resetL()
@@ -1191,7 +1191,7 @@ class ExclusivityPassTest {
                 c: Bool = S == growS()
                 d: Bool = gl.isEmpty() == resetL().isEmpty()
                 e: Int32 = ticks + next()
-                return a && b && c && d && e > 0
+                a && b && c && d && e > 0
             }
             """,
         )
@@ -1218,7 +1218,7 @@ class ExclusivityPassTest {
                 }
             }
             pub mk: () Holder {
-                return Holder { }
+                Holder { }
             }
             pub f: (h: Holder, g: Holder) Int32 {
                 mut s: Int32 = 0
@@ -1234,7 +1234,7 @@ class ExclusivityPassTest {
                     g.reset()
                     s += z
                 }
-                return s
+                s
             }
             """,
         )
@@ -1385,7 +1385,7 @@ class ExclusivityPassTest {
                 bumpWrap(mut h.item.count, Wrap { f = () Void { c.reset() } })
                 bump(mut h.item.count, f)
                 bump(mut h.item.count, () Void { })
-                return h.item.count
+                h.item.count
             }
             """,
         )
@@ -1435,19 +1435,19 @@ class ExclusivityPassTest {
             }
             pub viaFx: (s: Str, f: Fx<Tuple0, Void>) Str {
                 f()
-                return s
+                s
             }
             pub viaList: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
                 for f: Fx<Tuple0, Void> in fs {
                     f()
                 }
-                return s
+                s
             }
             pub both: () Str {
                 a: Str = viaFx(gs, rewrite)
                 b: Str = viaList(gl[0], List<Fx<Tuple0, Void>> { values = @arrOf(rewrite) })
                 c: Str = viaFx(gs, () Void { })
-                return a + b + c
+                a + b + c
             }
             """,
         )
@@ -1463,14 +1463,14 @@ class ExclusivityPassTest {
                 pub mut items: List<Str> = List<Str> { values = @arrOf("a long list element, past the small buffer") }
             }
             pub pick: (h: H) H {
-                return h
+                h
             }
             pub readAfterH: (s: Str, h: H) Int32 {
                 h.items = List<Str> {}
-                return s.length() as Int32
+                s.length() as Int32
             }
             pub both: (h: H) Int32 {
-                return readAfterH(pick(h).items.get(0), h) + readAfterH(pick(h).items[0], h)
+                readAfterH(pick(h).items.get(0), h) + readAfterH(pick(h).items[0], h)
             }
             """,
         )
@@ -1537,7 +1537,7 @@ class ExclusivityPassTest {
                 genPrelude + genRoute(body) + """
                 pub lenAfter: (s: Str) Int32 {
                     route()
-                    return s.length() as Int32
+                    s.length() as Int32
                 }
                 pub sumAfter: (xs: List<Int32>) Int32 {
                     mut t: Int32 = 0
@@ -1545,7 +1545,7 @@ class ExclusivityPassTest {
                         route()
                         t += x
                     }
-                    return t
+                    t
                 }
                 pub drive: () Void {
                     trace(lenAfter(gs))
@@ -1614,7 +1614,7 @@ class ExclusivityPassTest {
             }
             pub lenAfter: (s: Str) Int32 {
                 runHooks()
-                return s.length() as Int32
+                s.length() as Int32
             }
             pub sumAfter: (xs: List<Int32>) Int32 {
                 mut t: Int32 = 0
@@ -1622,13 +1622,13 @@ class ExclusivityPassTest {
                     runHooks()
                     t += x
                 }
-                return t
+                t
             }
             pub Node: Any {
                 pub mut n: Int32 = 5
                 pub nAfter: () Int32 {
                     runHooks()
-                    return n
+                    n
                 }
             }
             pub mut gn: Maybe<Node> = null
@@ -1662,7 +1662,7 @@ class ExclusivityPassTest {
                 pub n: Int32 = 0
                 pub describe: () Str {
                     runHooks()
-                    return "${'$'}{name}:${'$'}{n}"
+                    "${'$'}{name}:${'$'}{n}"
                 }
             }
             pub mut gt: Tag = Tag { name = "old-name-long-enough-for-the-heap-00000000", n = 1 }
@@ -1727,7 +1727,7 @@ class ExclusivityPassTest {
 
             pub lenAfter: (s: Str) Int32 {
                 startAndJoin()
-                return s.length() as Int32
+                s.length() as Int32
             }
 
             pub sumAfter: (xs: List<Int32>) Int32 {
@@ -1736,7 +1736,7 @@ class ExclusivityPassTest {
                 for x: Int32 in xs {
                     t += x
                 }
-                return t
+                t
             }
 
             main: () Void {
@@ -1767,7 +1767,7 @@ class ExclusivityPassTest {
 
             pub lenAfter: (s: Str) Int32 {
                 startAndJoin()
-                return s.length() as Int32
+                s.length() as Int32
             }
 
             setAfter: (mut s: Str) Void {
@@ -1813,7 +1813,7 @@ class ExclusivityPassTest {
                 "kira.sync as sync\n" + genPrelude + genRoute(body) + """
                 pub lenAfter: (s: Str) Int32 {
                     route()
-                    return s.length() as Int32
+                    s.length() as Int32
                 }
                 pub sumAfter: (xs: List<Int32>) Int32 {
                     mut t: Int32 = 0
@@ -1821,7 +1821,7 @@ class ExclusivityPassTest {
                         route()
                         t += x
                     }
-                    return t
+                    t
                 }
                 pub drive: () Void {
                     trace(lenAfter(gs))
@@ -1874,7 +1874,7 @@ class ExclusivityPassTest {
             }
             pub lenAfter: (s: Str) Int32 {
                 quiet()
-                return s.length() as Int32
+                s.length() as Int32
             }
             pub drive: () Void {
                 trace(lenAfter(gs))

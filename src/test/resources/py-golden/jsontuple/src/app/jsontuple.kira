@@ -17,5 +17,5 @@ pub main: () Int32 {
     })
     scribble()
     println(kept[0].dump())
-    return 0
+    0
 }

@@ -119,7 +119,7 @@ class WithBuilderTest {
     fun aLocalOrParameterNamedLikeAMemberIsAnError() {
         expectDiagnostic(snippet("main: () Void {\n    p: P = P { 1, 2 }\n    x: Int32 = 3\n    q: P = p with {\n        y = x\n    }\n}"), "types.with.clash")
         expectDiagnostic(snippet("main: () Void {\n    p: P = P { 1, 2 }\n    q: P = p with {\n        x: Int32 = 4\n    }\n}"), "types.with.clash")
-        expectDiagnostic(snippet("f: (x: Int32, p: P) P {\n    return p with {\n        y = x\n    }\n}"), "types.with.clash")
+        expectDiagnostic(snippet("f: (x: Int32, p: P) P {\n    p with {\n        y = x\n    }\n}"), "types.with.clash")
     }
 
     @Test
@@ -160,7 +160,7 @@ class WithBuilderTest {
         val shortCircuit = snippet("main: () Void {\n    p: P = P { 1, 2 }\n    ok: Bool = p.x > 0 && (p with {\n        x = 2\n    }).x > 0\n}")
         assertTrue(expectDiagnostic(shortCircuit, "types.with.position").message.contains("&&"))
         val sibling = snippet(
-            "pick: (a: P, b: P) Int32 {\n    return a.x + b.x\n}\n\n" +
+            "pick: (a: P, b: P) Int32 {\n    a.x + b.x\n}\n\n" +
                 "main: () Void {\n    mut r: P = P { 0, 0 }\n    n: Int32 = pick(r, r with {\n        r = P { 5, 5 }\n    })\n}",
         )
         assertTrue(expectDiagnostic(sibling, "types.with.position").message.contains("evaluates r first"))
@@ -173,11 +173,11 @@ class WithBuilderTest {
         val p = snippet(
             """
             sum: (a: Int32, b: P) Int32 {
-                return a + b.x
+                a + b.x
             }
 
             wider: (p: P) P {
-                return p with {
+                p with {
                     x = x + 1
                 }
             }
@@ -254,7 +254,7 @@ class WithBuilderTest {
             File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
             val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
             file.writeText(
-                "$types\n\nRow: Any {\n    pub mut n: Int32 = 0\n\n    pub copy: () Row {\n        return Row { n }\n    }\n}\n\n" +
+                "$types\n\nRow: Any {\n    pub mut n: Int32 = 0\n\n    pub copy: () Row {\n        Row { n }\n    }\n}\n\n" +
                     "main: () Void {\n    p: P = P { 1, 2 }\n    q: P = p.copy(x = 4, y = p.y + 1)\n    r: Row = Row { }\n    s: Row = r.copy()\n}\n",
             )
             assertEquals(0, Stage2.convertAll(listOf(dir.path), check = false))

@@ -18,7 +18,7 @@ pub @_magic TupleN<T>: Any
 
 pub @_magic Tuple0: Tuple<Void> {
     pub size: () Int32 {
-        return 0
+        0
     }
 }
 
@@ -26,7 +26,7 @@ pub @_magic Tuple1<T> : Tuple<Tuple1<T>> {
     pub first: T
 
     pub size: () Int32 {
-        return 1
+        1
     }
 }
 
@@ -35,7 +35,7 @@ pub @_magic Tuple2<A, B>: Tuple<Tuple2<A, B>> {
     pub second: B
 
     pub size: () Int32 {
-        return 2
+        2
     }
 }
 
@@ -47,7 +47,7 @@ pub @_magic Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
     pub third: C
 
     pub size: () Int32 {
-        return 3
+        3
     }
 }
 
@@ -58,7 +58,7 @@ pub @_magic Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
     pub fourth: D
 
     pub size: () Int32 {
-        return 4
+        4
     }
 }
 
@@ -70,7 +70,7 @@ pub @_magic Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
     pub fifth: E
 
     pub size: () Int32 {
-        return 5
+        5
     }
 }
 
@@ -83,7 +83,7 @@ pub @_magic Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
     pub sixth: F
 
     pub size: () Int32 {
-        return 6
+        6
     }
 }
 
@@ -97,7 +97,7 @@ pub @_magic Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
     pub seventh: G
 
     pub size: () Int32 {
-        return 7
+        7
     }
 }
 
@@ -112,7 +112,7 @@ pub @_magic Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>
     pub eighth: H
 
     pub size: () Int32 {
-        return 8
+        8
     }
 }
 
@@ -128,6 +128,6 @@ pub @_magic Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G,
     pub ninth: I
 
     pub size: () Int32 {
-        return 9
+        9
     }
 }

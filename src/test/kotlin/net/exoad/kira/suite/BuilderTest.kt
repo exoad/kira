@@ -61,7 +61,7 @@ class BuilderTest {
         val types = builtTypes(
             """
             total: (xs: List<Int64>) Int64 {
-                return xs.size() as Int64
+                xs.size() as Int64
             }
 
             main: () Void {
@@ -98,7 +98,7 @@ class BuilderTest {
 
     @Test
     fun tupleNIsTheBuildersAxiomAndNoVariadicParameterYet() {
-        expectDiagnostic(snippet("f: (xs: TupleN<Int32>) Int32 {\n    return 0\n}"), "types.type.tuplen")
+        expectDiagnostic(snippet("f: (xs: TupleN<Int32>) Int32 {\n    0\n}"), "types.type.tuplen")
     }
 
     // ---- the targets -------------------------------------------------------------------------
@@ -133,7 +133,7 @@ class BuilderTest {
             File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
             val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
             file.writeText(
-                "total: (xs: List<Int64>) Int64 {\n    return xs.size() as Int64\n}\n\n" +
+                "total: (xs: List<Int64>) Int64 {\n    xs.size() as Int64\n}\n\n" +
                     "main: () Void {\n    a: List<Int32> = [1, 2]\n    b: Arr<Int32> = []\n    n: Int64 = total([3])\n" +
                     "    for w: Str in [\"x\", \"y\"] {\n        println(w)\n    }\n}\n",
             )

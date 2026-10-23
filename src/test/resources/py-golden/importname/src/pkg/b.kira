@@ -2,5 +2,5 @@ pub mut ticks: Int32 = 0
 
 pub tick: () Int32 {
     ticks += 1
-    return ticks
+    ticks
 }

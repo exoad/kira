@@ -24,7 +24,7 @@ class BackendCompilationPipelineTest {
             moduleUri,
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             main: () Void {
@@ -71,7 +71,7 @@ class BackendCompilationPipelineTest {
             moduleUri,
             """
             sum: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             main: () Void {
@@ -149,11 +149,11 @@ class BackendCompilationPipelineTest {
             moduleUri,
             """
             first: (values: Arr<Int32>) Int32 {
-                return values[0]
+                values[0]
             }
 
             hasAny: (values: Map<Str, Int32>) Bool {
-                return !values.isEmpty()
+                !values.isEmpty()
             }
 
             main: () Void {
@@ -214,7 +214,7 @@ class BackendCompilationPipelineTest {
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {
@@ -267,7 +267,7 @@ class BackendCompilationPipelineTest {
                 pub sound: Str
 
                 pub speak: () Str {
-                    return sound
+                    sound
                 }
             }
 

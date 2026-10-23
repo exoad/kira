@@ -28,16 +28,16 @@ mut gl: List<Int32> = List<Int32> { }
 
 next: () Int32 {
     ticks += 1
-    return ticks
+    ticks
 }
 
 nextSize: () Size {
     idx += 1
-    return idx
+    idx
 }
 
 sub: (a: Int32, b: Int32) Int32 {
-    return a - b
+    a - b
 }
 
 store: (mut into: Int32, tens: Int32, ones: Int32) Void {
@@ -48,7 +48,7 @@ pub Box: Struct {
     pub v: Int32 = 0
 
     pub pair: (a: Int32, b: Int32) Int32 {
-        return v * 100 + a * 10 + b
+        v * 100 + a * 10 + b
     }
 
     pub mut grow: (a: Int32, b: Int32) Void {
@@ -58,12 +58,12 @@ pub Box: Struct {
 
 makeBox: () Box {
     ticks += 1
-    return Box { v = ticks }
+    Box { v = ticks }
 }
 
 setFirst: () Size {
     gl.set(0, 50)
-    return 0
+    0
 }
 
 mut gs: Str = "a"
@@ -71,33 +71,33 @@ mut gb: Box = Box { v = 1 }
 
 changeS: () Int32 {
     gs = "b"
-    return 1
+    1
 }
 
 bumpB: () Int32 {
     gb.v = 9
-    return 0
+    0
 }
 
 resetL: () Int32 {
     gl = List<Int32> { values = @arrOf(8) }
-    return 0
+    0
 }
 
 pairS: (s: Str, k: Int32) Str {
-    return "${s}${k}"
+    "${s}${k}"
 }
 
 sumB: (b: Box, k: Int32) Int32 {
-    return b.v + k
+    b.v + k
 }
 
 firstL: (xs: List<Int32>, k: Int32) Int32 {
-    return xs.get(0) + k
+    xs.get(0) + k
 }
 
 tail: (xs: View<Int32>, at: Size) View<Int32> {
-    return xs.from(at)
+    xs.from(at)
 }
 
 total: (v: View<Int32>) Int32 {
@@ -105,18 +105,18 @@ total: (v: View<Int32>) Int32 {
     for x: Int32 in v {
         s += x
     }
-    return s
+    s
 }
 
 tailAt: (at: Size, xs: View<Int32>) View<Int32> {
-    return xs.from(at)
+    xs.from(at)
 }
 
 // The index runs before the view of xs is formed: xs is a const& parameter, a shared place,
 // and decision 4b (read literally) refuses an impure call in its view's span, which
 // total(tail(xs, nextSize())) has.
 sumTail: (xs: List<Int32>) Int32 {
-    return total(tailAt(nextSize(), xs))
+    total(tailAt(nextSize(), xs))
 }
 
 main: () Void {
@@ -286,25 +286,25 @@ main: () Void {
 }
 
 freshLists: () List<List<Int32>> {
-    return List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(10, 20, 30) }) }
+    List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(10, 20, 30) }) }
 }
 
 freshRef: () Ref<List<Int32>> {
-    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30) } }
+    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30) } }
 }
 
 freshMaybe: () Maybe<List<Int32>> {
     m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(10, 20, 30) }
-    return m
+    m
 }
 
 makeList: () List<Int32> {
     ticks += 1
-    return List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
+    List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
 }
 
 minus: (v: View<Int32>, k: Int32) Int32 {
-    return total(v) - k
+    total(v) - k
 }
 
 mut gll: List<List<Int32>> = List<List<Int32>> { }
@@ -318,7 +318,7 @@ growGll: () Int32 {
         gll.add(List<Int32> { values = @arrOf(i) })
         i += 1
     }
-    return 7
+    7
 }
 
 // Appends past any capacity gls had: its storage moves.
@@ -328,44 +328,44 @@ growGls: () Int32 {
         gls.add(i)
         i += 1
     }
-    return 7
+    7
 }
 
 setGv: () Int32 {
     gv.set(0, 9)
-    return 1
+    1
 }
 
 poke: (m: MutView<Int32>) Int32 {
     m[0] = 9
-    return 1
+    1
 }
 
 inc: (mut v: Int32) Int32 {
     v += 10
-    return 1
+    1
 }
 
 pushTo: (mut into: List<Int32>) Size {
     into.add(7)
-    return 0
+    0
 }
 
 lenOf: (items: List<Int32>, k: Size) Size {
-    return items.size()
+    items.size()
 }
 
 applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
-    return f(n)
+    f(n)
 }
 
 twice: (n: Int32) Int32 {
-    return n * 2
+    n * 2
 }
 
 adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
-    n: Int32 = s.length() as Int32
-    return (x: Int32) Int32 {
-        return x + n + k
+    n: Int32 = s.length() as Int32;
+    (x: Int32) Int32 {
+        x + n + k
     }
 }

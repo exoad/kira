@@ -45,16 +45,16 @@ class CppHoisterTest {
 
         next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         nextSize: () Size {
             idx += 1
-            return idx
+            idx
         }
 
         sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
 
         put: (mut into: Int32, a: Int32, b: Int32) Void {
@@ -65,7 +65,7 @@ class CppHoisterTest {
             pub v: Int32 = 0
 
             pub pair: (a: Int32, b: Int32) Int32 {
-                return v * 100 + a * 10 + b
+                v * 100 + a * 10 + b
             }
 
             pub mut grow: (a: Int32, b: Int32) Void {
@@ -77,16 +77,16 @@ class CppHoisterTest {
 
         makeBox: () Box {
             ticks += 1
-            return Box { v = ticks }
+            Box { v = ticks }
         }
 
         pushed: () Size {
             gl.add(7)
-            return gl.size() - 1
+            gl.size() - 1
         }
 
         tail: (xs: View<Int32>, at: Size) View<Int32> {
-            return xs.from(at)
+            xs.from(at)
         }
 
         total: (v: View<Int32>) Int32 {
@@ -94,7 +94,7 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         pub nestedTarget: () Void {
@@ -114,56 +114,56 @@ class CppHoisterTest {
         }
 
         tailAt: (at: Size, xs: View<Int32>) View<Int32> {
-            return xs.from(at)
+            xs.from(at)
         }
 
         pub lentFromParameter: (xs: List<Int32>) Int32 {
-            return total(tailAt(nextSize(), xs))
+            total(tailAt(nextSize(), xs))
         }
 
         pub lentFromGlobal: () Int32 {
-            return total(garr.from(nextSize()))
+            total(garr.from(nextSize()))
         }
 
         pub listIndexBeside: () Int32 {
-            return gl[pushed()]
+            gl[pushed()]
         }
 
         mut gs: Str = "a"
 
         changeS: () Int32 {
             gs = "b"
-            return 1
+            1
         }
 
         resetL: () Int32 {
             gl = List<Int32> { values = @arrOf(8) }
-            return 0
+            0
         }
 
         pairS: (s: Str, k: Int32) Str {
-            return "${'$'}{s}${'$'}{k}"
+            "${'$'}{s}${'$'}{k}"
         }
 
         firstL: (xs: List<Int32>, k: Int32) Int32 {
-            return xs.get(0) + k
+            xs.get(0) + k
         }
 
         pub strBeside: () Str {
-            return pairS(gs, changeS())
+            pairS(gs, changeS())
         }
 
         pub strHole: () Str {
-            return "${'$'}{gs}:${'$'}{changeS()}"
+            "${'$'}{gs}:${'$'}{changeS()}"
         }
 
         pub listBeside: () Int32 {
-            return firstL(gl, resetL())
+            firstL(gl, resetL())
         }
 
         pub localStrBeside: () Str {
             s: Str = "x"
-            return pairS(s, changeS())
+            pairS(s, changeS())
         }
 
         pub setOnce: (mut bufs: Arr<StrBuf<8>, 3>) Void {
@@ -183,41 +183,41 @@ class CppHoisterTest {
         }
 
         pub scalarElementBeside: () Int32 {
-            return sub(garr[row], next())
+            sub(garr[row], next())
         }
 
         pub structElementReceiver: () Int32 {
-            return gboxes[row].pair(next(), next())
+            gboxes[row].pair(next(), next())
         }
 
         pub readBeside: () Int32 {
-            return sub(ticks, next())
+            sub(ticks, next())
         }
 
         pub readAfter: () Int32 {
-            return sub(next(), ticks)
+            sub(next(), ticks)
         }
 
         pub twoReads: () Int32 {
-            return sub(ticks, ticks)
+            sub(ticks, ticks)
         }
 
         pub localBeside: (x: Int32) Int32 {
-            return sub(x, next())
+            sub(x, next())
         }
 
         pub placeIndex: () Int32 {
             mut q: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
             put(mut q[nextSize()], next(), next())
-            return q[1]
+            q[1]
         }
 
         pub receiverFirst: () Int32 {
-            return makeBox().pair(next(), next())
+            makeBox().pair(next(), next())
         }
 
         pub localReceiver: (b: Box) Int32 {
-            return b.pair(next(), next())
+            b.pair(next(), next())
         }
 
         pub targetFirst: () Void {
@@ -227,37 +227,37 @@ class CppHoisterTest {
         }
 
         pub twoImpure: () Int32 {
-            return sub(next(), next())
+            sub(next(), next())
         }
 
         pub oneImpure: (x: Int32) Int32 {
-            return sub(next(), x + 1)
+            sub(next(), x + 1)
         }
 
         pub operands: () Int32 {
-            return next() * next()
+            next() * next()
         }
 
         pub shortCircuit: () Bool {
-            return next() > 0 && next() > 1
+            next() > 0 && next() > 1
         }
 
         pub mutStays: () Int32 {
             mut slot: Int32 = 0
             put(mut slot, next(), next())
-            return slot
+            slot
         }
 
         pub pureBindings: (s: Str) Size {
-            return s.length() + s.length()
+            s.length() + s.length()
         }
 
         pub holes: () Str {
-            return "${'$'}{next()}-${'$'}{next()}"
+            "${'$'}{next()}-${'$'}{next()}"
         }
 
         pub nested: () Int32 {
-            return sub(sub(next(), next()), next())
+            sub(sub(next(), next()), next())
         }
 
         pub Acc: Struct {
@@ -265,38 +265,38 @@ class CppHoisterTest {
 
             pub mut bump: () Int32 {
                 n = 2
-                return 10
+                10
             }
 
             pub mut viaThis: () Int32 {
-                return peek(this, bump())
+                peek(this, bump())
             }
         }
 
         peek: (a: Acc, k: Int32) Int32 {
-            return a.n + k
+            a.n + k
         }
 
         adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
-            n: Int32 = s.length() as Int32
-            return (x: Int32) Int32 {
-                return x + n + k
+            n: Int32 = s.length() as Int32;
+            (x: Int32) Int32 {
+                x + n + k
             }
         }
 
         viaPair: (s: Str, k: Int32) Str {
-            return pairS(s, k)
+            pairS(s, k)
         }
 
         pub Bag: Struct {
             pub items: List<Int32> = List<Int32> { }
 
             pub head: (k: Size) View<Int32> {
-                return items.from(k)
+                items.from(k)
             }
 
             pub firstPlus: (k: Int32) Int32 {
-                return items.get(0) + k
+                items.get(0) + k
             }
         }
 
@@ -304,19 +304,19 @@ class CppHoisterTest {
 
         pub adderBeside: () Int32 {
             f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
-            return f(0)
+            f(0)
         }
 
         pub viaPairBeside: () Str {
-            return viaPair(gs, changeS())
+            viaPair(gs, changeS())
         }
 
         pub bagLends: () Int32 {
-            return total(gbag.head(nextSize()))
+            total(gbag.head(nextSize()))
         }
 
         pub bagReads: () Int32 {
-            return gbag.firstPlus(next())
+            gbag.firstPlus(next())
         }
 
         eachOf: (xs: List<Int32>, each: Fx<Tuple1<Int32>, Void>) Void {
@@ -331,11 +331,11 @@ class CppHoisterTest {
 
         inc: (mut v: Int32) Int32 {
             v += 10
-            return 1
+            1
         }
 
         countAfter: (k: Size, v: View<Int32>) Size {
-            return v.size()
+            v.size()
         }
 
         pub Holder<T>: Struct {
@@ -350,35 +350,35 @@ class CppHoisterTest {
 
         zero: (m: MutView<Int32>) Int32 {
             m[0] = 9
-            return 0
+            0
         }
 
         applyTo: (f: Fx<Tuple1<Int32>, Int32>, n: Int32) Int32 {
-            return f(n)
+            f(n)
         }
 
         twice: (n: Int32) Int32 {
-            return n * 2
+            n * 2
         }
 
         pub mutArgumentSibling: () Int32 {
             mut x: Int32 = 5
-            return sub(x, inc(mut x))
+            sub(x, inc(mut x))
         }
 
         pub mutArgumentCompound: () Int32 {
             mut z: Int32 = 5
             z += inc(mut z)
-            return z
+            z
         }
 
         pub mutViewSibling: () Int32 {
             mut p: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
-            return sub(p[0], zero(p.from(0)))
+            sub(p[0], zero(p.from(0)))
         }
 
         pub viewKeptNowhere: () Size {
-            return countAfter(nextSize(), gl)
+            countAfter(nextSize(), gl)
         }
 
         pub genericKeepsAList: (mut h: Holder<List<Int32>>) Void {
@@ -387,7 +387,7 @@ class CppHoisterTest {
 
         pub functionAsValue: () Int32 {
             g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
-            return g(twice, 5)
+            g(twice, 5)
         }
 
         mut gll: List<List<Int32>> = List<List<Int32>> { }
@@ -396,25 +396,25 @@ class CppHoisterTest {
 
         growGll: () Int32 {
             gll.add(List<Int32> { values = @arrOf(1) })
-            return 7
+            7
         }
 
         growGls: () Int32 {
             gls.add(5)
-            return 7
+            7
         }
 
         setG3: () Int32 {
             gv3.set(0, 9)
-            return 1
+            1
         }
 
         plusView: (k: Int32, v: View<Int32>) Int32 {
-            return total(v) + k
+            total(v) + k
         }
 
         sizeOfChars: (v: View<Char>) Size {
-            return v.size()
+            v.size()
         }
 
         pub boundReceiverBeside: () Void {
@@ -435,15 +435,15 @@ class CppHoisterTest {
         }
 
         pub viewReadBeside: () Int32 {
-            return sub(gv3.view().get(0), setG3())
+            sub(gv3.view().get(0), setG3())
         }
 
         pub arrViewBeside: () Int32 {
-            return plusView(growGls(), garr.view())
+            plusView(growGls(), garr.view())
         }
 
         pub literalView: () Size {
-            return sizeOfChars("abc".view())
+            sizeOfChars("abc".view())
         }
         """,
     )
@@ -608,7 +608,7 @@ class CppHoisterTest {
         // rejected. So the checker refuses a struct receiver beside a write of its place,
         // however it is named: the global, `this`, and an implicit `this` (40-round3 3.2).
         val refused = receiverRefusals()
-        listOf("return gacc.plus(bumpAcc())", "return this.plus(bump())", "return plus(bump())").forEach { call ->
+        listOf("gacc.plus(bumpAcc())", "this.plus(bump())", "plus(bump())").forEach { call ->
             assertTrue(refused.any { (l, _) -> l == receiverLine(call) }, "$call is refused:\n$refused")
         }
     }
@@ -658,7 +658,7 @@ class CppHoisterTest {
         // the module is refused whole: five reports, one per receiver (40-round3 3.2).
         val refused = receiverRefusals()
         assertEquals(5, refused.size, "one rules.exclusivity.order per receiver:\n$refused")
-        listOf("return gm.get(putKey()).unwrapOr(-1)", "return gl.get(pushed())").forEach { call ->
+        listOf("gm.get(putKey()).unwrapOr(-1)", "gl.get(pushed())").forEach { call ->
             assertTrue(refused.any { (l, _) -> l == receiverLine(call) }, "$call is refused:\n$refused")
         }
         // The index spelling reads its List when kira::at runs, after the index: Q4's answer.
@@ -675,20 +675,20 @@ class CppHoisterTest {
 
         pushed: () Size {
             gl.add(7)
-            return gl.size() - 1
+            gl.size() - 1
         }
 
         putKey: () Int32 {
             gm.put(1, 42)
-            return 1
+            1
         }
 
         pub mapReadBeside: () Int32 {
-            return gm.get(putKey()).unwrapOr(-1)
+            gm.get(putKey()).unwrapOr(-1)
         }
 
         pub listReadBeside: () Int32 {
-            return gl.get(pushed())
+            gl.get(pushed())
         }
 
         pub Acc: Struct {
@@ -696,19 +696,19 @@ class CppHoisterTest {
 
             pub mut bump: () Int32 {
                 n = 2
-                return 10
+                10
             }
 
             pub plus: (k: Int32) Int32 {
-                return n * 100 + k
+                n * 100 + k
             }
 
             pub mut viaExplicit: () Int32 {
-                return this.plus(bump())
+                this.plus(bump())
             }
 
             pub mut viaImplicit: () Int32 {
-                return plus(bump())
+                plus(bump())
             }
         }
 
@@ -716,11 +716,11 @@ class CppHoisterTest {
 
         bumpAcc: () Int32 {
             gacc.n = 2
-            return 10
+            10
         }
 
         pub namedBeside: () Int32 {
-            return gacc.plus(bumpAcc())
+            gacc.plus(bumpAcc())
         }
         """,
     )
@@ -852,30 +852,30 @@ class CppHoisterTest {
 
         next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         nextSize: () Size {
             idx += 1
-            return idx
+            idx
         }
 
         makeList: () List<Int32> {
             ticks += 1
-            return List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
+            List<Int32> { values = @arrOf(1000, 2000, 3000, 4000) }
         }
 
         // Impure (they count), so their result is an owner D33 must spill before the view of
         // it is formed; a pure one stays in the full expression that uses the view.
         makeRef: () Ref<List<Int32>> {
             ticks += 1
-            return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40) } }
+            Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40) } }
         }
 
         makeMaybe: () Maybe<List<Int32>> {
             ticks += 1
             m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(10, 20, 30, 40) }
-            return m
+            m
         }
 
         total: (v: View<Int32>) Int32 {
@@ -883,107 +883,107 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         minus: (v: View<Int32>, k: Int32) Int32 {
-            return total(v) - k
+            total(v) - k
         }
 
         plusSize: (k: Size, v: View<Int32>) Int32 {
-            return total(v) + (k as Int32)
+            total(v) + (k as Int32)
         }
 
         tail: (v: View<Int32>, at: Size) View<Int32> {
-            return v.from(at)
+            v.from(at)
         }
 
         pick: (v: View<Int32>, k: Size) View<Int32> {
-            return v
+            v
         }
 
         pub ownerSpilled: () Int32 {
             ticks = 0
-            return minus(makeList().view(), next())
+            minus(makeList().view(), next())
         }
 
         pub chainAtItsRoot: () Int32 {
             ticks = 0
             idx = 0
-            return minus(tail(makeList().view(), nextSize()), next())
+            minus(tail(makeList().view(), nextSize()), next())
         }
 
         pub receiverOwnerSpilled: () Int32 {
             idx = 0
-            return total(makeList().from(nextSize()))
+            total(makeList().from(nextSize()))
         }
 
         pub chainOfChains: () Int32 {
             idx = 0
-            return total(pick(tail(makeList().view(), 1), nextSize()))
+            total(pick(tail(makeList().view(), 1), nextSize()))
         }
 
         pub refOwnerSpilled: () Int32 {
             idx = 0
-            return plusSize(nextSize(), makeRef().value.from(1))
+            plusSize(nextSize(), makeRef().value.from(1))
         }
 
         pub maybeOwnerSpilled: () Int32 {
             idx = 0
-            return plusSize(nextSize(), makeMaybe().value.from(1))
+            plusSize(nextSize(), makeMaybe().value.from(1))
         }
 
         pub convertedRefStorage: () Int32 {
             idx = 0
-            return plusSize(nextSize(), tail(makeRef().value, 1))
+            plusSize(nextSize(), tail(makeRef().value, 1))
         }
 
         pub pureOwnerKept: () Int32 {
             idx = 0
-            return total(tail(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
+            total(tail(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
         }
 
         pub inOneStatement: () Int32 {
-            return total(makeList().view())
+            total(makeList().view())
         }
 
         setAt: (mut e: Int32) Int32 {
             e = 50
-            return 0
+            0
         }
 
         pub elementWriteSeen: () Int32 {
             mut ls: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
-            return minus(ls, setAt(mut ls[0]))
+            minus(ls, setAt(mut ls[0]))
         }
 
         churn: () Int32 {
             ticks += 1
             mut junk: List<Int32> = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }
             junk.add(7)
-            return ticks
+            ticks
         }
 
         pub Wrap: Struct {
             pub r: Ref<List<Int32>>
 
             pub items: () View<Int32> {
-                return r.value.view()
+                r.value.view()
             }
         }
 
         sum2: (v: View<Int32>, k: Int32) Int32 {
-            return total(v) + k
+            total(v) + k
         }
 
         pub positionalOwner: () Int32 {
             ticks = 0
-            return sum2(Wrap { Ref<List<Int32>> { @listOf(100, 200, 300, 400, 500, 600, 700, 800) } }.items(), churn())
+            sum2(Wrap { Ref<List<Int32>> { @listOf(100, 200, 300, 400, 500, 600, 700, 800) } }.items(), churn())
         }
 
         pub namedOwner: () Int32 {
             ticks = 0
-            return sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(100, 200, 300, 400, 500, 600, 700, 800) } } }.items(), churn())
+            sum2(Wrap { r = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(100, 200, 300, 400, 500, 600, 700, 800) } } }.items(), churn())
         }
 
         pub Stamp: Struct {
@@ -993,12 +993,12 @@ class CppHoisterTest {
 
         pub stamp: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         pub impureDefault: () Int32 {
             ticks = 10
-            return ticks * 100 + Stamp { a = 1 }.k
+            ticks * 100 + Stamp { a = 1 }.k
         }
         """,
     )
@@ -1104,29 +1104,29 @@ class CppHoisterTest {
 
         next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
 
         zero: (m: MutView<Int32>) Int32 {
             m[0] = 9
-            return 0
+            0
         }
 
         pub trustedPure: () Int32 {
-            return sub(ticks, next())
+            sub(ticks, next())
         }
 
         pub throughAnFx: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
-            return sub(ticks, f(1))
+            sub(ticks, f(1))
         }
 
         pub handedAMutView: () Int32 {
             mut p: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
-            return sub(p[0], zero(p.from(0)))
+            sub(p[0], zero(p.from(0)))
         }
         """,
     )
@@ -1173,20 +1173,20 @@ class CppHoisterTest {
 
         next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         growSbs: () Int32 {
             sbs.add(StrBuf<8> { })
-            return 1
+            1
         }
 
         makeList: () List<Int32> {
-            return List<Int32> { values = @arrOf(10, 20, 30) }
+            List<Int32> { values = @arrOf(10, 20, 30) }
         }
 
         tail: (v: View<Int32>, at: Size) View<Int32> {
-            return v.from(at)
+            v.from(at)
         }
 
         total: (v: View<Int32>) Int32 {
@@ -1194,11 +1194,11 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         minus: (v: View<Int32>, k: Int32) Int32 {
-            return total(v) - k
+            total(v) - k
         }
 
         pub Win: Struct {
@@ -1215,7 +1215,7 @@ class CppHoisterTest {
         }
 
         mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
-            return (r: Ref<List<T>>) Void {
+            (r: Ref<List<T>>) Void {
                 sink.value.add(r.value.view())
             }
         }
@@ -1240,30 +1240,30 @@ class CppHoisterTest {
 
         pub viewInALocal: () Int32 {
             v: View<Int32> = makeList().view()
-            return total(v)
+            total(v)
         }
 
         pub viewsInALocalList: () Size {
             mut vs: List<View<Int32>> = List<View<Int32>> { }
-            return 0
+            0
         }
 
         pub viewInAField: () Size {
             w: Size = Win { v = gl, k = 1 }.k
-            return w
+            w
         }
 
         pub returnsATemporarysView: () View<Int32> {
-            return tail(makeList().view(), 2)
+            tail(makeList().view(), 2)
         }
 
         tailOfAList: (xs: List<Int32>, at: Size) View<Int32> {
-            return xs.from(at)
+            xs.from(at)
         }
 
         pub returnsALocalsView: () View<Int32> {
             ys: List<Int32> = makeList()
-            return ys.view()
+            ys.view()
         }
 
         pub loopsOverATemporarysView: () Int32 {
@@ -1271,20 +1271,20 @@ class CppHoisterTest {
             for x: Int32 in makeList().view() {
                 s += x
             }
-            return s
+            s
         }
 
         pub branchesAView: (c: Bool, v: View<Int32>) View<Int32> {
-            return if c {
+            (if c {
                 trace(1)
                 v
             } else {
                 v
-            }
+            })
         }
 
         pub branchViewsATemporaryBesideAnEffect: (c: Bool) Int32 {
-            return minus(if c { makeList().view() } else { gl.view() }, next())
+            minus(c ? makeList().view() : gl.view(), next())
         }
 
         pub strBufElementBesideAGrowth: () Void {
@@ -1292,11 +1292,11 @@ class CppHoisterTest {
         }
 
         pub safeInOneStatement: () Int32 {
-            return total(makeList().view())
+            total(makeList().view())
         }
 
         pub safeBranchInOneStatement: (c: Bool) Int32 {
-            return total(if c { makeList().view() } else { gl.view() })
+            total(c ? makeList().view() : gl.view())
         }
 
         pub safeLoopOverAParameter: (v: View<Int32>) Int32 {
@@ -1304,11 +1304,11 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         pub safeReturnOfAParameter: (v: View<Int32>) View<Int32> {
-            return v.from(1)
+            v.from(1)
         }
     """.trimIndent()
 
@@ -1338,7 +1338,7 @@ class CppHoisterTest {
         val checked = net.exoad.kira.cpp.decls.DeclTestSupport.emit(net.exoad.kira.cpp.decls.DeclTestSupport.module("vl:bad", refusing))
         // The typer's and the rules' diagnostics are the run's; the refused module emits nothing of its own.
         val found = (checked.runDiagnostics + checked.diagnostics("vl:bad")).filter { it.isError }.map { Triple(it.position?.lineNumber ?: -1, it.code, it.message) }
-        val branch = line("return if c {")
+        val branch = line("(if c {")
         val expected = listOf(
             line("mut gv: Maybe<MutView<Int32>>") to "rules.view.type",
             line("pub v: View<Int32>") to "rules.view.type",
@@ -1346,15 +1346,15 @@ class CppHoisterTest {
             line("sink.value.add(r.value.view())") to "rules.view.write",
             line("v: View<Int32> = makeList().view()") to "rules.view.local",
             line("mut vs: List<View<Int32>>") to "rules.view.type",
-            line("return tail(makeList().view(), 2)") to "rules.view.return",
-            line("return xs.from(at)") to "rules.view.return",
-            line("return ys.view()") to "rules.view.return",
+            line("tail(makeList().view(), 2)") to "rules.view.return",
+            line("xs.from(at)") to "rules.view.return",
+            line("ys.view()") to "rules.view.return",
             line("for x: Int32 in makeList().view()") to "rules.view.position",
             branch + 2 to "rules.view.position",
             branch + 4 to "rules.view.position",
-            line("return minus(if c { makeList().view() } else { gl.view() }, next())") to "rules.view.position",
-            line("return minus(if c { makeList().view() } else { gl.view() }, next())") to "rules.view.write",
-            line("return total(if c { makeList().view() } else { gl.view() })") to "rules.view.position",
+            line("minus(c ? makeList().view() : gl.view(), next())") to "rules.view.position",
+            line("minus(c ? makeList().view() : gl.view(), next())") to "rules.view.write",
+            line("total(c ? makeList().view() : gl.view())") to "rules.view.position",
         )
         val shown = found.joinToString("\n") { (l, c, m) -> "$l $c $m" }
         assertEquals(expected.size, found.size, "one refusal per shape, and none for the safe ones:\n$shown")
@@ -1385,12 +1385,12 @@ class CppHoisterTest {
             Triple(line("mut vs: List<View<Int32>>"), internal, "the local 'vs' holds a view"),
             Triple(line("mut vs: List<View<Int32>>"), internal, "this construction of List<View<Int32>> holds a view"),
             Triple(line("w: Size = Win { v = gl, k = 1 }.k"), internal, "holds a view in 'v'"),
-            Triple(line("return tail(makeList().view(), 2)"), internal, "a view into a temporary"),
-            Triple(line("return xs.from(at)"), internal, "a view of a local or of a parameter that is no view"),
-            Triple(line("return ys.view()"), internal, "a view of a local or of a parameter that is no view"),
+            Triple(line("tail(makeList().view(), 2)"), internal, "a view into a temporary"),
+            Triple(line("xs.from(at)"), internal, "a view of a local or of a parameter that is no view"),
+            Triple(line("ys.view()"), internal, "a view of a local or of a parameter that is no view"),
             Triple(line("for x: Int32 in makeList().view()"), internal, "rules.view.position"),
-            Triple(line("return if c {"), internal, "rules.view.position"),
-            Triple(line("return minus(if c { makeList().view() } else { gl.view() }, next())"), internal, "rules.view.position"),
+            Triple(line("(if c {"), internal, "rules.view.position"),
+            Triple(line("minus(c ? makeList().view() : gl.view(), next())"), internal, "rules.view.position"),
             Triple(line("sbs[0].set("), unsupported, "this hole's effect may move the container the StrBuf is an element of"),
         )
         val pastShown = backstops.joinToString("\n") { (l, c, m) -> "$l $c $m" }
@@ -1411,7 +1411,7 @@ class CppHoisterTest {
 
             growSbs: () Int32 {
                 sbs.add(StrBuf<8> { })
-                return 1
+                1
             }
 
             pub strBufElementBesideAGrowth: () Void {
@@ -1428,20 +1428,20 @@ class CppHoisterTest {
         "hoist:ranges",
         """
         makeLists: () List<List<Int32>> {
-            return List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
+            List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
         }
 
         makeRef: () Ref<List<Int32>> {
-            return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1, 2, 3) } }
+            Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1, 2, 3) } }
         }
 
         makeMaybe: () Maybe<List<Int32>> {
             m: Maybe<List<Int32>> = List<Int32> { values = @arrOf(1, 2, 3) }
-            return m
+            m
         }
 
         makeList: () List<Int32> {
-            return List<Int32> { values = @arrOf(1, 2, 3) }
+            List<Int32> { values = @arrOf(1, 2, 3) }
         }
 
         pub rangesOfTemporaries: () Int32 {
@@ -1455,7 +1455,7 @@ class CppHoisterTest {
             for z: Int32 in makeMaybe().value {
                 s += z
             }
-            return s
+            s
         }
 
         pub rangesThatNeedNoCopy: (v: View<Int32>) Int32 {
@@ -1470,7 +1470,7 @@ class CppHoisterTest {
             for z: Int32 in v {
                 s += z
             }
-            return s
+            s
         }
         """,
     )
@@ -1517,12 +1517,12 @@ class CppHoisterTest {
 
         pub bumpG: () Int32 {
             G += 10
-            return 0
+            0
         }
 
         pub changeGS: () Int32 {
             GS = "newnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnewnew"
-            return 0
+            0
         }
 
         pub growGL: () Int32 {
@@ -1531,7 +1531,7 @@ class CppHoisterTest {
                 GL.add(1000)
                 i += 1
             }
-            return 0
+            0
         }
 
         pub growGSL: () Int32 {
@@ -1540,7 +1540,7 @@ class CppHoisterTest {
                 GSL.add("padpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpadpad")
                 i += 1
             }
-            return 0
+            0
         }
 
         pub growGLL: () Int32 {
@@ -1549,7 +1549,7 @@ class CppHoisterTest {
                 GLL.add(List<Int32> { values = @arrOf(i) })
                 i += 1
             }
-            return 7
+            7
         }
 
         pub growGLS: () Int32 {
@@ -1558,7 +1558,7 @@ class CppHoisterTest {
                 GLS.add(i)
                 i += 1
             }
-            return 7
+            7
         }
 
         pub store: (mut into: Int32, v: Int32) Void {
@@ -1579,113 +1579,113 @@ class CppHoisterTest {
         hoist.ctr as ctr
 
         sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
 
         show: (s: Str, k: Int32) Str {
-            return "${'$'}{s}${'$'}{k}"
+            "${'$'}{s}${'$'}{k}"
         }
 
         count: (xs: List<Int32>, k: Int32) Size {
-            return xs.size()
+            xs.size()
         }
 
         showK: (k: Int32, s: Str) Str {
-            return "${'$'}{k}:${'$'}{s}"
+            "${'$'}{k}:${'$'}{s}"
         }
 
         pub m1q: () Int32 {
             reset()
-            return sub(ctr.G, bumpG())
+            sub(ctr.G, bumpG())
         }
 
         pub m1u: () Int32 {
             reset()
-            return sub(G, bumpG())
+            sub(G, bumpG())
         }
 
         pub m1oq: () Int32 {
             reset()
-            return ctr.G + bumpG()
+            ctr.G + bumpG()
         }
 
         pub m1ou: () Int32 {
             reset()
-            return G + bumpG()
+            G + bumpG()
         }
 
         pub m1hq: () Str {
             reset()
-            return "${'$'}{ctr.G}/${'$'}{bumpG()}"
+            "${'$'}{ctr.G}/${'$'}{bumpG()}"
         }
 
         pub m1hu: () Str {
             reset()
-            return "${'$'}{G}/${'$'}{bumpG()}"
+            "${'$'}{G}/${'$'}{bumpG()}"
         }
 
         pub m2q: () Str {
             reset()
-            return show(ctr.GS, changeGS())
+            show(ctr.GS, changeGS())
         }
 
         pub m2u: () Str {
             reset()
-            return show(GS, changeGS())
+            show(GS, changeGS())
         }
 
         pub m2lq: () Size {
             reset()
-            return count(ctr.GL, growGL())
+            count(ctr.GL, growGL())
         }
 
         pub m2lu: () Size {
             reset()
-            return count(GL, growGL())
+            count(GL, growGL())
         }
 
         pub m4q: () Str {
             reset()
-            return showK(growGSL(), ctr.GSL[0])
+            showK(growGSL(), ctr.GSL[0])
         }
 
         pub m4u: () Str {
             reset()
-            return showK(growGSL(), GSL[0])
+            showK(growGSL(), GSL[0])
         }
 
         pub m4rq: () Str {
             reset()
-            return show(ctr.GSL[0], growGSL())
+            show(ctr.GSL[0], growGSL())
         }
 
         pub m4ru: () Str {
             reset()
-            return show(GSL[0], growGSL())
+            show(GSL[0], growGSL())
         }
 
         pub m6q: () Size {
             reset()
             ctr.GLL[0].add(growGLL())
-            return GLL[0].size()
+            GLL[0].size()
         }
 
         pub m6u: () Size {
             reset()
             GLL[0].add(growGLL())
-            return GLL[0].size()
+            GLL[0].size()
         }
 
         pub m6sq: () Int32 {
             reset()
             store(mut ctr.GLS[0], growGLS())
-            return GLS[0]
+            GLS[0]
         }
 
         pub m6su: () Int32 {
             reset()
             store(mut GLS[0], growGLS())
-            return GLS[0]
+            GLS[0]
         }
         """,
     )
@@ -1750,31 +1750,31 @@ class CppHoisterTest {
 
         next: () Int32 {
             ticks += 1
-            return ticks
+            ticks
         }
 
         nextSize: () Size {
             idx += 1
-            return idx
+            idx
         }
 
         sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
 
         resetL: () Int32 {
             gl = List<Int32> { values = @arrOf(8) }
-            return 0
+            0
         }
 
         change: () Int32 {
             gstrs = List<Str> { values = @arrOf("replaced, and long enough to live on the heap, not in a small buffer") }
             gms = "replaced too, and long enough to live on the heap, not in a small buffer"
-            return 0
+            0
         }
 
         showL: (s: Str, k: Int32) Str {
-            return "${'$'}{s}:${'$'}{k}"
+            "${'$'}{s}:${'$'}{k}"
         }
 
         total: (v: View<Int32>) Int32 {
@@ -1782,78 +1782,78 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         minus: (v: View<Int32>, k: Int32) Int32 {
-            return total(v) - k
+            total(v) - k
         }
 
         setAt: (mut e: Int32) Int32 {
             e = 50
-            return 0
+            0
         }
 
         pub lentScalar: () Int32 {
             gl = List<Int32> { values = @arrOf(1, 2, 3) }
-            return sub(gl.get(0), resetL())
+            sub(gl.get(0), resetL())
         }
 
         pub indexScalar: () Int32 {
             gl = List<Int32> { values = @arrOf(1, 2, 3) }
-            return sub(gl[0], resetL())
+            sub(gl[0], resetL())
         }
 
         pub lentStr: () Str {
             gstrs = List<Str> { values = @arrOf("first") }
-            return showL(gstrs.get(0), change())
+            showL(gstrs.get(0), change())
         }
 
         pub indexStr: () Str {
             gstrs = List<Str> { values = @arrOf("first") }
-            return showL(gstrs[0], change())
+            showL(gstrs[0], change())
         }
 
         pub lentMaybe: () Str {
             gms = "some"
-            return showL(gms.unwrap(), change())
+            showL(gms.unwrap(), change())
         }
 
         pub fieldMaybe: () Str {
             gms = "some"
-            return showL(gms.value, change())
+            showL(gms.value, change())
         }
 
         pub lentView: () Int32 {
             mut ll: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
-            return minus(ll.get(0), setAt(mut ll[0][0]))
+            minus(ll.get(0), setAt(mut ll[0][0]))
         }
 
         pub indexView: () Int32 {
             mut ll: List<List<Int32>> = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(1, 2, 3) }) }
-            return minus(ll[0], setAt(mut ll[0][0]))
+            minus(ll[0], setAt(mut ll[0][0]))
         }
 
         pub lentNested: () Int32 {
             idx = 0
             ticks = 0
-            return sub(gll.get(0).get(nextSize()), next())
+            sub(gll.get(0).get(nextSize()), next())
         }
 
         pub indexNested: () Int32 {
             idx = 0
             ticks = 0
-            return sub(gll[0][nextSize()], next())
+            sub(gll[0][nextSize()], next())
         }
 
         pub lentIndexArg: () Int32 {
             idx = 0
-            return gll.get(0).get(nextSize())
+            gll.get(0).get(nextSize())
         }
 
         pub indexIndexArg: () Int32 {
             idx = 0
-            return gll[0][nextSize()]
+            gll[0][nextSize()]
         }
         """,
     )
@@ -1923,29 +1923,29 @@ class CppHoisterTest {
             for x: Int32 in v {
                 s += x
             }
-            return s
+            s
         }
 
         sumAndClear: (v: View<Int32>) Int32 {
             gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7) }) }
-            return sumV(v)
+            sumV(v)
         }
 
         sumAndClearM: (v: View<Int32>) Int32 {
             gm = List<Int32> { values = @arrOf(7) }
-            return sumV(v)
+            sumV(v)
         }
 
         pub c2: () Int32 {
-            return sumAndClear(gl2.get(0).view())
+            sumAndClear(gl2.get(0).view())
         }
 
         pub c2b: () Int32 {
-            return sumAndClearM(gm.unwrap().view())
+            sumAndClearM(gm.unwrap().view())
         }
 
         pub c2c: () Int32 {
-            return sumVF(gl2.get(0).view(), () Void { gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7) }) } })
+            sumVF(gl2.get(0).view(), () Void { gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7) }) } })
         }
 
         pub c4: () Int32 {
@@ -1954,7 +1954,7 @@ class CppHoisterTest {
                 gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }) }
                 s += x
             }
-            return s
+            s
         }
 
         pub c4b: () Int32 {
@@ -1963,7 +1963,7 @@ class CppHoisterTest {
                 gm = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7) }
                 s += x
             }
-            return s
+            s
         }
         """,
     )
@@ -1980,9 +1980,9 @@ class CppHoisterTest {
         fun line(snippet: String): Int = lines.indexOfFirst { it.trim().startsWith(snippet) }.also { assertTrue(it >= 0, snippet) } + 1
         val found = result.diagnostics.filter { it.isError }.map { (it.position?.lineNumber ?: -1) to it.code }
         val expected = listOf(
-            line("return sumAndClear(gl2.get(0).view())") to "rules.view.write",
-            line("return sumAndClearM(gm.unwrap().view())") to "rules.view.write",
-            line("return sumVF(gl2.get(0).view()") to "rules.view.write",
+            line("sumAndClear(gl2.get(0).view())") to "rules.view.write",
+            line("sumAndClearM(gm.unwrap().view())") to "rules.view.write",
+            line("sumVF(gl2.get(0).view()") to "rules.view.write",
             line("gl2 = List<List<Int32>> { values = @arrOf(List<Int32> { values = @arrOf(7, 7") to "rules.exclusivity.loop",
             line("gm = List<Int32> { values = @arrOf(7, 7") to "rules.exclusivity.loop",
         )

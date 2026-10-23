@@ -155,19 +155,19 @@ class TyperDeclDiagnosticsTest {
             pub Stepper: Any {
                 pub mut step: () Void { }
                 pub peek: () Int32 {
-                    return 0
+                    0
                 }
             }
             pub Good: Stepper {
                 pub mut step: () Void { }
                 pub peek: () Int32 {
-                    return 1
+                    1
                 }
             }
             pub Bad: Stepper {
                 pub step: () Void { }
                 pub mut peek: () Int32 {
-                    return 1
+                    1
                 }
             }
             """
@@ -219,11 +219,11 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aUsedProjectModuleBeatsAUsedStdlibModule() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub exp: (x: Float64) Float64 {\n    return x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7"),
+            module("app:lib", "pub exp: (x: Float64) Float64 {\n    x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7"),
             module(
                 "app:main",
                 "kira.math as math\nkira.regex as regex\napp.lib as lib\n" +
-                    "f: () Float64 {\n    r: Regex = Regex { }\n    return exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
+                    "f: () Float64 {\n    r: Regex = Regex { }\n    exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
             ),
         )
         TyperTestSupport.expectNoErrors(p)
@@ -238,9 +238,9 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun twoUsedProjectModulesBesideAStdlibOneAreStillAmbiguous() {
         val p = TyperTestSupport.type(
-            module("app:one", "pub exp: (x: Float64) Float64 {\n    return x\n}"),
-            module("app:two", "pub exp: (x: Float64) Float64 {\n    return x\n}"),
-            module("app:main", "kira.math as math\napp.one as one\napp.two as two\nf: () Float64 {\n    return exp(2.0)\n}\n"),
+            module("app:one", "pub exp: (x: Float64) Float64 {\n    x\n}"),
+            module("app:two", "pub exp: (x: Float64) Float64 {\n    x\n}"),
+            module("app:main", "kira.math as math\napp.one as one\napp.two as two\nf: () Float64 {\n    exp(2.0)\n}\n"),
         )
         val d = expectDiagnostic(p, "types.call.ambiguous")
         assertTrue(d.message.endsWith("module: app:one, app:two."), d.message)
@@ -375,37 +375,37 @@ class TyperDeclDiagnosticsTest {
             }
             pub Base: Any {
                 pub map<U>: (u: U) U {
-                    return u
+                    u
                 }
                 pub pair<A, B>: (a: A, b: B) A {
-                    return a
+                    a
                 }
             }
             pub Child: Base {
                 pub map<V>: (v: V) V {
-                    return v
+                    v
                 }
                 pub pair<B, A>: (a: B, b: A) B {
-                    return a
+                    a
                 }
             }
             pub Impl: Mapper {
                 pub map<T>: (t: T) T {
-                    return t
+                    t
                 }
                 pub bounded<T: Mapper>: (t: T) Void { }
             }
             pub Wrong: Base {
                 pub map<U>: (u: U) Int32 {
-                    return 1
+                    1
                 }
                 pub pair<A>: (a: A, b: A) A {
-                    return a
+                    a
                 }
             }
             pub Loose: Mapper {
                 pub map<T>: (t: T) T {
-                    return t
+                    t
                 }
                 pub bounded<T>: (t: T) Void { }
             }

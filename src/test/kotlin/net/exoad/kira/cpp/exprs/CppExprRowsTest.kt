@@ -38,7 +38,7 @@ class CppExprRowsTest {
         pub SCALE: Int32 = 3
 
         pub origin: () Pt {
-            return Pt { }
+            Pt { }
         }
         """,
     )
@@ -48,26 +48,26 @@ class CppExprRowsTest {
             "r1",
             """
             pub wrapAdd: (a: UInt8, b: UInt8) UInt8 {
-                return a + b
+                a + b
             }
 
             pub low3: (next: UInt8) UInt8 {
                 bits: UInt8 = next & 7
-                return bits
+                bits
             }
 
             pub bump: (x: UInt8) UInt8 {
                 mut y: UInt8 = x
                 y += 1
-                return y
+                y
             }
 
             pub negate: (a: Int8) Int8 {
-                return -a
+                -a
             }
 
             pub flip: (a: UInt16) UInt16 {
-                return ~a
+                ~a
             }
             """,
             listOf(
@@ -92,27 +92,27 @@ class CppExprRowsTest {
             pub crcInit: () UInt32 {
                 mut crc: UInt32 = 0xFFFFFFFF
                 crc = crc ^ 1
-                return crc
+                crc
             }
 
             pub trillion: () Int64 {
-                return 1000000 * 1000000
+                1000000 * 1000000
             }
 
             pub pick: (c: Bool) Int8 {
-                return if c { 1 } else { -1 }
+                c ? 1 : -1
             }
 
             pub lowest: () Int32 {
-                return -2147483648
+                -2147483648
             }
 
             pub perMs: (d: UInt32) UInt32 {
-                return 1000000 / d
+                1000000 / d
             }
 
             pub wide: (n: Int64) Int64 {
-                return n * 3 + 1
+                n * 3 + 1
             }
             """,
             listOf(
@@ -137,15 +137,15 @@ class CppExprRowsTest {
             "r3",
             """
             pub scaled: (v: Float32) Float32 {
-                return v * 1000.0 + 0.5
+                v * 1000.0 + 0.5
             }
 
             pub positive: (x: Float64) Bool {
-                return x > 0
+                x > 0
             }
 
             pub half: () Float32 {
-                return 0.5
+                0.5
             }
             """,
             listOf("return v * 1000.0f + 0.5f;", "return x > 0.0;", "return 0.5f;"),
@@ -163,15 +163,15 @@ class CppExprRowsTest {
                 rows.shapes as shapes
 
                 pub sumOf: (p: Pt) Int32 {
-                    return p.x + p.y
+                    p.x + p.y
                 }
 
                 pub scale: (v: Int32) Int32 {
-                    return v * SCALE
+                    v * SCALE
                 }
 
                 pub fromOrigin: () Int32 {
-                    return origin().x
+                    origin().x
                 }
                 """,
             ),
@@ -193,26 +193,26 @@ class CppExprRowsTest {
             pub LIDAR_IP: Str = "192.168.1.62"
 
             pub len: (s: Str) Size {
-                return s.length()
+                s.length()
             }
 
             pub ipLen: () Size {
-                return LIDAR_IP.length()
+                LIDAR_IP.length()
             }
 
             pub grow: (n: Int32) List<Int32> {
                 mut xs: List<Int32> = List<Int32> { }
                 xs.add(n)
                 xs.add(n + 1)
-                return xs
+                xs
             }
 
             pub count: (v: View<UInt8>) Size {
-                return v.size()
+                v.size()
             }
 
             pub absOf: (x: Int32) Int32 {
-                return x.abs()
+                x.abs()
             }
             """,
             listOf(
@@ -236,23 +236,23 @@ class CppExprRowsTest {
             "r6",
             """
             pub sub: (a: Int32, b: Int32) Int32 {
-                return a - b
+                a - b
             }
 
             pub three: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 {
-                return a * 100 + b * 10 + c
+                a * 100 + b * 10 + c
             }
 
             pub named: () Int32 {
-                return sub(b = 3, a = 10)
+                sub(b = 3, a = 10)
             }
 
             pub skipMiddle: () Int32 {
-                return three(1, c = 9)
+                three(1, c = 9)
             }
 
             pub trailing: () Int32 {
-                return three(1)
+                three(1)
             }
             """,
             listOf(
@@ -271,7 +271,7 @@ class CppExprRowsTest {
             "r7",
             """
             pub @_const sq: (x: Int32) Int32 {
-                return x * x
+                x * x
             }
 
             @_static_assert(sq(4) == 16, "sq is constexpr")
@@ -289,13 +289,13 @@ class CppExprRowsTest {
 
             pub tick: () Int32 {
                 calls += 1
-                return calls
+                calls
             }
 
             pub twice: () Int32 {
                 tick()
                 tick()
-                return calls
+                calls
             }
             """,
             listOf("static_cast<void>(tick());"),
@@ -311,16 +311,16 @@ class CppExprRowsTest {
             }
 
             pub make: (s: Str) Reply {
-                return Reply { rest = "r", line = s }
+                Reply { rest = "r", line = s }
             }
 
             pub positional: () Reply {
-                return Reply { 1, "a", "b" }
+                Reply { 1, "a", "b" }
             }
 
             pub cell: () Int32 {
                 c: Ref<Int32> = Ref<Int32> { value = 7 }
-                return c.value
+                c.value
             }
             """,
             listOf(
@@ -339,56 +339,56 @@ class CppExprRowsTest {
             "r10",
             """
             pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
-                    return x * k
+                (x: Int32) Int32 {
+                    x * k
                 }
             }
 
             pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                return f(x)
+                f(x)
             }
 
             pub addAll: (xs: List<Int32>, k: Int32) Int32 {
                 mut total: Int32 = 0
                 for x: Int32 in xs {
                     total += applyTo((v: Int32) Int32 {
-                        return v + k
+                        v + k
                     }, x)
                 }
-                return total
+                total
             }
 
             pub Gain: Struct {
                 pub k: Int32 = 3
 
                 pub scaler: () Fx<Tuple1<Int32>, Int32> {
-                    return (x: Int32) Int32 {
-                        return x * k
+                    (x: Int32) Int32 {
+                        x * k
                     }
                 }
 
                 pub twice: (x: Int32) Int32 {
-                    return x * k * 2
+                    x * k * 2
                 }
 
                 pub twicer: () Fx<Tuple1<Int32>, Int32> {
-                    return (x: Int32) Int32 {
-                        return twice(x)
+                    (x: Int32) Int32 {
+                        twice(x)
                     }
                 }
             }
 
             pub tally: () Fx<Tuple0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 }
-                return () Int32 {
+                counter: Ref<Int32> = Ref<Int32> { value = 0 };
+                () Int32 {
                     counter.value = counter.value + 1
-                    return counter.value
+                    counter.value
                 }
             }
 
             pub constant: () Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
-                    return 5
+                (x: Int32) Int32 {
+                    5
                 }
             }
             """,
@@ -417,19 +417,19 @@ class CppExprRowsTest {
             "r11",
             """
             pub ratio: (a: Int32, b: Int32) Int32 {
-                return a / b
+                a / b
             }
 
             pub rem: (a: Int32, b: Int32) Int32 {
-                return a % b
+                a % b
             }
 
             pub tenth: (a: Int32) Int32 {
-                return a / 10
+                a / 10
             }
 
             pub byMinusOne: (a: Int32) Int32 {
-                return a / -1
+                a / -1
             }
 
             pub halve: (mut a: Int32, b: Int32) Void {
@@ -455,19 +455,19 @@ class CppExprRowsTest {
             "r12",
             """
             pub shift: (v: UInt32, n: UInt32) UInt32 {
-                return v << n
+                v << n
             }
 
             pub eighth: (v: UInt32) UInt32 {
-                return v >> 3
+                v >> 3
             }
 
             pub doubled: (v: UInt8) UInt8 {
-                return v << 1
+                v << 1
             }
 
             pub top: (v: Int32) Int32 {
-                return v >>> 28
+                v >>> 28
             }
             """,
             listOf(
@@ -487,31 +487,31 @@ class CppExprRowsTest {
             "r13",
             """
             pub toInt: (v: Float64) Int32 {
-                return v as Int32
+                v as Int32
             }
 
             pub narrow: (v: Int64) Int32 {
-                return v as Int32
+                v as Int32
             }
 
             pub widen: (v: Int32) Float64 {
-                return v as Float64
+                v as Float64
             }
 
             pub half: (v: Float64) Float32 {
-                return v as Float32
+                v as Float32
             }
 
             pub code: (c: Char) UInt8 {
-                return c as UInt8
+                c as UInt8
             }
 
             pub letter: (n: UInt8) Char {
-                return n as Char
+                n as Char
             }
 
             pub shown: (n: Int32) Str {
-                return n as Str
+                n as Str
             }
             """,
             listOf(
@@ -540,19 +540,19 @@ class CppExprRowsTest {
             pub TAG: Str = "tag"
 
             pub greet: (name: Str, n: Int32) Str {
-                return "hello ${'$'}{name}, you are ${'$'}{n}"
+                "hello ${'$'}{name}, you are ${'$'}{n}"
             }
 
             pub joined: (a: Str, b: Str) Str {
-                return a + " " + b
+                a + " " + b
             }
 
             pub bracketed: (s: Str) Str {
-                return "<" + s + ">"
+                "<" + s + ">"
             }
 
             pub tagged: (s: Str) Str {
-                return TAG + ":" + s
+                TAG + ":" + s
             }
             """,
             listOf(
@@ -572,19 +572,19 @@ class CppExprRowsTest {
             "r15",
             """
             pub initial: (s: Str) Char {
-                return s[0]
+                s[0]
             }
 
             pub second: (xs: List<Int32>) Int32 {
-                return xs[1]
+                xs[1]
             }
 
             pub third: (a: Arr<UInt8, 4>) UInt8 {
-                return a[2]
+                a[2]
             }
 
             pub fourth: (v: View<UInt8>) UInt8 {
-                return v[3]
+                v[3]
             }
 
             pub setFirst: (mut a: Arr<Int32, 2>, v: Int32) Void {
@@ -616,15 +616,15 @@ class CppExprRowsTest {
             pub A: Str = "abc"
 
             pub samePoint: (a: P2, b: P2) Bool {
-                return a == b
+                a == b
             }
 
             pub sameText: (a: Str, b: Str) Bool {
-                return a == b
+                a == b
             }
 
             pub constEq: () Bool {
-                return A == "abc"
+                A == "abc"
             }
 
             @_static_assert(A == "abc", "A is abc")
@@ -645,11 +645,11 @@ class CppExprRowsTest {
             "r17",
             """
             pub before: (a: Char, b: Char) Bool {
-                return a < b
+                a < b
             }
 
             pub same: (a: Char, b: Char) Bool {
-                return a == b
+                a == b
             }
             """,
             listOf("return kira::ord(a) < kira::ord(b);", "return a == b;"),
@@ -663,24 +663,24 @@ class CppExprRowsTest {
             "r18",
             """
             pub pick: (neg: Bool, v: Float32) Float32 {
-                return if neg { -v } else { v }
+                neg ? -v : v
             }
 
             pub label: (a: Int32) Str {
-                return if a == 0 { "zero" } else if a > 0 { "pos" } else { "neg" }
+                a == 0 ? "zero" : a > 0 ? "pos" : "neg"
             }
 
             pub positive: (a: Int32) Maybe<Int32> {
-                return if a > 0 { a } else { null }
+                a > 0 ? a : null
             }
 
             pub longer: (a: Int32, neg: Bool) Int32 {
-                return if neg {
+                (if neg {
                     t: Int32 = a * 2
                     t + 1
                 } else {
                     0
-                }
+                })
             }
             """,
             listOf(
@@ -705,19 +705,19 @@ class CppExprRowsTest {
 
             next: () Int32 {
                 ticks += 1
-                return ticks
+                ticks
             }
 
             sub: (a: Int32, b: Int32) Int32 {
-                return a - b
+                a - b
             }
 
             pub ordered: () Int32 {
-                return sub(next(), next())
+                sub(next(), next())
             }
 
             pub pureArgs: (a: Int32, b: Int32) Int32 {
-                return sub(a + 1, b * 2)
+                sub(a + 1, b * 2)
             }
             """,
             listOf(
@@ -735,7 +735,7 @@ class CppExprRowsTest {
             "r20",
             """
             pub bits: (f: Float32) UInt32 {
-                return bitCast<UInt32>(f)
+                bitCast<UInt32>(f)
             }
             """,
             listOf("return kira::bitCast<std::uint32_t>(f);"),
@@ -765,7 +765,7 @@ class CppExprRowsTest {
                 mut y: Int32 = x
                 r: Holder = Holder { n = y }
                 y += r.n
-                return y
+                y
             }
             """,
             listOf("const std::int32_t x{v};", "std::int32_t y{x};", "const Holder r = Holder{.n = y};"),
@@ -781,7 +781,7 @@ class CppExprRowsTest {
                 for i: Size in 0..n {
                     t += i
                 }
-                return t
+                t
             }
 
             pub constBound: () Int32 {
@@ -792,7 +792,7 @@ class CppExprRowsTest {
                 for j: Int32 in 0..3 {
                     t += j
                 }
-                return t
+                t
             }
 
             pub each: (xs: List<Int32>, names: List<Str>) Int32 {
@@ -803,7 +803,7 @@ class CppExprRowsTest {
                 for s: Str in names {
                     t += s.length() as Int32
                 }
-                return t
+                t
             }
 
             pub legacy: (n: Int32) Int32 {
@@ -811,7 +811,7 @@ class CppExprRowsTest {
                 for mut i: 0..n {
                     t += i
                 }
-                return t
+                t
             }
             """,
             listOf(
@@ -845,15 +845,15 @@ class CppExprRowsTest {
                 mut o: Out = Out { }
                 o.kind = K2_ERR
                 mut p: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
-                p[3] = TAIL[1]
-                return (p[3] as Int32) + o.kind
+                p[3] = TAIL[1];
+                (p[3] as Int32) + o.kind
             }
 
             pub mapped: () Size {
                 mut m: Map<Str, Int32> = Map<Str, Int32> { }
                 m["k"] = 30
                 m["k"] = 31
-                return m.size()
+                m.size()
             }
             """,
             listOf(
@@ -883,17 +883,16 @@ class CppExprRowsTest {
                     }
                     t += i
                 }
-                return t
+                t
             }
 
             pub early: (x: Int32) Void {
-                if x > 0 {
-                    return
+                if !(x > 0) {
+                    trace(x)
                 }
-                trace(x)
             }
             """,
-            listOf("while(i < n)", "continue;", "break;", "return;"),
+            listOf("while(i < n)", "continue;", "break;", "if(!(x > 0))"),
             listOf(
                 """check(s4::control(10) == 8, "5.4: while, break, continue");""",
                 """s4::early(1);""",
@@ -906,7 +905,7 @@ class CppExprRowsTest {
                 if !ok {
                     throw "bad"
                 }
-                return 1
+                1
             }
 
             pub caught: () Str {
@@ -917,7 +916,7 @@ class CppExprRowsTest {
                 } on e: Str {
                     msg = e
                 }
-                return msg
+                msg
             }
             """,
             listOf(
@@ -932,35 +931,31 @@ class CppExprRowsTest {
             "m1",
             """
             pub some: () Maybe<Int32> {
-                return 42
+                42
             }
 
             pub nothing: () Maybe<Int32> {
-                return null
+                null
             }
 
             pub read: (m: Maybe<Int32>) Int32 {
-                if m.isNone() {
-                    return -1
-                }
-                return m.unwrap() + m.unwrapOr(0)
+                m.isNone() ? -1 : m.unwrap() + m.unwrapOr(0)
             }
 
             pub small: () Maybe<UInt8> {
-                return 200
+                200
             }
 
             pub locals: () Int32 {
                 a: Maybe<Int32> = null
                 b: Maybe<Int32> = 7
-                return a.unwrapOr(1) + b.value
+                a.unwrapOr(1) + b.value
             }
             """,
             listOf(
                 "return 42;",
                 "return kira::none;",
-                "if(!kira::isSome(m))",
-                "return kira::unwrap(m) + kira::unwrapOr(m, 0);",
+                "return !kira::isSome(m) ? -1 : kira::unwrap(m) + kira::unwrapOr(m, 0);",
                 "return std::uint8_t{200};",
                 "const kira::Maybe<std::int32_t> a = kira::none;",
                 "const kira::Maybe<std::int32_t> b = 7;",
@@ -987,7 +982,7 @@ class CppExprRowsTest {
                 run((mut v: Int32) Void {
                     v += 1
                 }, mut n)
-                return n
+                n
             }
             """,
             listOf("run([](std::int32_t& v) -> void", "v += 1;", "f(x);", "}, n);"),
@@ -997,25 +992,17 @@ class CppExprRowsTest {
             "d39",
             """
             pub half: (n: Int32) Result<Int32, Str> {
-                if n % 2 != 0 {
-                    return Result.error("odd")
-                }
-                return Result.success(n / 2)
+                n % 2 != 0 ? Result.error("odd") : Result.success(n / 2)
             }
 
             pub halved: (n: Int32) Int32 {
                 r: Result<Int32, Str> = half(n)
-                if r.isOk() {
-                    return r.unwrap()
-                }
-                return -1
+                r.isOk() ? r.unwrap() : -1
             }
             """,
             listOf(
-                "return kira::Result<std::int32_t, kira::Str>::error(\"odd\");",
-                "return kira::Result<std::int32_t, kira::Str>::success(n / 2);",
-                "if(r.isOk())",
-                "return r.unwrap();",
+                "return n % 2 != 0 ? kira::Result<std::int32_t, kira::Str>::error(\"odd\") : kira::Result<std::int32_t, kira::Str>::success(n / 2);",
+                "return r.isOk() ? r.unwrap() : -1;",
             ),
             listOf("""check(d39::halved(4) == 2 && d39::halved(3) == -1, "D39: Result.success and Result.error are kira::Result's factories");"""),
         ),
@@ -1023,12 +1010,12 @@ class CppExprRowsTest {
             "d55",
             """
             pub read: (b: View<UInt8>) Str {
-                return Str.of(b)
+                Str.of(b)
             }
 
             pub text: () Str {
                 b: List<UInt8> = @listOf(0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82)
-                return Str.of(b)
+                Str.of(b)
             }
             """,
             listOf("return kira::str::of(b);"),
@@ -1041,15 +1028,15 @@ class CppExprRowsTest {
             "d56",
             """
             pub before: (a: Str, b: Str) Bool {
-                return a < b
+                a < b
             }
 
             pub atMost: (a: Str) Bool {
-                return a <= "m"
+                a <= "m"
             }
 
             pub literals: () Bool {
-                return "abc" < "abd" && "b" >= "abc"
+                "abc" < "abd" && "b" >= "abc"
             }
             """,
             listOf("return a < b;", "return a <= \"m\";", "return std::string_view(\"abc\") < \"abd\" && std::string_view(\"b\") >= \"abc\";"),
@@ -1063,23 +1050,23 @@ class CppExprRowsTest {
             "d57",
             """
             pub padded: (s: Str) Str {
-                return s.padEnd(4, '.')
+                s.padEnd(4, '.')
             }
 
             pub trimmed: (s: Str) Str {
-                return "[" + s.trimStart() + "|" + s.trimEnd() + "]"
+                "[" + s.trimStart() + "|" + s.trimEnd() + "]"
             }
 
             pub words: (s: Str) Size {
-                return s.splitWhitespace().size()
+                s.splitWhitespace().size()
             }
 
             pub swapped: (s: Str) Str {
-                return s.replace("ab", "ba").replace("", "/")
+                s.replace("ab", "ba").replace("", "/")
             }
 
             pub hex: (s: Str) Int64 {
-                return s.toInt64Radix(16).unwrapOr(-1)
+                s.toInt64Radix(16).unwrapOr(-1)
             }
             """,
             listOf(
@@ -1099,11 +1086,11 @@ class CppExprRowsTest {
             "d58",
             """
             pub joined: (xs: List<Str>, sep: Str) Str {
-                return xs.joinToString(sep)
+                xs.joinToString(sep)
             }
 
             pub words: (s: Str) Str {
-                return s.splitWhitespace().joinToString("|")
+                s.splitWhitespace().joinToString("|")
             }
             """,
             listOf("return kira::list::joinToString(xs, sep);"),
@@ -1116,7 +1103,7 @@ class CppExprRowsTest {
             "d59",
             """
             pub @_const wordChar: (c: Char) Bool {
-                return c.isDigit() || c.isLetter()
+                c.isDigit() || c.isLetter()
             }
 
             pub spaces: (s: Str) Int32 {
@@ -1128,7 +1115,7 @@ class CppExprRowsTest {
                     }
                     i += 1
                 }
-                return n
+                n
             }
             """,
             listOf("return kira::isDigit(c) || kira::isLetter(c);", "if(kira::isWhitespace(kira::str::at(s, i)))"),
@@ -1143,11 +1130,11 @@ class CppExprRowsTest {
             kira.math as math
 
             pub rem: (a: Float64, b: Float64) Float64 {
-                return fmod(a, b)
+                fmod(a, b)
             }
 
             pub rem32: (a: Float32, b: Float32) Float32 {
-                return fmod(a, b)
+                fmod(a, b)
             }
             """,
             listOf("return std::fmod(a, b);"),
@@ -1163,19 +1150,19 @@ class CppExprRowsTest {
             kira.math as math
 
             pub hyp32: (x: Float32, y: Float32) Float32 {
-                return hypot(x, y)
+                hypot(x, y)
             }
 
             pub angle32: (y: Float32, x: Float32) Float32 {
-                return atan2(y, x)
+                atan2(y, x)
             }
 
             pub exp32: (v: Float32) Float32 {
-                return exp(v)
+                exp(v)
             }
 
             pub mod32: (a: Float32, b: Float32) Float32 {
-                return floorMod(a, b)
+                floorMod(a, b)
             }
             """,
             listOf("return std::hypot(x, y);", "return std::atan2(y, x);", "return std::exp(v);", "return kira::floorMod(a, b);"),
@@ -1192,21 +1179,21 @@ class CppExprRowsTest {
             pub sorted: (xs: List<Int32>) List<Int32> {
                 mut out: List<Int32> = xs
                 out.sort()
-                return out
+                out
             }
 
             pub words: (s: Str) Str {
                 mut ws: List<Str> = s.splitWhitespace()
                 ws.sort()
-                return ws.joinToString(",")
+                ws.joinToString(",")
             }
 
             pub total: (xs: List<UInt8>) UInt8 {
-                return xs.sum()
+                xs.sum()
             }
 
             pub spread: (xs: List<Float64>) Float64 {
-                return xs.maxOrNull().unwrapOr(0.0) - xs.minOrNull().unwrapOr(0.0)
+                xs.maxOrNull().unwrapOr(0.0) - xs.minOrNull().unwrapOr(0.0)
             }
             """,
             listOf("kira::list::sort(out);", "return kira::list::sum(xs);"),
@@ -1227,7 +1214,7 @@ class CppExprRowsTest {
             pub lend: () UInt8 {
                 mut p: Arr<UInt8, 4> = @arrOf(0, 0, 0, 0)
                 poke(p.from(2), 9)
-                return p[2]
+                p[2]
             }
 
             pub fill: (servo: Int32, esc: UInt32, mut out: StrBuf<32>) Void {
@@ -1257,47 +1244,47 @@ class CppExprRowsTest {
             "f1",
             """
             pub negneg: (y: Int32) Int32 {
-                return -(-y)
+                -(-y)
             }
 
             pub negTwice: (a: Int32) Int32 {
                 mut y: Int32 = a
                 z: Int32 = -(-y)
                 y += 1
-                return z * 10 + y
+                z * 10 + y
             }
 
             pub big: () Int64 {
                 big: Int64 = 1 << 40
-                return big
+                big
             }
 
             pub ubig: () UInt64 {
                 u: UInt64 = 1 << 63
-                return u
+                u
             }
 
             pub mask: (v: UInt64) UInt64 {
                 m: UInt64 = ~0
-                return v & ~0xFF & m
+                v & ~0xFF & m
             }
 
             pub alignDown: (x: Size) Size {
-                return x & ~7
+                x & ~7
             }
 
             pub lowNibbleOff: (v: UInt8) UInt8 {
-                return v & ~0x0F
+                v & ~0x0F
             }
 
             pub @_const mul16: (a: UInt16, b: UInt16) UInt16 {
-                return a * b
+                a * b
             }
 
             pub mulAssign16: (a: UInt16, b: UInt16) UInt16 {
                 mut x: UInt16 = a
                 x *= b
-                return x
+                x
             }
             """,
             listOf(
@@ -1328,16 +1315,16 @@ class CppExprRowsTest {
 
             next: () Int32 {
                 ticks += 1
-                return ticks
+                ticks
             }
 
             nextSize: () Size {
                 idx += 1
-                return idx
+                idx
             }
 
             sub: (a: Int32, b: Int32) Int32 {
-                return a - b
+                a - b
             }
 
             store: (mut into: Int32, tens: Int32, ones: Int32) Void {
@@ -1348,7 +1335,7 @@ class CppExprRowsTest {
                 pub v: Int32 = 0
 
                 pub pair: (a: Int32, b: Int32) Int32 {
-                    return v * 100 + a * 10 + b
+                    v * 100 + a * 10 + b
                 }
 
                 pub mut grow: (a: Int32, b: Int32) Void {
@@ -1358,28 +1345,28 @@ class CppExprRowsTest {
 
             makeBox: () Box {
                 ticks += 1
-                return Box { v = ticks }
+                Box { v = ticks }
             }
 
             pub readBesideEffect: () Int32 {
                 ticks = 0
-                return sub(ticks, next())
+                sub(ticks, next())
             }
 
             pub holeBesideEffect: () Str {
                 ticks = 0
-                return "${'$'}{ticks}:${'$'}{next()}"
+                "${'$'}{ticks}:${'$'}{next()}"
             }
 
             pub compoundReadsFirst: () Int32 {
                 ticks = 0
                 ticks += next()
-                return ticks
+                ticks
             }
 
             pub receiverFirst: () Int32 {
                 ticks = 0
-                return makeBox().pair(next(), next())
+                makeBox().pair(next(), next())
             }
 
             pub mutIndexFirst: () Int32 {
@@ -1387,7 +1374,7 @@ class CppExprRowsTest {
                 idx = 0
                 mut q: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
                 store(mut q[nextSize()], next(), next())
-                return q[1]
+                q[1]
             }
 
             pub targetFirst: () Int32 {
@@ -1395,7 +1382,7 @@ class CppExprRowsTest {
                 idx = 0
                 mut s: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
                 s[nextSize()] = next()
-                return s[1] * 10 + s[2]
+                s[1] * 10 + s[2]
             }
 
             pub dividedOnce: () Int32 {
@@ -1403,7 +1390,7 @@ class CppExprRowsTest {
                 mut p: Arr<Int32, 4> = @arrOf(80, 80, 80, 80)
                 d: Int32 = 2
                 p[nextSize()] /= d
-                return p[1] * 100 + p[2] + (idx as Int32)
+                p[1] * 100 + p[2] + (idx as Int32)
             }
 
             pub shiftedOnce: () Int32 {
@@ -1411,7 +1398,7 @@ class CppExprRowsTest {
                 mut q: Arr<Int32, 4> = @arrOf(1, 1, 1, 1)
                 n: Int32 = 3
                 q[nextSize()] <<= n
-                return q[1] * 10 + (idx as Int32)
+                q[1] * 10 + (idx as Int32)
             }
 
             pub mutReceiverBound: () Int32 {
@@ -1419,7 +1406,7 @@ class CppExprRowsTest {
                 idx = 0
                 mut boxes: Arr<Box, 1> = @arrOf(Box { })
                 boxes[nextSize() - 1].grow(next(), next())
-                return boxes[0].v
+                boxes[0].v
             }
             """,
             listOf(
@@ -1451,15 +1438,15 @@ class CppExprRowsTest {
 
             nextSize: () Size {
                 idx += 1
-                return idx
+                idx
             }
 
             tailV: (v: View<Int32>, k: Size) View<Int32> {
-                return v.from(k)
+                v.from(k)
             }
 
             tailAtV: (k: Size, v: View<Int32>) View<Int32> {
-                return v.from(k)
+                v.from(k)
             }
 
             sumV: (v: View<Int32>) Int32 {
@@ -1467,17 +1454,17 @@ class CppExprRowsTest {
                 for x: Int32 in v {
                     s += x
                 }
-                return s
+                s
             }
 
             pub viewOfAPlace: () Int32 {
                 idx = 0
-                return sumV(tailAtV(nextSize(), gl))
+                sumV(tailAtV(nextSize(), gl))
             }
 
             pub viewOfATemporary: () Int32 {
                 idx = 0
-                return sumV(tailV(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
+                sumV(tailV(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
             }
 
             pub Acc: Struct {
@@ -1485,44 +1472,44 @@ class CppExprRowsTest {
 
                 pub mut bump: () Int32 {
                     n = 2
-                    return 10
+                    10
                 }
 
                 pub mut viaThis: () Int32 {
-                    return peek(this, bump())
+                    peek(this, bump())
                 }
             }
 
             peek: (a: Acc, k: Int32) Int32 {
-                return a.n + k
+                a.n + k
             }
 
             pub thisBeforeBump: () Int32 {
                 mut x: Acc = Acc { }
-                return x.viaThis()
+                x.viaThis()
             }
 
             pub fixedContains: () Bool {
                 a: Arr<Int32, 3> = @arrOf(1, 2, 3)
-                return a.contains(2) && !a.contains(4)
+                a.contains(2) && !a.contains(4)
             }
 
             pub fixedClone: () Size {
                 a: Arr<Int32, 3> = @arrOf(1, 2, 3)
                 c: Arr<Int32> = a.clone()
-                return c.size()
+                c.size()
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) }
-                return (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
+                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) };
+                (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 
             pub setLiteral: () Size {
                 s: Set<Int32> = Set<Int32> { values = @arrOf(3, 4, 3) }
                 e: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf() }
                 f: Set<Float32> = Set<Float32> { values = @arrOf(1.5, 2.5) }
-                return s.size() * 100 + e.size() * 10 + f.size()
+                s.size() * 100 + e.size() * 10 + f.size()
             }
             """,
             listOf(

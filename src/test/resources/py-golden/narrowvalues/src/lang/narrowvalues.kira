@@ -7,12 +7,16 @@ Pt: Struct {
 }
 
 find: (xs: List<Int32>, v: Int32) Maybe<Int32> {
+    mut result: Maybe<Int32> = null
+    mut found: Bool = false
     for i: Size in 0..xs.size() {
         if xs[i] == v {
-            return i as Int32
+            result = i as Int32
+            found = true
+            break
         }
     }
-    null
+    found ? result : null
 }
 
 at: (k: Int32) Maybe<Pt> {
@@ -51,10 +55,7 @@ score: (m: Maybe<Int32>, p: Maybe<Pt>) Int32 {
 
 // The body's last expression after an if that always leaves.
 later: (m: Maybe<Int32>, k: Int32) Int32 {
-    if m != Int32 {
-        return -k
-    }
-    m * k
+    m != Int32 ? -k : m * k
 }
 
 // The body's last if, each arm its value.

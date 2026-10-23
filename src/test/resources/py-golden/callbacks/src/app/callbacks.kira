@@ -40,32 +40,32 @@ pub Reply: Any {
 @_extern(raises = "ValueError") positive: (f: Fx<Tuple0, Int32>) Int32
 
 width: (s: Str) Int32 {
-    return s.length() as Int32
+    s.length() as Int32
 }
 
 happy: () Void {
     calls: Ref<Int32> = Ref<Int32> { value = 0 }
     println("each ${each(@listOf("a", "bb", "ccc"), (s: Str) Int32 {
         calls.value = calls.value + 1
-        return s.length() as Int32 * 10
+        s.length() as Int32 * 10
     })}")
     println("each, a named function ${each(@listOf("abcd"), width)}")
     println("callWith ${callWith("ok", (n: Int32, s: Str) Str {
-        return "${n} ${s}"
+        "${n} ${s}"
     })}")
     println("bytesOf ${bytesOf(() List<UInt8> {
-        return @listOf(1, 2, 255)
+        @listOf(1, 2, 255)
     })}")
     println("render ${render("/power", (path: Str) Reply {
-        return Reply { 200, path.bytes() }
+        Reply { 200, path.bytes() }
     })}")
     keep((x: Int32) Int32 {
         calls.value = calls.value + 1
-        return x * 3
+        x * 3
     })
     println("callKept ${callKept(5)} ${callKept(6)}")
     println("onThread ${onThread((x: Int32) Int32 {
-        return x + 100
+        x + 100
     }, 7)}")
     println("calls ${calls.value}")
     try {
@@ -77,10 +77,10 @@ happy: () Void {
     }
     try {
         println("positive ${positive(() Int32 {
-            return 4
+            4
         })}")
         positive(() Int32 {
-            return -1
+            -1
         })
     } on e: Str {
         println("caught from raises: ${e}")
@@ -92,36 +92,36 @@ happy: () Void {
     println("a Json Python passed, after Python wrote its own: ${kept[0].dump()}")
     cfg: Json = Json.parse("{\"a\": 1}")
     println("takeJson ${takeJson(() Json {
-        return cfg
+        cfg
     })}, Kira's after Python wrote what it got: ${cfg.dump()}")
     println("kinds ${kinds(() Maybe<List<UInt8>> {
-        return @listOf(1, 2)
+        @listOf(1, 2)
     }, () Tuple2<List<UInt8>, Int32> {
-        return Tuple2<List<UInt8>, Int32> { @listOf(3), 4 }
+        Tuple2<List<UInt8>, Int32> { @listOf(3), 4 }
     }, () List<List<UInt8>> {
-        return @listOf(@listOf(5))
+        @listOf(@listOf(5))
     })}")
 }
 
 pub main: () Int32 {
     a: List<Str> = args()
-    how: Str = if a.size() > 1 { a[1] } else { "happy" }
+    how: Str = a.size() > 1 ? a[1] : "happy"
     if how == "happy" {
         happy()
     } else if how == "none" || how == "bool" || how == "arity" {
         println(callWith(how, (n: Int32, s: Str) Str {
-            return s
+            s
         }))
     } else if how == "pair" {
         println(pair((x: Int32) Int32 {
-            return x
+            x
         }, (x: Int32) Int32 {
-            return x
+            x
         }))
     } else if how == "panic" {
         println(each(@listOf("a"), (s: Str) Int32 {
             xs: List<Int32> = @listOf(1)
-            return xs[s.length() + 1]
+            xs[s.length() + 1]
         }))
     } else if how == "swallow-throw" {
         println(swallow(() Int32 {
@@ -129,7 +129,7 @@ pub main: () Int32 {
         }))
     } else if how == "swallow-panic" {
         println(swallow(() Int32 {
-            return 1 / (a.size() as Int32 - 2)
+            1 / (a.size() as Int32 - 2)
         }))
     } else if how == "thread-throw" {
         println(onThread((x: Int32) Int32 {
@@ -137,7 +137,7 @@ pub main: () Int32 {
         }, 1))
     } else if how == "thread-panic" {
         println(onThread((x: Int32) Int32 {
-            return x / (a.size() as Int32 - 2)
+            x / (a.size() as Int32 - 2)
         }, 1))
     } else if how == "exit" {
         println(each(@listOf("a"), (s: Str) Int32 {
@@ -159,5 +159,5 @@ pub main: () Int32 {
         }
     }
     println("${how} done")
-    return 0
+    0
 }

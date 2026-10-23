@@ -157,7 +157,7 @@ class ArcLoweringTest {
             make: () Pet {
                 other: Pet = Pet { "o" }
                 p: Pet = Pet { "m" }
-                return p
+                p
             }
 
             main: () Void {

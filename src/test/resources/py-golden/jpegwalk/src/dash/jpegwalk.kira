@@ -24,50 +24,58 @@ pub Split: Any {
 // The index of the first FF and [second] at or after [start], or null (bytes.find).
 findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
     mut j: Size = start
+    mut result: Maybe<Size> = null
     while j + 2 <= buf.size() {
         if buf[j] == 0xFF && buf[j + 1] == second {
-            return j
+            result = j
+            break
         }
         j += 1
     }
-    return null
+    result
 }
 
 // jpeg_size(frame): (w, h) of a JPEG that has a SOF, an SOS after it and ends in EOI, else null.
 pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
     n: Size = frame.size()
     if n < 4 || frame[0] != 0xFF || frame[1] != 0xD8 || frame[n - 2] != 0xFF || frame[n - 1] != 0xD9 {
-        return null
-    }
-    mut i: Size = 2
-    mut w: UInt32 = 0
-    mut h: UInt32 = 0
-    while i + 4 <= n {
-        if frame[i] != 0xFF {
-            return null
-        }
-        marker: UInt8 = frame[i + 1]
-        if marker == 0xFF {
-            i += 1
-            continue
-        }
-        if (marker >= 0xD0 && marker <= 0xD9) || marker == 0x01 {
-            // an EOI or a restart before any scan
-            return null
-        }
-        seg: Size = readU16Be(frame, i + 2) as Size
-        if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC && i + 9 <= n {
-            w = readU16Be(frame, i + 7) as UInt32
-            h = readU16Be(frame, i + 5) as UInt32
-        } else if marker == 0xDA {
-            if w == 0 || h == 0 {
-                return null
+        null
+    } else {
+        mut i: Size = 2
+        mut w: UInt32 = 0
+        mut h: UInt32 = 0
+        mut result: Maybe<JpegSize> = null
+        while i + 4 <= n {
+            if frame[i] != 0xFF {
+                result = null
+                break
             }
-            return JpegSize { w, h }
+            marker: UInt8 = frame[i + 1]
+            if marker == 0xFF {
+                i += 1
+                continue
+            }
+            if (marker >= 0xD0 && marker <= 0xD9) || marker == 0x01 {
+                // an EOI or a restart before any scan
+                result = null
+                break
+            }
+            seg: Size = readU16Be(frame, i + 2) as Size
+            if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC && i + 9 <= n {
+                w = readU16Be(frame, i + 7) as UInt32
+                h = readU16Be(frame, i + 5) as UInt32
+            } else if marker == 0xDA {
+                if w == 0 || h == 0 {
+                    result = null
+                    break
+                }
+                result = JpegSize { w, h }
+                break
+            }
+            i += 2 + seg
         }
-        i += 2 + seg
+        result
     }
-    return null
 }
 
 // jpeg_end(buf, soi): the index just past the EOI of the JPEG starting at soi, or null while it
@@ -75,46 +83,56 @@ pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
 pub jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
     mut i: Size = soi + 2
     n: Size = buf.size()
+    mut result: Maybe<Size> = null
     while i + 4 <= n {
         if buf[i] != 0xFF {
             j: Maybe<Size> = findPair(buf, i, 0xD9)
-            return if j.isNull() { null } else { j.value + 2 }
+            result = j.isNull() ? null : j.value + 2
+            break
         }
         marker: UInt8 = buf[i + 1]
         if marker == 0xFF {
             i += 1
         } else if marker == 0xD9 {
-            return i + 2
+            result = i + 2
+            break
         } else if (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01 {
             i += 2
         } else if marker == 0xDA {
             j: Maybe<Size> = findPair(buf, i + 2 + (readU16Be(buf, i + 2) as Size), 0xD9)
-            return if j.isNull() { null } else { j.value + 2 }
+            result = j.isNull() ? null : j.value + 2
+            break
         } else {
             i += 2 + (readU16Be(buf, i + 2) as Size)
         }
     }
-    return null
+    result
 }
 
 // split_jpegs(buf): the complete JPEGs, and the rest from the SOI of an incomplete one.
 pub splitJpegs: (buf: View<UInt8>) Split {
     mut out: Split = Split { }
     mut pos: Size = 0
+    mut result: Maybe<Split> = null
+    mut found: Bool = false
     while true {
         soi: Maybe<Size> = findPair(buf, pos, 0xD8)
         if soi.isNull() {
-            return out
+            result = out
+            found = true
+            break
         }
         end: Maybe<Size> = jpegEnd(buf, soi.value)
         if end.isNull() {
             out.rest = buf.from(soi.value).toList()
-            return out
+            result = out
+            found = true
+            break
         }
         out.jpegs.add(Jpeg { buf.slice(soi.value, end.value - soi.value).toList() })
         pos = end.value
     }
-    return out
+    found ? result.value : out
 }
 
 // ---- main: synthetic JPEGs -------------------------------------------------------------------
@@ -142,7 +160,7 @@ filled: (n: Size, b: UInt8) List<UInt8> {
     while out.size() < n {
         out.add(b)
     }
-    return out
+    out
 }
 
 // SOI, APP0, a DQT whose table holds FF D9, SOF0 at w x h, a DHT, SOS, scan data with a stuffed
@@ -170,19 +188,20 @@ jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
         out.add(0xFF)
         out.add(0xD9)
     }
-    return out
+    out
 }
 
 show: (m: Maybe<JpegSize>) Str {
     if m.isNull() {
-        return "none"
+        "none"
+    } else {
+        s: JpegSize = m.value
+        "${s.w}x${s.h}"
     }
-    s: JpegSize = m.value
-    return "${s.w}x${s.h}"
 }
 
 showEnd: (m: Maybe<Size>) Str {
-    return if m.isNull() { "none" } else { "${m.value}" }
+    m.isNull() ? "none" : "${m.value}"
 }
 
 main: () Void {

@@ -194,7 +194,7 @@ class CliSuiteTest {
                 "src/app/main.kira" to """
                     f: (s: Maybe<Str>) Size {
                         n: Size = s.size()
-                        return n
+                        n
                     }
                 """.trimIndent(),
             )

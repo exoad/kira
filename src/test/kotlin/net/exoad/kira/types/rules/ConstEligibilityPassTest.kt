@@ -23,15 +23,15 @@ class ConstEligibilityPassTest {
                     pub ticks: Int32 = 0
                     pub state: UInt8 = 0
                     pub @_const errors: () Int32 {
-                        return ticks
+                        ticks
                     }
                     pub mut @_const feed: (next: UInt8) Void {
                         idx: Int8 = INDEX_OF[(next & 3) as Size]
                         if idx < 0 {
                             state = next
-                            return
+                        } else {
+                            ticks += idx as Int32
                         }
-                        ticks += idx as Int32
                     }
                 }
                 pub @_const settle: (steps: Arr<UInt8, 4>) Decoder {
@@ -39,7 +39,7 @@ class ConstEligibilityPassTest {
                     for s: UInt8 in steps {
                         d.feed(s)
                     }
-                    return d
+                    d
                 }
                 """,
             ),
@@ -54,7 +54,7 @@ class ConstEligibilityPassTest {
                 """
                 pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
                 pub @_const readU32: (p: View<UInt8>) UInt32 {
-                    return (p[0] as UInt32) | ((p[1] as UInt32) << 8)
+                    (p[0] as UInt32) | ((p[1] as UInt32) << 8)
                 }
                 pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
                     p[0] = (v & 0xFF) as UInt8
@@ -65,19 +65,16 @@ class ConstEligibilityPassTest {
                         p[i] = MAGIC[i]
                     }
                     writeU32(p.from(4), kind)
-                    if readU32(p.slice(4, 4)) != kind {
-                        return null
-                    }
-                    return p
+                    readU32(p.slice(4, 4)) != kind ? null : p
                 }
                 pub @_const each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Size {
                     for b: UInt8 in buf {
                         f(b)
                     }
-                    return buf.size()
+                    buf.size()
                 }
                 pub @_const biggest: (a: Int32, b: Int32) Int32 {
-                    return a.abs()
+                    a.abs()
                 }
                 """,
             ),
@@ -94,24 +91,24 @@ class ConstEligibilityPassTest {
                     pub x: Int32 = 0
                 }
                 pub @_const @op_add: (a: V2, b: V2) V2 {
-                    return V2 { a.x + b.x }
+                    V2 { a.x + b.x }
                 }
                 pub @_const sum: (a: V2, b: V2) V2 {
-                    return a + b
+                    a + b
                 }
                 pub LIMITS: Arr<Int32, 2> = @arrOf(1, 2)
                 pub @_const lim: (i: Size) Int32 {
-                    return LIMITS[i]
+                    LIMITS[i]
                 }
                 pub @_const seed: () Int32 {
-                    return 4
+                    4
                 }
                 pub W: Struct {
                     pub n: Int32 = seed()
                 }
                 pub @_const mk: () Int32 {
                     w: W = W { }
-                    return w.n
+                    w.n
                 }
                 """,
             ),
@@ -124,13 +121,13 @@ class ConstEligibilityPassTest {
             snippet(
                 """
                 pub @_const id<T>: (v: T) T {
-                    return v
+                    v
                 }
                 pub @_const pair: (a: Int32) Tuple2<Int32, Bool> {
-                    return Tuple2<Int32, Bool> { a, a > 0 }
+                    Tuple2<Int32, Bool> { a, a > 0 }
                 }
                 pub @_const pick: (b: Bool) Int32 {
-                    return if b { 1 } else { 2 }
+                    b ? 1 : 2
                 }
                 """,
             ),
@@ -147,17 +144,17 @@ class ConstEligibilityPassTest {
                 pub n: Int32 = 0
             }
             pub @_const a: (s: Str) Int32 {
-                return 1
+                1
             }
             pub @_const b: () Int32 {
                 xs: List<Int32> = List<Int32> {}
-                return 1
+                1
             }
             pub @_const c: () Box {
-                return Box {}
+                Box {}
             }
             pub @_const d: (v: Int32) Str {
-                return "n=${'$'}{v}"
+                "n=${'$'}{v}"
             }
             """,
         )
@@ -175,26 +172,26 @@ class ConstEligibilityPassTest {
             kira.math as math
             pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32;
             pub slow: (v: Int32) Int32 {
-                return v
+                v
             }
             pub @_const a: (v: Int32) Int32 {
-                return slow(v)
+                slow(v)
             }
             pub @_const b: (v: Float64) Float64 {
-                return sqrt(v)
+                sqrt(v)
             }
             pub @_const c: () Int32 {
-                return read()
+                read()
             }
             pub @_const d: (v: Int32) Int32 {
                 trace(v)
-                return v
+                v
             }
             pub Shape: Any {
                 pub area: () Int32;
             }
             pub @_const e<T: Shape>: (s: T) Int32 {
-                return s.area()
+                s.area()
             }
             """,
         )
@@ -211,30 +208,30 @@ class ConstEligibilityPassTest {
                 pub x: Int32 = 0
             }
             pub @op_add: (a: V2, b: V2) V2 {
-                return V2 { a.x + b.x }
+                V2 { a.x + b.x }
             }
             pub @op_eq: (a: V2, b: V2) Bool {
-                return a.x == b.x
+                a.x == b.x
             }
             pub @_const sum: (a: V2, b: V2) V2 {
-                return a + b
+                a + b
             }
             pub @_const same: (a: V2, b: V2) Bool {
-                return a == b
+                a == b
             }
             pub DYN: Arr<Int32> = @arrOf(1, 2, 3)
             pub @_const firstOf: () Int32 {
-                return DYN.get(0)
+                DYN.get(0)
             }
             pub seed: () Int32 {
-                return 4
+                4
             }
             pub W: Struct {
                 pub n: Int32 = seed()
             }
             pub @_const mk: () Int32 {
                 w: W = W { }
-                return w.n
+                w.n
             }
             """,
         )
@@ -255,24 +252,24 @@ class ConstEligibilityPassTest {
                 if v < 0 {
                     throw "negative"
                 }
-                return v
+                v
             }
             pub @_const b: (v: Int32) Int32 {
                 SEEN = v
-                return SEEN
+                SEEN
             }
             pub @_const c: (v: Int32) Int32 {
                 try {
-                    return v
+                    v
                 } on e: Str {
-                    return 0
+                    0
                 }
             }
             pub @_const d: (v: Int32) Int32 {
                 f: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
-                    return x
+                    x
                 }
-                return f(v)
+                f(v)
             }
             """,
         )

@@ -2,5 +2,5 @@ kira.regex as regex
 
 // The reason the last compile on this thread left, whichever module made it (D86).
 pub whyNot: () Str {
-    return regexError()
+    regexError()
 }

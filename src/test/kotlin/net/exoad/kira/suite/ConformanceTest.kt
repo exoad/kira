@@ -39,7 +39,7 @@ class ConformanceTest {
             pub radius: Int32
 
             override pub area: () Int32 {
-                return radius
+                radius
             }
         }
 
@@ -106,7 +106,7 @@ class ConformanceTest {
         // A construction to compare with goes in parentheses.
         assertIs<BinaryExpr>(compare("p == (Pt { 1 })"))
         // In a condition the brace opens the body.
-        expectNoErrors(snippet("f: (s: Shape) Int32 {\n    if s == Circle {\n        return s.radius\n    }\n    return 0\n}"))
+        expectNoErrors(snippet("f: (s: Shape) Int32 {\n    s == Circle ? s.radius : 0\n}"))
     }
 
     // ---- `is` --------------------------------------------------------------------------------
@@ -117,7 +117,7 @@ class ConformanceTest {
         assertEquals("parse.removed", e.tag)
         assertTrue(e.message.contains("'x == T'") && e.message.contains("'x != T'"), e.message)
         // It is a plain name now.
-        expectNoErrors(snippet("f: () Int32 {\n    is: Int32 = 2\n    return is + 1\n}"))
+        expectNoErrors(snippet("f: () Int32 {\n    is: Int32 = 2\n    is + 1\n}"))
     }
 
     @Test
@@ -149,13 +149,13 @@ class ConformanceTest {
         val p = snippet(
             """
             @op_eq: (a: Circle, b: Circle) Bool {
-                return a.radius == b.radius
+                a.radius == b.radius
             }
 
             f: (c: Circle, d: Circle, s: Shape) Bool {
                 a: Bool = c == d
                 b: Bool = s == Circle
-                return a && b
+                a && b
             }
             """,
         )
@@ -174,29 +174,23 @@ class ConformanceTest {
             """
             f: (s: Shape, m: Maybe<Int32>) Int32 {
                 mut t: Shape = s
-                if t == Circle {
-                    return 0
-                }
-                if s == Circle && m == Int32 {
-                    return s.radius + m
-                }
-                return -1
+                t == Circle ? 0 : s == Circle && m == Int32 ? s.radius + m : -1
             }
             """,
         )
         expectNoErrors(p)
         val narrowed = p.model.narrowings.entries.map { (id, n) -> "${id.value}:${n.from.display()}->${n.to.display()}" }.sorted()
         assertEquals(listOf("m:Maybe<Int32>->Int32", "s:Shape->Circle"), narrowed)
-        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    mut t: Shape = s\n    if t == Circle {\n        return t.radius\n    }\n    return 0\n}"), "types.member.unknown")
+        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    mut t: Shape = s\n    t == Circle ? t.radius : 0\n}"), "types.member.unknown")
     }
 
     @Test
     fun aTestTheTypesDecideIsAWarningOrAnError() {
-        val always = expectDiagnostic(snippet("f: (c: Circle) Bool {\n    return c == Shape\n}"), "types.conform.always")
+        val always = expectDiagnostic(snippet("f: (c: Circle) Bool {\n    c == Shape\n}"), "types.conform.always")
         assertTrue(always.message.contains("always true"), always.message)
-        val never = expectDiagnostic(snippet("f: (k: Int32) Bool {\n    return k != Str\n}"), "types.conform.never")
+        val never = expectDiagnostic(snippet("f: (k: Int32) Bool {\n    k != Str\n}"), "types.conform.never")
         assertTrue(never.message.contains("always true"), never.message)
-        expectDiagnostic(snippet("f: (m: Maybe<Int32>) Bool {\n    return m == Null\n}"), "types.conform.unsupported")
+        expectDiagnostic(snippet("f: (m: Maybe<Int32>) Bool {\n    m == Null\n}"), "types.conform.unsupported")
     }
 
     // ---- lowering ----------------------------------------------------------------------------
@@ -211,7 +205,7 @@ class ConformanceTest {
             }
 
             probe: () Maybe<Int32> {
-                return 1
+                1
             }
 
             f: (m: Maybe<Int32>, p: Pt, n: Maybe<Int32>, k: Int32) Int32 {
@@ -219,11 +213,8 @@ class ConformanceTest {
                 b: Bool = m != Int32
                 c: Bool = p == Pt
                 d: Bool = probe() == Maybe<Int32>
-                e: Bool = (if k > 0 { m } else { n }) != Int32
-                if m == Int32 && a {
-                    return m + 1
-                }
-                return 0
+                e: Bool = (k > 0 ? m : n) != Int32
+                m == Int32 && a ? m + 1 : 0
             }
             """,
         ).python()
@@ -233,32 +224,32 @@ class ConformanceTest {
         assertTrue(py.contains("    d = (_probe(), True)[1]\n"), py)
         // A value that binds looser than `is` is tested whole.
         assertTrue(py.contains("    e = (m if k > 0 else n) is None\n"), py)
-        assertTrue(py.contains("    if m is not None and a:\n        return _k_i32(m + 1)\n"), py)
+        assertTrue(py.contains("    return _k_i32(m + 1) if m is not None and a else 0\n"), py)
     }
 
     @Test
     fun onCppAClassTestIsADynamicCastAndANarrowedReadCastsToo() {
         val src = DeclTestSupport.module(
             "app:main",
-            text("pub f: (s: Shape, m: Maybe<Int32>) Int32 {\n    if s == Circle && m == Int32 {\n        return s.radius + m\n    }\n    return 0\n}"),
+            text("pub f: (s: Shape, m: Maybe<Int32>) Int32 {\n    s == Circle && m == Int32 ? s.radius + m : 0\n}"),
         )
         val out = DeclTestSupport.emit(src).source("app:main") ?: ""
         assertTrue(out.contains("(dynamic_cast<const Circle*>(s.get()) != nullptr) && kira::isSome(m)"), out)
-        assertTrue(out.contains("return std::dynamic_pointer_cast<Circle>(s)->radius + kira::unwrap(m);"), out)
+        assertTrue(out.contains("? std::dynamic_pointer_cast<Circle>(s)->radius + kira::unwrap(m) : 0;"), out)
     }
 
     @Test
     fun onCppAClassWithoutVirtualMethodsIsRefusedAndCAndJsRefuseEveryTest() {
         val src = DeclTestSupport.module(
             "app:main",
-            "Animal: Any {\n    pub name: Str\n}\n\nDog: Animal {\n    pub tricks: Int32 = 2\n}\n\npub f: (a: Animal) Bool {\n    return a == Dog\n}",
+            "Animal: Any {\n    pub name: Str\n}\n\nDog: Animal {\n    pub tricks: Int32 = 2\n}\n\npub f: (a: Animal) Bool {\n    a == Dog\n}",
         )
         val emitted = DeclTestSupport.emit(src)
         assertTrue(
             emitted.diagnostics("app:main").any { it.code == "cpp.unsupported" && it.message.contains("without virtual methods") },
             emitted.render(emitted.diagnostics("app:main")),
         )
-        val source = "f: (k: Int32) Bool {\n    return k == Int32\n}\n"
+        val source = "f: (k: Int32) Bool {\n    k == Int32\n}\n"
         val refused = listOf(
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(source, "test/main.kira") },
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToJS(source, "test/main.kira") },

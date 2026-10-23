@@ -7,7 +7,7 @@
 pub Shape: Any {
     pub area: () Float64;
     pub describe: () Str {
-        return "shape"
+        "shape"
     }
 }
 
@@ -15,7 +15,7 @@ pub Square: Struct, Shape {
     pub side: Float64 = 2.0
 
     override pub area: () Float64 {
-        return side * side
+        side * side
     }
 }
 
@@ -33,32 +33,32 @@ pub Tagged: Named {
 }
 
 pub areaOf<T: Shape>: (s: T) Float64 {
-    return s.area()                        // @type Float64 call=TRAIT(Shape.area)
+    s.area()                        // @type Float64 call=TRAIT(Shape.area)
 }
 
 pub describe<T: Shape>: (s: T) Str {
-    return s.describe()                    // @type Str call=TRAIT(Shape.describe)
+    s.describe()                    // @type Str call=TRAIT(Shape.describe)
 }
 
 pub magnitude<T: Num>: (x: T) T {
-    return x.abs()                         // @type T call=MAGIC(Num.abs)
+    x.abs()                         // @type T call=MAGIC(Num.abs)
 }
 
 pub widen<T: Num>: (x: T) Int64 {
-    return x.toInt64()                     // @type Int64 call=MAGIC(Num.toInt64)
+    x.toInt64()                     // @type Int64 call=MAGIC(Num.toInt64)
 }
 
 pub same<T: Num>: (a: T, b: T) Bool {
-    return a.equals(b)                     // @type Bool call=MAGIC(Equatable.equals)
+    a.equals(b)                     // @type Bool call=MAGIC(Equatable.equals)
 }
 
 pub nameOf<T: Named>: (n: T) Str {
-    return n.name                          // @type Str member=Field(Named.name: Str)
+    n.name                          // @type Str member=Field(Named.name: Str)
 }
 
 pub touch<T: Named>: (n: T) Int32 {
     n.hit()                                // @type Void call=METHOD(Named.hit)
-    return n.hits                          // @type Int32 member=Field(Named.hits: Int32)
+    n.hits                          // @type Int32 member=Field(Named.hits: Int32)
 }
 
 pub uses: () Float64 {
@@ -67,14 +67,14 @@ pub uses: () Float64 {
     m: Int32 = magnitude<Int32>(-4)        // @type Int32 call=FREE(magnitude)
     t: Tagged = Tagged { "t" }             // @type Tagged
     h: Int32 = touch<Tagged>(t)            // @type Int32 call=FREE(touch)
-    return a
+    a
 }
 
 pub lists: () Int32 {
     xs: List<Int32> = @listOf(1, 2, 3)            // @type List<Int32> @ @listOf(1, 2, 3)
     ys: List<Float32> = @listOf(1.0, 2.5)         // @type List<Float32> @ @listOf(1.0, 2.5)
     zs: List<Str> = @listOf("a")                  // @type List<Str> @ @listOf("a")
-    return xs.get(0)                       // @type Int32 call=MAGIC(List.get)
+    xs.get(0)                       // @type Int32 call=MAGIC(List.get)
 }
 
 pub NEG: Int32 = -3
@@ -140,7 +140,7 @@ pub PRN: Size = PR.b.n                     // @type Size
 
 // A @_const call that leaves a parameter to its literal default is a constant expression.
 pub @_const addTo: (a: Int32, b: Int32 = 2) Int32 {
-    return a + b
+    a + b
 }
 
 pub AK: Int32 = addTo(1)                   // @type Int32 call=FREE(addTo)
@@ -152,7 +152,7 @@ pub V2: Struct {
 }
 
 pub @_const @op_sub: (a: V2, b: V2) V2 {
-    return V2 { a.x - b.x }
+    V2 { a.x - b.x }
 }
 
 pub VA: V2 = V2 { 3 }
@@ -161,13 +161,13 @@ pub VDX: Int32 = (VA - VA).x               // @type Int32
 @_static_assert((VA - VA).x == 0, "sub")
 
 pub hitter<T: Named>: (n: T) Fx<Tuple0, Void> {
-    return () Void {                     // @type Fx<Tuple0, Void>
+    () Void {                     // @type Fx<Tuple0, Void>
         n.hit()                            // @type Void call=METHOD(Named.hit)
     }
 }
 
 pub sharedWrites: (counter: Named) Fx<Tuple0, Void> {
-    return () Void {                     // @type Fx<Tuple0, Void>
+    () Void {                     // @type Fx<Tuple0, Void>
         counter.hit()                      // @type Void call=METHOD(Named.hit)
         mut own: List<Int32> = List<Int32> { }
         own.add(1)                         // @type Void call=MAGIC(List.add)
@@ -182,7 +182,7 @@ pub Tally: Any {
     }
 
     pub bumper: () Fx<Tuple0, Void> {
-        return () Void {
+        () Void {
             bump()                         // @type Void call=METHOD(Tally.bump)
         }
     }

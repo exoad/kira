@@ -36,15 +36,15 @@ class OperatorOverloadTest {
         }
 
         pub @op_add: (a: Point, b: Point) Point {
-            return Point { a.x + b.x, a.y + b.y }
+            Point { a.x + b.x, a.y + b.y }
         }
 
         pub @op_neg: (a: Point) Point {
-            return Point { -a.x, -a.y }
+            Point { -a.x, -a.y }
         }
 
         pub @op_eq: (a: Point, b: Point) Bool {
-            return a.x == b.x && a.y == b.y
+            a.x == b.x && a.y == b.y
         }
 
         main: () Void {
@@ -222,7 +222,7 @@ class OperatorOverloadTest {
                 pub x: Float32 = 0.0
             }
             pub @_op_add_: (a: V2, b: V2) V2 {
-                return V2 { a.x + b.x }
+                V2 { a.x + b.x }
             }
         """
         val result = TestCompileSupport.compileSnippet(

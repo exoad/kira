@@ -2,5 +2,5 @@
 
 main: (args: List<Str>) Int32 {
     trace("ran with ${args.size()} arguments")
-    return args.size() as Int32
+    args.size() as Int32
 }

@@ -21,26 +21,26 @@ class EscapePassTest {
         val p = snippet(
             """
             pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                return f(x)
+                f(x)
             }
             pub twice: (g: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                return applyTo(g, applyTo(g, x))
+                applyTo(g, applyTo(g, x))
             }
             pub keep: (h: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
-                return h
+                h
             }
             pub store: (k: Fx<Tuple1<Int32>, Int32>) Int32 {
                 held: Fx<Tuple1<Int32>, Int32> = k
-                return held(1)
+                held(1)
             }
             pub forward: (m: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
-                return keep(m)
+                keep(m)
             }
             pub capture: (c: Fx<Tuple1<Int32>, Int32>) Int32 {
                 inner: Fx<Tuple0, Int32> = () Int32 {
-                    return c(1)
+                    c(1)
                 }
-                return inner()
+                inner()
             }
             pub collect: (q: Fx<Tuple1<Int32>, Int32>) Void {
                 mut xs: List<Fx<Tuple1<Int32>, Int32>> = List<Fx<Tuple1<Int32>, Int32>> {}
@@ -66,25 +66,25 @@ class EscapePassTest {
             pub Counter: Any {
                 pub mut k: Int32 = 5
                 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                    return f(x)
+                    f(x)
                 }
                 pub offset: (x: Int32) Int32 {
-                    return apply((y: Int32) Int32 {
-                        return y + k
+                    apply((y: Int32) Int32 {
+                        y + k
                     }, x)
                 }
             }
             pub Leaky: Any {
                 pub mut k: Int32 = 5
                 pub multiplier: () Fx<Tuple1<Int32>, Int32> {
-                    return (x: Int32) Int32 {
-                        return x * k
+                    (x: Int32) Int32 {
+                        x * k
                     }
                 }
             }
             pub Self: Any {
                 pub me: () Self {
-                    return this
+                    this
                 }
             }
             pub Cb: Any {
@@ -92,7 +92,7 @@ class EscapePassTest {
             }
             pub Impl: Cb {
                 override pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
-                    return f(1)
+                    f(1)
                 }
             }
             """,
@@ -109,17 +109,17 @@ class EscapePassTest {
         val p = snippet(
             """
             pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                return f(x)
+                f(x)
             }
             pub direct: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-                return f(x)
+                f(x)
             }
             pub useIt: () Int32 {
                 h: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
-                return h((y: Int32) Int32 {
-                    return y
+                h((y: Int32) Int32 {
+                    y
                 }, 1) + direct((y: Int32) Int32 {
-                    return y
+                    y
                 }, 2)
             }
             """,
@@ -144,10 +144,10 @@ class EscapePassTest {
                 middle(o)
             }
             pub call: (c: Fx<Tuple0, Int32>) Int32 {
-                return c()
+                c()
             }
             pub relay: (q: Fx<Tuple0, Int32>) Int32 {
-                return call(q)
+                call(q)
             }
             """,
         )
@@ -190,7 +190,7 @@ class EscapePassTest {
                     remember(this)
                 }
                 pub size: () Int32 {
-                    return n
+                    n
                 }
             }
             mut NODES: List<Node> = List<Node> {}
@@ -200,18 +200,18 @@ class EscapePassTest {
             pub Pt: Struct {
                 pub x: Int32 = 0
                 pub same: () Pt {
-                    return this
+                    this
                 }
             }
             pub Named: Any {
                 pub name: () Str;
                 pub me: () Named {
-                    return this
+                    this
                 }
             }
             pub Tag: Named {
                 override pub name: () Str {
-                    return "tag"
+                    "tag"
                 }
             }
             """,
@@ -234,23 +234,23 @@ class EscapePassTest {
                 pub k: Int32 = 0
                 pub @op_add: (f: Fx<Tuple0, Int32>) Int32 {
                     GF = f
-                    return 0
+                    0
                 }
             }
             pub Caller: Struct {
                 pub k: Int32 = 0
                 pub @op_add: (f: Fx<Tuple0, Int32>) Int32 {
-                    return f()
+                    f()
                 }
             }
             pub viaOp: (f: Fx<Tuple0, Int32>) Int32 {
-                return Keeper { } + f
+                Keeper { } + f
             }
             pub passOn: (g: Fx<Tuple0, Int32>) Int32 {
-                return Caller { } + g
+                Caller { } + g
             }
             pub grab: (v: View<Int32>) Int32 {
-                return viaOp(() Int32 { return v[0] })
+                viaOp(() Int32 { v[0] })
             }
             """,
         )

@@ -11,15 +11,15 @@ Dog: Noisy {
     pub label: Str
 
     pub speak: () Str {
-        return "woof"
+        "woof"
     }
 
     pub name: () Str {
-        return label
+        label
     }
 
     pub loudness: () Int32 {
-        return 8
+        8
     }
 }
 
@@ -27,11 +27,11 @@ Cat: Speaker {
     pub label: Str
 
     pub speak: () Str {
-        return "meow"
+        "meow"
     }
 
     pub name: () Str {
-        return label
+        label
     }
 }
 
@@ -41,5 +41,5 @@ announce: (s: Speaker) Void {
 }
 
 noiseLevel: (s: Noisy) Int32 {
-    return s.loudness()
+    s.loudness()
 }

@@ -76,185 +76,185 @@ class ExternLiteralRunTest {
         pub @_extern(cpp = "l3::newBox", header = "l3.hxx") newBox: () Box;
 
         pub litW: () Int32 {
-            return w(5)
+            w(5)
         }
 
         pub litU: () Int32 {
-            return u(5)
+            u(5)
         }
 
         pub litB: () Int32 {
-            return b(5)
+            b(5)
         }
 
         pub litUb: () Int32 {
-            return ub(5)
+            ub(5)
         }
 
         pub litH: () Int32 {
-            return h(5)
+            h(5)
         }
 
         pub litSz: () Int32 {
-            return sz(5)
+            sz(5)
         }
 
         pub litF: () Int32 {
-            return f(1.5)
+            f(1.5)
         }
 
         pub litWidth64: () Int32 {
-            return width64(5)
+            width64(5)
         }
 
         pub litWidth8: () Int32 {
-            return width8(5)
+            width8(5)
         }
 
         pub litWidth16: () Int32 {
-            return width16(5)
+            width16(5)
         }
 
         pub namedW: () Int32 {
             n: Int64 = 5
-            return w(n)
+            w(n)
         }
 
         pub namedB: () Int32 {
             x: Int8 = 3
-            return b(x)
+            b(x)
         }
 
         pub sumW: () Int32 {
             n: Int64 = 5
-            return w(n + 1)
+            w(n + 1)
         }
 
         pub sumB: () Int32 {
             x: Int8 = 3
             y: Int8 = 4
-            return b(x + y)
+            b(x + y)
         }
 
         pub sumUb: () Int32 {
             ux: UInt8 = 3
-            return ub(ux + ux)
+            ub(ux + ux)
         }
 
         pub mulH: () Int32 {
             hx: Int16 = 3
-            return h(hx * hx)
+            h(hx * hx)
         }
 
         pub sumWidth8: () Int32 {
             x: Int8 = 3
             y: Int8 = 4
-            return width8(x + y)
+            width8(x + y)
         }
 
         pub mulWidth64: () Int32 {
             n: Int64 = 5
-            return width64(n * 2)
+            width64(n * 2)
         }
 
         pub negB: () Int32 {
             x: Int8 = 3
-            return b(-x)
+            b(-x)
         }
 
         pub negWidth8: () Int32 {
             x: Int8 = 3
-            return width8(-x)
+            width8(-x)
         }
 
         pub negW: () Int32 {
-            return lw(-5)
+            lw(-5)
         }
 
         pub ifW: () Int32 {
-            return lw(if gc { 5 } else { 6 })
+            lw(gc ? 5 : 6)
         }
 
         pub constW: () Int32 {
-            return lw(LIM)
+            lw(LIM)
         }
 
         pub litU32: () Int32 {
-            return u32(5)
+            u32(5)
         }
 
         pub wrappedWidth: () Int32 {
-            return mwidth(5)
+            mwidth(5)
         }
 
         pub lit2Width64: () Int32 {
-            return lwidth64(7)
+            lwidth64(7)
         }
 
         pub edgeUb: () Int32 {
-            return ub(255)
+            ub(255)
         }
 
         pub edgeB: () Int32 {
-            return b(-128) + b(127)
+            b(-128) + b(127)
         }
 
         pub edgeH: () Int32 {
-            return h(-32768)
+            h(-32768)
         }
 
         pub edgeU: () Int32 {
-            return u(9223372036854775807)
+            u(9223372036854775807)
         }
 
         pub edgeW: () Int32 {
-            return w(-9223372036854775807 - 1) + w(9223372036854775807)
+            w(-9223372036854775807 - 1) + w(9223372036854775807)
         }
 
         pub edgeF: () Int32 {
-            return f(3.4e38)
+            f(3.4e38)
         }
 
         pub edgeSz: () Int32 {
-            return sz(0)
+            sz(0)
         }
 
         pub sumLitW: () Int32 {
-            return w(2 + 3)
+            w(2 + 3)
         }
 
         pub litF64: () Int32 {
-            return f64(1.5)
+            f64(1.5)
         }
 
         pub litIsF64: () Int32 {
-            return isF64(2)
+            isF64(2)
         }
 
         pub litIsBool: () Int32 {
-            return isBool(true)
+            isBool(true)
         }
 
         pub litIsChar: () Int32 {
-            return isChar('a')
+            isChar('a')
         }
 
         pub litIsCStr: () Int32 {
-            return isCStr("abc")
+            isCStr("abc")
         }
 
         pub litIsU8: () Int32 {
-            return isU8(200)
+            isU8(200)
         }
 
         pub boxW: () Int32 {
             bx: Box = newBox()
-            return bx.w(5)
+            bx.w(5)
         }
 
         pub boxWidth: () Int32 {
             bx: Box = newBox()
-            return bx.width(5)
+            bx.width(5)
         }
         """,
     )

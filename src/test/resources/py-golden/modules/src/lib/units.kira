@@ -15,24 +15,24 @@ pub Meter: Any {
     pub mut read: (raw: Int32) Int32 {
         reads += 1
         calls += 1
-        return raw * SCALE
+        raw * SCALE
     }
 }
 
 pub bump: (by: Int32) Int32 {
     calls += by
     seen.add(by)
-    return calls
+    calls
 }
 
 pub bounded: (deg: Float64) Float64 {
-    return clamp(deg2rad(deg), -1.0, 1.0)
+    clamp(deg2rad(deg), -1.0, 1.0)
 }
 
 hidden: () Int32 {
-    return 7
+    7
 }
 
 pub shown: () Int32 {
-    return hidden() + 1
+    hidden() + 1
 }

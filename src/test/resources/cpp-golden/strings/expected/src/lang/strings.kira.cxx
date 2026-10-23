@@ -85,11 +85,7 @@ namespace strings
 
   kira::Str middle(const kira::Str& s)
   {
-      if(kira::str::length(s) < 2)
-      {
-          return "";
-      }
-      return kira::str::substring(s, 1, kira::str::length(s) - 1);
+      return kira::str::length(s) < 2 ? kira::Str("") : kira::str::substring(s, 1, kira::str::length(s) - 1);
   }
 }
 #include "kira/macro_pop.hxx"

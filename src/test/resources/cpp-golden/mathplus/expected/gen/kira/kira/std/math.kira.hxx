@@ -26,30 +26,12 @@ namespace kira::math
 
   inline std::int32_t sign(double value)
   {
-      if(value > 0.0)
-      {
-          return 1;
-      }
-      else if(value < 0.0)
-      {
-          return -1;
-      }
-      else
-      {
-          return 0;
-      }
+      return value > 0.0 ? 1 : value < 0.0 ? -1 : 0;
   }
 
   inline double step(double edge, double value)
   {
-      if(value >= edge)
-      {
-          return 1.0;
-      }
-      else
-      {
-          return 0.0;
-      }
+      return value >= edge ? 1.0 : 0.0;
   }
 
   inline double inverseLerp(double a, double b, double value)

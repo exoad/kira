@@ -23,7 +23,7 @@ class UnsupportedBindingTest {
             "project:\n  name: unsupported\nsrcDir: src\nbuild:\n  target: py\ndependencies:\n  kira_stdlib:\n    path: ${stdlib.absolutePath.replace('\\', '/')}\n"
         )
         val main = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
-        main.writeText("kira.extra as extra\n\nmain: () Int32 {\n    return onlyPy() + onlyCpp()\n}\n")
+        main.writeText("kira.extra as extra\n\nmain: () Int32 {\n    onlyPy() + onlyCpp()\n}\n")
 
         val py = PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath)
         assertEquals(1, py.exitCode, py.all)
@@ -34,7 +34,7 @@ class UnsupportedBindingTest {
         assertTrue(cpp.all.contains("error: cpp.unsupported: 'onlyPy' is not supported on the C++ target: a rule of Python's"), cpp.all)
         assertFalse(cpp.all.contains("'onlyCpp'"), cpp.all)
 
-        main.writeText("kira.extra as extra\n\nmain: () Int32 {\n    return onlyPy()\n}\n")
+        main.writeText("kira.extra as extra\n\nmain: () Int32 {\n    onlyPy()\n}\n")
         assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
         assertTrue(File(dir, "out-py/src/app/main_kira.py").readText().contains("def _main():\n    return 7\n"))
     }
@@ -46,7 +46,7 @@ class UnsupportedBindingTest {
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
         File(dir, "kira.yaml").writeText("project:\n  name: unsupportedos\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
-            "kira.os as os\n\nmain: () Int32 {\n    d: Maybe<Str> = tempDir(\"x\")\n    p: Str = pythonExecutable()\n    return runInherit(@listOf(p))\n}\n"
+            "kira.os as os\n\nmain: () Int32 {\n    d: Maybe<Str> = tempDir(\"x\")\n    p: Str = pythonExecutable()\n    runInherit(@listOf(p))\n}\n"
         )
         val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
         assertEquals(1, cpp.exitCode, cpp.all)
@@ -90,9 +90,9 @@ class UnsupportedBindingTest {
         File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpyclasses\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
             "kira.regex as regex\nkira.random as random\nkira.csv as csv\nkira.http as http\nkira.args as args\n\n" +
-                "keep: (r: Regex, m: Maybe<Match>, g: Random, c: Maybe<CsvReader>) Int32 {\n    return 0\n}\n\n" +
-                "serves: (s: HttpServer, a: ArgSpec, p: Maybe<Parsed>) Int32 {\n    return 0\n}\n\n" +
-                "main: () Int32 {\n    return 0\n}\n"
+                "keep: (r: Regex, m: Maybe<Match>, g: Random, c: Maybe<CsvReader>) Int32 {\n    0\n}\n\n" +
+                "serves: (s: HttpServer, a: ArgSpec, p: Maybe<Parsed>) Int32 {\n    0\n}\n\n" +
+                "main: () Int32 {\n    0\n}\n"
         )
         val cpp = PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath)
         assertEquals(1, cpp.exitCode, cpp.all)
@@ -118,7 +118,7 @@ class UnsupportedBindingTest {
         val main = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
         main.writeText(
             "kira.http as http\nkira.args as args\n\n" +
-                "handle: (r: HttpRequest) HttpAnswer {\n    return HttpAnswer { status = 404 }\n}\n\n" +
+                "handle: (r: HttpRequest) HttpAnswer {\n    HttpAnswer { status = 404 }\n}\n\n" +
                 "main: () Int32 {\n    r: Maybe<HttpReply> = httpGet(\"http://h/\", 5)\n    ok: Bool = httpServer(\"\", 0, handle).isSome()\n" +
                 "    spec: ArgSpec = argSpec(\"tool\", \"\")\n    p: Parsed = spec.parse(@listOf(\"x\"))\n    if p.isSet(\"--x\") {\n        return 1\n    }\n    return 0\n}\n"
         )
@@ -132,7 +132,7 @@ class UnsupportedBindingTest {
             "'Parsed.isSet' is not supported on the C++ target: Python's argparse, py only",
         ).forEach { assertTrue(cpp.all.contains("error: cpp.unsupported: $it"), cpp.all) }
         assertEquals(0, PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out-py").absolutePath).exitCode)
-        main.writeText("kira.http as http\n\nmain: () Int32 {\n    a: HttpAnswer = HttpAnswer { status = 201 }\n    r: HttpReply = HttpReply { }\n    return a.status + r.status\n}\n")
+        main.writeText("kira.http as http\n\nmain: () Int32 {\n    a: HttpAnswer = HttpAnswer { status = 201 }\n    r: HttpReply = HttpReply { }\n    a.status + r.status\n}\n")
         assertEquals(0, PyTestSupport.cli(dir, "--target", "cpp", "--out", File(dir, "out-cpp").absolutePath).exitCode)
         assertTrue(File(dir, "out-cpp/kira/std/http.kira.hxx").readText().contains("struct HttpAnswer"))
     }

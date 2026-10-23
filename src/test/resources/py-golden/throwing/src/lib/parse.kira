@@ -5,12 +5,9 @@ pub number: (s: Str) Int64 {
     if v.isNone() {
         throw "not a number: ${s}"
     }
-    return v.unwrap()
+    v.unwrap()
 }
 
 pub checked: (x: Int32) Result<Int32, Str> {
-    if x < 0 {
-        return Result.error("negative: ${x}")
-    }
-    return Result.success(x * 2)
+    x < 0 ? Result.error("negative: ${x}") : Result.success(x * 2)
 }

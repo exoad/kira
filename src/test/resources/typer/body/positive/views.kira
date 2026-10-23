@@ -10,7 +10,7 @@ pub sum: (buf: View<UInt8>) UInt32 {
     for b: UInt8 in buf {
         s += b as UInt32
     }
-    return s
+    s
 }
 
 pub fill: (p: MutView<UInt8>, v: UInt8) Void {
@@ -19,7 +19,7 @@ pub fill: (p: MutView<UInt8>, v: UInt8) Void {
 }
 
 pub words: (text: View<Char>) Size {
-    return text.size()                     // @type Size call=MAGIC(View.size)
+    text.size()                     // @type Size call=MAGIC(View.size)
 }
 
 pub views: (text: View<Char>) Void {

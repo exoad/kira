@@ -6,12 +6,12 @@ mut seen: Map<Str, Int32> = Map<Str, Int32> { }
 
 next: () Int32 {
     ticks += 1
-    return ticks
+    ticks
 }
 
 nextKey: () Str {
     keyAt += 1
-    return "k${keyAt}"
+    "k${keyAt}"
 }
 
 keysOf: (m: Map<Str, Int32>) Str {
@@ -25,7 +25,7 @@ keysOf: (m: Map<Str, Int32>) Str {
         s = s + "${ks[i]}=${m.get(ks[i]).unwrapOr(-1)}"
         i += 1
     }
-    return "{" + s + "}"
+    "{" + s + "}"
 }
 
 valuesOf: (m: Map<Str, Int32>) Str {
@@ -36,7 +36,7 @@ valuesOf: (m: Map<Str, Int32>) Str {
         s = s + " ${vs[i]}"
         i += 1
     }
-    return "[" + s + " ]"
+    "[" + s + " ]"
 }
 
 bytesText: (b: Arr<UInt8>) Str {
@@ -46,14 +46,11 @@ bytesText: (b: Arr<UInt8>) Str {
         s = s + " ${b[i]}"
         i += 1
     }
-    return "bytes${s} (${b.size()})"
+    "bytes${s} (${b.size()})"
 }
 
 maybeText: (v: Maybe<Int32>) Str {
-    if v.isSome() {
-        return "some ${v.value}"
-    }
-    return "none"
+    v.isSome() ? "some ${v.value}" : "none"
 }
 
 Index: Any {
@@ -65,7 +62,7 @@ Index: Any {
             count += 1
             byName[name] = count
         }
-        return byName.get(name).value
+        byName.get(name).value
     }
 }
 

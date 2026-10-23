@@ -11,12 +11,16 @@ World: Any {
     pub mut pts: List<Pt> = List<Pt> { }
 
     pub above: (n: Int32) Pt {
+        mut result: Maybe<Pt> = null
+        mut found: Bool = false
         for p: Pt in pts {
             if p.x > n {
-                return p
+                result = p
+                found = true
+                break
             }
         }
-        return Pt { }
+        found ? result.value : Pt { }
     }
 
     pub sum: () Int32 {
@@ -24,47 +28,67 @@ World: Any {
         for p: Pt in pts {
             t += p.x
         }
-        return t
+        t
     }
 }
 
 GRID: List<List<Int32>> = @listOf(@listOf(1, 2), @listOf(3))
 
 first: (xs: List<Pt>) Pt {
+    mut result: Maybe<Pt> = null
+    mut found: Bool = false
     for p: Pt in xs {
-        return p
+        result = p
+        found = true
+        break
     }
-    return Pt { }
+    found ? result.value : Pt { }
 }
 
 firstOf: (v: View<Pt>) Pt {
+    mut result: Maybe<Pt> = null
+    mut found: Bool = false
     for p: Pt in v {
-        return p
+        result = p
+        found = true
+        break
     }
-    return Pt { }
+    found ? result.value : Pt { }
 }
 
 pick: (xs: List<Pt>, want: Int32) Pt {
+    mut result: Maybe<Pt> = null
+    mut found: Bool = false
     for p: Pt in xs {
         if p.x == want {
-            return if want > 0 { p } else { Pt { } }
+            result = want > 0 ? p : Pt { }
+            found = true
+            break
         }
     }
-    return Pt { }
+    found ? result.value : Pt { }
 }
 
 firstRow: (g: List<List<Int32>>) List<Int32> {
+    mut result: List<Int32> = List<Int32> { }
+    mut found: Bool = false
     for r: List<Int32> in g {
-        return r
+        result = r
+        found = true
+        break
     }
-    return List<Int32> { }
+    found ? result : List<Int32> { }
 }
 
 gridRow: () List<Int32> {
+    mut result: List<Int32> = List<Int32> { }
+    mut found: Bool = false
     for r: List<Int32> in GRID {
-        return r
+        result = r
+        found = true
+        break
     }
-    return List<Int32> { }
+    found ? result : List<Int32> { }
 }
 
 main: () Void {

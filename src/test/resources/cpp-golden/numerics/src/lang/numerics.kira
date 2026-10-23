@@ -10,104 +10,104 @@ pub TICK: Size = 1000
 pub BYTE: UInt8 = 200
 
 pub wrapAdd: (a: UInt8, b: UInt8) UInt8 {
-    return a + b
+    a + b
 }
 
 // 200 + 100 is 44 in UInt8, and 44 is not above 250. C++ alone says 300 is.
 pub overLimit: (a: UInt8, b: UInt8) Bool {
-    return a + b > 250
+    a + b > 250
 }
 
 pub negate: (a: Int8) Int8 {
-    return -a
+    -a
 }
 
 pub flip: (a: UInt16) UInt16 {
-    return ~a
+    ~a
 }
 
 pub lowByte: (v: UInt32) UInt8 {
-    return (v & 0xFF) as UInt8
+    (v & 0xFF) as UInt8
 }
 
 pub micros: (seconds: Int64) Int64 {
-    return seconds * 1000000
+    seconds * 1000000
 }
 
 // Only literals: typed Int64, so the product is not computed in Int32.
 pub trillion: () Int64 {
-    return 1000000 * 1000000
+    1000000 * 1000000
 }
 
 pub ticksIn: (n: Size) Size {
-    return n * TICK + 1
+    n * TICK + 1
 }
 
 // bibo's fixed3: the literals take v's type, so this is Float32 arithmetic.
 pub fixed3: (value: Float32) Str {
     neg: Bool = value < 0.0
-    v: Float32 = if neg { -value } else { value }
+    v: Float32 = neg ? -value : value
     scaled: Int32 = (v * 1000.0 + 0.5) as Int32
     whole: Int32 = scaled / 1000
     frac: Int32 = scaled % 1000
-    sign: Str = if neg { "-" } else { "" }
-    return "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
+    sign: Str = neg ? "-" : ""
+    "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
 }
 
 pub toInt: (v: Float64) Int32 {
-    return v as Int32
+    v as Int32
 }
 
 pub toByte: (v: Float32) UInt8 {
-    return v as UInt8
+    v as UInt8
 }
 
 pub narrow: (v: Int64) Int32 {
-    return v as Int32
+    v as Int32
 }
 
 pub widen: (v: Int32) Float64 {
-    return v as Float64
+    v as Float64
 }
 
 pub half: (v: Float64) Float32 {
-    return v as Float32
+    v as Float32
 }
 
 pub code: (c: Char) UInt8 {
-    return c as UInt8
+    c as UInt8
 }
 
 pub letter: (n: UInt8) Char {
-    return n as Char
+    n as Char
 }
 
 // Char compares as unsigned on every target: `char` is signed on x86 and
 // unsigned on ARM.
 pub before: (a: Char, b: Char) Bool {
-    return a < b
+    a < b
 }
 
 pub ratio: (a: Int32, b: Int32) Int32 {
-    return a / b
+    a / b
 }
 
 pub rem: (a: Int32, b: Int32) Int32 {
-    return a % b
+    a % b
 }
 
 pub tenth: (a: Int32) Int32 {
-    return a / 10
+    a / 10
 }
 
 pub shift: (v: UInt32, n: UInt32) UInt32 {
-    return v << n
+    v << n
 }
 
 pub eighth: (v: UInt32) UInt32 {
-    return v >> 3
+    v >> 3
 }
 
 pub scaled: (v: Float32) Float32 {
-    return v * 1000.0 + 0.5
+    v * 1000.0 + 0.5
 }

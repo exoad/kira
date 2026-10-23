@@ -14,10 +14,7 @@ show: (b: Box) Str {
 
 // An early return still leaves first; the last expression is the result.
 clamp: (x: Int32, hi: Int32) Int32 {
-    if x > hi {
-        return hi
-    }
-    x < 0 ? 0 : x
+    x > hi ? hi : x < 0 ? 0 : x
 }
 
 // A last if/else: each arm's last expression is the result.
@@ -111,11 +108,7 @@ total: (upTo: Int32, enabled: Bool) Int32 {
         for i: Int32 in 0..upTo {
             s += i
         }
-        if s > 5 {
-            s * 100
-        } else {
-            s
-        }
+        s > 5 ? s * 100 : s
     } else {
         -1
     }

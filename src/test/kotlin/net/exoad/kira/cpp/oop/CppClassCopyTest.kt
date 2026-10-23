@@ -63,7 +63,7 @@ class CppClassCopyTest {
                     lines.add("one long line that is not in the small string buffer 0000")
                     i += 1
                 }
-                return s
+                s
             }
         }
 
@@ -71,7 +71,7 @@ class CppClassCopyTest {
             a: Log = Log {}
             a.lines.add("the first line, long enough to live on the heap 0000000")
             b: Log = a
-            return a.append(b.lines[0])
+            a.append(b.lines[0])
         }
 
         pub Holder: Any {
@@ -83,7 +83,7 @@ class CppClassCopyTest {
 
             pub mut take: () Str {
                 item = null
-                return "a long added line that is not in the small string buffer"
+                "a long added line that is not in the small string buffer"
             }
         }
 
@@ -94,60 +94,60 @@ class CppClassCopyTest {
 
             // mutthis: its own field passed mut to a call that frees the Item (a segfault, an ASan heap-use-after-free).
             pub mut relabel: (h: Holder) Str {
-                return setAfter(h, mut label)
+                setAfter(h, mut label)
             }
 
             // recvfree: labels.add(h.take()) pushed onto the freed Item.
             pub mut grab: (h: Holder) Int32 {
                 labels.add(h.take())
-                return labels.size() as Int32
+                labels.size() as Int32
             }
 
             pub mut put: (s: Str) Int32 {
                 n = n + 1
-                return n
+                n
             }
 
             // implicitcall: put(h.take()) ran put on the freed Item.
             pub mut grab2: (h: Holder) Int32 {
-                return put(h.take())
+                put(h.take())
             }
         }
 
         // uaf3: consume(h, h.item.unwrap().label) with consume clearing h first (g++: freed heap bytes).
         pub consume: (h: Holder, s: Str) Str {
             h.clear()
-            return s
+            s
         }
 
         pub consumeOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
-            return consume(h, h.item.unwrap().label)
+            consume(h, h.item.unwrap().label)
         }
 
         pub setAfter: (h: Holder, mut s: Str) Str {
             h.clear()
             t: Str = s
             s = "y"
-            return t
+            t
         }
 
         pub relabelOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
-            return h.item.unwrap().relabel(h)
+            h.item.unwrap().relabel(h)
         }
 
         // mutparam: the handle parameter was a const kira::Rc<Item>& bound to h->item, which h.clear() dropped.
         pub relabelParam: (it: Item, h: Holder) Str {
-            return setAfter(h, mut it.label)
+            setAfter(h, mut it.label)
         }
 
         pub relabelParamOwn: () Str {
             h: Holder = Holder {}
             h.item = Item {}
-            return relabelParam(h.item.unwrap(), h)
+            relabelParam(h.item.unwrap(), h)
         }
 
         pub grabOwn: () Int32 {
@@ -156,7 +156,7 @@ class CppClassCopyTest {
             a: Int32 = h.item.unwrap().grab(h)
             h.item = Item {}
             b: Int32 = h.item.unwrap().grab2(h)
-            return a * 10 + b
+            a * 10 + b
         }
 
         // genalias4: b.take(g.n) with g = b printed 7 where Kira gives 1.
@@ -166,14 +166,14 @@ class CppClassCopyTest {
 
             pub mut take: (v: T) T {
                 n = m
-                return v
+                v
             }
         }
 
         pub twinOwn: () Int32 {
             b: Twin<Int32> = Twin<Int32> { n = 1, m = 7 }
             g: Twin<Int32> = b
-            return b.take(g.n)
+            b.take(g.n)
         }
 
         // An override taken by const& where its own declaration takes the Int32 by value (was vRef_).
@@ -186,7 +186,7 @@ class CppClassCopyTest {
 
             override pub mut take: (v: Int32) Int32 {
                 n = 100
-                return v
+                v
             }
         }
 
@@ -196,7 +196,7 @@ class CppClassCopyTest {
             g: Alias = a
             x: Int32 = f.take(a.n)
             y: Int32 = a.take(g.n)
-            return x * 1000 + y
+            x * 1000 + y
         }
 
         // selfkill2 and capthis: a method that drops its object's only owner, then reads itself.
@@ -214,13 +214,13 @@ class CppClassCopyTest {
 
             pub leave: () Str {
                 tree.clear()
-                return name
+                name
             }
 
             pub leaveLater: () Fx<Tuple0, Str> {
-                tree.clear()
-                return () Str {
-                    return name
+                tree.clear();
+                () Str {
+                    name
                 }
             }
         }
@@ -228,14 +228,14 @@ class CppClassCopyTest {
         pub leaveOwn: () Str {
             t: Tree = Tree {}
             t.kids.add(Kid { name = "a kid's name long enough to live on the heap 0000", tree = t })
-            return t.kids[0].leave()
+            t.kids[0].leave()
         }
 
         pub leaveLaterOwn: () Str {
             t: Tree = Tree {}
             t.kids.add(Kid { name = "a kid's name long enough to live on the heap 0000", tree = t })
             g: Fx<Tuple0, Str> = t.kids[0].leaveLater()
-            return g()
+            g()
         }
 
         // A class template's method that drops its own object's owner.
@@ -245,7 +245,7 @@ class CppClassCopyTest {
 
             pub detach: (owner: Node<T>) T {
                 owner.drop()
-                return value
+                value
             }
 
             pub mut drop: () Void {
@@ -256,7 +256,7 @@ class CppClassCopyTest {
         pub detachOwn: () Str {
             head: Node<Str> = Node<Str> { value = "head" }
             head.next = Node<Str> { value = "the next node's value, long enough for the heap 00" }
-            return head.next.unwrap().detach(head)
+            head.next.unwrap().detach(head)
         }
 
         // A trait call whose override drops the object the calling method runs on.
@@ -278,14 +278,14 @@ class CppClassCopyTest {
 
             pub run: () Int32 {
                 s.step()
-                return n
+                n
             }
         }
 
         pub runOwn: () Int32 {
             d: Dropper = Dropper {}
             d.spare = Runner { s = d, n = 42 }
-            return d.spare.unwrap().run()
+            d.spare.unwrap().run()
         }
 
         // A trait default body that drops its object, then calls it (refused as needing a hold, round 2).
@@ -294,7 +294,7 @@ class CppClassCopyTest {
             pub id: () Int32;
             pub leave: () Int32 {
                 drop()
-                return id()
+                id()
             }
         }
 
@@ -311,14 +311,14 @@ class CppClassCopyTest {
             }
 
             override pub id: () Int32 {
-                return k
+                k
             }
         }
 
         pub leaveHome: () Int32 {
             h: Home = Home {}
             h.leaf = Leaf { home = h, k = 42 }
-            return h.leaf.unwrap().leave()
+            h.leaf.unwrap().leave()
         }
 
         // The chain golden's has(): a loop over a field of this whose body makes a trait call iterates a copy.
@@ -328,7 +328,7 @@ class CppClassCopyTest {
 
         Stop: Behaviour {
             override pub id: () Str {
-                return "stop"
+                "stop"
             }
         }
 
@@ -341,20 +341,22 @@ class CppClassCopyTest {
             }
 
             pub mut has: (wanted: Str) Bool {
+                mut result: Bool = false
                 for b: Behaviour in loaded {
                     hits += 1
                     if b.id() == wanted {
-                        return true
+                        result = true
+                        break
                     }
                 }
-                return false
+                result
             }
         }
 
         pub chainHas: () Bool {
             c: Chain = Chain {}
             c.load()
-            return c.has("stop")
+            c.has("stop")
         }
 
         // A mut argument in an object a handle parameter holds (STABLE, rule M), the callee growing it through another handle.
@@ -373,12 +375,12 @@ class CppClassCopyTest {
 
         pub feed: (b: Bag, c: Bag) Int32 {
             both(c, mut b.items)
-            return b.items.size() as Int32
+            b.items.size() as Int32
         }
 
         pub feedOwn: () Int32 {
             b: Bag = Bag {}
-            return feed(b, b)
+            feed(b, b)
         }
 
         // fxself: a lambda assigning b.f while it runs as b.f (g++: freed heap bytes for its capture).
@@ -386,31 +388,31 @@ class CppClassCopyTest {
             pub mut f: Fx<Tuple0, Int32>
 
             pub mut run: () Int32 {
-                return f()
+                f()
             }
         }
 
         pub fxSelf: () Int32 {
-            b: FxBox = FxBox { f = () Int32 { return 1 } }
+            b: FxBox = FxBox { f = () Int32 { 1 } }
             b.f = () Int32 {
-                b.f = () Int32 { return 2 }
-                return 3
+                b.f = () Int32 { 2 }
+                3
             }
             x: Int32 = b.run()
-            return x * 10 + b.run()
+            x * 10 + b.run()
         }
 
         // lamparam: a lambda's const& parameter bound to h's Item's label, read after h.clear().
         pub callWith: (h: Holder, f: Fx<Tuple1<Str>, Str>) Str {
-            return f(h.item.unwrap().label)
+            f(h.item.unwrap().label)
         }
 
         pub lamParam: () Str {
             h: Holder = Holder {}
             h.item = Item {}
-            return callWith(h, (s: Str) Str {
+            callWith(h, (s: Str) Str {
                 h.clear()
-                return s
+                s
             })
         }
 
@@ -428,18 +430,18 @@ class CppClassCopyTest {
         }
 
         pub total: (v: View<Int32>) Int32 {
-            return v.get(0)
+            v.get(0)
         }
 
         pub sumAfter: (xs: List<Int32>, b: IntBag) Int32 {
             b.grow()
-            return total(xs.view())
+            total(xs.view())
         }
 
         pub sumAfterOwn: () Int32 {
             b: IntBag = IntBag {}
             b.items.add(5)
-            return sumAfter(b.items, b)
+            sumAfter(b.items, b)
         }
 
         // loopfresh: loops over storage only a temporary keeps alive, bodies that build and drop objects.
@@ -453,13 +455,13 @@ class CppClassCopyTest {
             b: Bin = Bin {}
             b.labels.add("first label, long enough for the heap 000000000000")
             b.labels.add("second label, long enough for the heap 00000000000")
-            return b
+            b
         }
 
         pub makeBins: () List<Bin> {
             mut xs: List<Bin> = List<Bin> {}
             xs.add(makeBin())
-            return xs
+            xs
         }
 
         pub walkFresh: () Int32 {
@@ -474,7 +476,7 @@ class CppClassCopyTest {
             for s: Str in makeBin().labels.toArr() {
                 n = n + 1
             }
-            return n
+            n
         }
 
         // fxparam3 and fxparam2: a template Fx parameter bound to an Fx an object holds, which the code it runs replaces.
@@ -483,31 +485,31 @@ class CppClassCopyTest {
         }
 
         pub callIt: (g: Fx<Tuple0, Str>) Str {
-            return g()
+            g()
         }
 
         pub callAfter: (g: Fx<Tuple0, Str>, b: FBox) Str {
             b.f = () Str {
-                return "other"
+                "other"
             }
-            return g()
+            g()
         }
 
         pub fxParams: () Str {
-            b: FBox = FBox { f = () Str { return "init" } }
+            b: FBox = FBox { f = () Str { "init" } }
             b.f = () Str {
                 b.f = () Str {
-                    return "other"
+                    "other"
                 }
-                return "captured"
+                "captured"
             }
             first: Str = callIt(b.f)
             b.f = () Str {
-                return "passed"
+                "passed"
             }
             c: FBox = b
             second: Str = callAfter(c.f, b)
-            return "${'$'}{first}:${'$'}{second}"
+            "${'$'}{first}:${'$'}{second}"
         }
 
         // capparam: a lambda made after the body renames the object its parameter was bound into.
@@ -515,9 +517,9 @@ class CppClassCopyTest {
             pub mut name: Str
 
             pub mut set: (s: Str) Fx<Tuple0, Str> {
-                name = "b"
-                return () Str {
-                    return s
+                name = "b";
+                () Str {
+                    s
                 }
             }
         }
@@ -526,7 +528,7 @@ class CppClassCopyTest {
             c: Renamer = Renamer { "a" }
             d: Renamer = c
             g: Fx<Tuple0, Str> = c.set(d.name)
-            return g()
+            g()
         }
 
         // capparamfree: the same after a call that frees the object (MSVC ASan: heap-use-after-free).
@@ -543,9 +545,9 @@ class CppClassCopyTest {
         }
 
         pub later: (s: Str, h: Shelf) Fx<Tuple0, Str> {
-            h.reset()
-            return () Str {
-                return s
+            h.reset();
+            () Str {
+                s
             }
         }
 
@@ -554,7 +556,7 @@ class CppClassCopyTest {
             c.item = Label { "a long label that is not in the small string buffer 0000000" }
             h: Shelf = c
             g: Fx<Tuple0, Str> = later(c.item.label, h)
-            return g()
+            g()
         }
 
         // genrecv: a type-parameter receiver the arguments replace (it printed `other`).
@@ -566,7 +568,7 @@ class CppClassCopyTest {
             pub name: Str
 
             override pub greet: (n: Int32) Str {
-                return name
+                name
             }
         }
 
@@ -575,18 +577,18 @@ class CppClassCopyTest {
 
             pub mut reset: () Int32 {
                 kid = Pup { "other" }
-                return 7
+                7
             }
         }
 
         pub greetIt<T: Greets>: (x: T, h: Crib) Str {
-            return x.greet(h.reset())
+            x.greet(h.reset())
         }
 
         pub genRecv: () Str {
             c: Crib = Crib {}
             c.kid = Pup { "a long pup name that is not in the small string buffer 0000" }
-            return greetIt<Pup>(c.kid, c)
+            greetIt<Pup>(c.kid, c)
         }
 
         // A type-parameter field receiver beside arguments that replace another object's field.
@@ -594,20 +596,20 @@ class CppClassCopyTest {
             pub mut item: T
 
             pub poke: (h: Crib) Str {
-                return item.greet(h.reset())
+                item.greet(h.reset())
             }
         }
 
         pub keepPoke: () Str {
             c: Crib = Crib {}
             k: Keep<Pup> = Keep<Pup> { item = c.kid }
-            return k.poke(c)
+            k.poke(c)
         }
 
         // dispstr: a Str in object storage given to a dispatched call beside a List of Fx that frees it.
         pub Base: Any {
             pub fire: (s: Str, fs: List<Fx<Tuple0, Void>>) Str {
-                return "base"
+                "base"
             }
         }
 
@@ -616,7 +618,7 @@ class CppClassCopyTest {
                 for f: Fx<Tuple0, Void> in fs {
                     f()
                 }
-                return s
+                s
             }
         }
 
@@ -625,7 +627,7 @@ class CppClassCopyTest {
             c.item = Item {}
             h: Holder = c
             r: Base = Sub {}
-            return r.fire(c.item.unwrap().label, @listOf(() Void {
+            r.fire(c.item.unwrap().label, @listOf(() Void {
                 h.clear()
             }))
         }
@@ -640,7 +642,7 @@ class CppClassCopyTest {
 
             override pub run: (f: Fx<Tuple0, Void>) Int32 {
                 f()
-                return k
+                k
             }
         }
 
@@ -653,13 +655,13 @@ class CppClassCopyTest {
         }
 
         pub go: (s: Slot, spare: Runs) Int32 {
-            return s.r.run(() Void {
+            s.r.run(() Void {
                 s.clear(spare)
             })
         }
 
         pub goParam: (r: Runs, s: Slot, spare: Runs) Int32 {
-            return r.run(() Void {
+            r.run(() Void {
                 s.clear(spare)
             })
         }
@@ -669,7 +671,7 @@ class CppClassCopyTest {
             a: Int32 = go(s, R1 { k = 22 })
             s.r = R1 { k = 33 }
             b: Int32 = goParam(s.r, s, R1 { k = 44 })
-            return a * 100 + b
+            a * 100 + b
         }
 
         // w2-5 minor #0 (alb): an element reached through a call result's handle, read by a callee after it frees
@@ -679,12 +681,12 @@ class CppClassCopyTest {
         }
 
         pub pick: (h: H) H {
-            return h
+            h
         }
 
         pub readAfterH: (s: Str, h: H) Int32 {
             h.items = List<Str> {}
-            return s.length() as Int32
+            s.length() as Int32
         }
 
         pub readAfterHOwn: () Int32 {
@@ -693,7 +695,7 @@ class CppClassCopyTest {
             a: Int32 = readAfterH(pick(h).items.get(0), h)
             h.items.add("$ALB")
             b: Int32 = readAfterH(pick(h).items[0], h)
-            return a * 1000 + b
+            a * 1000 + b
         }
         """,
     )
@@ -821,7 +823,7 @@ class CppClassCopyTest {
                 bump(mut h.item.count, () Void {
                     c.reset()
                 })
-                return h.item.count
+                h.item.count
             }
             """,
         )
@@ -854,7 +856,7 @@ class CppClassCopyTest {
                 h: Box = Box {}
                 bump(mut h.item.count, () Void {
                 })
-                return h.item.count
+                h.item.count
             }
             """,
         )
@@ -919,7 +921,7 @@ class CppClassCopyTest {
                 c: Box = h
                 fs: List<Fx<Tuple0, Void>> = @listOf(() Void { c.reset() })
                 b.bump(mut h.item.count, fs)
-                return h.item.count
+                h.item.count
             }
             """,
         )
@@ -931,11 +933,11 @@ class CppClassCopyTest {
         // parameter: each is accepted, and no definition copies a parameter at entry any more. The copy is the
         // caller's (W2.3's policy), spelled by W2.6 at an extern's call.
         val programs = listOf(
-            "pub later: (s: Str, h: Box) Int32 {\n    return measure(s, () Void {\n        h.reset()\n    })\n}",
-            "pub direct: (s: Str, h: Box) Int32 {\n    return plain(s)\n}",
-            "pub sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = @listOf(1, 2)\n    return sumAll(s, xs)\n}",
-            "pub inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub later: (c: Box, h: Box) Int32 {\n    return inspect(c.item, () Void {\n        h.reset()\n    })\n}",
-            "pub later: (c: Box, h: Box) Int32 {\n    return measure(c.item.label, () Void {\n        h.reset()\n    })\n}",
+            "pub later: (s: Str, h: Box) Int32 {\n    measure(s, () Void {\n        h.reset()\n    })\n}",
+            "pub direct: (s: Str, h: Box) Int32 {\n    plain(s)\n}",
+            "pub sumAll: (s: Str, xs: List<Int32>) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    xs: List<Int32> = @listOf(1, 2)\n    sumAll(s, xs)\n}",
+            "pub inspect: (it: Item, f: Fx<Tuple0, Void>) Int32;\n\npub later: (c: Box, h: Box) Int32 {\n    inspect(c.item, () Void {\n        h.reset()\n    })\n}",
+            "pub later: (c: Box, h: Box) Int32 {\n    measure(c.item.label, () Void {\n        h.reset()\n    })\n}",
         ) + holders.map { (_, param, build) ->
             "$wrap\n\npub measureHeld: (s: Str, $param) Int32;\n\npub later: (s: Str, c: Box) Int32 {\n    $build\n    return measureHeld(s, held)\n}"
         }
@@ -972,7 +974,7 @@ class CppClassCopyTest {
                     c.grow()
                     n = n + 1
                 }
-                return n
+                n
             }
             """,
         )
@@ -989,7 +991,7 @@ class CppClassCopyTest {
                         c.grow()
                         n = n + 1
                     }
-                    return n
+                    n
                 }
             }
             """,
@@ -1034,11 +1036,11 @@ class CppClassCopyTest {
 
                 pub mut replace: (v: T) Int32 {
                     item = v
-                    return 7
+                    7
                 }
 
                 pub mut poke: (v: T) Str {
-                    return item.greet(replace(v))
+                    item.greet(replace(v))
                 }
             }
             """,
@@ -1064,7 +1066,7 @@ class CppClassCopyTest {
             }
 
             pub make: () X {
-                return X { n = 1 }
+                X { n = 1 }
             }
             """,
         )
@@ -1095,7 +1097,7 @@ class CppClassCopyTest {
                 }
 
                 pub make: () X {
-                    return X { n = 1 }
+                    X { n = 1 }
                 }
                 """,
             ),
@@ -1109,11 +1111,11 @@ class CppClassCopyTest {
         // the classes part, it is the checker's bug, reported as cpp.internal, and never lowered as it is.
         val program = """
             pub makeList: () List<Int32> {
-                return List<Int32> {}
+                List<Int32> {}
             }
 
             pub boxed: () Int32 {
-                return Ref<View<Int32>> { value = makeList().view() }.value.get(0)
+                Ref<View<Int32>> { value = makeList().view() }.value.get(0)
             }
         """
         val diagnostics = try {

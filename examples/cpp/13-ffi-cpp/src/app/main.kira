@@ -13,5 +13,5 @@ main: () Int32 {
     countTo(mut count, 7)
     trace(count)
     trace(LIMIT)
-    return 0
+    0
 }

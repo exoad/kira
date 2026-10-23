@@ -8,7 +8,7 @@ Cell: Any {
 
     pub mut bump: () Int32 {
         count += 1
-        return count
+        count
     }
 }
 
@@ -17,31 +17,17 @@ Pair: Any {
     pub b: Str
 
     pub swapped: () Str {
-        return "${b}${a}"
+        "${b}${a}"
     }
 }
 
 grade: (n: Int32) Str {
-    if n >= 90 {
-        return "A"
-    } else if n >= 75 {
-        return "B"
-    } else if n >= 50 {
-        return "C"
-    } else {
-        return "F"
-    }
+    n >= 90 ? "A" : n >= 75 ? "B" : n >= 50 ? "C" : "F"
 }
 
 sign: (n: Int32) Int32 {
-    s: Int32 = if n > 0 {
-        1
-    } else if n < 0 {
-        -1
-    } else {
-        0
-    }
-    return s
+    s: Int32 = n > 0 ? 1 : n < 0 ? -1 : 0
+    s
 }
 
 sumOdd: (limit: Int32) Int32 {
@@ -57,7 +43,7 @@ sumOdd: (limit: Int32) Int32 {
         }
         total += i
     }
-    return total
+    total
 }
 
 main: () Void {

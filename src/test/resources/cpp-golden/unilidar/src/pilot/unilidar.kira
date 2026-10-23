@@ -33,14 +33,14 @@ pub @_const crc32: (buf: View<UInt8>) UInt32 {
     for b: UInt8 in buf {
         crc ^= b as UInt32
         for bit: Int32 in 0..8 {
-            crc = if (crc & 1) != 0 { (crc >> 1) ^ 0xEDB88320 } else { crc >> 1 }
+            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
         }
     }
-    return ~crc
+    ~crc
 }
 
 pub @_const readU32: (p: View<UInt8>) UInt32 {
-    return (p[0] as UInt32) | ((p[1] as UInt32) << 8) | ((p[2] as UInt32) << 16) | ((p[3] as UInt32) << 24)
+    (p[0] as UInt32) | ((p[1] as UInt32) << 8) | ((p[2] as UInt32) << 16) | ((p[3] as UInt32) << 24)
 }
 
 pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
@@ -64,30 +64,27 @@ pub @_const command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
     writeU32(p.from(20), crc32(p.slice(12, 8)))
     p[30] = TAIL[0]
     p[31] = TAIL[1]
-    return p
+    p
 }
 
 pub @_const userCmd: (cmdType: UInt32, cmdValue: UInt32) Frame {
-    return command(TYPE_USER_CMD, cmdType, cmdValue)
+    command(TYPE_USER_CMD, cmdType, cmdValue)
 }
 
 pub @_const standby: () Frame {
-    return userCmd(USER_CMD_STANDBY, STANDBY_ON)
+    userCmd(USER_CMD_STANDBY, STANDBY_ON)
 }
 
 pub @_const start: () Frame {
-    return userCmd(USER_CMD_STANDBY, STANDBY_OFF)
+    userCmd(USER_CMD_STANDBY, STANDBY_OFF)
 }
 
 pub @_const versionRequest: () Frame {
-    return command(TYPE_COMMAND, CMD_VERSION_GET, 0)
+    command(TYPE_COMMAND, CMD_VERSION_GET, 0)
 }
 
 pub @_const autoStandbyFrame: (value: UInt32) Maybe<Frame> {
-    if value > 1 {
-        return null
-    }
-    return userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value)
+    value > 1 ? null : userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value)
 }
 
 pub Header: Struct {
@@ -98,38 +95,54 @@ pub Header: Struct {
 // True for ONE PACKET: the magic, and a stated size equal to its own length.
 pub @_const readHeader: (buf: View<UInt8>, mut out: Header) Bool {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
-        return false
-    }
-    for i: Size in 0..MAGIC.size() {
-        if buf[i] != MAGIC[i] {
-            return false
+        false
+    } else {
+        mut result: Bool = false
+        mut found: Bool = false
+        for i: Size in 0..MAGIC.size() {
+            if buf[i] != MAGIC[i] {
+                result = false
+                found = true
+                break
+            }
+        }
+        if found {
+            result
+        } else {
+            out.type = readU32(buf.from(4))
+            out.size = readU32(buf.from(8));
+            (out.size as Size) == buf.size()
         }
     }
-    out.type = readU32(buf.from(4))
-    out.size = readU32(buf.from(8))
-    return (out.size as Size) == buf.size()
 }
 
 pub @_const tailClosed: (buf: View<UInt8>) Bool {
     n: Size = buf.size()
-    return n >= 2 && buf[n - 2] == TAIL[0] && buf[n - 1] == TAIL[1]
+    n >= 2 && buf[n - 2] == TAIL[0] && buf[n - 1] == TAIL[1]
 }
 
 // The bytes of the whole packet at the start of buf, 0 for none.
 pub @_const packetAt: (buf: View<UInt8>) Size {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
-        return 0
-    }
-    for i: Size in 0..MAGIC.size() {
-        if buf[i] != MAGIC[i] {
-            return 0
+        0
+    } else {
+        mut result: Size = 0
+        mut found: Bool = false
+        for i: Size in 0..MAGIC.size() {
+            if buf[i] != MAGIC[i] {
+                result = 0
+                found = true
+                break
+            }
+        }
+        if found {
+            result
+        } else {
+            size: Size = readU32(buf.from(8)) as Size
+            size < HEADER_BYTES + TAIL_BYTES || size > buf.size() || !tailClosed(buf.slice(0, size)) ? 0
+                : size
         }
     }
-    size: Size = readU32(buf.from(8)) as Size
-    if size < HEADER_BYTES + TAIL_BYTES || size > buf.size() || !tailClosed(buf.slice(0, size)) {
-        return 0
-    }
-    return size
 }
 
 pub Walked: Struct {
@@ -153,5 +166,5 @@ pub @_const eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) 
         at += n
     }
     w.leftover = buf.size() - at
-    return w
+    w
 }

@@ -4,31 +4,32 @@ kira.test as test
 // kira:bytes' K5 additions: findBytes (bytes.find), crc16Xmodem (binascii.crc_hqx) and fromHex (bytes.fromhex).
 
 pub find: (data: List<UInt8>, pattern: List<UInt8>, start: Size) Int64 {
-    return findBytes(data, pattern, start)
+    findBytes(data, pattern, start)
 }
 
 // findBytes over a view of data from at, as a caller's slice lends it.
 pub findIn: (data: List<UInt8>, at: Size, pattern: List<UInt8>) Int64 {
-    return findBytes(data.from(at), pattern, 0)
+    findBytes(data.from(at), pattern, 0)
 }
 
 pub crc: (data: List<UInt8>, init: UInt16) UInt16 {
-    return crc16Xmodem(data, init)
+    crc16Xmodem(data, init)
 }
 
 pub hex: (text: Str) Maybe<List<UInt8>> {
-    return fromHex(text)
+    fromHex(text)
 }
 
 shown: (got: Maybe<List<UInt8>>) Str {
     if got.isNone() {
-        return "none"
+        "none"
+    } else {
+        mut parts: List<Str> = @listOf()
+        for b: UInt8 in got.value {
+            parts.add(b.toHex())
+        }
+        "[" + parts.joinToString(" ") + "]"
     }
-    mut parts: List<Str> = @listOf()
-    for b: UInt8 in got.value {
-        parts.add(b.toHex())
-    }
-    return "[" + parts.joinToString(" ") + "]"
 }
 
 // Each text's fromHex shown, one call at a time, joined by spaces.
@@ -37,7 +38,7 @@ hexes: (texts: List<Str>) Str {
     for text: Str in texts {
         parts.add(shown(fromHex(text)))
     }
-    return parts.joinToString(" ")
+    parts.joinToString(" ")
 }
 
 pub main: () Int32 {
@@ -59,5 +60,5 @@ pub main: () Int32 {
     t.checkStr(hexes(@listOf("", "   ")), "[] []", "no pairs at all")
     t.checkStr(hexes(@listOf("0a 0", "0 a", "zz")), "none none none", "an odd digit, a space inside a pair, a letter")
     t.checkStr(hexes(@listOf("0x10", "0a ")), "none none", "a prefix, a space that is not ASCII's")
-    return t.finish()
+    t.finish()
 }

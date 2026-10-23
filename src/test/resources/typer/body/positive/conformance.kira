@@ -13,11 +13,11 @@ pub Circle: Shape, Named {
     pub radius: Int32
 
     override pub area: () Int32 {
-        return 3 * radius * radius
+        3 * radius * radius
     }
 
     override pub label: () Str {
-        return "circle"
+        "circle"
     }
 }
 
@@ -25,7 +25,7 @@ pub Square: Shape {
     pub side: Int32
 
     override pub area: () Int32 {
-        return side * side
+        side * side
     }
 }
 
@@ -55,15 +55,12 @@ pub narrowing: (s: Shape, m: Maybe<Int32>) Int32 {
     } else {
         x: Int32 = m                       // @type Int32 place=Param(m) @ m
     }
-    tag: Str = if s == Named {
-        s.label()                          // @type Named place=Param(s) @ s
-    } else {
-        ""
-    }
-    if s != Circle {
-        return 0
-    }
-    return s.radius                        // @type Circle place=Param(s) @ s
+    tag: Str = s == Named
+        ? s.label()                        // @type Named place=Param(s) @ s
+        : ""
+    s != Circle
+        ? 0
+        : s.radius                         // @type Circle place=Param(s) @ s
 }
 
 pub unchanged: (s: Shape, mut q: Shape) Int32 {
@@ -77,7 +74,7 @@ pub unchanged: (s: Shape, mut q: Shape) Int32 {
     if s == Circle || s == Square {
         z: Shape = s                       // @type Shape place=Param(s) @ s
     }
-    return 0
+    0
 }
 
 // A block that ends in a throw, a continue or a break leaves too, whatever runs before it.
@@ -99,5 +96,5 @@ pub leaving: (s: Shape, t: Shape, m: Maybe<Int32>, k: Int32) Int32 {
         }
         total += t.side                    // @type Square place=Param(t) @ t
     }
-    return total
+    total
 }

@@ -30,7 +30,7 @@ class CppProfileAndBindingUseTest {
             if v < 0 {
                 throw "negative"
             }
-            return v
+            v
         }
 
         pub reply: (servo: Int32, mut out: StrBuf<16>) Void {
@@ -108,8 +108,8 @@ class CppProfileAndBindingUseTest {
 
     @Test
     fun anIncludeGoesWhereTheCodeUsingItIs() {
-        val lib = Module("inc:lib", "pub root: (x: Float64) Float64 {\n    return sqrt(x)\n}")
-        val app = Module("inc:app", "pub root2: (x: Float64) Float64 {\n    return sqrt(x)\n}")
+        val lib = Module("inc:lib", "pub root: (x: Float64) Float64 {\n    sqrt(x)\n}")
+        val app = Module("inc:app", "pub root2: (x: Float64) Float64 {\n    sqrt(x)\n}")
         val tree = CppExprTestSupport.emit("includes", listOf(lib, app), CppOptions(lineDirectives = false, headerOnly = listOf("inc:lib")))
         assertTrue(tree.header(lib).contains("#include <cmath>\n"), "header-placed code includes in the header, a system header in angle brackets:\n${tree.header(lib)}")
         assertTrue(!tree.header(app).contains("cmath"), "source-placed code does not:\n${tree.header(app)}")
@@ -130,7 +130,7 @@ class CppProfileAndBindingUseTest {
                 pub IP: Str = "192.168.1.62"
 
                 pub n: (s: Str) Size {
-                    return IP.length() + s.length()
+                    IP.length() + s.length()
                 }
                 """,
             ),

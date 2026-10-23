@@ -38,7 +38,7 @@ class OperatorMemberCollectTest {
                 """
                 pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                    pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
                 }
                 apply: (a: V2, b: V2) Void {
                     c: V2 = a.@_op_add_(b)
@@ -56,7 +56,7 @@ class OperatorMemberCollectTest {
                 """
                 pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
                 """
             )
@@ -80,7 +80,7 @@ class OperatorMemberCollectTest {
                     pub x: Int32
                 }
                 pub @op_add: (a: Point, b: Point) Point {
-                    return Point { a.x + b.x }
+                    Point { a.x + b.x }
                 }
                 """
             )
@@ -99,8 +99,8 @@ class OperatorMemberCollectTest {
                 """
                 pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
-                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
                 """
             )
@@ -130,10 +130,10 @@ class OperatorMemberCollectTest {
                 """
                 pub Base: Any {
                     pub n: Int32 = 0
-                    pub @_op_eq_: (other: Base) Bool { return true }
+                    pub @_op_eq_: (other: Base) Bool { true }
                 }
                 pub Leaf: Base {
-                    override pub @_op_eq_: (other: Base) Bool { return false }
+                    override pub @_op_eq_: (other: Base) Bool { false }
                 }
                 """
             )
@@ -151,10 +151,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub @_op_eq_: (other: Base) Bool { return true }
+                    pub @_op_eq_: (other: Base) Bool { true }
                 }
                 pub Leaf: Base {
-                    pub @_op_eq_: (other: Base) Bool { return false }
+                    pub @_op_eq_: (other: Base) Bool { false }
                 }
                 """
             )
@@ -168,7 +168,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Lone: Any {
-                    override pub @_op_eq_: (other: Lone) Bool { return true }
+                    override pub @_op_eq_: (other: Lone) Bool { true }
                 }
                 """
             )
@@ -190,7 +190,7 @@ class OperatorMemberCollectTest {
                     pub x: Float32 = 0.0
                 }
                 pub @_op_add_: (a: V2, b: V2) V2 {
-                    return V2 { a.x + b.x }
+                    V2 { a.x + b.x }
                 }
                 """
             )
@@ -210,7 +210,7 @@ class OperatorMemberCollectTest {
                     pub x: Int32
                 }
                 pub @op_add: (a: Point, b: Point) Point {
-                    return Point { a.x + b.x }
+                    Point { a.x + b.x }
                 }
                 """
             )
@@ -228,7 +228,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub @_op_eq_: (other: Base) Bool { return true }
+                    pub @_op_eq_: (other: Base) Bool { true }
                 }
                 pub Eq<T>: Any {
                     pub @_op_eq_: (other: T) Bool
@@ -249,7 +249,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub name: () Str { return "base" }
+                    pub name: () Str { "base" }
                 }
                 pub Named: Any {
                     pub name: (n: Int32) Str
@@ -270,7 +270,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub @_op_eq_: (other: Base) Bool { return true }
+                    pub @_op_eq_: (other: Base) Bool { true }
                 }
                 pub Eq<T>: Any {
                     pub @_op_eq_: (other: T) Bool
@@ -294,10 +294,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub DefA: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub DefB: Any {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub Both: DefA, DefB {
                 }
@@ -323,7 +323,7 @@ class OperatorMemberCollectTest {
                     pub @_op_eq_: (other: Str) Bool;
                 }
                 pub Leaf3: EqA, EqB {
-                    override pub @_op_eq_: (other: Int32) Bool { return true }
+                    override pub @_op_eq_: (other: Int32) Bool { true }
                 }
                 """
             )
@@ -344,7 +344,7 @@ class OperatorMemberCollectTest {
                     pub @_op_eq_: (other: Str) Bool;
                 }
                 pub Only: EqB {
-                    override pub @_op_eq_: (other: Int32) Bool { return true }
+                    override pub @_op_eq_: (other: Int32) Bool { true }
                 }
                 """
             )
@@ -363,10 +363,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base0: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub Mid: Base0 {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub Leaf: Mid {
                 }
@@ -395,10 +395,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub A: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub B: Any {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub T: A, B {
                 }
@@ -420,10 +420,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub A: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub B: Any {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub T: A, B {
                 }
@@ -457,7 +457,7 @@ class OperatorMemberCollectTest {
                 pub EqBoth: EqA, EqB {
                 }
                 pub Leaf: EqBoth {
-                    override pub @_op_eq_: (other: Int32) Bool { return true }
+                    override pub @_op_eq_: (other: Int32) Bool { true }
                 }
                 """
             )
@@ -482,15 +482,15 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub A: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub B: Any {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub T: A, B {
                 }
                 pub Base: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub C: Base, T {
                 }
@@ -519,7 +519,7 @@ class OperatorMemberCollectTest {
                     pub m: (x: Int32) Int32
                 }
                 pub T: A, B {
-                    override pub m: () Int32 { return 1 }
+                    override pub m: () Int32 { 1 }
                 }
                 pub C: T {
                 }
@@ -545,7 +545,7 @@ class OperatorMemberCollectTest {
                     pub m: (x: Int32) Int32
                 }
                 pub T: B, A {
-                    override pub m: () Int32 { return 1 }
+                    override pub m: () Int32 { 1 }
                 }
                 pub C: T {
                 }
@@ -570,7 +570,7 @@ class OperatorMemberCollectTest {
                     pub @_op_eq_: (other: Str) Bool;
                 }
                 pub EqBoth: EqA, EqB {
-                    override pub @_op_eq_: (other: Int32) Bool { return true }
+                    override pub @_op_eq_: (other: Int32) Bool { true }
                 }
                 pub C: EqBoth {
                 }
@@ -591,10 +591,10 @@ class OperatorMemberCollectTest {
         // not. Both orders must now conflict.
         val bodies = """
             pub A: Any {
-                pub m: () Int32 { return 1 }
+                pub m: () Int32 { 1 }
             }
             pub B: Any {
-                pub mut m: () Int32 { return 2 }
+                pub mut m: () Int32 { 2 }
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
@@ -629,7 +629,7 @@ class OperatorMemberCollectTest {
         // though the two `m`s disagree on their bound. Both orders must now conflict.
         val bounds = """
             pub X: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub A: Any {
                 pub m<U: X>: (u: U) U;
@@ -697,10 +697,10 @@ class OperatorMemberCollectTest {
         // 932/0, half-reverting round 5's fix. Both orders must conflict.
         val bounds = """
             pub X: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub Y: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub A: Any {
                 pub m<U: X>: (u: U) U;
@@ -726,7 +726,7 @@ class OperatorMemberCollectTest {
         // parent, so both orders are asserted.
         val bounds = """
             pub Marker<T>: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub A<T>: Any {
                 pub m<U: Marker<T>>: (u: U) U;
@@ -750,7 +750,7 @@ class OperatorMemberCollectTest {
         // different names, so this must never conflict -- with `ownMap` dropped it falsely does.
         val bounds = """
             pub Marker<T>: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub F: Any {
                 pub m<U: Marker<U>>: (u: U) U;
@@ -779,11 +779,11 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub P: Any {
-                    pub @_op_eq_: (o: Int32) Bool { return false }
-                    pub name: () Int32 { return 0 }
+                    pub @_op_eq_: (o: Int32) Bool { false }
+                    pub name: () Int32 { 0 }
                 }
                 pub Q: P {
-                    override pub @_op_eq_: (o: Int32) Bool { return true }
+                    override pub @_op_eq_: (o: Int32) Bool { true }
                     pub tag: () Int32;
                 }
                 """
@@ -889,7 +889,7 @@ class OperatorMemberCollectTest {
                     pub m: (t: T) Int32;
                 }
                 pub Base<T>: X<T> {
-                    override pub m: (t: T) Int32 { return 0 }
+                    override pub m: (t: T) Int32 { 0 }
                 }
                 pub Y: Any {
                     pub m: (t: Int32) Int32;
@@ -916,7 +916,7 @@ class OperatorMemberCollectTest {
                     pub m: (x: Int32) Int32;
                 }
                 pub TBad: P {
-                    override pub m: (x: Str) Int32 { return 1 }
+                    override pub m: (x: Str) Int32 { 1 }
                 }
                 pub UsesTBad: TBad {
                 }
@@ -965,12 +965,12 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub X: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub Base: X {
                 }
                 pub Y: Any {
-                    pub m: () Str { return "y" }
+                    pub m: () Str { "y" }
                 }
                 pub C: Base, Y {
                 }
@@ -992,12 +992,12 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub X<T>: Any {
-                    pub m: (t: T) Int32 { return 0 }
+                    pub m: (t: T) Int32 { 0 }
                 }
                 pub Base<T>: X<T> {
                 }
                 pub Y: Any {
-                    pub m: (t: Int32) Int32 { return 0 }
+                    pub m: (t: Int32) Int32 { 0 }
                 }
                 pub C1: Base<Int32>, Y {
                 }
@@ -1019,13 +1019,13 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Bs: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub Y: Any {
-                    pub m: () Str { return "y" }
+                    pub m: () Str { "y" }
                 }
                 pub D: Bs, Y {
-                    override pub m: () Int32 { return 2 }
+                    override pub m: () Int32 { 2 }
                 }
                 """
             )
@@ -1052,7 +1052,7 @@ class OperatorMemberCollectTest {
                     pub m: (x: Int32) Int32;
                 }
                 pub T: A, B {
-                    override pub m: () Int32 { return 1 }
+                    override pub m: () Int32 { 1 }
                 }
                 """
             )
@@ -1079,12 +1079,12 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub A: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub Mid: A {
                 }
                 pub Leaf: Mid {
-                    override pub m: (x: Int32) Int32 { return 2 }
+                    override pub m: (x: Int32) Int32 { 2 }
                 }
                 pub C: Leaf {
                 }
@@ -1148,7 +1148,7 @@ class OperatorMemberCollectTest {
             pub B: X<Str> {
             }
             pub Base: Any {
-                pub k: (t: Int32) Int32 { return 0 }
+                pub k: (t: Int32) Int32 { 0 }
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub C: Base, W {\n}") }
@@ -1173,7 +1173,7 @@ class OperatorMemberCollectTest {
             pub B: X<Str> {
             }
             pub Y: Any {
-                pub k: (t: Int32) Int32 { return 0 }
+                pub k: (t: Int32) Int32 { 0 }
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub C: W, Y {\n}") }
@@ -1200,7 +1200,7 @@ class OperatorMemberCollectTest {
             pub B: X<Str> {
             }
             pub Base: Any {
-                pub k: (t: Str) Int32 { return 0 }
+                pub k: (t: Str) Int32 { 0 }
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub W: A, B {\n}\npub V: W {\n}\npub C: Base, V {\n}") }
@@ -1231,11 +1231,11 @@ class OperatorMemberCollectTest {
             }
         """.trimIndent()
         val ab = phasesAAndB {
-            snippet("$bodies\npub W: A, B {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { return 0 }\n}")
+            snippet("$bodies\npub W: A, B {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { 0 }\n}")
         }
         assertTrue(ab.diagnostics.isNotEmpty(), "W: A, B must still refuse the program: ${render(ab)}")
         val ba = phasesAAndB {
-            snippet("$bodies\npub W: B, A {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { return 0 }\n}")
+            snippet("$bodies\npub W: B, A {\n}\npub C: W {\n    override pub k: (t: Int32) Int32 { 0 }\n}")
         }
         assertTrue(ba.diagnostics.isNotEmpty(), "W: B, A must still refuse the program: ${render(ba)}")
     }
@@ -1289,7 +1289,7 @@ class OperatorMemberCollectTest {
         // comparison that only ever looks at index 0 would also see them as the same.
         val bounds = """
             pub X: Any {
-                pub tag: () Int32 { return 0 }
+                pub tag: () Int32 { 0 }
             }
             pub A: Any {
                 pub m<U, V: X>: (u: U, v: V) V;
@@ -1318,10 +1318,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub P1: Any {
-                    pub m: () Int32 { return 1 }
+                    pub m: () Int32 { 1 }
                 }
                 pub P2: Any {
-                    pub m: (x: Int32) Int32 { return x }
+                    pub m: (x: Int32) Int32 { x }
                 }
                 pub A: P1 {
                 }
@@ -1352,7 +1352,7 @@ class OperatorMemberCollectTest {
                     pub m: (t: T) Int32;
                 }
                 pub A: P<Int32> {
-                    override pub m: (t: Int32) Int32 { return 0 }
+                    override pub m: (t: Int32) Int32 { 0 }
                 }
                 """
             )

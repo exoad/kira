@@ -8,11 +8,11 @@ show: (xs: Arr<Int32>) Str {
         }
         s = s + "${xs[i]}"
     }
-    return s + "]"
+    s + "]"
 }
 
 count: (s: Set<Str>) Size {
-    return s.size()
+    s.size()
 }
 
 drain: (mut q: Queue<Int32>) Int32 {
@@ -20,7 +20,7 @@ drain: (mut q: Queue<Int32>) Int32 {
     while !q.isEmpty() {
         t += q.dequeue().unwrapOr(0)
     }
-    return t
+    t
 }
 
 main: () Void {
