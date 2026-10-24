@@ -10,13 +10,8 @@ import net.exoad.kira.source.SourceContext
 import java.io.File
 
 /**
- * `kira-dialect stage3 [--check] PATH...`: stage 2's text to stage 3's. Each `x is T` is
- * `x == T`, and each `return` goes by [ReturnRewrite]'s rules: a body's last one is its value,
- * a guard an if/else, an if of one expression an arm a ternary, a loop's a result local and
- * `break`. Proved by the tree ([ReturnProof]: the old tree with the rewritten shapes equals the
- * new text's), a function whose proof fails is left as it was; then by the types: the new text,
- * typed with its group, has the errors the old did, by code. A return no rule covers is listed for a
- * hand fix (HAND), and so is a function the proof refused.
+ * `kira-dialect stage3 [--check] PATH...`: stage 2's text to stage 3's, `is` as `==` and the returns by [ReturnRewrite],
+ * proved by the tree ([ReturnProof]) and by the types (its group's errors kept); what is left is listed (HAND).
  */
 object Stage3 {
     /** The totals of one run, by rewrite. */

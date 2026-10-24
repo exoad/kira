@@ -111,10 +111,8 @@ object KotlinStrings {
     }
 
     /**
-     * Stage 2's Kira in a literal to stage 3's: read as a module, rewritten and proved by the tree
-     * as [Stage3] does a file, then written back as one edit, the span the two texts differ in.
-     * A literal that does not parse, holds a bare value at the top level, or has no return, if
-     * value or last if/else to rewrite is left; one whose functions keep a return is refused.
+     * Stage 2's Kira in a literal to stage 3's, as [Stage3] does a file, written back as one edit; a literal
+     * that does not parse or has nothing to rewrite is left, one that keeps a return is refused.
      */
     private fun stage3Kira(kira: String, path: String, source: String): Outcome? {
         if (!Regex("""\breturn\b|\bif\b""").containsMatchIn(kira)) return null

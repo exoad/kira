@@ -52,14 +52,8 @@ import net.exoad.kira.source.SourceContext
 import java.util.IdentityHashMap
 
 /**
- * Stage 3's return rewrites on one file's stage 2 text, by token edits: a body's last `return x`
- * is `x`; a guard `if c { return x }` and the code after it are `if c { x } else { rest }` (a
- * Void one's `if c { return }` is `if !c { rest }`); an if whose arms are one expression each, as
- * a value or a body's last if/else, is `c ? a : b`; a return inside a loop is a result local and
- * `break`; a return no shape reaches sets a result local and a `done` flag the code after it
- * checks. Each rewrite also records the tree it means ([expectedLists], [expectedNodes]), which
- * [ReturnProof] holds the new text's tree to. A function the rules do not cover keeps its
- * returns and is listed in [hand].
+ * Stage 3's return rewrites on one file's stage 2 text, by token edits, each with the tree it means for [ReturnProof];
+ * a function the rules do not cover keeps its returns and is listed in [hand].
  */
 class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
     /** [start, end) of the text replaced by [text]; its new lines take [originLine]'s indentation shift. */
@@ -435,11 +429,7 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
 
     // ---- blocks -----------------------------------------------------------------------------
 
-    /**
-     * How a block's returns go: [Mode.VALUE] a block whose end is its function's end, a return the
-     * value; [Mode.FLAG] a block code follows, a return setting the result and the done flag the
-     * code after it checks; [Mode.LOOP] a loop's body, a return setting them and `break`.
-     */
+    /** A block's returns: VALUE ends the function (a return is the value), FLAG has code after it (the result and flag set), LOOP a loop's body (them and `break`). */
     private enum class Mode { VALUE, FLAG, LOOP }
 
     /** The locals a return sets where it cannot be the value: the result (none in a Void function), the flag (none when `break` alone will do). */
@@ -454,11 +444,7 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
         Mode.LOOP -> loopBlock(stmts, c)
     }
 
-    /**
-     * A block whose end is its function's end: the first statement holding a return decides the
-     * shape (a last return, a guard, a loop, a last try, or the flag); with none, a last if/else
-     * or try still carries the value. The same list when nothing changes.
-     */
+    /** A block that ends its function: its first statement holding a return decides the shape, else a last if/else or try carries the value. */
     private fun valueBlock(stmts: List<Statement>, c: Ctx): List<Statement> {
         val i = stmts.indexOfFirst { hasReturn(it) }
         if (i < 0) {
@@ -717,11 +703,7 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
         return noComment(end(open), off(match(open)))
     }
 
-    /**
-     * A guard: an if holding returns with more code after it. The code goes into the one path
-     * that falls through (the else it lacks), so every return ends the function. Null when the
-     * if has no such single path: the flag's shape is left.
-     */
+    /** A guard: the code after the if goes into the else it lacks, its one path that falls through; null when it has no such one path. */
     private fun guard(s: IfSelectionStatement, rest: List<Statement>, c: Ctx, prev: Statement?): List<Statement>? {
         val arms = armsOf(s)
         val exits = arms.map { exits(it.stmts) }
@@ -860,11 +842,7 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
 
     // ---- ternaries ----------------------------------------------------------------------------
 
-    /**
-     * The if chain [arms] as `c ? a : d ? b : e`, edited in place; [vals] the arms' new values,
-     * and for a guard the value after it, the rest (tokens [restFirst]..[restLast]). A ternary in
-     * a first arm or a condition is put in parentheses.
-     */
+    /** The if chain [arms] (and a guard's rest, [restFirst]..[restLast]) as `c ? a : d ? b : e`, in place; [vals] the arms' values. */
     private fun ternary(arms: List<Arm>, vals: List<Expr>, restFirst: Int?, restLast: Int?, owner: ASTNode): TernaryExpr {
         val ifTok = arms[0].condFirst - 1
         val lastArm = arms.last()
@@ -1057,10 +1035,8 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
     // ---- the flag: returns no shape reaches --------------------------------------------------
 
     /**
-     * [s] holds returns the shapes above do not reach (a loop, a try with code after it, an if
-     * whose branches fall through): each sets the result (in a value function) and the done flag,
-     * declared before [s], and the code after [s] runs only when it is not set. A loop needs no
-     * flag when `break` alone gets to the end, and no zero when the value after it is a literal.
+     * [s]'s returns set a result and a done flag declared before it, and the code after runs when the flag is not set;
+     * a loop needs no flag when `break` alone gets to the end, and no zero when the value after it is a literal.
      */
     private fun flagged(s: Statement, rest: List<Statement>, c: Ctx): List<Statement> {
         val sTok = tok(s)

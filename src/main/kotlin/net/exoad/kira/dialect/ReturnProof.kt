@@ -6,9 +6,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.source.SourceContext
 
 /**
- * The stage 3 proof: the old text's tree, with each block and node [ReturnRewrite] rewrote read
- * as the rewrite says it now is, equals the new text's tree. A return the parser reads as a
- * body's last value ([ReturnStatement.implicit]) is the return it was written as.
+ * The stage 3 proof: the old tree, each block and node [ReturnRewrite] rewrote read as it says, equals the new text's;
+ * a return the parser reads as a body's last value ([ReturnStatement.implicit]) is the one written.
  */
 class ReturnProof(private val oc: SourceContext, private val nc: SourceContext, private val rw: ReturnRewrite) {
     /** The function the first difference is in, when it is in one. */
