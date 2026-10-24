@@ -1,0 +1,10 @@
+PROJECT: Project = Project { } with {
+    name = "hello"
+    srcDir = "src"
+    target = "cpp"
+    cpp = Cpp {
+        layout = "beside",
+        lineDirectives = false
+    }
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

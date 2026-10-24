@@ -1,4 +1,10 @@
 ffi.cpp.app.shape as shape
+ffi.cpp.app.shape.Box as Box
+ffi.cpp.app.shape.LIMIT as LIMIT
+ffi.cpp.app.shape.cLen as cLen
+ffi.cpp.app.shape.countTo as countTo
+ffi.cpp.app.shape.hypotSq as hypotSq
+ffi.cpp.app.shape.makeBox as makeBox
 
 // A Kira program over a C++ class, three C functions and a C macro constant, through extern.
 

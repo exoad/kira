@@ -1,6 +1,7 @@
 kira.json as json
 kira.sync as sync
 golden.py.reasons.app.parser as parser
+golden.py.reasons.app.parser.parsed as parsed
 
 // A stdlib call's reason is one per thread for the whole program, as C++ keeps it: main reads what a call in
 // another module left, another thread reads its own, and the next call that succeeds clears it.

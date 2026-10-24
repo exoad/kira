@@ -16,7 +16,5 @@ diag error types.assign.mismatch conway/app/grid.kira:45:26  argument 'index' ex
 diag error types.index.size conway/app/grid.kira:51:43  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
 diag error types.assign.mismatch conway/app/grid.kira:52:23  argument 'index' expects Size, but this is Int32.
 diag error types.index.size conway/app/grid.kira:63:26  An index is a Size (D2); this is Int32. Convert it with `as Size`, or keep the index in a Size.
-diag error types.type.not-visible conway/app/main.kira:4:8  'Grid' is declared in conway:app.grid but is not pub, so this module cannot use it.
-diag error types.type.not-visible conway/app/main.kira:4:15  'Grid' is declared in conway:app.grid but is not pub, so this module cannot use it.
-diag error rules.visibility.member conway/app/main.kira:7:11  Method 'printGrid' of Grid is not pub, so it is reachable only inside Grid (a declaration is private by default). Mark it `pub`, or reach it through a pub method.
-diag error rules.visibility.member conway/app/main.kira:9:11  Method 'step' of Grid is not pub, so it is reachable only inside Grid (a declaration is private by default). Mark it `pub`, or reach it through a pub method.
+diag error types.use.bare conway/app/main.kira:4:8  'Grid' is not in scope: add `conway.app.grid.Grid as Grid` or write `grid.Grid` (it is not pub there: mark it `pub` first).
+diag error types.use.bare conway/app/main.kira:4:15  'Grid' is not in scope: add `conway.app.grid.Grid as Grid` or write `grid.Grid` (it is not pub there: mark it `pub` first).

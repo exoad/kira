@@ -2,6 +2,7 @@
 // Kira names; user.kira holds them in fields, Lists and Maybes, never copied.
 
 golden.py.opaque.app.conn as conn
+golden.py.opaque.app.conn.Conn as Conn
 
 pub @_opaque Counter: Mutable<Any> {
     pub @_mutates bump: (by: Int32) Int32

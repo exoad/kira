@@ -1,6 +1,7 @@
 kira.regex as regex
 kira.test as test
 golden.py.regexes.app.why as why
+golden.py.regexes.app.why.whyNot as whyNot
 
 // kira:regex (K6): a Regex and a Match are re's own, so the driver hands raw re objects over; regexError is str(e)
 // alone (critique 3), on the reasons every module shares, so app:why reads what compile here left (D86).

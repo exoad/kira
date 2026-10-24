@@ -128,6 +128,17 @@ class CppDeclRound3Test {
         assertEquals(listOf("LIMIT", "Pt"), inUtil.map(::named).sorted(), emitted.render(inUtil))
     }
 
+    // A member alias's line includes its module's header as a module alias's does.
+    @Test
+    fun aPrivateNameMeetsAnExportedOneReachedOnlyThroughAMemberAlias() {
+        val viaMember = DeclTestSupport.module("test:other", "test.util.Pt as Point\nLIMIT: Int32 = 2\ncounter: Mutable<Int32> = LIMIT\nat: Mutable<Point> = Point {}\npub get: () Int32;")
+        val emitted = DeclTestSupport.emit(util, viaMember, options = CppOptions(lineDirectives = false, namespaces = shared))
+        val inOther = emitted.diagnostics("test:other").filter { it.code == CppNamespaceCollisions.CODE }
+        val inUtil = emitted.diagnostics("test:util").filter { it.code == CppNamespaceCollisions.CODE }
+        assertEquals(listOf("LIMIT"), inOther.map(::named), emitted.render(inOther))
+        assertEquals(listOf("LIMIT"), inUtil.map(::named), emitted.render(inUtil))
+    }
+
     @Test
     fun aPrivateNameMeetsAnExportedOneReachedThroughAnotherModulesUse() {
         // other uses mid, mid uses util: other's .cxx includes mid's header, which includes util's
@@ -135,6 +146,7 @@ class CppDeclRound3Test {
             "test:mid",
             """
             test.util as util
+            test.util.Pt as Pt
             pub Wrap: Struct { pub at: Pt = Pt {} }
             """,
         )
@@ -147,7 +159,7 @@ class CppDeclRound3Test {
         // the reverse direction reaches nothing: util uses nobody, so its exported names meet no private one of mid
         val reversed = DeclTestSupport.emit(
             DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub Pt: Struct { pub x: Int32 = 0 }"),
-            DeclTestSupport.module("test:mid", "test.util as util\npub Wrap: Struct { pub at: Pt = Pt {} }\nhelper: Mutable<Int32> = 4\npub go: () Void;"),
+            DeclTestSupport.module("test:mid", "test.util as util\ntest.util.Pt as Pt\npub Wrap: Struct { pub at: Pt = Pt {} }\nhelper: Mutable<Int32> = 4\npub go: () Void;"),
             options = CppOptions(lineDirectives = false, namespaces = shared),
         )
         // util's private helper and mid's private helper are two anonymous namespaces

@@ -66,9 +66,9 @@ class CppGoldenEmitTest {
 
     private fun check(case: CppGoldenCase) {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val manifest = ManifestLoader.loadFromPath(caseRoot.resolve("kira.yaml"))
+        val manifest = net.exoad.kira.kim.ProjectFiles.load(caseRoot)!!
         val issues = ManifestValidator.validate(manifest, caseRoot)
-        assertTrue(issues.isEmpty(), "${case.name}: kira.yaml issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
+        assertTrue(issues.isEmpty(), "${case.name}: project file issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
 
         val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
         assertTrue(workspace.isNotEmpty(), "${case.name}: no Kira sources under src/")

@@ -62,13 +62,10 @@ class RulesCorpusTest {
         }
     }
 
-    /** The typer options the case's `kira.yaml` asks for: its `build.cpp.freestanding` globs (hall, text), so ProfilePass runs as the CLI would run it. */
+    /** The typer options the case's project file asks for: its cpp freestanding globs (hall, text), so ProfilePass runs as the CLI would run it. */
     private fun options(dir: File): TyperOptions {
-        val manifest = File(dir, "kira.yaml").takeIf { it.isFile } ?: return TyperOptions()
-        val yaml = Yaml().load<Any>(manifest.readText()) as? Map<*, *> ?: return TyperOptions()
-        val cpp = (yaml["build"] as? Map<*, *>)?.get("cpp") as? Map<*, *> ?: return TyperOptions()
-        fun globs(key: String): List<String> = (cpp[key] as? List<*>)?.map { it.toString() } ?: emptyList()
-        return TyperOptions(freestanding = globs("freestanding"), headerOnly = globs("headerOnly"))
+        val cpp = net.exoad.kira.kim.ProjectFiles.load(dir.toPath())?.build?.cpp ?: return TyperOptions()
+        return TyperOptions(freestanding = cpp.freestanding, headerOnly = cpp.headerOnly)
     }
 
     @Test

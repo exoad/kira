@@ -1,0 +1,12 @@
+PROJECT: Project = Project { } with {
+    name = "golden.forward"
+    srcDir = "src"
+    target = "cpp"
+    cpp = Cpp {
+        layout = "beside",
+        lineDirectives = false,
+        namespaces = @mapOf("golden.forward.pilot.car", "bibo")
+    }
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

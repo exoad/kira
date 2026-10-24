@@ -1,4 +1,6 @@
 golden.py.throwing.lib.parse as parse
+golden.py.throwing.lib.parse.checked as checked
+golden.py.throwing.lib.parse.number as number
 
 log: Mutable<List<Int32>> = List<Int32> { }
 

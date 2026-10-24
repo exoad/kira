@@ -1,4 +1,5 @@
 golden.py.importname.app.lib as lib
+golden.py.importname.app.lib.bump as bump
 
 // _k_run() returns main's code to a Python caller, and the guard exits with it (D85).
 

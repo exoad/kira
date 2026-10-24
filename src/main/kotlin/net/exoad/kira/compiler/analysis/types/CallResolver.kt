@@ -192,14 +192,17 @@ internal class CallResolver(private val c: PhaseC) {
             }
             else -> {}
         }
-        // 6. The print family.
-        if (name in printNames) {
+        // 6. The print family, unless an imported project module has the name pub (refused below, as lookup refused it).
+        if (name in printNames && c.program.graph.projectExport(ctx.module, name) { it is FnSymbol || it is GlobalSymbol } == null) {
             return print(e, null, ctx, scope)
         }
         argsOnly(e, ctx, scope)
         val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol }
+        val bare = c.program.graph.outOfScope(ctx.module, name) { it is FnSymbol || it is GlobalSymbol }
         if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
             c.report("types.call.type-name", "'$name' is a type; construct a value of it with $name { ... }.", id)
+        } else if (bare != null) {
+            c.report("types.use.bare", bare, id)
         } else {
             c.report("types.call.unknown", "Unknown function '$name'.", id)
         }

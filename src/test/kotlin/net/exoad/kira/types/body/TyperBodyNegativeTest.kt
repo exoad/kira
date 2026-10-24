@@ -239,7 +239,7 @@ class TyperBodyNegativeTest {
         // it runs, and the struct comes from a later module still. A constant default keeps
         // the construction constant either way.
         val p = TyperTestSupport.type(
-            TyperTestSupport.module("test:main", "test.lib as lib\n\npub K: W = W { }\npub KN: Int32 = K.n\n@_static_assert(K.n == 7, \"seven\")"),
+            TyperTestSupport.module("test:main", "test.lib as lib\ntest.lib.W as W\n\npub K: W = W { }\npub KN: Int32 = K.n\n@_static_assert(K.n == 7, \"seven\")"),
             TyperTestSupport.module("test:lib", "pub SEVEN: Int32 = 7\npub W: Struct {\n    pub n: Int32 = SEVEN\n}"),
         )
         TyperTestSupport.expectNoErrors(p)

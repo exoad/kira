@@ -1,4 +1,6 @@
 golden.modules.lib.units as units
+golden.modules.lib.units.SCALE as SCALE
+golden.modules.lib.units.percent as percent
 
 // A module in another directory: it includes lib/units by relative path, and
 // every name it takes from there is fully qualified.

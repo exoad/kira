@@ -99,7 +99,8 @@ internal class NamingPass : RulePass {
     }
 
     private fun type(r: Rules, kind: String, name: String, at: ASTNode?) {
-        if (!pascal.matches(name)) {
+        // A nested type is Outer_Inner, each part PascalCase (the parser's name for `Outer.Inner`).
+        if (!pascal.matches(name) && !name.split('_').all { it.isNotEmpty() && pascal.matches(it) && it.any(Char::isLowerCase) }) {
             warn(r, "type", "$kind '$name' does not conform to PascalCase; did you mean '${toPascal(name)}'?", at)
         }
     }

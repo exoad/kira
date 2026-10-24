@@ -1,0 +1,13 @@
+PROJECT: Project = Project { } with {
+    name = "golden.decls"
+    srcDir = "src"
+    target = "cpp"
+    cpp = Cpp {
+        layout = "beside",
+        lineDirectives = false,
+        namespaces = @mapOf("golden.decls.lib.shapes", "golden::shapes"),
+        headerOnly = @listOf("golden.decls.lib.shapes")
+    }
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

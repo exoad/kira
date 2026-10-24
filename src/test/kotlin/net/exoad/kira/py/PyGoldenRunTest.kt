@@ -20,7 +20,7 @@ class PyGoldenRunTest {
 
     @TestFactory
     fun goldens(): List<DynamicTest> {
-        val cases = root.listFiles { f -> f.isDirectory && File(f, "kira.yaml").isFile }.orEmpty().sortedBy { it.name }
+        val cases = root.listFiles { f -> f.isDirectory && net.exoad.kira.kim.ProjectFiles.isProject(f.toPath()) }.orEmpty().sortedBy { it.name }
         val tests = cases.map { case -> DynamicTest.dynamicTest(case.name) { check(case) } }
         return tests + DynamicTest.dynamicTest("the corpus holds the target program") {
             assertTrue(cases.any { it.name == "ladder" }, "no ladder case under $root")

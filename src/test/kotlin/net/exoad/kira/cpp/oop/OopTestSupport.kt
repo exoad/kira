@@ -361,7 +361,7 @@ object OopTestSupport {
      */
     fun emitCase(case: CppGoldenCase, parts: CppEmitParts = partsOverStandard(), tweak: (TypedProgram) -> Unit = {}): List<GeneratedFile> {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val manifest = ManifestLoader.loadFromPath(caseRoot.resolve("kira.yaml"))
+        val manifest = net.exoad.kira.kim.ProjectFiles.load(caseRoot)!!
         val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
         val names = net.exoad.kira.compiler.ModuleNames.assign(manifest, caseRoot, emptyList(), workspace)
         val unit = CompilationUnit()

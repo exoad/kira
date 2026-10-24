@@ -18,26 +18,26 @@ module traits:app.animals  profile=HOSTED ns=animals imports=[]
   fn announce: (s: Speaker) Void  body
   fn noiseLevel: (s: Noisy) Int32  body
 module traits:app.main  profile=HOSTED ns=main_ imports=[traits:app.animals]
-  fn makeDog: () Dog  body
-  fn makeSpeaker: () Speaker  body
+  fn makeDog: () <error>  body
+  fn makeSpeaker: () <error>  body
   fn main: () Void  body
 diag warning types.override.missing traits/app/animals.kira:13:9  Dog.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
 diag warning types.override.missing traits/app/animals.kira:17:9  Dog.name replaces Speaker.name; mark it `override` (spec: Inheritance).
 diag warning types.override.missing traits/app/animals.kira:21:9  Dog.loudness replaces Noisy.loudness; mark it `override` (spec: Inheritance).
 diag warning types.override.missing traits/app/animals.kira:29:9  Cat.speak replaces Speaker.speak; mark it `override` (spec: Inheritance).
 diag warning types.override.missing traits/app/animals.kira:33:9  Cat.name replaces Speaker.name; mark it `override` (spec: Inheritance).
-diag error types.type.not-visible traits/app/main.kira:3:13  'Dog' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:4:10  'Dog' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:4:16  'Dog' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:8:17  'Speaker' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:9:10  'Cat' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:9:16  'Cat' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:14:10  'Dog' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:15:10  'Cat' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:15:16  'Cat' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error rules.visibility.module traits/app/main.kira:17:5  Function 'announce' is declared in traits:app.animals but is not pub, so traits:app.main cannot use it. Mark it `pub`.
-diag error rules.visibility.module traits/app/main.kira:18:5  Function 'announce' is declared in traits:app.animals but is not pub, so traits:app.main cannot use it. Mark it `pub`.
-diag error rules.visibility.module traits/app/main.kira:20:22  Function 'noiseLevel' is declared in traits:app.animals but is not pub, so traits:app.main cannot use it. Mark it `pub`.
-diag error types.type.not-visible traits/app/main.kira:23:8  'Speaker' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:27:11  'Speaker' is declared in traits:app.animals but is not pub, so this module cannot use it.
-diag error types.type.not-visible traits/app/main.kira:27:21  'Dog' is declared in traits:app.animals but is not pub, so this module cannot use it.
+diag error types.use.bare traits/app/main.kira:3:13  'Dog' is not in scope: add `traits.app.animals.Dog as Dog` or write `animals.Dog` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:4:10  'Dog' is not in scope: add `traits.app.animals.Dog as Dog` or write `animals.Dog` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:4:16  'Dog' is not in scope: add `traits.app.animals.Dog as Dog` or write `animals.Dog` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:8:17  'Speaker' is not in scope: add `traits.app.animals.Speaker as Speaker` or write `animals.Speaker` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:9:10  'Cat' is not in scope: add `traits.app.animals.Cat as Cat` or write `animals.Cat` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:9:16  'Cat' is not in scope: add `traits.app.animals.Cat as Cat` or write `animals.Cat` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:14:10  'Dog' is not in scope: add `traits.app.animals.Dog as Dog` or write `animals.Dog` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:15:10  'Cat' is not in scope: add `traits.app.animals.Cat as Cat` or write `animals.Cat` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:15:16  'Cat' is not in scope: add `traits.app.animals.Cat as Cat` or write `animals.Cat` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:17:5  'announce' is not in scope: add `traits.app.animals.announce as announce` or write `animals.announce` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:18:5  'announce' is not in scope: add `traits.app.animals.announce as announce` or write `animals.announce` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:20:22  'noiseLevel' is not in scope: add `traits.app.animals.noiseLevel as noiseLevel` or write `animals.noiseLevel` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:23:8  'Speaker' is not in scope: add `traits.app.animals.Speaker as Speaker` or write `animals.Speaker` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:27:11  'Speaker' is not in scope: add `traits.app.animals.Speaker as Speaker` or write `animals.Speaker` (it is not pub there: mark it `pub` first).
+diag error types.use.bare traits/app/main.kira:27:21  'Dog' is not in scope: add `traits.app.animals.Dog as Dog` or write `animals.Dog` (it is not pub there: mark it `pub` first).

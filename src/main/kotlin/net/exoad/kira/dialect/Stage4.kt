@@ -45,7 +45,10 @@ import java.util.IdentityHashMap
 object Stage4 {
     val totals = LinkedHashMap<String, Int>()
 
-    fun convertAll(paths: List<String>, check: Boolean): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertAll(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertAllAsWritten(paths, check) }
+
+    private fun convertAllAsWritten(paths: List<String>, check: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
         totals.clear()
         val groups = files.groupBy { DialectMain.newUriOf(it).second }

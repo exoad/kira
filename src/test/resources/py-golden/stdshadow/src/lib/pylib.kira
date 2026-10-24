@@ -1,0 +1,17 @@
+// Names kira:path, kira:math and kira:os have too, as bibo's tools/npu pylib, each answering apart from them.
+
+kira.math as math
+
+pub joinPath: (a: Str, b: Str) Str {
+    "${a} | ${b}"
+}
+
+// The remainder with a's sign, where the stdlib's takes b's.
+pub floorMod: (a: Float64, b: Float64) Float64 {
+    math.fmod(a, b)
+}
+
+pub Ran: Any {
+    pub code: Int32 = 7
+    pub out: Str = "pylib's"
+}

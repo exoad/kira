@@ -18,7 +18,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ProjectFiles
+import net.exoad.kira.kim.ProjectKira
 import net.exoad.kira.kim.ManifestValidator
 import net.exoad.kira.kim.ProjectManifest
 import net.exoad.kira.utils.Chronos
@@ -52,7 +53,7 @@ private fun applyTargetOverride(target: String) {
 
 fun main(args: Array<String>) {
     // Minimal CLI: `kira --target js|c|cpp|py|neko|none` overrides build.target
-    // from kira.yaml; `--readable` emits pretty (non-minified) C/JS output;
+    // from project.kira (or kira.yaml); `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated
     // file under <dir>); `--check` (cpp and py) regenerates in memory and
     // exits 1 naming every file on disk that differs or is missing (and, for
@@ -102,19 +103,21 @@ fun main(args: Array<String>) {
 //        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
         var manifest: ProjectManifest? = null
-        val yamlManifestPath = projectRoot.resolve("kira.yaml")
+        // project.kira, else kira.yaml (stage 6 retires it).
+        val yamlManifestPath = ProjectFiles.find(projectRoot) ?: projectRoot.resolve(ProjectFiles.YAML)
         val legacyTomlPath = projectRoot.resolve("kira.toml")
 
         if (!Files.exists(yamlManifestPath) && Files.exists(legacyTomlPath)) {
             Diagnostics.panic(
                 "Detected legacy 'kira.toml'. KIM TOML manifests were removed. " +
-                    "Please migrate to 'kira.yaml' with keys: project.name, srcDir, build.target, compiler.emitIr, dependencies.<name>.path"
+                    "Please migrate to 'project.kira': PROJECT: Project = Project { } with { name = \"...\" ... }"
             )
         }
 
         if (Files.exists(yamlManifestPath)) {
+            ProjectFiles.note(projectRoot)?.let { Diagnostics.Logging.warn("Kira", "Note: $it") }
             try {
-                manifest = ManifestLoader.loadFromPath(yamlManifestPath)
+                manifest = ProjectFiles.loadFromPath(yamlManifestPath)
                 val issues = ManifestValidator.validate(manifest, projectRoot)
                 if (issues.isNotEmpty()) {
                     issues.forEach { issue ->
@@ -146,7 +149,7 @@ fun main(args: Array<String>) {
         }
 
         // Minified + obfuscated output is the default; `build.minify: false`
-        // in kira.yaml, or the --readable flag, restores pretty output.
+        // in the project file, or the --readable flag, restores pretty output.
         GeneratedProvider.minifyOutput = manifest?.build?.minify ?: true
         if (readableOverride) {
             GeneratedProvider.minifyOutput = false
@@ -157,10 +160,18 @@ fun main(args: Array<String>) {
             stdlibEntries.addAll(Public.Builtin.discoverLegacyKiraFolder())
         }
         Public.Builtin.intrinsicalStandardLibrarySources = stdlibEntries.distinct().sorted().toTypedArray()
+        // project.kira is typed as any code is, against the stdlib it names.
+        if (manifest != null && yamlManifestPath.fileName.toString() == ProjectKira.FILE) {
+            val findings = ProjectKira.check(yamlManifestPath, Public.Builtin.intrinsicalStandardLibrarySources.toList())
+            if (findings.isNotEmpty()) {
+                findings.forEach { Diagnostics.Logging.warn("Kira", it) }
+                Diagnostics.panic("${ProjectKira.FILE} does not type: see above.")
+            }
+        }
         val dumpSB = if (manifest?.compiler?.emitIr != null) StringBuilder() else null
         val workspaceSources: Array<String> = DependencyResolver.resolveProjectSources(manifest, projectRoot).toTypedArray()
         if (workspaceSources.isEmpty() && Public.Builtin.intrinsicalStandardLibrarySources.isEmpty()) {
-            Diagnostics.panic("No source files to compile. Add .kira files to 'src' or configure 'kira.yaml'.")
+            Diagnostics.panic("No source files to compile. Add .kira files to 'src' or set srcDir in project.kira.")
         }
         val sources = arrayOf(*Public.Builtin.intrinsicalStandardLibrarySources, *workspaceSources)
         // The file is the module: each one's name is its project's and its path's.

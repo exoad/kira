@@ -1,4 +1,7 @@
 golden.py.modules.lib.units as units
+golden.py.modules.lib.units.Meter as Meter
+golden.py.modules.lib.units.SCALE as SCALE
+golden.py.modules.lib.units.bump as bump
 
 pub total: Mutable<Int32> = 0
 

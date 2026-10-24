@@ -1581,6 +1581,20 @@ class CppHoisterTest {
         "hoist:twins",
         """
         hoist.ctr as ctr
+        hoist.ctr.G as G
+        hoist.ctr.GL as GL
+        hoist.ctr.GLL as GLL
+        hoist.ctr.GLS as GLS
+        hoist.ctr.GS as GS
+        hoist.ctr.GSL as GSL
+        hoist.ctr.bumpG as bumpG
+        hoist.ctr.changeGS as changeGS
+        hoist.ctr.growGL as growGL
+        hoist.ctr.growGLL as growGLL
+        hoist.ctr.growGLS as growGLS
+        hoist.ctr.growGSL as growGSL
+        hoist.ctr.reset as reset
+        hoist.ctr.store as store
 
         sub: (a: Int32, b: Int32) Int32 {
             a - b

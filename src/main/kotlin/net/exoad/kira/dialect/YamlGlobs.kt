@@ -1,5 +1,6 @@
 package net.exoad.kira.dialect
 
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.ModuleNames
 import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
@@ -22,7 +23,10 @@ object YamlGlobs {
     class Result(val text: String, val rewrites: List<Pair<String, String>>, val problems: List<String>, val notes: List<String>)
 
     /** `kira-dialect yaml [--check] PATH...`: each kira.yaml under PATH, by its project's module headers. */
-    fun convertAll(paths: List<String>, check: Boolean): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertAll(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertAllAsWritten(paths, check) }
+
+    private fun convertAllAsWritten(paths: List<String>, check: Boolean): Int {
         val yamls = paths.flatMap { p ->
             File(p).walkTopDown().onEnter { it.name != "build" && it.name != ".git" }.filter { it.isFile && it.name == "kira.yaml" }.toList()
         }.distinct().sorted()

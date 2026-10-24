@@ -364,7 +364,7 @@ class CppDeclEmitterTest {
     @Test
     fun theHeaderIncludesTheRuntimeByProfileThenUsedModulesRelatively() {
         val units = DeclTestSupport.module("lib:units", "pub SCALE: Int32 = 100")
-        val report = DeclTestSupport.module("app:report", "lib.units as units\npub LIMIT: Int32 = SCALE")
+        val report = DeclTestSupport.module("app:report", "lib.units as units\nlib.units.SCALE as SCALE\npub LIMIT: Int32 = SCALE")
         val hosted = DeclTestSupport.emitWith(units, report, uri = "app:report").first
         assertContains(
             CppWriter.normalize(hosted.header),

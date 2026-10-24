@@ -141,6 +141,7 @@ class CppDeclRound2Test {
             "test:other",
             """
             test.util as util
+            test.util.Pt as Pt
 
             LIMIT: Int32 = 2
             counter: Mutable<Int32> = LIMIT

@@ -39,12 +39,65 @@ class KiraParser(
     private val returns: Boolean = literals,
     private val muts: Boolean = returns,
 ) {
-    private val buffer = TokenBuffer(context.tokens)
+    /** Every name a nested type is known by here (`Outer_Inner`): its `Outer.Inner` collapsed, or its bare name renamed. */
+    private val nestedTypeNames = HashSet<String>()
+
+    private val tokens: List<Token> = collapseNestedNames(context.tokens)
+
+    private var buffer = TokenBuffer(tokens)
 
     init {
         context.astOrigins = IdentityHashMap()
         context.astIntrinsicMarked = IdentityHashMap()
         context.astIntrinsicInvocations = IdentityHashMap()
+    }
+
+    /**
+     * Types inside type bodies (stage 5) are top-level types named `Outer_Inner`, a name no source can
+     * spell. `Outer.Inner` (two type names) is that name wherever it is written; the bare `Inner`
+     * inside Outer's body is too, once a first pass has found Outer's nested types.
+     */
+    private fun collapseNestedNames(raw: List<Token>): List<Token> {
+        if (raw.none { it.type == Token.Type.S_DOT }) return raw
+        val out = ArrayList<Token>(raw.size)
+        var i = 0
+        while (i < raw.size) {
+            var t = raw[i]
+            while (t.type == Token.Type.IDENTIFIER && (isPlainTypeName(t.content) || t.content in nestedTypeNames) &&
+                i + 2 < raw.size && raw[i + 1].type == Token.Type.S_DOT && raw[i + 2].type == Token.Type.IDENTIFIER && isPlainTypeName(raw[i + 2].content)
+            ) {
+                val name = "${t.content}${Symbols.UNDERSCORE.rep}${raw[i + 2].content}"
+                nestedTypeNames += name
+                t = Token.Raw(Token.Type.IDENTIFIER, name, t.pointerPosition, t.canonicalLocation)
+                i += 2
+            }
+            out += t
+            i++
+        }
+        return out
+    }
+
+    /** Pass 1's finding: each type's nested types, by the enclosing type's name, bare name to its own. */
+    private val foundNested = LinkedHashMap<String, LinkedHashMap<String, String>>()
+
+    /** What pass 2 renames: [foundNested] of pass 1. */
+    private var nestedOf: Map<String, Map<String, String>> = emptyMap()
+
+    /** The type bodies open at the pointer, innermost last, each by its type's name. */
+    private val openTypes = ArrayDeque<String>()
+
+    /** Nested types parsed and waiting for the top-level statement that holds them. */
+    private val hoisted = mutableListOf<Statement>()
+
+    /**
+     * [name] as the nested type it names from inside the open type bodies, by its first part
+     * (`Corner_Mark` in Shape's body is Shape_Corner_Mark); [name] itself when none.
+     */
+    private fun nestedName(name: String): String {
+        if (nestedOf.isEmpty() || buffer.previous()?.type == Token.Type.S_DOT) return name
+        val head = name.substringBefore(Symbols.UNDERSCORE.rep)
+        for (open in openTypes.reversed()) nestedOf[open]?.get(head)?.let { return it + name.substring(head.length) }
+        return name
     }
 
     /**
@@ -72,7 +125,7 @@ class KiraParser(
      * the spec allows `_`, so `LIMIT_M {` is never a construction anywhere).
      */
     private fun looksLikeTypeName(ident: String): Boolean {
-        return ident.isNotEmpty() && ident[0].isUpperCase() && !ident.contains(Symbols.UNDERSCORE.rep)
+        return ident.isNotEmpty() && ident[0].isUpperCase() && !ident.contains(Symbols.UNDERSCORE.rep) || ident in nestedTypeNames
     }
 
     fun <T : ASTNode> putOrigin(
@@ -92,6 +145,20 @@ class KiraParser(
      * Star method to call on [KiraParser] that will turn the passed in [context] into an AST.
      */
     fun parse() {
+        parseFile()
+        if (foundNested.isEmpty()) return
+        // Pass 2: Outer's nested types known, so a bare `Inner` in Outer's body names Outer_Inner.
+        nestedOf = foundNested.mapValues { it.value.toMap() }
+        nestedTypeNames += nestedOf.values.flatMap { it.values }
+        foundNested.clear()
+        buffer = TokenBuffer(tokens)
+        context.astOrigins = IdentityHashMap()
+        context.astIntrinsicMarked = IdentityHashMap()
+        context.astIntrinsicInvocations = IdentityHashMap()
+        parseFile()
+    }
+
+    private fun parseFile() {
         val statements = mutableListOf<ASTNode>()
         // The file is the module (no header): its name comes from where the file sits.
         val uri = context.moduleName ?: net.exoad.kira.compiler.ModuleNames.loose(context.file)
@@ -100,7 +167,11 @@ class KiraParser(
         statements.add(putOrigin(Statement(module), start))
         try {
             while (!at(Token.Type.S_EOF)) {
-                statements.add(parseStatement(null))
+                val statement = parseStatement(null)
+                // A type's nested types stand before it, innermost first.
+                statements.addAll(hoisted)
+                hoisted.clear()
+                statements.add(statement)
             }
         } catch (_: StackOverflowError) {
             Diagnostics.panic(
@@ -824,7 +895,10 @@ class KiraParser(
      * underscore, and a lowercase letter or a lone capital: `Url`, `K`, `V2`) is a type's, unless
      * `= value` follows; capitals (`URL`, `MAX_SIZE`) are a constant's, and camelCase a value's.
      */
-    private fun isTypeName(name: String): Boolean =
+    private fun isTypeName(name: String): Boolean = isPlainTypeName(name) || name in nestedTypeNames
+
+    /** [isTypeName] as a source spells it: no nested type's name. */
+    private fun isPlainTypeName(name: String): Boolean =
         name.isNotEmpty() && name[0].isUpperCase() && !name.contains(Symbols.UNDERSCORE.rep) &&
             (name.any { it.isLowerCase() } || name.drop(1).all { it.isDigit() })
 
@@ -1053,10 +1127,11 @@ class KiraParser(
         modifier: Map<Modifier, SourcePosition>?,
         marks: List<IntrinsicExpr>?,
     ): Expr {
-        if (!atTopLevel()) {
+        val nested = typeBodyDepth > 0 && functionDepth == 0
+        if (!atTopLevel() && !nested) {
             Diagnostics.panic(
                 "parse.type.nested",
-                "'${name.value}' is a type, and a type is declared at the top level of a file.",
+                "'${name.value}' is a type, and a type is declared at the top level of a file or in a type's body.",
                 location = origin,
                 selectorLength = name.value.length,
                 context = context
@@ -1073,6 +1148,10 @@ class KiraParser(
                 context = context
             )
         }
+        // A nested type's own name is its enclosing type's and its: Outer_Inner (pass 2 has renamed it already).
+        val renamed = name.value in nestedTypeNames
+        val own = if (nested && !renamed) "${openTypes.last()}${Symbols.UNDERSCORE.rep}${name.value}" else name.value
+        if (nested && !renamed) foundNested.getOrPut(openTypes.last()) { linkedMapOf() }[name.value] = own
         val nameType = putOrigin(Type(name, null, generics), origin)
         val written = mutableListOf(first)
         while (at(Token.Type.S_COMMA)) {
@@ -1102,10 +1181,15 @@ class KiraParser(
         }
         val typeIntrinsics = marks ?: pendingIntrinsicExprs
         pendingIntrinsicExprs = null
-        val body = if (at(Token.Type.S_OPEN_BRACE)) parseTypeBody() else TypeBody(emptyList(), null)
+        openTypes.addLast(own)
+        val body = try {
+            if (at(Token.Type.S_OPEN_BRACE)) parseTypeBody() else TypeBody(emptyList(), null)
+        } finally {
+            openTypes.removeLast()
+        }
         val isStruct = parents.any { isRoot(it, STRUCT_ROOT) }
         val named = parents.filterNot { isRoot(it, ANY_ROOT) || isRoot(it, STRUCT_ROOT) }
-        if (named.isEmpty() && body.members.isEmpty() && body.initially == null && typeIntrinsics.isNullOrEmpty()) {
+        if (named.isEmpty() && body.members.isEmpty() && body.initially == null && !body.holdsTypes && typeIntrinsics.isNullOrEmpty()) {
             // A type adds at least one member, so a dropped `=` never declares one; the host's is marked.
             Diagnostics.panic(
                 "parse.type.empty",
@@ -1146,9 +1230,11 @@ class KiraParser(
         const val MUT_TYPE = "a type whose values change is 'Name: Mutable<Parent>'"
     }
 
+    /** [holdsTypes]: types nested in it, which count as what it adds. */
     private class TypeBody(
         val members: List<FirstClassDecl>,
         val initially: List<Statement>?,
+        val holdsTypes: Boolean = false,
     )
 
     /** How many type bodies enclose the pointer; `override` needs one. */
@@ -1159,6 +1245,7 @@ class KiraParser(
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val members = mutableListOf<FirstClassDecl>()
         var initially: List<Statement>? = null
+        var holdsTypes = false
         typeBodyDepth++
         val savedFunctionDepth = functionDepth
         functionDepth = 0
@@ -1197,8 +1284,15 @@ class KiraParser(
                         context = context
                     )
                 }
+                val memberOrigin = here()
                 val member = statementAt(memberAt) { parseDeclaration(memberModifiers) }
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
+                if (member is ClassDecl || member is StructDecl) {
+                    // A nested type: a top-level declaration of its own, before the type that holds it.
+                    hoisted += putOrigin(Statement(member), memberOrigin)
+                    holdsTypes = true
+                    continue
+                }
                 members.add(member as FirstClassDecl)
             }
         } finally {
@@ -1206,7 +1300,7 @@ class KiraParser(
             functionDepth = savedFunctionDepth
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return TypeBody(members, initially)
+        return TypeBody(members, initially, holdsTypes)
     }
 
     fun parseReturnStatement(): Statement // y dont they just call it a return expr? lol beats me tho, just another way to represent an astnode
@@ -1475,7 +1569,7 @@ class KiraParser(
 
     /** Types are PascalCase with a lowercase letter; UPPER_SNAKE (and one capital) are values (the split-case rule). */
     private fun isIdentitySpelling(name: String): Boolean =
-        name.firstOrNull()?.isUpperCase() == true && name.any { it.isLowerCase() } && !name.contains(Symbols.UNDERSCORE.rep)
+        name.firstOrNull()?.isUpperCase() == true && name.any { it.isLowerCase() } && !name.contains(Symbols.UNDERSCORE.rep) || name in nestedTypeNames
 
     /**
      * After `==` or `!=`: an identity, by its spelling, so the test is a conformance test and no
@@ -2292,7 +2386,7 @@ class KiraParser(
      * or type-parameter name. The lexer already rejected every other shape.
      */
     private fun expectConventionalName(name: String, location: SourcePosition, what: String, convention: String) {
-        if (!name.contains(Symbols.UNDERSCORE.rep)) {
+        if (!name.contains(Symbols.UNDERSCORE.rep) || name in nestedTypeNames) {
             return
         }
         Diagnostics.panic(
@@ -2560,7 +2654,7 @@ class KiraParser(
 
     fun parseIdentifier(): Identifier {
         val loc = peek().canonicalLocation
-        val value = peek().content
+        val value = nestedName(peek().content)
         expectThenAdvance(Token.Type.IDENTIFIER)
         return putOrigin(Identifier(value), loc)
     }

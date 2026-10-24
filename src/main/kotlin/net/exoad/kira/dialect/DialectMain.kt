@@ -3,6 +3,7 @@ package net.exoad.kira.dialect
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.DialectLink
 import net.exoad.kira.compiler.ModuleNames
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
@@ -11,6 +12,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ProjectFiles
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Files
@@ -23,7 +25,7 @@ import kotlin.system.exitProcess
  * Kira in Kotlin string literals (`--force-wrong`: also the old Kira a test means to be wrong, by
  * its words; `kt --stage2`: stage 1's Kira in them to stage 2's; `kt --stage3`: stage 2's to stage 3's; `kt --stage4`: stage 3's to
  * stage 4's); `stage2 [--check] PATH...` takes stage 1's text to stage 2's ([Stage2]), `stage3` stage 2's to stage 3's ([Stage3]),
- * `stage4` stage 3's to stage 4's ([Stage4]). `--check`
+ * `stage4` stage 3's to stage 4's ([Stage4]), `stage5` stage 4's to stage 5's ([Stage5]: member aliases, project.kira). `--check`
  * writes nothing and exits 1 when anything would change or cannot be converted.
  */
 object DialectMain {
@@ -39,8 +41,8 @@ object DialectMain {
             println(if (nc == null) "NEW-PARSE: $err" else "parsed")
             return
         }
-        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2", "stage3", "stage4")) {
-            println("usage: kira-dialect convert|kt|yaml|stage2|stage3|stage4 [--check] PATH...")
+        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2", "stage3", "stage4", "stage5")) {
+            println("usage: kira-dialect convert|kt|yaml|stage2|stage3|stage4|stage5 [--check] PATH...")
             exitProcess(2)
         }
         val check = "--check" in args
@@ -51,18 +53,26 @@ object DialectMain {
         val oldStdlibAt = args.indexOf("--old-stdlib")
         KotlinStrings.oldStdlib = if (oldStdlibAt >= 0) args.getOrNull(oldStdlibAt + 1) else null
         val skipped = if (oldStdlibAt >= 0) setOf(oldStdlibAt, oldStdlibAt + 1) else emptySet()
-        val paths = args.drop(1).filterIndexed { i, a -> i + 1 !in skipped && a !in setOf("--check", "--force-wrong", "--stage2", "--stage3", "--stage4") }
-        // The verbs before stage 4 read text with `mut`, typed by the old rules; stage 4 sets its gates itself.
-        val code = if (args[0] == "stage4") Stage4.convertAll(paths, check) else net.exoad.kira.compiler.frontend.parser.DialectGates.stage4(false) {
-            when (args[0]) {
-                "convert" -> convertKira(paths, check)
-                "yaml" -> YamlGlobs.convertAll(paths, check)
-                "stage2" -> Stage2.convertAll(paths, check)
-                "stage3" -> Stage3.convertAll(paths, check)
-                else -> if (stage4) {
-                    net.exoad.kira.compiler.frontend.parser.DialectGates.stage4(true) { KotlinStrings.convertAll(paths, check, stage4 = true) }
-                } else {
-                    KotlinStrings.convertAll(paths, check, stage2, stage3)
+        val flags = setOf("--check", "--force-wrong", "--stage2", "--stage3", "--stage4", "--keep-yaml")
+        val paths = args.drop(1).filterIndexed { i, a -> i + 1 !in skipped && a !in flags }
+        // The verbs before stage 5 read imports' names bare, as `use` had them; those before stage 4 read text with `mut`,
+        // typed by the old rules. Stages 4 and 5 set their gates themselves.
+        val code = when (args[0]) {
+            "stage5" -> Stage5.convertAll(paths, check, keepYaml = "--keep-yaml" in args)
+            "stage4" -> Stage4.convertAll(paths, check)
+            else -> DialectGates.aliasOnlyImports(false) {
+                DialectGates.stage4(false) {
+                    when (args[0]) {
+                        "convert" -> convertKira(paths, check)
+                        "yaml" -> YamlGlobs.convertAll(paths, check)
+                        "stage2" -> Stage2.convertAll(paths, check)
+                        "stage3" -> Stage3.convertAll(paths, check)
+                        else -> if (stage4) {
+                            DialectGates.stage4(true) { KotlinStrings.convertAll(paths, check, stage4 = true) }
+                        } else {
+                            KotlinStrings.convertAll(paths, check, stage2, stage3)
+                        }
+                    }
                 }
             }
         }
@@ -72,7 +82,10 @@ object DialectMain {
     /** One .kira file: its old text, its module's old URI and the new one. */
     class Unit(val file: File, val text: String, val old: SourceContext?, val oldUri: String?, val newUri: String, val group: String, val oldError: String? = null)
 
-    fun convertKira(paths: List<String>, check: Boolean): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertKira(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertKiraAsWritten(paths, check) }
+
+    private fun convertKiraAsWritten(paths: List<String>, check: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
         val units = files.map { f ->
             val text = f.readText()
@@ -209,9 +222,9 @@ object DialectMain {
      */
     fun dependenciesOf(group: String): List<Pair<String, String>> {
         val dir = File(group)
-        val yaml = File(dir, "kira.yaml")
-        val roots = if (yaml.isFile) {
-            val m = runCatching { ManifestLoader.loadFromPath(yaml.toPath()) }.getOrNull() ?: return emptyList()
+        val yaml = ProjectFiles.find(dir.toPath())?.toFile()
+        val roots = if (yaml != null) {
+            val m = runCatching { ProjectFiles.loadFromPath(yaml.toPath()) }.getOrNull() ?: return emptyList()
             m.dependencies.values.mapNotNull { spec -> spec.path?.let { DependencyResolver.resolvePath(dir.absoluteFile.toPath(), it) } }
         } else if (File(dir, "core.kira").isFile) {
             emptyList()
@@ -237,14 +250,14 @@ object DialectMain {
     /** The new URI of [f] and the group its roles are read in: its project, the stdlib, or its directory. */
     fun newUriOf(f: File): Pair<String, String> {
         val dir = f.absoluteFile.parentFile
-        if (File(dir, "core.kira").isFile && !File(dir, "kira.yaml").isFile) {
+        if (File(dir, "core.kira").isFile && !ProjectFiles.isProject(dir.toPath())) {
             return ModuleNames.stdlib(f.path) to dir.path
         }
         var d: File? = dir
         while (d != null) {
-            val yaml = File(d, "kira.yaml")
-            if (yaml.isFile) {
-                val m = runCatching { ManifestLoader.loadFromPath(yaml.toPath()) }.getOrNull()
+            val yaml = ProjectFiles.find(d.toPath())?.toFile()
+            if (yaml != null) {
+                val m = runCatching { ProjectFiles.loadFromPath(yaml.toPath()) }.getOrNull()
                 if (m != null) {
                     val src = d.toPath().resolve(m.srcDir).normalize()
                     if (f.absoluteFile.toPath().normalize().startsWith(src)) {

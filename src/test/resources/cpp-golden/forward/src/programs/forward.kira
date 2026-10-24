@@ -1,4 +1,6 @@
 golden.forward.pilot.car as car
+golden.forward.pilot.car.Car as Car
+golden.forward.pilot.car.openCar as openCar
 
 // Creep forward until something is within STOP_AT_M, and go again past GO_AT_M:
 // two thresholds, so a reading that hovers at one does not chatter.

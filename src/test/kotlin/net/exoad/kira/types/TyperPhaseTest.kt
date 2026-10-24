@@ -83,9 +83,9 @@ class TyperPhaseTest {
         )
         astModule(unit, "test:band", Statement(net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr(Identifier("use"), emptyList(), emptyList())), struct)
         unit.getSource("test/band.kira")!!.ast.let { root ->
-            // `use "test:shapes"`, so Sized is visible (built by hand like the struct).
+            // `test.shapes.Sized as Sized`, so Sized is visible (built by hand like the struct).
             val withUse = net.exoad.kira.compiler.frontend.parser.ast.RootASTNode(
-                listOf(root.statements[0], net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement(StringLiteral("test:shapes"))) + root.statements.drop(2)
+                listOf(root.statements[0], net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement(StringLiteral("test.shapes.Sized"), Identifier("Sized"))) + root.statements.drop(2)
             )
             unit.getSource("test/band.kira")!!.ast = withUse
         }
@@ -114,7 +114,7 @@ class TyperPhaseTest {
         val struct = StructDecl(ty("S"), emptyList(), emptyList(), listOf(ty("Base")), null)
         val src = astModule(unit, "test:s", struct)
         src.ast = net.exoad.kira.compiler.frontend.parser.ast.RootASTNode(
-            listOf(src.ast.statements[0], net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement(StringLiteral("test:base"))) + src.ast.statements.drop(1)
+            listOf(src.ast.statements[0], net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement(StringLiteral("test.base.Base"), Identifier("Base"))) + src.ast.statements.drop(1)
         )
         expectDiagnostic(typed(unit), "types.struct.inherits-class")
     }

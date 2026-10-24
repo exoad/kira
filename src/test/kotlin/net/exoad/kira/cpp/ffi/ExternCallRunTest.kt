@@ -493,6 +493,11 @@ class ExternCallRunTest {
         "proto:caller",
         """
         proto.p as p
+        proto.p.bumpP as bumpP
+        proto.p.clenAfterP as clenAfterP
+        proto.p.lenAfterP as lenAfterP
+        proto.p.lenS2 as lenS2
+        proto.p.viaW as viaW
 
         mut GS: Str = "$LONG"
 

@@ -83,7 +83,11 @@ class TyperBodyCorpusTest {
                     notValues[n.identifier] = true
                 }
                 is Type -> notValues[n.identifier] = true
-                is net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement -> notValues[n.uri] = true
+                is net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement -> {
+                    // An alias names what it imports (a member alias a value's symbol); it is no value itself.
+                    notValues[n.uri] = true
+                    n.alias?.let { notValues[it] = true }
+                }
                 is FunctionCallExpr -> {
                     val name = n.name
                     notValues[name] = true

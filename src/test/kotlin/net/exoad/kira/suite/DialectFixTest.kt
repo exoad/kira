@@ -68,7 +68,7 @@ class DialectFixTest {
                 "pub Handler: Any {\n    pub handle: () Str\n}\npub Impl: Handler {\n    pub tag: Str = \"impl\"\n\n" +
                     "    pub override handle: () Str {\n        tag\n    }\n}\npub run: (h: Handler) Str {\n    h.handle()\n}",
             ),
-            module("probe:main", "probe.b.shapes as shapes\n\nmain: () Void {\n    i: Impl = Impl { }\n    println(shapes.run(i))\n}"),
+            module("probe:main", "probe.b.shapes as shapes\nprobe.b.shapes.Impl as Impl\n\nmain: () Void {\n    i: Impl = Impl { }\n    println(shapes.run(i))\n}"),
         )
         expectNoErrors(p)
         assertIs<TraitSymbol>(p.module("probe:b.shapes")!!.members["Handler"])
