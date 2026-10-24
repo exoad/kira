@@ -47,11 +47,7 @@ namespace chain
 
   kira::Maybe<kira::Rc<Behaviour>> make(const kira::Str& wanted)
   {
-      if(wanted == ID_STOP)
-      {
-          return std::make_shared<Stop>();
-      }
-      return kira::none;
+      return wanted == ID_STOP ? kira::Maybe<kira::Rc<Behaviour>>(std::make_shared<Stop>()) : kira::Maybe<kira::Rc<Behaviour>>(kira::none);
   }
 
   Chain::Chain(kira::List<kira::Rc<Behaviour>> loaded_)
@@ -66,21 +62,27 @@ namespace chain
           why = "no behaviour";
           return false;
       }
-      const kira::Rc<Behaviour> it = kira::unwrap(b);
-      const kira::Str wanted = it->id();
-      if(kira::str::isEmpty(wanted))
+      else
       {
-          why = "a behaviour with no id";
-          return false;
+          const kira::Rc<Behaviour> it = kira::unwrap(b);
+          const kira::Str wanted = it->id();
+          if(kira::str::isEmpty(wanted))
+          {
+              why = "a behaviour with no id";
+              return false;
+          }
+          else if(has(wanted))
+          {
+              why = kira::cat("already loaded: ", wanted);
+              return false;
+          }
+          else
+          {
+              it->onLoad();
+              loaded.push_back(it);
+              return true;
+          }
       }
-      if(has(wanted))
-      {
-          why = kira::cat("already loaded: ", wanted);
-          return false;
-      }
-      it->onLoad();
-      loaded.push_back(it);
-      return true;
   }
 
   kira::Size Chain::size() const
@@ -90,23 +92,21 @@ namespace chain
 
   bool Chain::has(const kira::Str& wanted) const
   {
+      bool result{false};
       for(const kira::Rc<Behaviour>& b : kira::List<kira::Rc<Behaviour>>(loaded))
       {
           if(b->id() == wanted)
           {
-              return true;
+              result = true;
+              break;
           }
       }
-      return false;
+      return result;
   }
 
   kira::Maybe<kira::Rc<Behaviour>> Chain::at(kira::Size i) const
   {
-      if(i >= loaded.size())
-      {
-          return kira::none;
-      }
-      return kira::at(loaded, i);
+      return i >= loaded.size() ? kira::Maybe<kira::Rc<Behaviour>>(kira::none) : kira::Maybe<kira::Rc<Behaviour>>(kira::at(loaded, i));
   }
 }
 #include "kira/macro_pop.hxx"

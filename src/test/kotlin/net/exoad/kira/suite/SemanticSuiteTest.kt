@@ -95,7 +95,7 @@ class SemanticSuiteTest {
         assertHealthy(
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
             """
         )
@@ -109,7 +109,7 @@ class SemanticSuiteTest {
                 pub value: Int32
 
                 pub increment: () Int32 {
-                    return value + 1
+                    value + 1
                 }
             }
             """
@@ -125,7 +125,7 @@ class SemanticSuiteTest {
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
             """
         )
@@ -221,7 +221,7 @@ class SemanticSuiteTest {
             x: Int32 = 1
 
             f: (x: Int32) Int32 {
-                return x
+                x
             }
             """
         )
@@ -259,7 +259,7 @@ class SemanticSuiteTest {
     fun namedArgumentsBindToParameterNames() {
         assertHealthy(
             """
-            sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { a - b }
 
             Esc: Any {
                 pub mut pulse: Int32
@@ -280,7 +280,7 @@ class SemanticSuiteTest {
     fun namedArgumentThatIsNotAParameterIsDiagnosed() {
         val msgs = assertUnhealthy(
             """
-            sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
                 x: Int32 = sub(a = 10, c = 3)
@@ -294,7 +294,7 @@ class SemanticSuiteTest {
     fun duplicateAndMissingNamedArgumentsAreDiagnosed() {
         val duplicate = assertUnhealthy(
             """
-            sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
                 x: Int32 = sub(10, a = 3)
@@ -304,7 +304,7 @@ class SemanticSuiteTest {
         assertTrue(duplicate.any { it.contains("given more than once") }, duplicate.toString())
         val missing = assertUnhealthy(
             """
-            sub: (a: Int32, b: Int32) Int32 { return a - b }
+            sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
                 x: Int32 = sub(b = 3)
@@ -501,7 +501,7 @@ class SemanticSuiteTest {
             """
             outer: () Int32 {
                 inner: Int32 = 1
-                return inner
+                inner
             }
             """
         )

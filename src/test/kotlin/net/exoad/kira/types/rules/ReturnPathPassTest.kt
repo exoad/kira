@@ -14,19 +14,10 @@ class ReturnPathPassTest {
             snippet(
                 """
                 pub sign: (v: Int32) Int32 {
-                    if v < 0 {
-                        return -1
-                    } else if v == 0 {
-                        return 0
-                    } else {
-                        return 1
-                    }
+                    v < 0 ? -1 : v == 0 ? 0 : 1
                 }
                 pub pick: (b: Bool) Int32 {
-                    if b {
-                        return 1
-                    }
-                    return 0
+                    b ? 1 : 0
                 }
                 """,
             ),
@@ -41,16 +32,17 @@ class ReturnPathPassTest {
                 kira.os as os
                 pub fail: (v: Int32) Int32 {
                     if v > 0 {
-                        return v
+                        v
+                    } else {
+                        throw "negative"
                     }
-                    throw "negative"
                 }
                 pub quit: () Int32 {
                     exit(1)
                 }
                 pub guarded: (v: Int32) Int32 {
                     try {
-                        return v
+                        v
                     } on e: Str {
                         throw e
                     }
@@ -66,11 +58,15 @@ class ReturnPathPassTest {
             snippet(
                 """
                 pub spin: () Int32 {
+                    mut result: Int32 = 0
                     while true {
-                        return 1
+                        result = 1
+                        break
                     }
+                    result
                 }
                 pub nested: () Int32 {
+                    mut result: Int32 = 0
                     while true {
                         mut i: Int32 = 0
                         while i < 3 {
@@ -79,8 +75,10 @@ class ReturnPathPassTest {
                             }
                             i += 1
                         }
-                        return i
+                        result = i
+                        break
                     }
+                    result
                 }
                 """,
             ),
@@ -95,9 +93,9 @@ class ReturnPathPassTest {
             """
             pub sign: (v: Int32) Int32 {
                 if v < 0 {
-                    return -1
+                    -1
                 } else if v > 0 {
-                    return 1
+                    1
                 }
             }
             pub empty: () Int32 {
@@ -115,12 +113,11 @@ class ReturnPathPassTest {
                 mut i: Int32 = 0
                 while i < n {
                     i += 1
-                    return i
                 }
             }
             pub first: (xs: Arr<Int32>) Int32 {
                 for x: Int32 in xs {
-                    return x
+                    trace(x)
                 }
             }
             pub broken: () Int32 {
@@ -138,9 +135,9 @@ class ReturnPathPassTest {
         val p = snippet(
             """
             pub f: (b: Bool) Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
+                (x: Int32) Int32 {
                     if b {
-                        return x
+                        x
                     }
                 }
             }

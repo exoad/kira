@@ -6,54 +6,54 @@ golden.py.regexes.app.why as why
 // alone (critique 3), on the reasons every module shares, so app:why reads what compile here left (D86).
 
 pub compiled: (pattern: Str, flags: Int32) Maybe<Regex> {
-    return compile(pattern, flags)
+    compile(pattern, flags)
 }
 
 pub searched: (r: Regex, text: Str) Maybe<Match> {
-    return r.search(text)
+    r.search(text)
 }
 
 pub atStart: (r: Regex, text: Str) Maybe<Match> {
-    return r.matchStart(text)
+    r.matchStart(text)
 }
 
 pub atPos: (r: Regex, text: Str, pos: Size) Maybe<Match> {
-    return r.matchAt(text, pos)
+    r.matchAt(text, pos)
 }
 
 pub whole: (r: Regex, text: Str) Maybe<Match> {
-    return r.fullMatch(text)
+    r.fullMatch(text)
 }
 
 pub each: (r: Regex, text: Str) List<Match> {
-    return r.findIter(text)
+    r.findIter(text)
 }
 
 pub allOf: (r: Regex, text: Str) List<Str> {
-    return r.findAll(text)
+    r.findAll(text)
 }
 
 pub replaced: (r: Regex, replacement: Str, text: Str) Str {
-    return r.sub(replacement, text)
+    r.sub(replacement, text)
 }
 
 pub pieces: (r: Regex, text: Str) List<Str> {
-    return r.split(text)
+    r.split(text)
 }
 
 pub groupOf: (m: Match, n: Int32) Maybe<Str> {
-    return m.group(n)
+    m.group(n)
 }
 
 pub namedOf: (m: Match, name: Str) Maybe<Str> {
-    return m.groupNamed(name)
+    m.groupNamed(name)
 }
 
 pub span: (m: Match) List<Size> {
     mut out: List<Size> = @listOf()
     out.add(m.start())
     out.add(m.end())
-    return out
+    out
 }
 
 pub main: () Int32 {
@@ -74,5 +74,5 @@ pub main: () Int32 {
     t.check(whyNot() == "missing ), unterminated subpattern at position 0", "and another module reads the same reason")
     t.check(compile("a", 0).isSome() && whyNot() == "", "which a compile that works clears")
     t.check(compile("a{4294967296}", 0).isNone() && regexError() == "the repetition number is too large", "a repeat past re's limit, an OverflowError, is none too")
-    return t.finish()
+    t.finish()
 }

@@ -1,10 +1,10 @@
-closures.kira:6:12  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:7:16  x * k  Int32
-closures.kira:7:16  x  Int32  place=Param(x)  sym=<lambda>(x)
-closures.kira:7:20  k  Int32  place=Param(k)  sym=golden.closures:lang.closures.scaleBy(k)
-closures.kira:13:12  f(x)  Int32  call=FN_VALUE
-closures.kira:13:12  f  Fx<Tuple1<Int32>, Int32>  place=Param(f)  sym=golden.closures:lang.closures.applyTo(f)
-closures.kira:13:14  x  Int32  place=Param(x)  sym=golden.closures:lang.closures.applyTo(x)
+closures.kira:6:5  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
+closures.kira:7:9  x * k  Int32
+closures.kira:7:9  x  Int32  place=Param(x)  sym=<lambda>(x)
+closures.kira:7:13  k  Int32  place=Param(k)  sym=golden.closures:lang.closures.scaleBy(k)
+closures.kira:13:5  f(x)  Int32  call=FN_VALUE
+closures.kira:13:5  f  Fx<Tuple1<Int32>, Int32>  place=Param(f)  sym=golden.closures:lang.closures.applyTo(f)
+closures.kira:13:7  x  Int32  place=Param(x)  sym=golden.closures:lang.closures.applyTo(x)
 closures.kira:18:24  0  Int32  const=0:Int32
 closures.kira:19:21  xs  List<Int32>  place=Param(xs)  sym=golden.closures:lang.closures.addAll(xs)
 closures.kira:20:9  total += applyTo((v: Int32) Int32 { ... }, x)  Void
@@ -12,43 +12,43 @@ closures.kira:20:9  total  Int32  place=Local(total)  sym=golden.closures:lang.c
 closures.kira:20:18  applyTo((v: Int32) Int32 { ... }, x)  Int32  call=FREE(applyTo)
 closures.kira:20:18  applyTo  ?  sym=golden.closures:lang.closures.applyTo
 closures.kira:20:26  (v: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:21:20  v + k  Int32
-closures.kira:21:20  v  Int32  place=Param(v)  sym=<lambda>(v)
-closures.kira:21:24  k  Int32  place=Param(k)  sym=golden.closures:lang.closures.addAll(k)
+closures.kira:21:13  v + k  Int32
+closures.kira:21:13  v  Int32  place=Param(v)  sym=<lambda>(v)
+closures.kira:21:17  k  Int32  place=Param(k)  sym=golden.closures:lang.closures.addAll(k)
 closures.kira:22:12  x  Int32  place=Local(x)  sym=golden.closures:lang.closures.addAll::x
-closures.kira:24:12  total  Int32  place=Local(total)  sym=golden.closures:lang.closures.addAll::total
+closures.kira:24:5  total  Int32  place=Local(total)  sym=golden.closures:lang.closures.addAll::total
 closures.kira:28:20  3  Int32  const=3:Int32
-closures.kira:32:16  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:33:20  x * k  Int32
-closures.kira:33:20  x  Int32  place=Param(x)  sym=<lambda>(x)
-closures.kira:33:24  k  Int32  place=Field(This(Gain).k)  sym=Gain.k
-closures.kira:38:16  x * k * 2  Int32
-closures.kira:38:16  x * k  Int32
-closures.kira:38:16  x  Int32  place=Param(x)  sym=Gain.twice(x)
-closures.kira:38:20  k  Int32  place=Field(This(Gain).k)  sym=Gain.k
-closures.kira:38:24  2  Int32  const=2:Int32
-closures.kira:43:16  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:44:20  twice(x)  Int32  call=METHOD(Gain.twice)
-closures.kira:44:20  twice  ?  sym=Gain.twice
-closures.kira:44:26  x  Int32  place=Param(x)  sym=<lambda>(x)
+closures.kira:32:9  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
+closures.kira:33:13  x * k  Int32
+closures.kira:33:13  x  Int32  place=Param(x)  sym=<lambda>(x)
+closures.kira:33:17  k  Int32  place=Field(This(Gain).k)  sym=Gain.k
+closures.kira:38:9  x * k * 2  Int32
+closures.kira:38:9  x * k  Int32
+closures.kira:38:9  x  Int32  place=Param(x)  sym=Gain.twice(x)
+closures.kira:38:13  k  Int32  place=Field(This(Gain).k)  sym=Gain.k
+closures.kira:38:17  2  Int32  const=2:Int32
+closures.kira:43:9  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
+closures.kira:44:13  twice(x)  Int32  call=METHOD(Gain.twice)
+closures.kira:44:13  twice  ?  sym=Gain.twice
+closures.kira:44:19  x  Int32  place=Param(x)  sym=<lambda>(x)
 closures.kira:50:24  5  Int32  const=5:Int32
-closures.kira:53:16  f(x)  Int32  call=FN_VALUE
-closures.kira:53:16  f  Fx<Tuple1<Int32>, Int32>  place=Param(f)  sym=Counter.apply(f)
-closures.kira:53:18  x  Int32  place=Param(x)  sym=Counter.apply(x)
-closures.kira:58:16  apply((y: Int32) Int32 { ... }, x)  Int32  call=METHOD(Counter.apply)
-closures.kira:58:16  apply  ?  sym=Counter.apply
-closures.kira:58:22  (y: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:59:20  y + k  Int32
-closures.kira:59:20  y  Int32  place=Param(y)  sym=<lambda>(y)
-closures.kira:59:24  k  Int32  place=Field(This(Counter).k)  sym=Counter.k
+closures.kira:53:9  f(x)  Int32  call=FN_VALUE
+closures.kira:53:9  f  Fx<Tuple1<Int32>, Int32>  place=Param(f)  sym=Counter.apply(f)
+closures.kira:53:11  x  Int32  place=Param(x)  sym=Counter.apply(x)
+closures.kira:58:9  apply((y: Int32) Int32 { ... }, x)  Int32  call=METHOD(Counter.apply)
+closures.kira:58:9  apply  ?  sym=Counter.apply
+closures.kira:58:15  (y: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
+closures.kira:59:13  y + k  Int32
+closures.kira:59:13  y  Int32  place=Param(y)  sym=<lambda>(y)
+closures.kira:59:17  k  Int32  place=Field(This(Counter).k)  sym=Counter.k
 closures.kira:60:12  x  Int32  place=Param(x)  sym=Counter.offset(x)
-closures.kira:66:16  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
-closures.kira:67:20  x * k  Int32
-closures.kira:67:20  x  Int32  place=Param(x)  sym=<lambda>(x)
-closures.kira:67:24  k  Int32  place=Field(This(Counter).k)  sym=Counter.k
+closures.kira:66:9  (x: Int32) Int32 { ... }  Fx<Tuple1<Int32>, Int32>
+closures.kira:67:13  x * k  Int32
+closures.kira:67:13  x  Int32  place=Param(x)  sym=<lambda>(x)
+closures.kira:67:17  k  Int32  place=Field(This(Counter).k)  sym=Counter.k
 closures.kira:74:27  Ref<Int32> { value = 0 }  Ref<Int32>
 closures.kira:74:48  0  Int32  const=0:Int32
-closures.kira:75:12  () Int32 { ... }  Fx<Tuple0, Int32>
+closures.kira:75:5  () Int32 { ... }  Fx<Tuple0, Int32>
 closures.kira:76:9  counter.value = counter.value + 1  Void
 closures.kira:76:9  counter.value  Int32  member=Field(Ref.value: Int32)  place=Field(Local(counter).value)
 closures.kira:76:9  counter  Ref<Int32>  place=Local(counter)  sym=golden.closures:lang.closures.tally::counter
@@ -56,5 +56,5 @@ closures.kira:76:25  counter.value + 1  Int32
 closures.kira:76:25  counter.value  Int32  member=Field(Ref.value: Int32)  place=Field(Local(counter).value)
 closures.kira:76:25  counter  Ref<Int32>  place=Local(counter)  sym=golden.closures:lang.closures.tally::counter
 closures.kira:76:41  1  Int32  const=1:Int32
-closures.kira:77:16  counter.value  Int32  member=Field(Ref.value: Int32)  place=Field(Local(counter).value)
-closures.kira:77:16  counter  Ref<Int32>  place=Local(counter)  sym=golden.closures:lang.closures.tally::counter
+closures.kira:77:9  counter.value  Int32  member=Field(Ref.value: Int32)  place=Field(Local(counter).value)
+closures.kira:77:9  counter  Ref<Int32>  place=Local(counter)  sym=golden.closures:lang.closures.tally::counter

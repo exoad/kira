@@ -12,7 +12,7 @@ ramp: (n: Size) List<UInt8> {
     while out.size() < n {
         out.add(out.size() as UInt8)
     }
-    return out
+    out
 }
 
 hex: (v: View<UInt8>) Str {
@@ -25,54 +25,54 @@ hex: (v: View<UInt8>) Str {
         s = s + v[i].toHex()
         i += 1
     }
-    return s
+    s
 }
 
 pub read16: (n: Size, at: Size) UInt16 {
-    return readU16Be(ramp(n), at)
+    readU16Be(ramp(n), at)
 }
 
 pub read32: (n: Size, at: Size) UInt32 {
-    return readU32Be(ramp(n), at)
+    readU32Be(ramp(n), at)
 }
 
 pub read64: (n: Size, at: Size) UInt64 {
-    return readU64Be(ramp(n), at)
+    readU64Be(ramp(n), at)
 }
 
 pub readF64: (n: Size, at: Size) Float64 {
-    return readF64Be(ramp(n), at)
+    readF64Be(ramp(n), at)
 }
 
 pub write16: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU16Be(buf.view(), at, 0xBEEF)
-    return hex(buf)
+    hex(buf)
 }
 
 pub write32: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU32Be(buf.view(), at, 0xA1B2C3D4)
-    return hex(buf)
+    hex(buf)
 }
 
 pub write64: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU64Be(buf.view(), at, 0x1122334455667788)
-    return hex(buf)
+    hex(buf)
 }
 
 pub writeF64: (n: Size, at: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeF64Be(buf.view(), at, -1.5)
-    return hex(buf)
+    hex(buf)
 }
 
 // A write through a MutView lent from part of the List: its own end is the bound.
 pub writeInside: (n: Size, at: Size, k: Size, off: Size) Str {
     mut buf: List<UInt8> = ramp(n)
     writeU32Be(buf.slice(at, k), off, 0xCAFEF00D)
-    return hex(buf)
+    hex(buf)
 }
 
 // The round trips the driver holds against struct.
@@ -85,23 +85,23 @@ pub put: (v16: UInt16, v32: UInt32, v64: UInt64, f: Float64) List<UInt8> {
     writeU32Be(out.view(), 2, v32)
     writeU64Be(out.view(), 6, v64)
     writeF64Be(out.view(), 14, f)
-    return out
+    out
 }
 
 pub get16: (b: View<UInt8>, at: Size) UInt16 {
-    return readU16Be(b, at)
+    readU16Be(b, at)
 }
 
 pub get32: (b: View<UInt8>, at: Size) UInt32 {
-    return readU32Be(b, at)
+    readU32Be(b, at)
 }
 
 pub get64: (b: View<UInt8>, at: Size) UInt64 {
-    return readU64Be(b, at)
+    readU64Be(b, at)
 }
 
 pub getF64: (b: View<UInt8>, at: Size) Float64 {
-    return readF64Be(b, at)
+    readF64Be(b, at)
 }
 
 main: () Void {

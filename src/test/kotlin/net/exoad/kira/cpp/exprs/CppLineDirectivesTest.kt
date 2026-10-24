@@ -19,10 +19,10 @@ class CppLineDirectivesTest {
         "lines:app",
         """
         pub scale: (k: Int32) Fx<Tuple1<Int32>, Int32> {
-            base: Int32 = k * 2
-            return (x: Int32) Int32 {
+            base: Int32 = k * 2;
+            (x: Int32) Int32 {
                 y: Int32 = x + base
-                return y
+                y
             }
         }
 
@@ -31,7 +31,7 @@ class CppLineDirectivesTest {
             for i: Int32 in 0..n {
                 t += i
             }
-            return t
+            t
         }
         """,
     )

@@ -47,7 +47,7 @@ class OperatorMemberParseTest {
             """
             pub V2: Any {
                 pub x: Float32 = 0.0
-                pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
             }
             pub Box: Any {
                 pub v: Int32 = 0
@@ -72,10 +72,10 @@ class OperatorMemberParseTest {
         val ast = parse(
             """
             pub Base: Any {
-                pub @_op_eq_: (other: Base) Bool { return true }
+                pub @_op_eq_: (other: Base) Bool { true }
             }
             pub Leaf: Base {
-                override pub @_op_eq_: (other: Base) Bool { return false }
+                override pub @_op_eq_: (other: Base) Bool { false }
             }
             """
         )
@@ -276,7 +276,7 @@ class OperatorMemberParseTest {
                     pub x: Int32
                 }
                 pub @op_add: (a: Point, b: Point) Point {
-                    return Point { a.x + b.x }
+                    Point { a.x + b.x }
                 }
                 """.trimIndent(),
                 "tests/opwarn1.kira",
@@ -295,7 +295,7 @@ class OperatorMemberParseTest {
                 """
                 pub V2: Any {
                     pub x: Float32 = 0.0
-                    pub @_op_add_: (other: V2) V2 { return V2 { x } }
+                    pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
                 """.trimIndent(),
                 "tests/opwarn2.kira",

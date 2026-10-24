@@ -5,7 +5,7 @@ kira.test as test
 // (critique 21) and sees it advanced.
 
 pub seeded: (seed: Int64) Random {
-    return newRandom(seed)
+    newRandom(seed)
 }
 
 pub floats: (r: Random, n: Int32) List<Float64> {
@@ -13,7 +13,7 @@ pub floats: (r: Random, n: Int32) List<Float64> {
     for i: Int32 in 0..n {
         out.add(r.nextFloat())
     }
-    return out
+    out
 }
 
 pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
@@ -21,7 +21,7 @@ pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
     for i: Int32 in 0..n {
         out.add(r.uniform(lo, hi))
     }
-    return out
+    out
 }
 
 pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
@@ -29,7 +29,7 @@ pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
     for i: Int32 in 0..n {
         out.add(r.below(stop))
     }
-    return out
+    out
 }
 
 pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
@@ -37,7 +37,7 @@ pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
     for i: Int32 in 0..n {
         out.add(r.between(lo, hi))
     }
-    return out
+    out
 }
 
 pub bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
@@ -45,7 +45,7 @@ pub bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
     for i: Int32 in 0..n {
         out.add(r.bits(k))
     }
-    return out
+    out
 }
 
 pub main: () Int32 {
@@ -60,5 +60,5 @@ pub main: () Int32 {
     t.checkStr("${a} ${b} ${c} ${d} ${r.bits(63)}", "83 1 4747 0 4942639112109623332", "and its integers after them")
     t.check(newRandom(-7).below(1000000000000000000) == 455200494606748983, "a negative seed is Python's")
     t.check(newRandom(4611686018427387904).between(-5, 5) == -2, "and a large one")
-    return t.finish()
+    t.finish()
 }

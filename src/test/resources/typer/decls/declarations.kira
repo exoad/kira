@@ -27,14 +27,14 @@ pub Arr<Arr<Float64>> as Matrix
 pub Speaker: Any {
     pub speak: () Str
     pub loudness: () Int32 {
-        return 1
+        1
     }
 }
 
 pub Shouter: Speaker {
     pub shout: () Str
     pub loudness: () Int32 {
-        return 10
+        10
     }
 }
 
@@ -47,7 +47,7 @@ pub Animal: Any {
     pub mut age: Int32 = 0
 
     pub describe: () Str {
-        return name
+        name
     }
 
     pub mut birthday: () Void {
@@ -59,19 +59,19 @@ pub Dog: Animal, Shouter, Keyed<Str> {
     pub breed: Str
 
     pub describe: () Str {
-        return breed
+        breed
     }
 
     pub speak: () Str {
-        return "woof"
+        "woof"
     }
 
     pub shout: () Str {
-        return "WOOF"
+        "WOOF"
     }
 
     pub key: () Str {
-        return name
+        name
     }
 }
 
@@ -79,15 +79,12 @@ pub Box<T: Speaker>: Any {
     pub value: T
 
     pub get: () T {
-        return value
+        value
     }
 }
 
 pick<T>: (a: T, b: T, first: Bool) T {
-    if first {
-        return a
-    }
-    return b
+    first ? a : b
 }
 
 pub bump: (mut value: Int32, by: Int32) Void {
@@ -95,11 +92,11 @@ pub bump: (mut value: Int32, by: Int32) Void {
 }
 
 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-    return f(x)
+    f(x)
 }
 
 pub lookup: (names: Map<Str, List<Id>>, key: Str) Maybe<List<Id>> {
-    return names.get(key)
+    names.get(key)
 }
 
 pub @_magic intrinsicClock: () Int64;
@@ -107,5 +104,5 @@ pub @_magic intrinsicClock: () Int64;
 pub @_opaque Handle: Any
 
 @op_add: (a: Animal, b: Animal) Animal {
-    return a
+    a
 }

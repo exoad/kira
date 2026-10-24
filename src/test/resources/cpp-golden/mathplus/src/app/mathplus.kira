@@ -4,27 +4,27 @@ kira.test as test
 // kira:math's K5 additions: hypot, atan2 and exp where every libm agrees to the bit, and floorMod, Python's %.
 
 pub mod: (a: Float64, b: Float64) Float64 {
-    return floorMod(a, b)
+    floorMod(a, b)
 }
 
 pub hyp: (x: Float64, y: Float64) Float64 {
-    return hypot(x, y)
+    hypot(x, y)
 }
 
 pub angle: (y: Float64, x: Float64) Float64 {
-    return atan2(y, x)
+    atan2(y, x)
 }
 
 pub power: (v: Float64) Float64 {
-    return exp(v)
+    exp(v)
 }
 
 shown: (v: Float64) Str {
-    return "${v}"
+    "${v}"
 }
 
 pub main: () Int32 {
-    return checks(0.0)
+    checks(0.0)
 }
 
 // Infinity and NaN from a zero no compiler sees, as MSVC refuses a constant 0.0 / 0.0.
@@ -55,5 +55,5 @@ checks: (zero: Float64) Int32 {
     t.checkStr(shown(floorMod(-0.0, inf)) + " " + shown(floorMod(0.0, -inf)), "0 -0", "and zeros over infinities")
     t.checkStr(shown(floorMod(inf, 3.0)) + " " + shown(floorMod(nan, 3.0)) + " " + shown(floorMod(3.0, nan)), "nan nan nan", "an infinite dividend or a NaN is a NaN")
     t.checkStr(shown(floorMod(5.0, 0.0)) + " " + shown(floorMod(5.0, -0.0)), "nan nan", "and a zero divisor, where Python raises")
-    return t.finish()
+    t.finish()
 }

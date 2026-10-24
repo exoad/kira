@@ -28,12 +28,12 @@ pub crc16: (data: View<UInt8>) UInt16 {
         crc ^= (data[i] as UInt16) << 8
         mut bit: Int32 = 0
         while bit < 8 {
-            crc = if (crc & 0x8000) != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 }
+            crc = (crc & 0x8000) != 0 ? (crc << 1) ^ 0x1021 : crc << 1
             bit += 1
         }
         i += 1
     }
-    return crc
+    crc
 }
 
 append: (mut out: List<UInt8>, v: View<UInt8>) Void {
@@ -57,24 +57,25 @@ pub encodeRaw: (typ: UInt16, payload: View<UInt8>, seq: UInt16, flags: UInt8, ve
     out.add(0)
     end: Size = out.size()
     writeU16Le(out.slice(end - 2, 2), 0, crc)
-    return out
+    out
 }
 
 // parse_frame: one whole, CRC-valid frame from exactly its bytes, else null.
 pub parseFrame: (data: View<UInt8>) Maybe<Frame> {
     if data.size() < HEADER_BYTES + CRC_BYTES || data[0] != MAGIC0 || data[1] != MAGIC1 {
-        return null
+        null
+    } else {
+        n: Size = readU16Le(data, 8) as Size
+        if data.size() != HEADER_BYTES + n + CRC_BYTES {
+            null
+        } else if readU16Le(data, data.size() - 2) != crc16(data.slice(0, data.size() - 2)) {
+            null
+        } else {
+            mut payload: List<UInt8> = List<UInt8> { }
+            append(mut payload, data.slice(HEADER_BYTES, n))
+            Frame { data[2], data[3], readU16Le(data, 4), readU16Le(data, 6), payload }
+        }
     }
-    n: Size = readU16Le(data, 8) as Size
-    if data.size() != HEADER_BYTES + n + CRC_BYTES {
-        return null
-    }
-    if readU16Le(data, data.size() - 2) != crc16(data.slice(0, data.size() - 2)) {
-        return null
-    }
-    mut payload: List<UInt8> = List<UInt8> { }
-    append(mut payload, data.slice(HEADER_BYTES, n))
-    return Frame { data[2], data[3], readU16Le(data, 4), readU16Le(data, 6), payload }
 }
 
 // The L2's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
@@ -85,12 +86,12 @@ pub crc32: (buf: View<UInt8>) UInt32 {
         crc ^= buf[i] as UInt32
         mut bit: Int32 = 0
         while bit < 8 {
-            crc = if (crc & 1) != 0 { (crc >> 1) ^ 0xEDB88320 } else { crc >> 1 }
+            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
             bit += 1
         }
         i += 1
     }
-    return ~crc
+    ~crc
 }
 
 // unilidar's command: the magic, kind, length, type and value little-endian, the CRC of the
@@ -109,24 +110,24 @@ pub command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Cmd {
     writeU32Le(p.view(), 20, crc)
     p[30] = 0x00
     p[31] = 0xFF
-    return p
+    p
 }
 
 // The readers and writers by width, for the driver to hold against struct.
 pub u16At: (v: View<UInt8>, at: Size) UInt16 {
-    return readU16Le(v, at)
+    readU16Le(v, at)
 }
 
 pub u32At: (v: View<UInt8>, at: Size) UInt32 {
-    return readU32Le(v, at)
+    readU32Le(v, at)
 }
 
 pub u64At: (v: View<UInt8>, at: Size) UInt64 {
-    return readU64Le(v, at)
+    readU64Le(v, at)
 }
 
 pub f64At: (v: View<UInt8>, at: Size) Float64 {
-    return readF64Le(v, at)
+    readF64Le(v, at)
 }
 
 pub putU16: (v: MutView<UInt8>, at: Size, x: UInt16) Void {
@@ -148,11 +149,12 @@ pub putF64: (v: MutView<UInt8>, at: Size, x: Float64) Void {
 // A MutView parameter written by index, by set, and read as a View.
 stamp: (p: MutView<UInt8>, v: UInt8) UInt32 {
     if p.isEmpty() {
-        return 0
+        0
+    } else {
+        p[0] = v
+        p.set(p.size() - 1, v + 1)
+        crc32(p.view())
     }
-    p[0] = v
-    p.set(p.size() - 1, v + 1)
-    return crc32(p.view())
 }
 
 // ---- main ----------------------------------------------------------------------------------
@@ -167,7 +169,7 @@ hex: (v: View<UInt8>) Str {
         s = s + v[i].toHex()
         i += 1
     }
-    return s
+    s
 }
 
 main: () Void {

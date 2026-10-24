@@ -5,10 +5,7 @@ kira.sync as sync
 // does is told which module is missing; then reads, writes and a signal's end of a read on the driver's stand-in.
 
 text: (buf: List<UInt8>, n: Int64) Str {
-    if n <= 0 {
-        return ""
-    }
-    return Str.of(buf.slice(0, n as Size))
+    n <= 0 ? "" : Str.of(buf.slice(0, n as Size))
 }
 
 // The driver's stand-in port, whose descriptor is a socket's: the bytes waiting, then a read without limit that the
@@ -22,7 +19,7 @@ pub readOnSignal: () Str {
     n: Int64 = port.read(buf.from(0), 2000)
     first: Str = text(buf, n)
     m: Int64 = port.read(buf.from(0), -1)
-    return "installed ${installed} open ${opened}: read ${n} '${first}', then ${m}, ${lastErrorKind()}, the flag ${flag.load()}"
+    "installed ${installed} open ${opened}: read ${n} '${first}', then ${m}, ${lastErrorKind()}, the flag ${flag.load()}"
 }
 
 // Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
@@ -32,21 +29,21 @@ pub readSome: (port: Serial, size: Size, ms: Int64) Str {
         buf.add(0)
     }
     n: Int64 = port.read(buf.from(0), ms)
-    return "${n} '${text(buf, n)}'"
+    "${n} '${text(buf, n)}'"
 }
 
 pub openPort: (path: Str, baud: Int32) Serial {
     port: Serial = Serial {}
     port.open(path, baud)
-    return port
+    port
 }
 
 pub reopen: (port: Serial, path: Str) Bool {
-    return port.open(path, 115200)
+    port.open(path, 115200)
 }
 
 pub writeText: (port: Serial, data: Str) Int64 {
-    return port.write(data.bytes())
+    port.write(data.bytes())
 }
 
 pub shut: (port: Serial) Void {
@@ -54,11 +51,11 @@ pub shut: (port: Serial) Void {
 }
 
 pub state: (port: Serial) Str {
-    return "open ${port.isOpen()} handle ${port.handle()}"
+    "open ${port.isOpen()} handle ${port.handle()}"
 }
 
 pub why: () Str {
-    return "${lastError()} (${lastErrorKind()})"
+    "${lastError()} (${lastErrorKind()})"
 }
 
 pub main: () Int32 {
@@ -69,5 +66,5 @@ pub main: () Int32 {
     mut buf: List<UInt8> = @listOf(0, 0)
     println("read ${port.read(buf.from(0), 10)} write ${port.write(buf)} open ${port.isOpen()} handle ${port.handle()}")
     println(lastError())
-    return 0
+    0
 }

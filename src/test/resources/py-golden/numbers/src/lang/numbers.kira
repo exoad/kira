@@ -4,147 +4,147 @@
 // The expected output is the C++ backend's run of this same module.
 
 quotient: (a: Int32, b: Int32) Int32 {
-    return a / b
+    a / b
 }
 
 remainder: (a: Int32, b: Int32) Int32 {
-    return a % b
+    a % b
 }
 
 quotient64: (a: Int64, b: Int64) Int64 {
-    return a / b
+    a / b
 }
 
 remainder64: (a: Int64, b: Int64) Int64 {
-    return a % b
+    a % b
 }
 
 quotient8: (a: Int8, b: Int8) Int8 {
-    return a / b
+    a / b
 }
 
 remainder16: (a: Int16, b: Int16) Int16 {
-    return a % b
+    a % b
 }
 
 unsignedQuotient: (a: UInt32, b: UInt32) UInt32 {
-    return a / b
+    a / b
 }
 
 unsignedRemainder: (a: UInt32, b: UInt32) UInt32 {
-    return a % b
+    a % b
 }
 
 addU8: (a: UInt8, b: UInt8) UInt8 {
-    return a + b
+    a + b
 }
 
 subU8: (a: UInt8, b: UInt8) UInt8 {
-    return a - b
+    a - b
 }
 
 mulU16: (a: UInt16, b: UInt16) UInt16 {
-    return a * b
+    a * b
 }
 
 mulU32: (a: UInt32, b: UInt32) UInt32 {
-    return a * b
+    a * b
 }
 
 subU64: (a: UInt64, b: UInt64) UInt64 {
-    return a - b
+    a - b
 }
 
 addU64: (a: UInt64, b: UInt64) UInt64 {
-    return a + b
+    a + b
 }
 
 subSize: (a: Size, b: Size) Size {
-    return a - b
+    a - b
 }
 
 negU32: (a: UInt32) UInt32 {
-    return -a
+    -a
 }
 
 negI8: (a: Int8) Int8 {
-    return -a
+    -a
 }
 
 addI8: (a: Int8, b: Int8) Int8 {
-    return a + b
+    a + b
 }
 
 mulI16: (a: Int16, b: Int16) Int16 {
-    return a * b
+    a * b
 }
 
 flipU16: (a: UInt16) UInt16 {
-    return ~a
+    ~a
 }
 
 flipU8: (a: UInt8) UInt8 {
-    return ~a
+    ~a
 }
 
 flipI32: (a: Int32) Int32 {
-    return ~a
+    ~a
 }
 
 bits: (v: UInt32) UInt32 {
-    return (v & 0xFF00) | (v ^ 0x0F)
+    (v & 0xFF00) | (v ^ 0x0F)
 }
 
 narrow: (v: Int64) Int32 {
-    return v as Int32
+    v as Int32
 }
 
 toU8: (v: Int32) UInt8 {
-    return v as UInt8
+    v as UInt8
 }
 
 toU64: (v: Int32) UInt64 {
-    return v as UInt64
+    v as UInt64
 }
 
 toSize: (v: Int32) Size {
-    return v as Size
+    v as Size
 }
 
 toI8: (v: UInt8) Int8 {
-    return v as Int8
+    v as Int8
 }
 
 widen64: (v: Int32) Int64 {
-    return v as Int64
+    v as Int64
 }
 
 toInt: (v: Float64) Int32 {
-    return v as Int32
+    v as Int32
 }
 
 toByte: (v: Float64) UInt8 {
-    return v as UInt8
+    v as UInt8
 }
 
 toBig: (v: Float64) UInt64 {
-    return v as UInt64
+    v as UInt64
 }
 
 widen: (v: Int32) Float64 {
-    return v as Float64
+    v as Float64
 }
 
 ratio: (a: Float64, b: Float64) Float64 {
-    return a / b
+    a / b
 }
 
 isNan: (v: Float64) Bool {
-    return v != v
+    v != v
 }
 
 words: (n: Int32, b: Bool) Str {
-    return "${n}|${b}|${n as Str}|${b as Str}|" + (n as Str)
+    "${n}|${b}|${n as Str}|${b as Str}|" + (n as Str)
 }
 
 main: () Void {

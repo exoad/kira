@@ -173,11 +173,11 @@ class CppDeclFixesTest {
             LIMIT: Int32 = 5
             Inner: Struct { pub v: Int32 = 1 }
             Unseen: Struct { pub v: Int32 = 2 }
-            @_const helper: (v: Int32) Int32 { return v }
-            unseenHelper: (v: Int32) Int32 { return v }
+            @_const helper: (v: Int32) Int32 { v }
+            unseenHelper: (v: Int32) Int32 { v }
             pub S: Struct { pub n: Int32 = LIMIT pub i: Inner = Inner {} }
-            pub f: (x: Int32) Int32 { return unseenHelper(x) }
-            pub @_const c: (x: Int32) Int32 { return helper(x) }
+            pub f: (x: Int32) Int32 { unseenHelper(x) }
+            pub @_const c: (x: Int32) Int32 { helper(x) }
             @_static_assert(LIMIT == 5, "limit")
             """
         )
@@ -236,7 +236,7 @@ class CppDeclFixesTest {
         val (_, ctx) = emit(
             """
             pub Pt: Struct { pub x: Int32 = 0 }
-            pub same: (a: List<Pt>, b: List<Pt>) Bool { return a == b }
+            pub same: (a: List<Pt>, b: List<Pt>) Bool { a == b }
             """
         )
         val pt = ctx.symbol.members["Pt"] as ClassSymbol
@@ -284,8 +284,8 @@ class CppDeclFixesTest {
             """
             pub Pair<T>: Struct {
                 pub a: T
-                pub first: () T { return a }
-                pub swap<U>: (u: U) U { return u }
+                pub first: () T { a }
+                pub swap<U>: (u: U) U { u }
             }
             """
         )
@@ -305,9 +305,9 @@ class CppDeclFixesTest {
         val (emitted, _) = emit(
             """
             pub P: Struct { pub x: Int32 = 0 }
-            pub f: (x: Int32, p: P) Int32 { return p.x }
-            pub g: (x: Int32) P { return P { x = 1 } }
-            pub h: (x: Int32) P { return P { x = x } }
+            pub f: (x: Int32, p: P) Int32 { p.x }
+            pub g: (x: Int32) P { P { x = 1 } }
+            pub h: (x: Int32) P { P { x = x } }
             """
         )
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
@@ -327,7 +327,7 @@ class CppDeclFixesTest {
             """
             pub LIMIT: Int32 = 3
             pub Pt: Struct { pub x: Int32 = 0 pub mut setX: (mut x: Int32, y: Int32) Void { x = y } }
-            pub g: (LIMIT: Int32, other: Int32) Int32 { return LIMIT + other }
+            pub g: (LIMIT: Int32, other: Int32) Int32 { LIMIT + other }
             """
         )
         val h = CppWriter.normalize(emitted.header)
@@ -346,7 +346,7 @@ class CppDeclFixesTest {
         val (emitted, _) = emit(
             """
             pub f: () Void { }
-            pub @_const c: (v: Int32) Int32 { return v }
+            pub @_const c: (v: Int32) Int32 { v }
             """,
             options = CppOptions(lineDirectives = true),
         )
@@ -458,7 +458,7 @@ class CppDeclFixesTest {
 
     @Test
     fun aModuleNamedMainGetsAnEscapedNamespaceSoIntMainCanSitBesideIt() {
-        val (emitted, _) = emit("pub LIMIT: Int32 = 3\nmain: () Int32 { return 0 }", uri = "app:main")
+        val (emitted, _) = emit("pub LIMIT: Int32 = 3\nmain: () Int32 { 0 }", uri = "app:main")
         val h = CppWriter.normalize(emitted.header)
         val s = CppWriter.normalize(emitted.source ?: fail("no source"))
         assertContains(h, "namespace main_\n{\n  inline constexpr std::int32_t LIMIT = 3;\n\n  [[nodiscard]] std::int32_t main();\n}")
@@ -479,7 +479,7 @@ class CppDeclFixesTest {
             LIMIT: Int32 = 5
             HIDDEN: Int32 = 6
             pub S: Struct { pub n: Int32 = LIMIT }
-            pub f: (x: Int32) Int32 { return x + HIDDEN }
+            pub f: (x: Int32) Int32 { x + HIDDEN }
             """,
         )
         val app = DeclTestSupport.module("app:b", "lib.a as a\npub Y: Int32 = 1")
@@ -501,10 +501,10 @@ class CppDeclFixesTest {
             """
             pub DATA: Arr<UInt8, 2> = @arrOf(1, 2)
             pub X: UInt32 = crc8(DATA)
-            pub @_const crc8: (buf: View<UInt8>) UInt32 { return 7 }
+            pub @_const crc8: (buf: View<UInt8>) UInt32 { 7 }
             pub S: Struct { pub n: Int32 = limit() }
-            pub limit: () Int32 { return 1 }
-            pub other: () Int32 { return 2 }
+            pub limit: () Int32 { 1 }
+            pub other: () Int32 { 2 }
             """
         )
         val h = CppWriter.normalize(emitted.header)
@@ -531,7 +531,7 @@ class CppDeclFixesTest {
         val h = header(
             """
             pub S: Struct { pub n: Int32 = limit() }
-            pub limit: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub limit: (p: Pt = ORIGIN) Int32 { 1 }
             pub ORIGIN: Pt = Pt {}
             pub Pt: Struct { pub x: Int32 = 0 }
             """
@@ -540,7 +540,7 @@ class CppDeclFixesTest {
         val const = header(
             """
             pub X: Int32 = pick()
-            pub @_const pick: (p: Pt = ORIGIN) Int32 { return 1 }
+            pub @_const pick: (p: Pt = ORIGIN) Int32 { 1 }
             pub ORIGIN: Pt = Pt {}
             pub Pt: Struct { pub x: Int32 = 0 }
             """
@@ -549,7 +549,7 @@ class CppDeclFixesTest {
         val call = header(
             """
             pub S: Struct { pub p: Pt = origin() }
-            pub origin: () Pt { return Pt {} }
+            pub origin: () Pt { Pt {} }
             pub Pt: Struct { pub x: Int32 = 0 }
             """
         )
@@ -613,7 +613,7 @@ class CppDeclFixesTest {
             """
             pub Pt: Struct { pub x: Int32 = 0 }
             pub Pair<T>: Struct { pub a: T pub b: T }
-            pub same: (a: Pair<Pt>, b: Pair<Pt>) Bool { return a == b }
+            pub same: (a: Pair<Pt>, b: Pair<Pt>) Bool { a == b }
             """
         )
         val pt = ctx.symbol.members["Pt"] as ClassSymbol

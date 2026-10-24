@@ -18,21 +18,19 @@ pub @_extern(raises = "ValueError") wrongResult: () Str
 pub caught: (what: Str) Str {
     try {
         if what == "missing" {
-            return readText("absent.txt")
+            readText("absent.txt")
+        } else if what == "key" {
+            lookup("absent")
+        } else if what == "empty" {
+            "${parse("")}"
+        } else if what == "decode" {
+            "${decode("{")}"
+        } else {
+            fail(what)
+            "no throw"
         }
-        if what == "key" {
-            return lookup("absent")
-        }
-        if what == "empty" {
-            return "${parse("")}"
-        }
-        if what == "decode" {
-            return "${decode("{")}"
-        }
-        fail(what)
-        return "no throw"
     } on e: Str {
-        return "caught ${e}"
+        "caught ${e}"
     }
 }
 

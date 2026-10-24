@@ -37,21 +37,21 @@ pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<St
     while j > 0 {                          // @type Bool
         j -= 1
     }
-    return total
+    total
 }
 
 pub ifs: (a: Int32, neg: Bool) Str {
-    v: Int32 = if neg { -a } else { a }    // @type Int32
-    w: Int8 = if a > 0 { 1 } else { -1 }   // @type Int8
-    one: Int8 = if a > 0 { 1 } else { 0 }  // @type Int8 const=1:Int8 @ 1
-    label: Str = if a == 0 { "zero" } else if a > 0 { "pos" } else { "neg" } // @type Str
+    v: Int32 = neg ? -a : a    // @type Int32
+    w: Int8 = a > 0 ? 1 : -1   // @type Int8
+    one: Int8 = a > 0 ? 1 : 0  // @type Int8 const=1:Int8 @ 1
+    label: Str = a == 0 ? "zero" : a > 0 ? "pos" : "neg" // @type Str
     longer: Int32 = if neg {
         t: Int32 = a * 2
         t + 1
     } else {
         0
     }
-    return label                           // @type Str
+    label                           // @type Str
 }
 
 pub places: () Int32 {
@@ -68,7 +68,7 @@ pub places: () Int32 {
     mut n: Int32 = 0
     n = 4                                  // @type Void
     n *= 2                                 // @type Int32 place=Local(n) @ n
-    return c.v + n                         // @type Int32
+    c.v + n                         // @type Int32
 }
 
 pub throwing: (ok: Bool) Int32 {
@@ -80,7 +80,7 @@ pub throwing: (ok: Bool) Int32 {
     } on e: Str {
         trace(e)                           // @type Str place=Local(e) @ e
     }
-    return 1
+    1
 }
 
 pub legacyLoop: (n: Int32) Int32 {
@@ -88,12 +88,11 @@ pub legacyLoop: (n: Int32) Int32 {
     for mut i: 0..n {                      // @warn types.for.legacy ; @type Int32 const=0:Int32 @ 0
         t += i                             // @type Int32 place=Local(i) @ i
     }
-    return t
+    t
 }
 
 pub early: (x: Int32) Void {
-    if x > 0 {
-        return
+    if !(x > 0) {
+        trace(x)                               // @type Void call=PRINT
     }
-    trace(x)                               // @type Void call=PRINT
 }

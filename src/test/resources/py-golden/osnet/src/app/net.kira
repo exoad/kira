@@ -7,7 +7,7 @@ kira.time as time
 // datagram cut to the buffer, a closed port's reply, and a TCP echo to the peer's hang-up.
 
 text: (buf: List<UInt8>, n: Size) Str {
-    return Str.of(buf.slice(0, n))
+    Str.of(buf.slice(0, n))
 }
 
 // A Poller.wait that a SIGINT ends early (D78), as EINTR ends C++'s: the driver raises one 300 ms in.
@@ -21,7 +21,7 @@ pub waitOnSignal: () Str {
     before: Int64 = monoNowMs()
     got: List<Ready> = p.wait(10000)
     took: Int64 = monoNowMs() - before
-    return "installed ${installed} bound ${bound}: ${got.size()} ready, ${lastErrorKind()}, the flag ${flag.load()}, early ${took < 5000}"
+    "installed ${installed} bound ${bound}: ${got.size()} ready, ${lastErrorKind()}, the flag ${flag.load()}, early ${took < 5000}"
 }
 
 // A TcpStream.read of a quiet connection, which the driver's SIGINT 300 ms in ends as Poller.wait's.
@@ -37,7 +37,7 @@ pub readOnSignal: () Str {
     s: TcpStream = l.accept().value
     mut buf: List<UInt8> = @listOf(0, 0, 0, 0)
     n: Int64 = s.read(buf.from(0))
-    return "installed ${installed} connected ${connected}: read ${n}, ${lastErrorKind()}, the flag ${flag.load()}"
+    "installed ${installed} connected ${connected}: read ${n}, ${lastErrorKind()}, the flag ${flag.load()}"
 }
 
 // A blocking read on the main thread, of a stream the driver gives a descriptor past FD_SETSIZE on POSIX.
@@ -52,7 +52,7 @@ pub echoRead: () Str {
     mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
     wrote: Int64 = c.write("ping".bytes())
     n: Int64 = s.read(buf.from(0))
-    return "connected ${connected} wrote ${wrote}: read ${n} '${text(buf, n as Size)}' from ${s.handle()}"
+    "connected ${connected} wrote ${wrote}: read ${n} '${text(buf, n as Size)}' from ${s.handle()}"
 }
 
 // A closed socket's handle (-1) polled beside a live one: poll(2) skips it, WSAPoll flags it POLL_ERROR.
@@ -76,7 +76,7 @@ pub closedBeside: () Str {
             seen.add("closed ${r.events}")
         }
     }
-    return "bound ${bound} sent ${sent}: ${seen.joinToString(", ")}, kind '${lastErrorKind()}'"
+    "bound ${bound} sent ${sent}: ${seen.joinToString(", ")}, kind '${lastErrorKind()}'"
 }
 
 // A wait past INT_MAX ms with a datagram coming, for a thread the driver starts: C++'s pollTimeout clamps it.
@@ -88,7 +88,7 @@ pub waitLong: () Str {
     p: Poller = Poller {}
     p.add(b.handle(), POLL_READ)
     got: List<Ready> = p.wait(4611686018427387904)
-    return "bound ${bound} sent ${sent}: ${got.size()} ready, kind '${lastErrorKind()}'"
+    "bound ${bound} sent ${sent}: ${got.size()} ready, kind '${lastErrorKind()}'"
 }
 
 udp: (t: Suite) Void {
@@ -173,5 +173,5 @@ pub main: () Int32 {
     t: Suite = Suite { title = "net - kira:os's sockets on py" }
     udp(t)
     tcp(t)
-    return t.finish()
+    t.finish()
 }

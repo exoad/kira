@@ -22,7 +22,7 @@ pub Reply: Struct {
 }
 
 isSpace: (c: Char) Bool {
-    return c == ' ' || c == '\t'
+    c == ' ' || c == '\t'
 }
 
 // [begin, end) of the first word at or after `from`.
@@ -43,7 +43,7 @@ tailFrom: (s: Str, from: Size) Str {
     while at < s.length() && isSpace(s[at]) {
         at += 1
     }
-    return if at < s.length() { s.substring(at, s.length()) } else { "" }
+    at < s.length() ? s.substring(at, s.length()) : ""
 }
 
 trimEnd: (s: Str) Str {
@@ -51,7 +51,7 @@ trimEnd: (s: Str) Str {
     while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isSpace(s[n - 1])) {
         n -= 1
     }
-    return s.substring(0, n)
+    s.substring(0, n)
 }
 
 // Classifies one line. Strips CR, so a caller may hand it either ending.
@@ -62,90 +62,98 @@ pub read: (line: Str) Reply {
     wordAt(out.line, 0, mut b, mut e)
     if b >= e {
         out.kind = KIND_EMPTY
-        return out
-    }
-    head: Str = out.line.substring(b, e)
-    if head == "ERR" {
-        out.kind = KIND_ERR
-        out.rest = tailFrom(out.line, e)
-        return out
-    }
-    if head == "OK" || head == "INFO" {
-        out.kind = if head == "OK" { KIND_OK } else { KIND_INFO }
-        mut tb: Size = 0
-        mut te: Size = 0
-        wordAt(out.line, e, mut tb, mut te)
-        if tb < te {
-            out.topic = out.line.substring(tb, te)
-            out.rest = tailFrom(out.line, te)
+        out
+    } else {
+        head: Str = out.line.substring(b, e)
+        if head == "ERR" {
+            out.kind = KIND_ERR
+            out.rest = tailFrom(out.line, e)
+            out
+        } else if head == "OK" || head == "INFO" {
+            out.kind = head == "OK" ? KIND_OK : KIND_INFO
+            mut tb: Size = 0
+            mut te: Size = 0
+            wordAt(out.line, e, mut tb, mut te)
+            if tb < te {
+                out.topic = out.line.substring(tb, te)
+                out.rest = tailFrom(out.line, te)
+            }
+            out
+        } else {
+            out.kind = KIND_OTHER
+            out.rest = out.line
+            out
         }
-        return out
     }
-    out.kind = KIND_OTHER
-    out.rest = out.line
-    return out
 }
 
 // The value of `key` in `text`, running to the next space. MATCHES ON TOKEN
 // BOUNDARIES: "esc=" is never found inside "desc=".
 pub field: (text: Str, key: Str, mut out: Str) Bool {
     if key.isEmpty() {
-        return false
-    }
-    klen: Size = key.length()
-    mut i: Size = 0
-    while i + klen <= text.length() {
-        boundary: Bool = i == 0 || isSpace(text[i - 1])
-        if boundary && text.substring(i, i + klen) == key {
-            mut to: Size = i + klen
-            while to < text.length() && !isSpace(text[to]) {
-                to += 1
+        false
+    } else {
+        klen: Size = key.length()
+        mut i: Size = 0
+        mut result: Bool = false
+        while i + klen <= text.length() {
+            boundary: Bool = i == 0 || isSpace(text[i - 1])
+            if boundary && text.substring(i, i + klen) == key {
+                mut to: Size = i + klen
+                while to < text.length() && !isSpace(text[to]) {
+                    to += 1
+                }
+                out = text.substring(i + klen, to)
+                result = true
+                break
             }
-            out = text.substring(i + klen, to)
-            return true
+            i += 1
         }
-        i += 1
+        result
     }
-    return false
 }
 
 // False when the key is absent OR the value is not wholly a number.
 pub fieldInt: (text: Str, key: Str, mut out: Int32) Bool {
     mut raw: Str = ""
     if !field(text, key, mut raw) {
-        return false
+        false
+    } else {
+        v: Maybe<Int64> = raw.toInt64()        // strict decimal, locale-free: "1541abc" is refused
+        if v.isNone() {
+            false
+        } else {
+            out = v.unwrap() as Int32
+            true
+        }
     }
-    v: Maybe<Int64> = raw.toInt64()        // strict decimal, locale-free: "1541abc" is refused
-    if v.isNone() {
-        return false
-    }
-    out = v.unwrap() as Int32
-    return true
 }
 
 pub fieldFloat: (text: Str, key: Str, mut out: Float32) Bool {
     mut raw: Str = ""
     if !field(text, key, mut raw) {
-        return false
+        false
+    } else {
+        v: Maybe<Float64> = raw.toFloat64()
+        if v.isNone() {
+            false
+        } else {
+            out = v.unwrap() as Float32
+            true
+        }
     }
-    v: Maybe<Float64> = raw.toFloat64()
-    if v.isNone() {
-        return false
-    }
-    out = v.unwrap() as Float32
-    return true
 }
 
 // Three decimals from integers, NOT a %f: that honours the C locale. The
 // literals take v's type, so this is Float32 arithmetic, as the C++ was.
 fixed3: (value: Float32) Str {
     neg: Bool = value < 0.0
-    v: Float32 = if neg { -value } else { value }
+    v: Float32 = neg ? -value : value
     scaled: Int32 = (v * 1000.0 + 0.5) as Int32
     whole: Int32 = scaled / 1000
     frac: Int32 = scaled % 1000
-    sign: Str = if neg { "-" } else { "" }
-    return "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
+    sign: Str = neg ? "-" : ""
+    "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
 }
 
 // A fraction of this car's steering travel, clamped to -1..1.
@@ -157,21 +165,18 @@ pub steer: (fraction: Float32) Str {
     if f > 1.0 {
         f = 1.0
     }
-    return "STEER ${fixed3(f)}"
+    "STEER ${fixed3(f)}"
 }
 
 pub escUs: (us: Int32) Str {
-    return "ESC ${us}"
+    "ESC ${us}"
 }
 
 pub stop: () Str {
-    return "STOP"
+    "STOP"
 }
 
 // Assembled without a format string, so a '%' in args is a plain character.
 pub command: (verb: Str, args: Str = "") Str {
-    if verb.isEmpty() {
-        return ""
-    }
-    return if args.isEmpty() { verb } else { "${verb} ${args}" }
+    verb.isEmpty() ? "" : args.isEmpty() ? verb : "${verb} ${args}"
 }

@@ -30,7 +30,7 @@ class NamingPassTest {
                         totalCount: Int32 = maxItems
                         for i: Int32 in 0..totalCount {
                         }
-                        return totalCount
+                        totalCount
                     }
                 }
                 pub Int64 as Id2
@@ -49,7 +49,7 @@ class NamingPassTest {
                     pub x: Int32 = 0
                 }
                 pub @op_add: (a: V2, b: V2) V2 {
-                    return V2 { a.x + b.x }
+                    V2 { a.x + b.x }
                 }
                 """,
             ),
@@ -59,7 +59,7 @@ class NamingPassTest {
     @Test
     fun theStdlibIsNotChecked() {
         // kira:core's `true`, `false` and `null` are lowercase constants; a user module never hears about them.
-        expectClean(snippet("pub f: () Bool {\n    return true\n}"))
+        expectClean(snippet("pub f: () Bool {\n    true\n}"))
     }
 
     // ---- negative ----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ class NamingPassTest {
                 MyVar: Int32 = Value
                 for Idx: Int32 in 0..MyVar {
                 }
-                return MyVar
+                MyVar
             }
             """,
         )
@@ -119,12 +119,12 @@ class NamingPassTest {
             """
             pub S: Struct {
                 pub GetX: () Int32 {
-                    return 1
+                    1
                 }
             }
             pub f: () Fx<Tuple1<Int32>, Int32> {
-                return (InVal: Int32) Int32 {
-                    return InVal
+                (InVal: Int32) Int32 {
+                    InVal
                 }
             }
             """,

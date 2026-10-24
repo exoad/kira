@@ -48,57 +48,57 @@ class ExternCoercionRunTest {
         }
 
         two: () Int32 {
-            return 2
+            2
         }
 
         bumpGs: () Int32 {
             gs = "x"
-            return 0
+            0
         }
 
         pub mMaybe: () Int32 {
-            return pick(gm)
+            pick(gm)
         }
 
         pub mWrapStr: () Int32 {
-            return pick(gs)
+            pick(gs)
         }
 
         pub mWrapInt: () Int32 {
             n: Int32 = 5
-            return pickN(n)
+            pickN(n)
         }
 
         pub mMaybeInt: () Int32 {
             mn: Maybe<Int32> = 5
-            return pickN(mn)
+            pickN(mn)
         }
 
         pub mGlobal: () Int32 {
             reset()
-            return lenAfter(gs, () Void { gs = "x" })
+            lenAfter(gs, () Void { gs = "x" })
         }
 
         pub mElement: () Int32 {
             reset()
-            return lenAfter(gls[0], () Void { gls = @listOf("x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j") })
+            lenAfter(gls[0], () Void { gls = @listOf("x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p", "o", "n", "m", "l", "k", "j") })
         }
 
         pub mLiteral: () Int32 {
-            return pick("ab")
+            pick("ab")
         }
 
         pub mNull: () Int32 {
-            return sizeOrNeg(null)
+            sizeOrNeg(null)
         }
 
         pub mSibling: () Int32 {
             reset()
-            return sizeThen(gs, bumpGs())
+            sizeThen(gs, bumpGs())
         }
 
         pub mFnRef: () Int32 {
-            return callKind(two)
+            callKind(two)
         }
         """,
     )
@@ -166,7 +166,7 @@ class ExternCoercionRunTest {
             pub label: Str = "$OLD"
 
             override pub nm: () Str {
-                return label
+                label
             }
         }
 
@@ -185,22 +185,22 @@ class ExternCoercionRunTest {
 
         pub kParent: () Int32 {
             h: H = H { }
-            return nameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
+            nameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 
         pub kTrait: () Int32 {
             h: H = H { }
-            return nmLenAfter(h.dog, () Void { h.dog = Dog { label = "x" } })
+            nmLenAfter(h.dog, () Void { h.dog = Dog { label = "x" } })
         }
 
         pub kMaybeParent: () Int32 {
             h: H = H { }
-            return maybeNameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
+            maybeNameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 
         pub kElement: () Int32 {
             gks = @listOf(Kid { })
-            return nameLenAfter(gks[0], () Void { gks = @listOf(Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }) })
+            nameLenAfter(gks[0], () Void { gks = @listOf(Kid { name = "x" }, Kid { name = "y" }, Kid { name = "z" }) })
         }
         """,
     )

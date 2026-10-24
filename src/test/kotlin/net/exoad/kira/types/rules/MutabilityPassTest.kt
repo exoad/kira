@@ -215,8 +215,8 @@ class MutabilityPassTest {
                     child.bump()
                     other.count = 4
                     other.bumpMut()
-                    n: Int32 = count + (items.size() as Int32)
-                    return () Void {
+                    n: Int32 = count + (items.size() as Int32);
+                    () Void {
                         count += 1
                         bumpMut()
                     }

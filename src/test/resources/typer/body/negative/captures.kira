@@ -17,13 +17,13 @@ pub Pt: Struct {
     }
 
     pub shifter: () Fx<Tuple0, Void> {
-        return () Void {
+        () Void {
             shift(1)                       // @error types.lambda.assign-capture
         }
     }
 
     pub shifterThis: () Fx<Tuple0, Void> {
-        return () Void {
+        () Void {
             this.shift(1)                  // @error types.lambda.assign-capture
         }
     }
@@ -50,27 +50,27 @@ pub captures: (mut q: Pt, mut fr: Frame) Int32 {
         n: Size = xs.size()                // no error: a read
     }
     g()
-    return p.x
+    p.x
 }
 
 pub unbounded<T>: (s: T) Float64 {
-    return s.area()                        // @error types.member.unknown
+    s.area()                        // @error types.member.unknown
 }
 
 pub wrongBound<T: Shape>: (s: T) Float64 {
-    return s.perimeter()                   // @error types.member.unknown
+    s.perimeter()                   // @error types.member.unknown
 }
 
 pub noField<T: Shape>: (s: T) Float64 {
-    return s.side                          // @error types.member.unknown
+    s.side                          // @error types.member.unknown
 }
 
 pub cyclic<T: T>: (s: T) Float64 {
-    return s.area()                        // @error types.member.unknown
+    s.area()                        // @error types.member.unknown
 }
 
 pub mutual<T: U, U: T>: (s: T, u: U) Float64 {
-    return s.area() + u.area()             // @error types.member.unknown ; @error types.member.unknown
+    s.area() + u.area()             // @error types.member.unknown ; @error types.member.unknown
 }
 
 pub ROOT2: Float64 = sqrt(2.0)             // @error types.const.not-constant
@@ -100,7 +100,7 @@ pub mut BAGS: Bag = Bag { n = BAG.n }      // @error types.global.mut-init
 // A construction that leaves a field to its default runs the default (C++: `W{}` over a default
 // member initializer), and a call that leaves a parameter to its default passes the default.
 seed: () Int32 {
-    return 4
+    4
 }
 
 pub Seeded: Struct {
@@ -125,11 +125,11 @@ pub mut GB: SizedBag = SizedBag { }        // @error types.global.mut-init
 pub mut GBG: SizedBag = SizedBag { n = 3 }
 
 pub @_const firstOf: (xs: Arr<Int32> = DYN) Int32 { // @error rules.const.type
-    return xs.get(0)
+    xs.get(0)
 }
 
 pub @_const addTo: (a: Int32, b: Int32 = 2) Int32 {
-    return a + b
+    a + b
 }
 
 pub FD: Int32 = firstOf()                  // @error types.const.not-constant
@@ -141,11 +141,11 @@ pub V2: Struct {
 }
 
 pub @op_add: (a: V2, b: V2) V2 {
-    return V2 { a.x + b.x }
+    V2 { a.x + b.x }
 }
 
 pub @op_eq: (a: V2, b: V2) Bool {
-    return a.x == b.x
+    a.x == b.x
 }
 
 pub A: V2 = V2 { 1 }

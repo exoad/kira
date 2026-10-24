@@ -10,20 +10,21 @@ GO_AT_M: Float32 = 0.80
 main: () Int32 {
     car: Car = openCar()
     if !car.arm() {
-        return car.finish()
-    }
-    mut blocked: Bool = true
-    while car.ok() {
-        if !car.drivable() && !car.arm() {
-            continue
+        car.finish()
+    } else {
+        mut blocked: Bool = true
+        while car.ok() {
+            if !car.drivable() && !car.arm() {
+                continue
+            }
+            ahead: Float32 = car.scan().ahead()
+            if ahead < STOP_AT_M {
+                blocked = true
+            } else if ahead > GO_AT_M {
+                blocked = false
+            }
+            car.drive(blocked ? 0.0 : CREEP, 0.0)
         }
-        ahead: Float32 = car.scan().ahead()
-        if ahead < STOP_AT_M {
-            blocked = true
-        } else if ahead > GO_AT_M {
-            blocked = false
-        }
-        car.drive(if blocked { 0.0 } else { CREEP }, 0.0)
+        car.finish()
     }
-    return car.finish()
 }

@@ -35,20 +35,12 @@ namespace testblocks
 
   kira::Rc<Shape> make(std::int32_t r)
   {
-      if(r > 0)
-      {
-          return std::make_shared<Circle>(r);
-      }
-      return std::make_shared<Square>(-r);
+      return r > 0 ? kira::Rc<Shape>(std::make_shared<Circle>(r)) : kira::Rc<Shape>(std::make_shared<Square>(-r));
   }
 
   kira::Rc<Holder> hold(std::int32_t r, std::int32_t x)
   {
-      if(x < 0)
-      {
-          return std::make_shared<Holder>(make(r), kira::none);
-      }
-      return std::make_shared<Holder>(make(r), Pt{.x = x, .y = 0});
+      return x < 0 ? std::make_shared<Holder>(make(r), kira::none) : std::make_shared<Holder>(make(r), Pt{.x = x, .y = 0});
   }
 
   bool big(const kira::Rc<Shape>& s)
@@ -58,11 +50,7 @@ namespace testblocks
 
   kira::Str describe(const kira::Rc<Shape>& s)
   {
-      if(!((dynamic_cast<const Circle*>(s.get()) != nullptr) && std::dynamic_pointer_cast<Circle>(s)->radius > 2))
-      {
-          return "other";
-      }
-      return kira::cat("circle ", std::dynamic_pointer_cast<Circle>(s)->radius);
+      return !((dynamic_cast<const Circle*>(s.get()) != nullptr) && std::dynamic_pointer_cast<Circle>(s)->radius > 2) ? kira::Str("other") : kira::cat("circle ", std::dynamic_pointer_cast<Circle>(s)->radius);
   }
 
   bool held(const kira::Rc<Holder>& h)
@@ -77,11 +65,7 @@ namespace testblocks
 
   std::int32_t sideOf(const kira::Rc<Shape>& s)
   {
-      if((dynamic_cast<const Square*>(s.get()) != nullptr) && std::dynamic_pointer_cast<Square>(s)->side > 0)
-      {
-          return std::dynamic_pointer_cast<Square>(s)->side;
-      }
-      return -1;
+      return (dynamic_cast<const Square*>(s.get()) != nullptr) && std::dynamic_pointer_cast<Square>(s)->side > 0 ? std::dynamic_pointer_cast<Square>(s)->side : -1;
   }
 }
 #include "kira/macro_pop.hxx"

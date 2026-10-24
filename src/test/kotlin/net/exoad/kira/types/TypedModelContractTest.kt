@@ -45,11 +45,11 @@ class TypedModelContractTest {
                 "test:ids",
                 """
                 first: (x: Int32) Int32 {
-                    return x
+                    x
                 }
 
                 second: (x: Str) Str {
-                    return x
+                    x
                 }
                 """
             )

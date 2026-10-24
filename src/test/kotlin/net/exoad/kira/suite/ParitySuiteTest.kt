@@ -296,7 +296,7 @@ class ParitySuiteTest {
         assertBothPrint("7\n7\n7\n2\n10\n") {
             """
             sub: (a: Int32, b: Int32) Int32 {
-                return a - b
+                a - b
             }
 
             Esc: Any {
@@ -305,7 +305,7 @@ class ParitySuiteTest {
                     pulse = v * scale
                 }
                 pub get: () Int32 {
-                    return pulse
+                    pulse
                 }
             }
 
@@ -329,17 +329,15 @@ class ParitySuiteTest {
         assertBothPrint("before\nafter\n") {
             """
             early: (n: Int32) Void {
-                if n > 0 {
-                    return
+                if !(n > 0) {
+                    trace("never")
                 }
-                trace("never")
             }
 
             main: () Void {
                 trace("before")
                 early(1)
                 trace("after")
-                return
             }
             """
         }

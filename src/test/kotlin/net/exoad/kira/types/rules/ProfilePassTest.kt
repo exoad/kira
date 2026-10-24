@@ -37,7 +37,7 @@ class ProfilePassTest {
                     pub code: () Int32;
                 }
                 pub @_const twice: (v: Int32) Int32 {
-                    return v * 2
+                    v * 2
                 }
                 pub each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Void {
                     for b: UInt8 in buf {
@@ -46,13 +46,10 @@ class ProfilePassTest {
                 }
                 pub reply: (servo: Int32, mut out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
                     out.set("OK drive servo=${'$'}{servo}")
-                    if servo < 0 {
-                        return null
-                    }
-                    return Tuple2<Int32, Int32> { servo, servo }
+                    servo < 0 ? null : Tuple2<Int32, Int32> { servo, servo }
                 }
                 pub pick<T: Show>: (s: T) Int32 {
-                    return s.code()
+                    s.code()
                 }
                 pub fail: () Void {
                     throw "boom"
@@ -78,7 +75,7 @@ class ProfilePassTest {
                 """
                 kira.sync as sync
                 pub f: (s: Str, xs: List<Int32>) Str {
-                    return "${'$'}{s} ${'$'}{xs.size()}"
+                    "${'$'}{s} ${'$'}{xs.size()}"
                 }
                 """,
                 options = TyperOptions(freestanding = listOf("other:module")),
@@ -128,10 +125,10 @@ class ProfilePassTest {
                 } on e: Str {
                 }
                 t: Str = "n=${'$'}{1}"
-                return g
+                g
             }
             pub g: () Int64 {
-                return monoNowMs()
+                monoNowMs()
             }
             """,
             options = pico,
@@ -166,13 +163,13 @@ class ProfilePassTest {
         val p = modules(
             "test:util" to """
                 pub label: (n: Int32) Str {
-                    return n as Str
+                    n as Str
                 }
             """,
             "test:main" to """
                 test.util as util
                 pub f: () Int32 {
-                    return 1
+                    1
                 }
             """,
             options = pico,

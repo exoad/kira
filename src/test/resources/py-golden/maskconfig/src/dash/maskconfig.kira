@@ -12,72 +12,52 @@ defaultBox: () Json {
     b.put("back", Json.of(0.2))
     b.put("left", Json.of(0.1))
     b.put("right", Json.of(0.1))
-    return b
+    b
 }
 
 // Python's float() of a JSON value, none where it raises; text as Str.toFloat64 reads it, which
 // differs from float() only past a double's range and for underscores and non-ASCII spaces.
 pyFloat: (v: Json) Maybe<Float64> {
-    if v.isBool() {
-        return if v.asBool().unwrap() {
-            1.0
-        } else {
-            0.0
-        }
-    }
-    if v.isStr() {
-        return v.asStr().unwrap().trim().toFloat64()
-    }
-    return v.asFloat64()
+    v.isBool() ? (v.asBool().unwrap() ? 1.0 : 0.0)
+        : v.isStr() ? v.asStr().unwrap().trim().toFloat64()
+        : v.asFloat64()
 }
 
 // Python's bool() of a JSON value.
 truthy: (v: Json) Bool {
-    if v.isBool() {
-        return v.asBool().unwrap()
-    }
-    if v.isInt() {
-        return v.asInt64().unwrap() != 0
-    }
-    if v.isFloat() {
-        return v.asFloat64().unwrap() != 0.0
-    }
-    if v.isStr() {
-        return !v.asStr().unwrap().isEmpty()
-    }
-    return v.size() > 0
+    v.isBool() ? v.asBool().unwrap()
+        : v.isInt() ? v.asInt64().unwrap() != 0
+        : v.isFloat() ? v.asFloat64().unwrap() != 0.0
+        : v.isStr() ? !v.asStr().unwrap().isEmpty() : v.size() > 0
 }
 
 // Python's x % 360.0, exact while 360 * floor(x / 360) is: |x| below 2^44.
 mod360: (x: Float64) Float64 {
     r: Float64 = x - 360.0 * floor(x / 360.0)
-    return if r < 0.0 {
-        r + 360.0
-    } else {
-        r
-    }
+    r < 0.0 ? r + 360.0 : r
 }
 
 // round(x, places): %.*f's correctly rounded digits read back, as Python's round rounds.
 roundTo: (x: Float64, places: Int32) Float64 {
-    return x.fixed(places).toFloat64().unwrap()
+    x.fixed(places).toFloat64().unwrap()
 }
 
 pub cleanBox: (box: Json) Json {
     out: Json = defaultBox()
     if !box.isObj() {
-        return out
-    }
-    sides: List<Str> = @listOf("front", "back", "left", "right")
-    mut i: Size = 0
-    while i < sides.size() {
-        f: Maybe<Float64> = pyFloat(box.get(sides[i]))
-        if box.has(sides[i]) && f.isSome() {
-            out.put(sides[i], Json.of(roundTo(min(max(f.value, 0.0), BOX_LIMIT_M), 3)))
+        out
+    } else {
+        sides: List<Str> = @listOf("front", "back", "left", "right")
+        mut i: Size = 0
+        while i < sides.size() {
+            f: Maybe<Float64> = pyFloat(box.get(sides[i]))
+            if box.has(sides[i]) && f.isSome() {
+                out.put(sides[i], Json.of(roundTo(min(max(f.value, 0.0), BOX_LIMIT_M), 3)))
+            }
+            i += 1
         }
-        i += 1
+        out
     }
-    return out
 }
 
 pub cleanWedges: (wedges: Json) Json {
@@ -104,7 +84,7 @@ pub cleanWedges: (wedges: Json) Json {
         }
         i += 1
     }
-    return out
+    out
 }
 
 // A Mask on lidar-mask.json holding text: save()'s text, or what its constructor raises.
@@ -113,6 +93,8 @@ pub reload: (text: Str) Str {
     mut box: Json = defaultBox()
     mut wedges: Json = Json.arr()
     cfg: Json = Json.parse(text)
+    mut result: Str = ""
+    mut found: Bool = false
     if Json.error() == "" && cfg.isObj() {
         enabled = !cfg.has("on") || truthy(cfg.get("on"))
         box = cleanBox(cfg.get("box"))
@@ -122,16 +104,22 @@ pub reload: (text: Str) Str {
             a0: Float64 = wedges.at(i).get("a0").asFloat64().unwrap()
             a1: Float64 = wedges.at(i).get("a1").asFloat64().unwrap()
             if a0 != a0 || a1 != a1 {
-                return "ValueError: cannot convert float NaN to integer"
+                result = "ValueError: cannot convert float NaN to integer"
+                found = true
+                break
             }
             i += 1
         }
     }
-    c: Json = Json.obj()
-    c.put("on", Json.of(enabled))
-    c.put("box", box)
-    c.put("wedges", wedges)
-    return c.pretty(1, true)
+    if found {
+        result
+    } else {
+        c: Json = Json.obj()
+        c.put("on", Json.of(enabled))
+        c.put("box", box)
+        c.put("wedges", wedges)
+        c.pretty(1, true)
+    }
 }
 
 main: () Void {

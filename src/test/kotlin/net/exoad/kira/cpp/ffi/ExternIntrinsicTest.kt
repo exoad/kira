@@ -136,7 +136,7 @@ class ExternIntrinsicTest {
             """
             main: () Int32 {
                 @_extern(cpp = "probe::LOCAL") loc: Int32 = 3
-                return loc
+                loc
             }
             """,
             "@_extern names a module-level constant; 'loc' is declared inside a body",

@@ -6,7 +6,7 @@ kira.bytes as bytes
 // static view.
 
 isBlank: (c: Char) Bool {
-    return c == ' ' || c == '\t'
+    c == ' ' || c == '\t'
 }
 
 // Matches w as a WHOLE word at the start of s, returning the offset of what
@@ -16,16 +16,16 @@ isBlank: (c: Char) Bool {
 pub wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
     n: Size = w.size()
     if s.size() < n || s.slice(0, n) != w {
-        return null
+        null
+    } else if s.size() > n && s[n] != ' ' {
+        null
+    } else {
+        mut at: Size = n
+        while at < s.size() && s[at] == ' ' {
+            at += 1
+        }
+        at
     }
-    if s.size() > n && s[n] != ' ' {
-        return null
-    }
-    mut at: Size = n
-    while at < s.size() && s[at] == ' ' {
-        at += 1
-    }
-    return at
 }
 
 // The length without trailing CR, LF, space and tab. A terminal picks its own
@@ -35,7 +35,7 @@ pub trimEnd: (s: View<Char>) Size {
     while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isBlank(s[n - 1])) {
         n -= 1
     }
-    return n
+    n
 }
 
 // STRICT: surrounding space is allowed and anything else is a refusal, where
@@ -47,14 +47,16 @@ pub toInt: (s: View<Char>, mut out: Int32) Bool {
     }
     end: Size = trimEnd(s)
     if from >= end {
-        return false
+        false
+    } else {
+        v: Maybe<Int64> = parseInt64(s.slice(from, end - from))
+        if v.isNone() {
+            false
+        } else {
+            out = v.unwrap() as Int32
+            true
+        }
     }
-    v: Maybe<Int64> = parseInt64(s.slice(from, end - from))
-    if v.isNone() {
-        return false
-    }
-    out = v.unwrap() as Int32
-    return true
 }
 
 // The drive reply into a caller's buffer. Interpolation into a StrBuf appends
@@ -70,5 +72,5 @@ pub speedReply: (mps: Float64, places: Int32, mut out: StrBuf<32>) Void {
 }
 
 pub isCommand: (s: View<Char>, verb: View<Char>) Bool {
-    return !wordEnd(s, verb).isNull()
+    !wordEnd(s, verb).isNull()
 }

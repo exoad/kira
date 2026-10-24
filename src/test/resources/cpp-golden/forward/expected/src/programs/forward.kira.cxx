@@ -18,25 +18,28 @@ namespace forward
       {
           return kira::ffi::declared<std::int32_t>(car->finish());
       }
-      bool blocked{true};
-      while(kira::ffi::declared<bool>(car->ok()))
+      else
       {
-          if(!kira::ffi::declared<bool>(car->drivable()) && !kira::ffi::declared<bool>(car->arm()))
+          bool blocked{true};
+          while(kira::ffi::declared<bool>(car->ok()))
           {
-              continue;
+              if(!kira::ffi::declared<bool>(car->drivable()) && !kira::ffi::declared<bool>(car->arm()))
+              {
+                  continue;
+              }
+              const float ahead{kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(car->scan()).ahead())};
+              if(ahead < STOP_AT_M)
+              {
+                  blocked = true;
+              }
+              else if(ahead > GO_AT_M)
+              {
+                  blocked = false;
+              }
+              car->drive(blocked ? 0.0f : CREEP, float{0.0f});
           }
-          const float ahead{kira::ffi::declared<float>(kira::ffi::declared<::bibo::Scan>(car->scan()).ahead())};
-          if(ahead < STOP_AT_M)
-          {
-              blocked = true;
-          }
-          else if(ahead > GO_AT_M)
-          {
-              blocked = false;
-          }
-          car->drive(blocked ? 0.0f : CREEP, float{0.0f});
+          return kira::ffi::declared<std::int32_t>(car->finish());
       }
-      return kira::ffi::declared<std::int32_t>(car->finish());
   }
 }
 #include "kira/macro_pop.hxx"

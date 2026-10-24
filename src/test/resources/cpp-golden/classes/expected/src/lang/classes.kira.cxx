@@ -98,11 +98,7 @@ namespace classes
   kira::Str petName(const kira::Weak<Pet>& w)
   {
       const kira::Maybe<kira::Rc<Pet>> p = w.lock();
-      if(!kira::isSome(p))
-      {
-          return "gone";
-      }
-      return kira::unwrap(p)->name;
+      return !kira::isSome(p) ? kira::Str("gone") : kira::Str(kira::unwrap(p)->name);
   }
 }
 #include "kira/macro_pop.hxx"

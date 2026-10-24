@@ -5,43 +5,43 @@ kira.test as test
 // holds each function to os.path on this host.
 
 pub joined: (a: Str, b: Str) Str {
-    return joinPath(a, b)
+    joinPath(a, b)
 }
 
 pub joinedAll: (parts: List<Str>) Str {
-    return joinPaths(parts)
+    joinPaths(parts)
 }
 
 pub base: (p: Str) Str {
-    return baseName(p)
+    baseName(p)
 }
 
 pub dirOf: (p: Str) Str {
-    return dirName(p)
+    dirName(p)
 }
 
 pub stem: (p: Str) Str {
-    return stripExt(p)
+    stripExt(p)
 }
 
 pub norm: (p: Str) Str {
-    return normPath(p)
+    normPath(p)
 }
 
 pub absOf: (p: Str) Str {
-    return absPath(p)
+    absPath(p)
 }
 
 pub rel: (p: Str, start: Str) Maybe<Str> {
-    return relPath(p, start)
+    relPath(p, start)
 }
 
 pub home: (p: Str) Str {
-    return expandUser(p)
+    expandUser(p)
 }
 
 pub slash: (p: Str) Str {
-    return slashed(p)
+    slashed(p)
 }
 
 pub main: () Int32 {
@@ -56,5 +56,5 @@ pub main: () Int32 {
     t.checkStr(slashed(relPath(joinPath("a", joinPath("b", "c")), "a").unwrapOr("none")) + " " + relPath("a", "a").unwrapOr("none"), "b/c .", "relPath from a start")
     t.check(relPath("", "a").isNone(), "and none for an empty path")
     t.checkStr(expandUser("x/~") + " " + "${slashed(expandUser(joinPath("~", "y"))).endsWith("/y")}", "x/~ true", "expandUser reads only a leading ~")
-    return t.finish()
+    t.finish()
 }

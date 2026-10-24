@@ -134,7 +134,7 @@ class ParserGrowthTest {
             pub Reply: Struct, Show, Eq {
                 pub kind: Int32 = 0
                 pub topic: Str = ""
-                pub isEmpty: () Bool { return kind == 0 }
+                pub isEmpty: () Bool { kind == 0 }
                 initially { kind = 4 }
             }
             """
@@ -211,9 +211,9 @@ class ParserGrowthTest {
         val fn = parse(
             """
             f: (neg: Bool, x: Int32) Int32 {
-                v: Int32 = if neg { -x } else { x }
-                sign: Str = if neg { "-" } else { "" }
-                return if v > LIMIT { LIMIT } else { v }
+                v: Int32 = neg ? -x : x
+                sign: Str = neg ? "-" : ""
+                v > LIMIT ? LIMIT : v
             }
             """
         ).single<FunctionDecl>()
@@ -237,7 +237,7 @@ class ParserGrowthTest {
         val fn = parse(
             """
             f: (a: Bool, b: Bool) Str {
-                return if a { "a" } else if b { "b" } else { "c" }
+                a ? "a" : b ? "b" : "c"
             }
             """
         ).single<FunctionDecl>()
@@ -275,7 +275,7 @@ class ParserGrowthTest {
         val fn = parse(
             """
             f: (buf: View<UInt8>) Void {
-                twice: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { return x * 2 }
+                twice: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x * 2 }
                 each(buf, (p: View<UInt8>) Void { n += 1 })
             }
             """
@@ -292,7 +292,7 @@ class ParserGrowthTest {
 
     @Test
     fun namedFxStaysAFunctionDecl() {
-        val p = parse("named: (x: Int32) Int32 { return x }")
+        val p = parse("named: (x: Int32) Int32 { x }")
         assertIs<FunctionDecl>(p.decls.single())
     }
 
@@ -300,7 +300,7 @@ class ParserGrowthTest {
 
     @Test
     fun parameterDefaultsParse() {
-        val fn = parse("""command: (verb: Str, args: Str = "", n: Int32 = 3 + 1) Str { return verb }""")
+        val fn = parse("""command: (verb: Str, args: Str = "", n: Int32 = 3 + 1) Str { verb }""")
             .single<FunctionDecl>()
         val params = fn.def.parameters
         assertNull(params[0].defaultValue)
@@ -399,7 +399,7 @@ class ParserGrowthTest {
             """
             pub Node: Any {
                 pub label: Str
-                pub get: () Str { return this.label }
+                pub get: () Str { this.label }
                 pub mut set: (v: Str) Void { this.label = v }
             }
             """
@@ -422,7 +422,7 @@ class ParserGrowthTest {
                 wordAt(line, 0, mut b, mut e)
                 field(text, key, out = mut raw)
                 field(text, key, mut out = raw)
-                if !field(text, key, mut raw) { return }
+                if !field(text, key, mut raw) { }
             }
             """
         ).single<FunctionDecl>()
@@ -446,7 +446,7 @@ class ParserGrowthTest {
             Stop: Behaviour {
                 mut count: Int32 = 0
                 initially { count = 1 }
-                override pub id: () Str { return "stop" }
+                override pub id: () Str { "stop" }
             }
             """
         ).single<ClassDecl>()
@@ -519,7 +519,7 @@ class ParserGrowthTest {
         }
         refusedAs("Box<4>: Any { }", "KiraParser::expect", "Expected an identifier but got an Integer Literal")
         refusedAs("Box<mut T>: Any { }", "KiraParser::expect", "Expected an identifier but got a 'mut'")
-        parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { return x }")
+        parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { x }")
         // ...and the argument-list forms still parse where they belong.
         parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<mut Str>, Void>) Void { }")
     }
@@ -532,7 +532,7 @@ class ParserGrowthTest {
             """
             @_extern("sym") f: () Void;
             @_extern(cpp = "ns::g", header = "g.hxx") g: (x: Int32) Int32;
-            pub @_const crc: () UInt32 { return 1 }
+            pub @_const crc: () UInt32 { 1 }
             """
         )
         assertEquals(3, p.decls.size, p.decls.toString())
@@ -613,8 +613,8 @@ class ParserGrowthTest {
         // IntrinsicExpr, so `@_const(1)`, `@_opaque(1)` and a three-argument
         // `@_extern` all passed.
         val rejected = mapOf(
-            "@_const(1) k: () Int32 { return 1 }" to "@_const takes no arguments",
-            "@_const(x = 1) k: () Int32 { return 1 }" to "@_const takes no arguments",
+            "@_const(1) k: () Int32 { 1 }" to "@_const takes no arguments",
+            "@_const(x = 1) k: () Int32 { 1 }" to "@_const takes no arguments",
             "@_extern(\"a\", \"b\", \"c\") f: () Void;" to "@_extern accepts at most one",
             "@_opaque(1) X: Any { }" to "@_opaque does not take parameters",
         )
@@ -625,7 +625,7 @@ class ParserGrowthTest {
             assertEquals(1, assertNotNull(about.single().location).lineNumber, program)
         }
         for (program in listOf(
-            "@_const k: () Int32 { return 1 }",
+            "@_const k: () Int32 { 1 }",
             "@_extern(\"a\") f: () Void;",
             "@_opaque X: Any { }",
         )) {
@@ -655,9 +655,9 @@ class ParserGrowthTest {
                 if (x < LIMIT) { trace(3) }
                 if x == LIMIT_M { trace(4) }
                 if isOk(Foo { 1 }) { trace(5) }
-                y: Int32 = if x < LIMIT { 1 } else { 2 }
-                crc: Int32 = if (x & 1) != 0 { (x >> 1) ^ 7 } else { x >> 1 }
-                dir: Int32 = if (x == 1) == FORWARD_ASCENDING { 1 } else { -1 }
+                y: Int32 = x < LIMIT ? 1 : 2
+                crc: Int32 = (x & 1) != 0 ? (x >> 1) ^ 7 : x >> 1
+                dir: Int32 = (x == 1) == FORWARD_ASCENDING ? 1 : -1
             }
             """
         ).single<FunctionDecl>()
@@ -743,8 +743,8 @@ class ParserGrowthTest {
                 "    b: Str = \"STEER \${fixed3(f)}\"",
                 "    c: Str = \"plain\"",
                 "    d: Str = \"cost \\\$5 and \\\${not a hole}\"",
-                "    e: Str = \"\${if f > 0.0 { \"pos\" } else { \"neg\" }}!\"",
-                "    return a",
+                "    e: Str = \"\${(f > 0.0 ? \"pos\" : \"neg\")}!\"",
+                "    a",
                 "}",
             ).joinToString("\n")
         )
@@ -799,19 +799,20 @@ class ParserGrowthTest {
     /** (a fragment of the construct's diagnostic name) to (a program using it). */
     private val newConstructs = listOf(
         "struct declaration" to "S: Struct { x: Int32 = 1 }",
-        "if-expression" to "f: (c: Bool) Int32 { return if c { 1 } else { 2 } }",
-        "lambda expression" to "f: () Void { g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { return x } }",
+        // A returned ternary is the if/else of returns on C and JS; one held in a local is not lowered.
+        "if-expression" to "f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }",
+        "lambda expression" to "f: () Void { g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x } }",
         "member or index place" to "P: Any { mut x: Int32 = 0 }\nf: (p: P) Void { p.x = 1 }",
-        "'this' expression" to "P: Any { mut x: Int32 = 0\n pub get: () Int32 { return this.x } }",
+        "'this' expression" to "P: Any { mut x: Int32 = 0\n pub get: () Int32 { this.x } }",
         "char literal" to "f: () Void { c: Char = 'a' }",
-        "interpolated string literal" to "f: (n: Int32) Str { return \"n=\${n}\" }",
+        "interpolated string literal" to "f: (n: Int32) Str { \"n=\${n}\" }",
         "an 'initially' block" to "P: Any { mut x: Int32 = 0\n initially { x = 1 } }",
         "named construction" to "P: Any { mut x: Int32 = 0 }\nf: () Void { p: P = P { x = 1 } }",
         "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nf: () Void { mut y: Int32 = 0\n g(mut y) }",
-        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nf: () Int32 { return g(1) }",
+        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nf: () Int32 { g(1) }",
         // Measured before: only the trailing positions were inspected, and this
         // one ended in an IllegalStateException from the argument binder.
-        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nf: () Int32 { return g(1, c = 3) }",
+        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nf: () Int32 { g(1, c = 3) }",
         "over a container" to "f: (xs: Arr<Int32>) Void { for x: Int32 in xs { trace(x) } }",
         "@_static_assert" to "f: () Void { @_static_assert(1 == 1, \"ok\") }",
         "const type argument" to "f: () Void { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4) }",
@@ -826,6 +827,17 @@ class ParserGrowthTest {
             assertTrue(message.contains(construct), "'$message' should name $construct")
             assertTrue(message.contains("C backend"), "'$message' should name the C target")
         }
+    }
+
+    @Test
+    fun aReturnedTernaryIsTheIfElseOfReturnsOnCAndJs() {
+        // A body's last `c ? a : d ? b : e` (kira-dialect writes one for each if/else of returns), and nothing else of an if value.
+        val src = "f: (a: Int32) Int32 { a < 0 ? -1 : a > 0 ? 1 : 0 }"
+        val c = emitC(src)
+        assertTrue(c.contains("if((a < 0))") && c.contains("else if((a > 0))") && c.contains("return 0;"), c)
+        val js = emitJS(src)
+        assertTrue(js.contains("a < 0") && js.contains("a > 0") && js.contains("return -1;") && js.contains("return 0;"), js)
+        assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
     }
 
     @Test
@@ -845,13 +857,13 @@ class ParserGrowthTest {
         // the container for-in and the new nodes are refused.
         val c = emitC(
             """
-            g: (a: Int32, b: Int32 = 2) Int32 { return a + b }
+            g: (a: Int32, b: Int32 = 2) Int32 { a + b }
             f: () Int32 {
                 mut n: Int32 = 0
                 for i: Int32 in 0..3 { n += i }
                 for mut j: 0..3 { n += j }
                 n = g(n, b = 5)
-                return g(n, 1)
+                g(n, 1)
             }
             """.trimIndent()
         )
@@ -911,25 +923,25 @@ class ParserGrowthTest {
      * with "type not found".
      */
     private val cliConstructs = listOf(
-        "struct declaration" to "S: Struct { x: Int32 = 1 }\nmain: () Int32 { return 0 }",
-        "if-expression" to "main: () Int32 { x: Int32 = 1\n return if x > 0 { 1 } else { 2 } }",
-        "if-expression" to "main: () Int32 { x: Int32 = 1\n x > 0 ? 1 : 2 }",
-        "a try used as a value" to "main: () Int32 { x: Int32 = try { 1 } on e: Str { 2 }\n return x }",
-        "lambda expression" to "main: () Int32 { trace((x: Int32) Int32 { return x })\n return 0 }",
-        "member or index place" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n return p.x }",
-        "'this' expression" to "P: Any {\n mut x: Int32 = 0\n pub get: () Int32 { return this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n return p.get() }",
-        "char literal" to "main: () Int32 { trace('a')\n return 0 }",
-        "interpolated string literal" to "main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n return 0 }",
-        "an 'initially' block" to "P: Any {\n mut x: Int32 = 0\n initially { x = 1 }\n}\nmain: () Int32 { p: P = P { 0 }\n return p.x }",
-        "named construction" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { x = 1 }\n return p.x }",
-        "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nmain: () Int32 { mut y: Int32 = 0\n g(mut y)\n return y }",
-        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { return a + b }\nmain: () Int32 { return g(1) }",
-        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { return a + b + c }\nmain: () Int32 { return g(1, c = 3) }",
-        "over a container" to "main: () Int32 { xs: Arr<Int32> = @arrOf(1, 2)\n for x: Int32 in xs { trace(x) }\n return 0 }",
-        "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nmain: () Int32 { return 0 }",
-        "@_static_assert" to "main: () Int32 { @_static_assert(1 == 1, \"ok\")\n return 0 }",
-        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n return 0 }",
-        "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }\nmain: () Int32 { return 0 }",
+        "struct declaration" to "S: Struct { x: Int32 = 1 }\nmain: () Int32 { 0 }",
+        "if-expression" to "main: () Int32 { x: Int32 = 1\n y: Int32 = if x > 0 {\n trace(x)\n 1\n } else {\n 2\n }\n y }",
+        "if-expression" to "main: () Int32 { x: Int32 = 1\n y: Int32 = x > 0 ? 1 : 2\n y }",
+        "a try used as a value" to "main: () Int32 { x: Int32 = try { 1 } on e: Str { 2 }\n x }",
+        "lambda expression" to "main: () Int32 { trace((x: Int32) Int32 { x })\n 0 }",
+        "member or index place" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n p.x }",
+        "'this' expression" to "P: Any {\n mut x: Int32 = 0\n pub get: () Int32 { this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n p.get() }",
+        "char literal" to "main: () Int32 { trace('a')\n 0 }",
+        "interpolated string literal" to "main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n 0 }",
+        "an 'initially' block" to "P: Any {\n mut x: Int32 = 0\n initially { x = 1 }\n}\nmain: () Int32 { p: P = P { 0 }\n p.x }",
+        "named construction" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { x = 1 }\n p.x }",
+        "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nmain: () Int32 { mut y: Int32 = 0\n g(mut y)\n y }",
+        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nmain: () Int32 { g(1) }",
+        "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nmain: () Int32 { g(1, c = 3) }",
+        "over a container" to "main: () Int32 { xs: Arr<Int32> = @arrOf(1, 2)\n for x: Int32 in xs { trace(x) }\n 0 }",
+        "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nmain: () Int32 { 0 }",
+        "@_static_assert" to "main: () Int32 { @_static_assert(1 == 1, \"ok\")\n 0 }",
+        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n 0 }",
+        "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }\nmain: () Int32 { 0 }",
     )
 
     private fun assertRefusedByTheBackend(target: String, backend: String) {
@@ -963,7 +975,7 @@ class ParserGrowthTest {
         val cases = listOf(
             "sa-top" to ("@_static_assert(1 == 1, \"a\", \"b\")\nf: () Void { }" to "@_static_assert takes a condition"),
             "sa-fn" to ("f: () Void { @_static_assert() }" to "@_static_assert takes a condition"),
-            "const" to ("@_const(1) k: () Int32 { return 1 }" to "@_const takes no arguments"),
+            "const" to ("@_const(1) k: () Int32 { 1 }" to "@_const takes no arguments"),
             "extern" to ("@_extern(\"a\", \"b\", \"c\") f: () Void;" to "@_extern accepts at most one"),
             "opaque" to ("@_opaque(1) X: Any { }" to "@_opaque does not take parameters"),
         )

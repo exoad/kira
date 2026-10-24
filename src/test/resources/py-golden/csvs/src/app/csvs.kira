@@ -6,23 +6,23 @@ kira.test as test
 // program on (critique 15), as strictRows does.
 
 pub opened: (path: Str) Maybe<CsvReader> {
-    return openCsv(path)
+    openCsv(path)
 }
 
 pub nextRow: (r: CsvReader) Maybe<List<Str>> {
-    return r.next()
+    r.next()
 }
 
 pub malformed: (r: CsvReader) Bool {
-    return r.isMalformed()
+    r.isMalformed()
 }
 
 pub why: () Str {
-    return csvError()
+    csvError()
 }
 
 pub line: (cells: List<Str>) Str {
-    return csvLine(cells)
+    csvLine(cells)
 }
 
 // Every row of the file; a row csv refuses ends the program here, as Python's csv.Error ended powerpage's reader.
@@ -35,7 +35,7 @@ pub strictRows: (path: Str) List<List<Str>> {
         row = r.next()
     }
     assert(!r.isMalformed(), "csv.Error: " + csvError())
-    return out
+    out
 }
 
 pub main: () Int32 {
@@ -56,5 +56,5 @@ pub main: () Int32 {
     t.checkStr(csvLine(@listOf("a", "b,c", "q\"q", "", "l\nm")), "a,\"b,c\",\"q\"\"q\",,\"l\nm\"\r\n", "csvLine quotes where csv.writer does, its \\r\\n included")
     t.checkStr(csvLine(@listOf("")) + csvLine(@listOf()), "\"\"\r\n\r\n", "a lone empty cell is quoted, no cells is a bare \\r\\n")
     t.check(removeTree(dir), "the day file's directory removed")
-    return t.finish()
+    t.finish()
 }

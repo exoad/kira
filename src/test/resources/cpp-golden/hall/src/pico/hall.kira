@@ -24,7 +24,7 @@ pub Decoder: Struct {
     pub periodUs: UInt32 = 0
 
     pub @_const errors: () UInt32 {
-        return skips + invalid
+        skips + invalid
     }
 
     pub mut @_const feed: (next: UInt8, nowUs: UInt64) Void {
@@ -34,33 +34,29 @@ pub Decoder: Struct {
             invalid += 1
             state = bits
             primed = false
-            return
-        }
-        if primed && bits == state {
+        } else if primed && bits == state {
             repeats += 1
-            return
-        }
-        if !primed {
+        } else if !primed {
             primed = true
             state = bits
             lastEdgeUs = nowUs
-            return
+        } else {
+            was: Int32 = INDEX_OF[state as Size] as Int32
+            step: Int32 = (((idx as Int32) - was) + 6) % 6
+            state = bits
+            if step == 1 || step == 5 {
+                dir: Int8 = (step == 1) == FORWARD_ASCENDING ? 1 : -1
+                ticks += dir as Int32
+                lastDir = dir
+                edges += 1
+                gap: UInt64 = nowUs - lastEdgeUs
+                periodUs = gap > 0xFFFFFFFF ? 0xFFFFFFFF : gap as UInt32
+                lastEdgeUs = nowUs
+            } else {
+                skips += 1
+                lastEdgeUs = nowUs
+            }
         }
-        was: Int32 = INDEX_OF[state as Size] as Int32
-        step: Int32 = (((idx as Int32) - was) + 6) % 6
-        state = bits
-        if step == 1 || step == 5 {
-            dir: Int8 = if (step == 1) == FORWARD_ASCENDING { 1 } else { -1 }
-            ticks += dir as Int32
-            lastDir = dir
-            edges += 1
-            gap: UInt64 = nowUs - lastEdgeUs
-            periodUs = if gap > 0xFFFFFFFF { 0xFFFFFFFF } else { gap as UInt32 }
-            lastEdgeUs = nowUs
-            return
-        }
-        skips += 1
-        lastEdgeUs = nowUs
     }
 }
 
@@ -83,9 +79,9 @@ pub speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
         s.periodTps = 0
         s.windowTps = 0
     }
-    magnitude: Int32 = if windowTicks < 0 { -windowTicks } else { windowTicks }
+    magnitude: Int32 = windowTicks < 0 ? -windowTicks : windowTicks
     s.usePeriod = !s.stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0
-    return s
+    s
 }
 
 // A decoder after these states, 1 ms apart from t0. Compile-time, so a
@@ -97,5 +93,5 @@ pub @_const settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
         d.feed(s, t)
         t += 1000
     }
-    return d
+    d
 }

@@ -40,15 +40,15 @@ class CppCopyPolicyTest {
 
             pub describe: () Str {
                 runHooks()
-                return "${'$'}{name}:${'$'}{n}"
+                "${'$'}{name}:${'$'}{n}"
             }
 
             pub plain: () Str {
-                return "${'$'}{name}:${'$'}{n}"
+                "${'$'}{name}:${'$'}{n}"
             }
 
             pub viaThis: () Str {
-                return describe()
+                describe()
             }
         }
 
@@ -71,7 +71,7 @@ class CppCopyPolicyTest {
             mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
             fs.add(() Int32 {
                 runHooks()
-                return tag.length() as Int32
+                tag.length() as Int32
             })
             gfs = fs
             mut hs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
@@ -86,11 +86,11 @@ class CppCopyPolicyTest {
 
         pub lenAfter: (s: Str) Int32 {
             runHooks()
-            return s.length() as Int32
+            s.length() as Int32
         }
 
         pub lenOf: (s: Str) Int32 {
-            return s.length() as Int32
+            s.length() as Int32
         }
 
         pub sumAfter: (xs: List<Int32>) Int32 {
@@ -99,36 +99,36 @@ class CppCopyPolicyTest {
                 runHooks()
                 t += x
             }
-            return t
+            t
         }
 
         pub idAfter<T>: (v: T) T {
             runHooks()
-            return v
+            v
         }
 
         pub copyStr: () Int32 {
-            return lenAfter(gs)
+            lenAfter(gs)
         }
 
         pub copyList: () Int32 {
-            return sumAfter(gl)
+            sumAfter(gl)
         }
 
         pub copyGeneric: () Int32 {
-            return idAfter<Str>(gs).length() as Int32
+            idAfter<Str>(gs).length() as Int32
         }
 
         pub copyReceiver: () Str {
-            return gt.describe()
+            gt.describe()
         }
 
         pub copyCallee: () Int32 {
-            return gfs[0]()
+            gfs[0]()
         }
 
         pub copyTernary: (c: Bool) Int32 {
-            return sumAfter(if c { gl } else { gl2 })
+            sumAfter(c ? gl : gl2)
         }
 
         pub copyRange: () Int32 {
@@ -137,24 +137,24 @@ class CppCopyPolicyTest {
                 runHooks()
                 t += x
             }
-            return t
+            t
         }
 
         pub lendLocal: () Int32 {
             s: Str = gs
-            return lenAfter(s)
+            lenAfter(s)
         }
 
         pub lendParam: (xs: List<Int32>) Int32 {
-            return sumAfter(xs)
+            sumAfter(xs)
         }
 
         pub lendParamRow: () Int32 {
-            return lendParam(gl)
+            lendParam(gl)
         }
 
         pub lendThis: () Str {
-            return gt.viaThis()
+            gt.viaThis()
         }
 
         pub lendRangeLocal: () Int32 {
@@ -164,19 +164,19 @@ class CppCopyPolicyTest {
                 runHooks()
                 t += x
             }
-            return t
+            t
         }
 
         pub lendConfined: () Int32 {
-            return lenOf(gs)
+            lenOf(gs)
         }
 
         pub lendReceiverConfined: () Str {
-            return gt.plain()
+            gt.plain()
         }
 
         pub lendHole: () Str {
-            return "${'$'}{gs}!"
+            "${'$'}{gs}!"
         }
 
         total: (v: View<Int32>) Int32 {
@@ -184,13 +184,13 @@ class CppCopyPolicyTest {
             for x: Int32 in v {
                 t += x
             }
-            return t
+            t
         }
 
         pub ownerTernary: (c: Bool) Int32 {
             la: List<Int32> = @listOf(1, 2, 3)
             lb: List<Int32> = @listOf(4, 5)
-            return total((if c { la } else { lb }).view())
+            total((c ? la : lb).view())
         }
 
         pub lendRangeReads: () Int32 {
@@ -198,7 +198,7 @@ class CppCopyPolicyTest {
             for x: Int32 in gl {
                 t += x
             }
-            return t
+            t
         }
         """,
     )
@@ -310,11 +310,11 @@ class CppCopyPolicyTest {
         }
 
         leaf: (v: Int32, n: Str) Tree {
-            return Tree { v = v, name = n, kids = @listOf() }
+            Tree { v = v, name = n, kids = @listOf() }
         }
 
         two: () Tree {
-            return Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = @listOf(leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")) }
+            Tree { v = 2, name = "two-long-name-that-lives-on-the-heap-000000", kids = @listOf(leaf(7, "seven-long-name-that-lives-on-the-heap-0000"), leaf(8, "eight-long-name-that-lives-on-the-heap-0000")) }
         }
 
         // One kid, two(), with room for more, so a vector assign takes the no-reallocation path.
@@ -325,7 +325,7 @@ class CppCopyPolicyTest {
             t.kids.add(leaf(10, "ten"))
             x: Tree = t.kids.removeAt(2)
             y: Tree = t.kids.removeAt(1)
-            return t
+            t
         }
 
         shape: (t: Tree) Str {
@@ -333,11 +333,11 @@ class CppCopyPolicyTest {
             for k: Tree in t.kids {
                 out += " ${'$'}{k.v}/${'$'}{k.kids.size()}"
             }
-            return out
+            out
         }
 
         flag: () Bool {
-            return true
+            true
         }
 
         mut gt: Tree = Tree { v = 0, name = "g", kids = @listOf() }
@@ -353,19 +353,19 @@ class CppCopyPolicyTest {
         pub rebindLocal: () Str {
             mut t: Tree = roomy()
             t = t.kids[0]
-            return shape(t)
+            shape(t)
         }
 
         pub selfIntoElement: () Str {
             mut t: Tree = roomy()
             t.kids[0] = t
-            return "${'$'}{shape(t)}|${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+            "${'$'}{shape(t)}|${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
         }
 
         pub rebindTernary: () Str {
             mut t: Tree = roomy()
-            t = if flag() { t.kids[0] } else { t }
-            return shape(t)
+            t = flag() ? t.kids[0] : t
+            shape(t)
         }
 
         descend: (mut t: Tree) Void {
@@ -375,19 +375,19 @@ class CppCopyPolicyTest {
         pub rebindMutParam: () Str {
             mut t: Tree = roomy()
             descend(mut t)
-            return shape(t)
+            shape(t)
         }
 
         pub fieldFromElement: () Str {
             mut t: Tree = roomy()
             t.kids = t.kids[0].kids
-            return shape(t)
+            shape(t)
         }
 
         pub elementIntoItsElement: () Str {
             mut t: Tree = roomy()
             t.kids[0].kids[0] = t.kids[0]
-            return "${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
+            "${'$'}{shape(t.kids[0])}|${'$'}{shape(t.kids[0].kids[0])}"
         }
 
         descendGlobal: () Void {
@@ -397,64 +397,64 @@ class CppCopyPolicyTest {
         pub rebindGlobal: () Str {
             gt = roomy()
             descendGlobal()
-            return shape(gt)
+            shape(gt)
         }
 
         pub elementFromSibling: () Str {
             mut xs: List<Str> = @listOf("a-long-string-that-lives-on-the-heap-0000000", "b")
             xs[0] = xs[1]
             xs[1] = xs[0] + xs[0]
-            return "${'$'}{xs[0]} ${'$'}{xs[1]}"
+            "${'$'}{xs[0]} ${'$'}{xs[1]}"
         }
 
         pub twoNamesOfOneRef: () Str {
             r1: Ref<Tree> = Ref<Tree> { value = roomy() }
             r2: Ref<Tree> = r1
             r1.value = r2.value.kids[0]
-            return shape(r2.value)
+            shape(r2.value)
         }
 
         pub listElements: () Str {
             mut ts: List<Tree> = @listOf(roomy(), leaf(5, "five"))
             ts[1] = ts[0].kids[0]
             ts[0] = ts[0].kids[0]
-            return "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
+            "${'$'}{shape(ts[0])}|${'$'}{shape(ts[1])}"
         }
 
         pub maybePayload: () Str {
             mut m: Maybe<Tree> = roomy()
             m = m.unwrap().kids[0]
-            return shape(m.unwrap())
+            shape(m.unwrap())
         }
 
         pub valueThisInMutFx: () Str {
             mut h: Holder = Holder { t = roomy() }
             h.descend()
-            return shape(h.t)
+            shape(h.t)
         }
 
         pub nestedElement: () Str {
             mut t: Tree = leaf(0, "zero")
             t.kids.add(roomy())
             t.kids[0] = t.kids[0].kids[0]
-            return shape(t.kids[0])
+            shape(t.kids[0])
         }
 
         pub lendLocal: () Str {
             u: Tree = roomy()
             mut t: Tree = leaf(0, "zero")
             t = u
-            return shape(t)
+            shape(t)
         }
 
         pub lendParam: (u: Tree) Str {
             mut t: Tree = leaf(0, "zero")
             t = u
-            return shape(t)
+            shape(t)
         }
 
         pub lendParamRow: () Str {
-            return lendParam(roomy())
+            lendParam(roomy())
         }
         """,
     )
@@ -543,30 +543,30 @@ class CppCopyPolicyTest {
         mut ticks: Int32 = 0
 
         apply: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
-            return f() * 100 + k
+            f() * 100 + k
         }
 
         applyKeep: (f: Fx<Tuple0, Int32>, k: Int32) Int32 {
             keep = f
-            return f() * 100 + k
+            f() * 100 + k
         }
 
         applyS: (f: Fx<Tuple0, Str>, k: Int32) Str {
-            return "${'$'}{f()}:${'$'}{k}"
+            "${'$'}{f()}:${'$'}{k}"
         }
 
         applyAfter: (k: Int32, f: Fx<Tuple0, Int32>) Int32 {
-            return f() * 100 + k
+            f() * 100 + k
         }
 
         inc: (mut v: Int32) Int32 {
             v += 10
-            return 1
+            1
         }
 
         change: (mut s: Str) Int32 {
             s = "changedchangedchangedchangedchangedchangedchanged"
-            return 2
+            2
         }
 
         pub Cell: Struct {
@@ -574,37 +574,37 @@ class CppCopyPolicyTest {
 
             pub mut bump: () Int32 {
                 v += 10
-                return 3
+                3
             }
 
             pub mut probe: () Int32 {
-                return apply(() Int32 { return v }, bump())
+                apply(() Int32 { v }, bump())
             }
         }
 
         pub captureRead: () Int32 {
             mut x: Int32 = 5
-            return apply(() Int32 { return x }, inc(mut x))
+            apply(() Int32 { x }, inc(mut x))
         }
 
         pub captureKept: () Int32 {
             mut y: Int32 = 5
-            return applyKeep(() Int32 { return y }, inc(mut y))
+            applyKeep(() Int32 { y }, inc(mut y))
         }
 
         pub captureStr: () Str {
             mut s: Str = "old"
-            return applyS(() Str { return s }, change(mut s))
+            applyS(() Str { s }, change(mut s))
         }
 
         pub captureThis: () Int32 {
             mut c: Cell = Cell { }
-            return c.probe()
+            c.probe()
         }
 
         pub captureAfter: () Int32 {
             mut a: Int32 = 5
-            return applyAfter(inc(mut a), () Int32 { return a })
+            applyAfter(inc(mut a), () Int32 { a })
         }
 
         churn: () Void {
@@ -623,7 +623,7 @@ class CppCopyPolicyTest {
             }
             gll.set(0, List<Int32> { values = @arrOf(77, 88, 99, 111, 222, 333, 444, 555) })
             churn()
-            return 1
+            1
         }
 
         growGls: () Size {
@@ -634,12 +634,12 @@ class CppCopyPolicyTest {
             }
             gls.set(0, "ZYXWVUTSRQPONMLKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA")
             churn()
-            return 1
+            1
         }
 
         chIdx: () Size {
             gs = "ZYXWVUTSRQPONMLKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA"
-            return 1
+            1
         }
 
         resetLists: () Void {
@@ -651,46 +651,46 @@ class CppCopyPolicyTest {
 
         pub nestedRead: () Int32 {
             resetLists()
-            return gll[0][growGll()]
+            gll[0][growGll()]
         }
 
         pub nestedWrite: () Int32 {
             resetLists()
             gll[0][growGll()] = 5
-            return gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
+            gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
         }
 
         pub nestedCompound: () Int32 {
             resetLists()
             gll[0][growGll()] += 1
-            return gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
+            gll[0][0] * 10000 + gll[0][1] * 100 + gll[0][2]
         }
 
         pub strIndex: () Char {
             gs = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
-            return gs[chIdx()]
+            gs[chIdx()]
         }
 
         pub strElementIndex: () Char {
             resetLists()
-            return gls[0][growGls()]
+            gls[0][growGls()]
         }
 
         mkT: () Tuple2<Int32, Int32> {
             ticks += 1
-            return Tuple2<Int32, Int32> { ticks, ticks }
+            Tuple2<Int32, Int32> { ticks, ticks }
         }
 
         pub bindingDrop: () Int32 {
             ticks = 0
             n: Int32 = mkT().size()
-            return n * 10 + ticks
+            n * 10 + ticks
         }
 
         pub bindingDropTwice: () Int32 {
             ticks = 0
             s: Int32 = mkT().size() + mkT().size()
-            return s * 10 + ticks
+            s * 10 + ticks
         }
         """,
     )
@@ -777,7 +777,7 @@ class CppCopyPolicyTest {
         }
 
         runner: () Runner {
-            return Runner { f = () Void {
+            Runner { f = () Void {
                 gi = gi + 1
             }, g = (n: Int32) Void {
                 gi = gi + n * 100
@@ -789,21 +789,21 @@ class CppCopyPolicyTest {
             mut r: Runner = runner()
             r.run()
             r.run()
-            return gi
+            gi
         }
 
         pub implicitThisArg: () Int32 {
             gi = 29
             mut r: Runner = runner()
             r.runWith()
-            return gi
+            gi
         }
 
         pub lentThis: () Int32 {
             gi = 29
             r: Runner = runner()
             r.runPlain()
-            return gi
+            gi
         }
 
         pub statementHook: () Int32 {
@@ -814,7 +814,7 @@ class CppCopyPolicyTest {
             })
             hooks = hs
             hooks[0]()
-            return gi
+            gi
         }
 
         pub statementHookArg: () Int32 {
@@ -825,7 +825,7 @@ class CppCopyPolicyTest {
             })
             adds = xs
             adds[0](7)
-            return gi
+            gi
         }
         """,
     )

@@ -26,7 +26,7 @@ class FunctionSyntaxTest {
         val result = compile(
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             answer: Int32 = add(1, 2)
@@ -44,11 +44,11 @@ class FunctionSyntaxTest {
         val result = compile(
             """
             now: () Int64 {
-                return 0
+                0
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             pub Speaker: Any {

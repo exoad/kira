@@ -25,7 +25,7 @@ pub Behaviour: Any {
     pub id: () Str;
     pub name: () Str;
     pub mayDrive: () Bool {
-        return false
+        false
     }
     pub mut onLoad: () Void {
     }
@@ -36,21 +36,18 @@ pub Behaviour: Any {
 
 Stop: Behaviour {
     override pub id: () Str {
-        return ID_STOP
+        ID_STOP
     }
     override pub name: () Str {
-        return "stop"
+        "stop"
     }
     override pub mut step: (p: Pass) Reply {
-        return Reply { act = ACT_CLAMP, throttle = 0.0 }
+        Reply { act = ACT_CLAMP, throttle = 0.0 }
     }
 }
 
 pub make: (wanted: Str) Maybe<Behaviour> {
-    if wanted == ID_STOP {
-        return Stop {}
-    }
-    return null
+    wanted == ID_STOP ? Stop {} : null
 }
 
 pub Chain: Any {
@@ -59,40 +56,40 @@ pub Chain: Any {
     pub mut load: (b: Maybe<Behaviour>, mut why: Str) Bool {
         if b.isNone() {
             why = "no behaviour"
-            return false
+            false
+        } else {
+            it: Behaviour = b.unwrap()
+            wanted: Str = it.id()
+            if wanted.isEmpty() {
+                why = "a behaviour with no id"
+                false
+            } else if has(wanted) {
+                why = "already loaded: ${wanted}"
+                false
+            } else {
+                it.onLoad()
+                loaded.add(it)
+                true
+            }
         }
-        it: Behaviour = b.unwrap()
-        wanted: Str = it.id()
-        if wanted.isEmpty() {
-            why = "a behaviour with no id"
-            return false
-        }
-        if has(wanted) {
-            why = "already loaded: ${wanted}"
-            return false
-        }
-        it.onLoad()
-        loaded.add(it)
-        return true
     }
 
     pub size: () Size {
-        return loaded.size()
+        loaded.size()
     }
 
     pub has: (wanted: Str) Bool {
+        mut result: Bool = false
         for b: Behaviour in loaded {
             if b.id() == wanted {
-                return true
+                result = true
+                break
             }
         }
-        return false
+        result
     }
 
     pub at: (i: Size) Maybe<Behaviour> {
-        if i >= loaded.size() {
-            return null
-        }
-        return loaded[i]
+        i >= loaded.size() ? null : loaded[i]
     }
 }

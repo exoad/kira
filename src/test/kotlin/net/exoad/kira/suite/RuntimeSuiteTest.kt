@@ -83,7 +83,7 @@ class RuntimeSuiteTest {
         assertStdout("8\n") {
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             main: () Void {
@@ -169,7 +169,7 @@ class RuntimeSuiteTest {
                 pub sound: Str
 
                 pub speak: () Str {
-                    return sound
+                    sound
                 }
             }
 
@@ -193,7 +193,7 @@ class RuntimeSuiteTest {
             }
 
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {
@@ -223,15 +223,15 @@ class RuntimeSuiteTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return "woof"
+                    "woof"
                 }
 
                 pub name: () Str {
-                    return label
+                    label
                 }
 
                 pub loudness: () Int32 {
-                    return 8
+                    8
                 }
             }
 
@@ -239,11 +239,11 @@ class RuntimeSuiteTest {
                 pub label: Str
 
                 pub speak: () Str {
-                    return "meow"
+                    "meow"
                 }
 
                 pub name: () Str {
-                    return label
+                    label
                 }
             }
 
@@ -253,7 +253,7 @@ class RuntimeSuiteTest {
             }
 
             noiseLevel: (s: Noisy) Int32 {
-                return s.loudness()
+                s.loudness()
             }
 
             main: () Void {
@@ -320,7 +320,7 @@ class RuntimeSuiteTest {
         assertStdout("1\n2\n3\n") {
             """
             id<T>: (value: T) T {
-                return value
+                value
             }
 
             main: () Void {

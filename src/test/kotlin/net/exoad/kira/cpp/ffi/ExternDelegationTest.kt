@@ -54,13 +54,7 @@ class ExternDelegationTest {
         pub run: (label: Str) Int32 {
             take(label)
             r: Rec = rec()
-            if name() == "abc" {
-                return LIMIT
-            }
-            if r.c == 1 {
-                return r.n
-            }
-            return count()
+            name() == "abc" ? LIMIT : r.c == 1 ? r.n : count()
         }
     """
 

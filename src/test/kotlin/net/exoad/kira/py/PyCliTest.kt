@@ -59,7 +59,7 @@ class PyCliTest {
     @Test
     fun aHandWrittenFileAtATargetIsNeverWrittenOver() {
         val dir = project("overwrite", "py")
-        File(dir, "src/app/other.kira").writeText("pub one: () Int32 {\n    return 1\n}\n")
+        File(dir, "src/app/other.kira").writeText("pub one: () Int32 {\n    1\n}\n")
         val hand = File(dir, "src/app/main_kira.py").apply { writeText("print('hand-written')\n") }
         for (args in listOf(emptyArray(), arrayOf("--check"))) {
             val refused = PyTestSupport.cli(dir, *args)

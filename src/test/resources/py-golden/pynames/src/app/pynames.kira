@@ -2,13 +2,13 @@
 // the py target spells each k_<name> (py only; C++ has its own keywords).
 
 pub score: (n: Int32) Int32 {
-    return n * 2
+    n * 2
 }
 
 EMPTY: List<Int32> = List<Int32> { }
 
 span: (from: Int32, to: Int32 = 10, list: List<Int32> = EMPTY) Int32 {
-    return to - from + (list.size() as Int32)
+    to - from + (list.size() as Int32)
 }
 
 total: (bytes: List<UInt8>) Int32 {
@@ -16,7 +16,7 @@ total: (bytes: List<UInt8>) Int32 {
     for int: UInt8 in bytes {
         sum += int as Int32
     }
-    return sum
+    sum
 }
 
 grow: (mut list: List<Int32>, object: Int32) Void {
@@ -24,7 +24,7 @@ grow: (mut list: List<Int32>, object: Int32) Void {
 }
 
 apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-    return f(x)
+    f(x)
 }
 
 pub main: () Int32 {
@@ -44,7 +44,7 @@ pub main: () Int32 {
     score += 1
     trace(score)
     lambda: Int32 = apply((int: Int32) Int32 {
-        return int + from
+        int + from
     }, 2)
     trace(lambda)
     try {
@@ -52,5 +52,5 @@ pub main: () Int32 {
     } on str: Str {
         trace(str)
     }
-    return 0
+    0
 }

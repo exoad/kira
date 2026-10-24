@@ -3,10 +3,10 @@ golden.py.importname.app.lib as lib
 // _k_run() returns main's code to a Python caller, and the guard exits with it (D85).
 
 pub viaLib: () Int32 {
-    return bump()
+    bump()
 }
 
 pub main: (args: List<Str>) Int32 {
     println("main ran with ${args.size()} arguments, lib at ${bump()}")
-    return 3
+    3
 }

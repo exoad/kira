@@ -84,9 +84,9 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
-                return (a: Int32) Fx<Tuple1<Int32>, Int32> {
-                    return (b: Int32) Int32 {
-                        return base + a + b
+                (a: Int32) Fx<Tuple1<Int32>, Int32> {
+                    (b: Int32) Int32 {
+                        base + a + b
                     }
                 }
             }
@@ -103,9 +103,9 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: () Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
+                (x: Int32) Int32 {
                     y: Int32 = x + 1
-                    return y
+                    y
                 }
             }
             """
@@ -122,10 +122,10 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub tally: () Fx<Tuple0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 }
-                return () Int32 {
+                counter: Ref<Int32> = Ref<Int32> { value = 0 };
+                () Int32 {
                     counter.value = counter.value + 1
-                    return counter.value
+                    counter.value
                 }
             }
             """
@@ -140,7 +140,7 @@ class TyperBodyModelTest {
             pub S: Struct {
                 pub k: Int32 = 0
                 pub mut f: () Fx<Tuple0, Void> {
-                    return () Void {
+                    () Void {
                         k = 1
                     }
                 }
@@ -191,15 +191,15 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (c: Bool, a: Int32) Int32 {
-                x: Int32 = if c { 1 } else { 2 }
-                y: Int32 = if c { 1 } else if a > 0 { 2 } else { 3 }
+                x: Int32 = c ? 1 : 2
+                y: Int32 = c ? 1 : a > 0 ? 2 : 3
                 z: Int32 = if c {
                     t: Int32 = a * 2
                     t
                 } else {
                     0
                 }
-                return x + y + z
+                x + y + z
             }
             """
         )
@@ -213,10 +213,10 @@ class TyperBodyModelTest {
     private val calls = """
         pub LIMIT: Int32 = 3
         pub sub: (a: Int32, b: Int32) Int32 {
-            return a - b
+            a - b
         }
         pub command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
-            return verb
+            verb
         }
         pub bump: (mut value: Int32, by: Int32 = 1) Void {
             value += by
@@ -278,7 +278,7 @@ class TyperBodyModelTest {
                 b: Float64 = sin(1.0)
                 c: Float32 = floor(0.5)
                 d: Float32 = min(x, 2.0)
-                return a + c + d
+                a + c + d
             }
             """
         )
@@ -299,10 +299,10 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             id<T>: (value: T) T {
-                return value
+                value
             }
             pub f: () Int32 {
-                return id<Int32>(7)
+                id<Int32>(7)
             }
             """
         )
@@ -320,14 +320,14 @@ class TyperBodyModelTest {
             """
             pub Dog: Any {
                 pub sound: () Str {
-                    return "woof"
+                    "woof"
                 }
                 pub twice: () Str {
-                    return sound() + sound()
+                    sound() + sound()
                 }
             }
             pub f: (d: Dog) Str {
-                return d.sound()
+                d.sound()
             }
             """
         )
@@ -373,10 +373,10 @@ class TyperBodyModelTest {
                 pub x: Int32 = 0
             }
             @op_add: (a: V, b: V) V {
-                return V { a.x + b.x }
+                V { a.x + b.x }
             }
             pub f: (a: V, b: V) V {
-                return a + b
+                a + b
             }
             """
         )
@@ -393,10 +393,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (ok: Bool) Result<Int32, Str> {
-                if ok {
-                    return Result.success(5)
-                }
-                return Result.error("no")
+                ok ? Result.success(5) : Result.error("no")
             }
             """
         )
@@ -414,7 +411,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (v: View<UInt8>, xs: List<UInt8>) Str {
-                return Str.of(v) + Str.of(xs)
+                Str.of(v) + Str.of(xs)
             }
             """
         )
@@ -429,7 +426,7 @@ class TyperBodyModelTest {
         val wrong = snippet(
             """
             pub g: (s: Str) Str {
-                return Str.of(s) + Str.from(s)
+                Str.of(s) + Str.from(s)
             }
             """
         )
@@ -457,7 +454,7 @@ class TyperBodyModelTest {
                 o.put("i", a)
                 o.put("j", Json.parse(text = t))
                 o.put("k", Json.of(Json.error()))
-                return o
+                o
             }
             """
         )
@@ -503,7 +500,7 @@ class TyperBodyModelTest {
             """
             pub h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
                 f: Fx<Tuple1<Str>, Json> = Json.parse
-                return xs.contains(j) || m.containsValue(j)
+                xs.contains(j) || m.containsValue(j)
             }
             """
         )
@@ -524,11 +521,11 @@ class TyperBodyModelTest {
         val typed = snippet(
             """
             pub a: (v: View<UInt8>) Str {
-                return Str.of<Float64, Bool, Str>(v)
+                Str.of<Float64, Bool, Str>(v)
             }
 
             pub b: () Result<Int32, Str> {
-                return Result.success<Int32>(5)
+                Result.success<Int32>(5)
             }
             """
         )
@@ -538,11 +535,11 @@ class TyperBodyModelTest {
         val named = snippet(
             """
             pub c: (v: View<UInt8>) Str {
-                return Str.of(bytes = v)
+                Str.of(bytes = v)
             }
 
             pub d: () Result<Int32, Str> {
-                return Result.success(value = 5)
+                Result.success(value = 5)
             }
             """
         )
@@ -552,7 +549,7 @@ class TyperBodyModelTest {
         val wrongName = snippet(
             """
             pub e: (v: View<UInt8>) Str {
-                return Str.of(text = v)
+                Str.of(text = v)
             }
             """
         )
@@ -574,7 +571,7 @@ class TyperBodyModelTest {
                 pub mut tricks: Int32 = 0
             }
             pub f: () Dog {
-                return Dog { "Rex", tricks = 2 }
+                Dog { "Rex", tricks = 2 }
             }
             """
         )
@@ -600,7 +597,7 @@ class TyperBodyModelTest {
             }
             pub f: () Box<Int32> {
                 xs: List<Str> = List<Str> { }
-                return Box<Int32> { value = 5 }
+                Box<Int32> { value = 5 }
             }
             """
         )
@@ -631,11 +628,11 @@ class TyperBodyModelTest {
 
     @Test
     fun theThreeEntryPointsAreAcceptedAndNothingElse() {
-        listOf("main: () Void { }", "main: () Int32 {\n    return 0\n}", "main: (args: List<Str>) Int32 {\n    return 0\n}").forEach {
+        listOf("main: () Void { }", "main: () Int32 {\n    0\n}", "main: (args: List<Str>) Int32 {\n    0\n}").forEach {
             expectNoErrors(snippet(it))
         }
         TyperTestSupport.expectDiagnostic(snippet("main: (n: Int32) Void { }"), "types.main.signature")
-        TyperTestSupport.expectDiagnostic(snippet("main: () Str {\n    return \"\"\n}"), "types.main.signature")
+        TyperTestSupport.expectDiagnostic(snippet("main: () Str {\n    \"\"\n}"), "types.main.signature")
     }
 
     @Test
@@ -688,11 +685,11 @@ class TyperBodyModelTest {
             }
             pub S: B {
                 override pub id: () Str {
-                    return "s"
+                    "s"
                 }
             }
             pub make: () Maybe<B> {
-                return S { }
+                S { }
             }
             """
         )
@@ -706,7 +703,7 @@ class TyperBodyModelTest {
 
     @Test
     fun lenientModeTypesTheSameAndOnlyWarns() {
-        val p = snippet("pub f: (i: Int32, x: Float32) Float32 {\n    return i + x\n}", mode = TyperMode.LENIENT)
+        val p = snippet("pub f: (i: Int32, x: Float32) Float32 {\n    i + x\n}", mode = TyperMode.LENIENT)
         val d = TyperTestSupport.expectDiagnostic(p, "types.op.mismatch")
         assertEquals(net.exoad.kira.compiler.analysis.types.Severity.WARNING, d.severity)
         assertFalse(p.hasErrors)

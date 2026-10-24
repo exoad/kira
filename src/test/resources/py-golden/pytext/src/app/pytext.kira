@@ -6,68 +6,68 @@ kira.test as test
 // "+81", and ValueError's own text); the driver holds every function to Python's own on the running interpreter.
 
 pub intOf: (text: Str) Maybe<Int64> {
-    return pyInt(text)
+    pyInt(text)
 }
 
 pub floatOf: (text: Str) Maybe<Float64> {
-    return pyFloat(text)
+    pyFloat(text)
 }
 
 pub why: () Str {
-    return pyTextError()
+    pyTextError()
 }
 
 pub reprOf: (s: Str) Str {
-    return strRepr(s)
+    strRepr(s)
 }
 
 pub floatText: (v: Float64) Str {
-    return floatRepr(v)
+    floatRepr(v)
 }
 
 pub jsonText: (text: Str) Str {
-    return jsonRepr(Json.parse(text))
+    jsonRepr(Json.parse(text))
 }
 
 pub formatted: (v: Float64, spec: Str) Maybe<Str> {
-    return formatFloat(v, spec)
+    formatFloat(v, spec)
 }
 
 pub rounded: (v: Float64, digits: Int32) Float64 {
-    return roundTo(v, digits)
+    roundTo(v, digits)
 }
 
 pub roundedInt: (v: Float64) Maybe<Int64> {
-    return roundHalfEven(v)
+    roundHalfEven(v)
 }
 
 pub cased: (s: Str) List<Str> {
-    return @listOf(upper(s), lower(s), strip(s), lstrip(s), rstrip(s))
+    @listOf(upper(s), lower(s), strip(s), lstrip(s), rstrip(s))
 }
 
 pub allUpper: (s: Str) Bool {
-    return isUpper(s)
+    isUpper(s)
 }
 
 pub words: (s: Str) List<Str> {
-    return splitSpace(s)
+    splitSpace(s)
 }
 
 pub lines: (s: Str) List<Str> {
-    return splitLines(s)
+    splitLines(s)
 }
 
 pub found: (s: Str, sub: Str, start: Size) Int64 {
-    return findFrom(s, sub, start)
+    findFrom(s, sub, start)
 }
 
 pub wrapped: (text: Str, width: Size) List<Str> {
-    return wrapWords(text, width)
+    wrapWords(text, width)
 }
 
 // isSpace, isAlnum, isAlpha and isDigit of a code point, as 0 and 1 in that order.
 pub kinds: (c: Char) Str {
-    return "${isSpace(c)} ${isAlnum(c)} ${isAlpha(c)} ${isDigit(c)}"
+    "${isSpace(c)} ${isAlnum(c)} ${isAlpha(c)} ${isDigit(c)}"
 }
 
 pub main: () Int32 {
@@ -98,14 +98,14 @@ pub main: () Int32 {
     t.check(findFrom("abcabc", "c", 3) == 5 && findFrom("abc", "", 3) == 3 && findFrom("abc", "", 4) == -1, "findFrom is find's")
     t.checkStr(wrapWords("a bb ccc-dddd eeeeeeeeee f", 5).joinToString("|"), "a bb|ccc-dddd|eeeeeeeeee|f", "wrapWords breaks no word")
     t.check(isSpace(' ') && isSpace(133 as Char) && isAlnum('²') && isAlpha('é') && isDigit('²') && !isDigit('½'), "the character classes are Unicode's")
-    return t.finish()
+    t.finish()
 }
 
 zeroOf: (v: Float64) Float64 {
-    return v
+    v
 }
 
 ch: (code: Int32) Str {
     c: Char = code as Char
-    return "${c}"
+    "${c}"
 }

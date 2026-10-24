@@ -25,19 +25,19 @@ header: (opcode: UInt8, n: Size) List<UInt8> {
         }
         writeU64Be(out.view(), 2, n as UInt64)
     }
-    return out
+    out
 }
 
 // ws_frame(opcode, payload)
 frame: (opcode: UInt8, payload: List<UInt8>) List<UInt8> {
     mut out: List<UInt8> = header(opcode, payload.size())
     out.addAll(payload.toArr())
-    return out
+    out
 }
 
 // Page.send(text): ws_frame(1, text.encode())
 pub send: (text: Str) List<UInt8> {
-    return frame(1, text.bytes())
+    frame(1, text.bytes())
 }
 
 // Page.close(code, reason): ws_frame(8, code.to_bytes(2, "big") + reason.encode())
@@ -45,29 +45,24 @@ pub close: (code: UInt16, reason: Str) List<UInt8> {
     mut payload: List<UInt8> = @listOf(0, 0)
     writeU16Be(payload.view(), 0, code)
     payload.addAll(reason.bytes().toArr())
-    return frame(8, payload)
+    frame(8, payload)
 }
 
 // The payload of the unmasked frame at the start of f, past its 7-, 16- or 64-bit length.
 payloadOf: (f: View<UInt8>) View<UInt8> {
     n: Size = (f[1] & 0x7F) as Size
-    if n == 126 {
-        return f.slice(4, readU16Be(f, 2) as Size)
-    }
-    if n == 127 {
-        return f.slice(10, readU64Be(f, 2) as Size)
-    }
-    return f.slice(2, n)
+    n == 126 ? f.slice(4, readU16Be(f, 2) as Size)
+        : n == 127 ? f.slice(10, readU64Be(f, 2) as Size) : f.slice(2, n)
 }
 
 // A text frame's text, as data.decode("utf-8", "replace") reads it.
 pub textOf: (f: View<UInt8>) Str {
-    return Str.of(payloadOf(f))
+    Str.of(payloadOf(f))
 }
 
 // A close frame's code and reason: "<code> <reason>".
 pub closeOf: (f: View<UInt8>) Str {
-    return "${readU16Be(payloadOf(f), 0)} " + Str.of(payloadOf(f).from(2))
+    "${readU16Be(payloadOf(f), 0)} " + Str.of(payloadOf(f).from(2))
 }
 
 hex: (v: View<UInt8>) Str {
@@ -80,7 +75,7 @@ hex: (v: View<UInt8>) Str {
         s = s + v[i].toHex().padStart(2, '0')
         i += 1
     }
-    return s
+    s
 }
 
 main: () Void {

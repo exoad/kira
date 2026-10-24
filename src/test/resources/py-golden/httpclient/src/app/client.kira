@@ -5,31 +5,31 @@ kira.test as test
 // it (D86); the driver's server gives each case its bytes.
 
 pub get: (url: Str, ms: Int64) Maybe<HttpReply> {
-    return httpGet(url, ms)
+    httpGet(url, ms)
 }
 
 pub post: (url: Str, body: View<UInt8>, contentType: Str, ms: Int64) Maybe<HttpReply> {
-    return httpPost(url, body, contentType, ms)
+    httpPost(url, body, contentType, ms)
 }
 
 pub why: () Str {
-    return httpError()
+    httpError()
 }
 
 pub text: (body: View<UInt8>) Maybe<Str> {
-    return jsonText(body)
+    jsonText(body)
 }
 
 pub path: (target: Str) Maybe<Str> {
-    return urlPath(target)
+    urlPath(target)
 }
 
 pub query: (target: Str) Maybe<Str> {
-    return urlQuery(target)
+    urlQuery(target)
 }
 
 pub first: (q: Str, key: Str) Maybe<Str> {
-    return queryFirst(q, key)
+    queryFirst(q, key)
 }
 
 pub main: () Int32 {
@@ -55,5 +55,5 @@ pub main: () Int32 {
     t.check(urlQuery("http://[x/").isNone() && urlPath("/a").value == "/a" && httpError() == "", "a split that works clears the reason")
     t.checkStr(queryFirst("s=60&s=90&t=", "s").value, "60", "queryFirst is parse_qs's first value")
     t.check(queryFirst("s=60&t=", "t").isNone() && queryFirst("s=60", "u").isNone(), "none for a blank value, which parse_qs drops, and a missing one")
-    return t.finish()
+    t.finish()
 }

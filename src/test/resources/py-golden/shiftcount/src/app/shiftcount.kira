@@ -5,41 +5,41 @@
 // RuntimeError's message.
 
 pub shl8: (v: Int8, n: Int32) Int8 {
-    return v << n
+    v << n
 }
 
 pub shrU16: (v: UInt16, n: Int64) UInt16 {
-    return v >> n
+    v >> n
 }
 
 pub ushr32: (v: Int32, n: UInt8) Int32 {
-    return v >>> n
+    v >>> n
 }
 
 pub shlU64: (v: UInt64, n: Size) UInt64 {
-    return v << n
+    v << n
 }
 
 pub shrSize: (v: Size, n: Int32) Size {
-    return v >> n
+    v >> n
 }
 
 pub shlBy32: (v: UInt32) UInt32 {
-    return v << 32
+    v << 32
 }
 
 pub shrByMinusOne: (v: Int64) Int64 {
-    return v >> -1
+    v >> -1
 }
 
 pub shlInPlace: (v: Int16, n: Int32) Int16 {
     mut x: Int16 = v
     x <<= n
-    return x
+    x
 }
 
 pub ushrInPlace: (v: Int64, n: Int32) Int64 {
     mut x: Int64 = v
     x >>>= n
-    return x
+    x
 }

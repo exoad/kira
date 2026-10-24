@@ -6,75 +6,75 @@
 // The expected output is the C++ backend's run of this same module, g++, MSVC and musl agreeing.
 
 speed: (mps: Float64) Str {
-    return "speed ${mps.fixed(1)} m/s"
+    "speed ${mps.fixed(1)} m/s"
 }
 
 soc: (celsius: Float64) Str {
-    return "soc ${celsius.fixed(1)} C"
+    "soc ${celsius.fixed(1)} C"
 }
 
 seconds: (us: Int64) Str {
-    return "${((us as Float64) / 1000000.0).fixed(3)} s"
+    "${((us as Float64) / 1000000.0).fixed(3)} s"
 }
 
 rtt: (ms: Float64) Str {
-    return "rtt ${ms.fixed(0)} ms"
+    "rtt ${ms.fixed(0)} ms"
 }
 
 build: (id: UInt32) Str {
-    return "build ${id.toHex()}"
+    "build ${id.toHex()}"
 }
 
 usb: (vid: UInt16, pid: UInt16) Str {
-    return "${vid.toHex()}:${pid.toHex()}"
+    "${vid.toHex()}:${pid.toHex()}"
 }
 
 detail: (code: UInt32) Str {
-    return "detail 0x${code.toHex()}"
+    "detail 0x${code.toHex()}"
 }
 
 seqBits: (seq: Int16) Str {
-    return (seq as UInt16).toHex()
+    (seq as UInt16).toHex()
 }
 
 hex8: (v: Int8) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 hex32: (v: Int32) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 hex64: (v: Int64) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 hexU64: (v: UInt64) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 hexSize: (v: Size) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 asU64: (v: Int64) UInt64 {
-    return v as UInt64
+    v as UInt64
 }
 
 fixedOf: (v: Float64, places: Int32) Str {
-    return v.fixed(places)
+    v.fixed(places)
 }
 
 shortest: (v: Float64) Str {
-    return v as Str
+    v as Str
 }
 
 ratio: (a: Float64, b: Float64) Float64 {
-    return a / b
+    a / b
 }
 
 sum: (a: Float64, b: Float64) Float64 {
-    return a + b
+    a + b
 }
 
 // v's shortest text, then v.fixed(p) for every p from -1 to 10 (clamped to 0..9).
@@ -85,7 +85,7 @@ everyPlaces: (v: Float64) Str {
         out = out + " " + v.fixed(p)
         p += 1
     }
-    return out
+    out
 }
 
 main: () Void {

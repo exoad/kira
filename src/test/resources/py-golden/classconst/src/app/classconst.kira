@@ -5,7 +5,7 @@ pub Crc: Any {
     pub seed: Int64 = 0
 
     pub twice: () Int64 {
-        return poly * 2
+        poly * 2
     }
 }
 
@@ -13,10 +13,10 @@ pub CRC: Crc = Crc { }
 pub WIDE: Crc = Crc { 7, 1 }
 
 same: (a: Crc, b: Crc) Bool {
-    return a.poly == b.poly
+    a.poly == b.poly
 }
 
 pub main: () Int32 {
     trace("${CRC.poly} ${CRC.twice()} ${WIDE.poly} ${WIDE.seed} ${same(CRC, CRC)} ${same(CRC, WIDE)}")
-    return 0
+    0
 }

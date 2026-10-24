@@ -7,7 +7,7 @@ kira.time as time
 // spawnPiped, their exit codes (137 after kill), a missing program, an empty argv, and the reason each failure leaves.
 
 py: (code: Str) List<Str> {
-    return @listOf(pythonExecutable(), "-c", code)
+    @listOf(pythonExecutable(), "-c", code)
 }
 
 drain: (p: Process) Str {
@@ -18,41 +18,42 @@ drain: (p: Process) Str {
         text = text + Str.of(buf.slice(0, n as Size))
         n = p.readStdout(buf.from(0))
     }
-    return text.replace("\r\n", "\n")
+    text.replace("\r\n", "\n")
 }
 
 readSome: (p: PipedProcess, want: Size) Str {
     mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
     mut text: Str = ""
+    mut result: Str = ""
+    mut found: Bool = false
     while text.size() < want {
         n: Int64 = p.readStdout(buf.from(0))
         if n <= 0 {
-            return text
+            result = text
+            found = true
+            break
         }
         text = text + Str.of(buf.slice(0, n as Size))
     }
-    return text
+    found ? result : text
 }
 
 lineOf: (m: Maybe<Str>) Str {
-    if m.isSome() {
-        return m.value
-    }
-    return "<none>"
+    m.isSome() ? m.value : "<none>"
 }
 
 // A running child the Process is dropped on: the driver sees its pid gone.
 pub dropRunning: () Int64 {
     p: Process = spawnProcess(py("import time; time.sleep(30)")).value
-    return p.pid()
+    p.pid()
 }
 
 pub spawned: () Bool {
-    return spawnProcess(py("pass")).isSome()
+    spawnProcess(py("pass")).isSome()
 }
 
 pub reason: () Str {
-    return lastError()
+    lastError()
 }
 
 // A readStdout of a child asleep for 1 s, which the driver's SIGINT 300 ms in ends on POSIX (D78).
@@ -64,7 +65,7 @@ pub readOnSignal: () Str {
     before: Int64 = monoNowMs()
     n: Int64 = p.readStdout(buf.from(0))
     took: Int64 = monoNowMs() - before
-    return "${installed} ${n} ${lastErrorKind()} ${flag.load()} ${took}"
+    "${installed} ${n} ${lastErrorKind()} ${flag.load()} ${took}"
 }
 
 pub main: () Int32 {
@@ -108,5 +109,5 @@ pub main: () Int32 {
     t.check(piped.readStderrLine().isNone(), "and none at its end")
     t.check(piped.wait() == 0, "the child exits 0")
     t.check(spawnPiped(@listOf()).isNone() && lastError() == "spawnPiped: empty argv", "spawnPiped refuses an empty argv")
-    return t.finish()
+    t.finish()
 }

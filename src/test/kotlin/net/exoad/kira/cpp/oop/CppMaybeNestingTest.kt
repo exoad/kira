@@ -78,17 +78,11 @@ class CppMaybeNestingTest {
         }
 
         some<T>: (x: T) Maybe<T> {
-            return x
+            x
         }
 
         level: (m: Maybe<Maybe<Node>>) Int32 {
-            if m.isNull() {
-                return 0
-            }
-            if m.value.isNull() {
-                return 1
-            }
-            return 2
+            m.isNull() ? 0 : m.value.isNull() ? 1 : 2
         }
 
         pub run: () Void {
@@ -127,13 +121,7 @@ class CppMaybeNestingTest {
         "oop:b10v",
         """
         level: (m: Maybe<Maybe<Int32>>) Int32 {
-            if m.isNull() {
-                return 0
-            }
-            if m.value.isNull() {
-                return 1
-            }
-            return 2
+            m.isNull() ? 0 : m.value.isNull() ? 1 : 2
         }
 
         pub run: () Void {

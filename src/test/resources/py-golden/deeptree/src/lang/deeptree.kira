@@ -8,7 +8,7 @@ total: (n: Node) Int32 {
     for k: Node in n.kids {
         t += total(k)
     }
-    return t
+    t
 }
 
 main: () Void {

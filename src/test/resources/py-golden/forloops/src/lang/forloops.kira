@@ -15,7 +15,7 @@ Bag: Any {
             note(x * 10)
             n += x
         }
-        return n
+        n
     }
 }
 
@@ -25,17 +25,17 @@ Cell: Any {
 
 endAt: (n: Int32) Int32 {
     trace("end ${n}")
-    return n
+    n
 }
 
 startAt: (n: Int32) Int32 {
     trace("start ${n}")
-    return n
+    n
 }
 
 elsewhere: () Int32 {
     other.add(9)
-    return 1
+    1
 }
 
 sumView: (xs: View<Int32>) Int32 {
@@ -43,7 +43,7 @@ sumView: (xs: View<Int32>) Int32 {
     for x: Int32 in xs {
         t += x
     }
-    return t
+    t
 }
 
 sumBytes: (bs: View<UInt8>) UInt32 {
@@ -51,7 +51,7 @@ sumBytes: (bs: View<UInt8>) UInt32 {
     for b: UInt8 in bs {
         t += b as UInt32
     }
-    return t
+    t
 }
 
 walkParam: (xs: List<Int32>) Int32 {
@@ -59,7 +59,7 @@ walkParam: (xs: List<Int32>) Int32 {
     for x: Int32 in xs {
         t += x
     }
-    return t
+    t
 }
 
 walkMut: (mut xs: List<Int32>) Int32 {
@@ -68,11 +68,11 @@ walkMut: (mut xs: List<Int32>) Int32 {
         t += x
     }
     xs.add(t)
-    return t
+    t
 }
 
 made: () List<Int32> {
-    return @listOf(4, 5, 6)
+    @listOf(4, 5, 6)
 }
 
 show: (xs: List<Int32>) Str {
@@ -83,7 +83,7 @@ show: (xs: List<Int32>) Str {
         }
         s = s + "${xs[i]}"
     }
-    return s + "]"
+    s + "]"
 }
 
 main: () Void {

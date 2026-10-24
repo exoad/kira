@@ -4,7 +4,7 @@ kira.test as test
 // kira:time's utcStamp (K5): C++'s civil_from_days and py's ordinal write the same text, the milliseconds floored.
 
 pub stamp: (ns: Int64) Str {
-    return utcStamp(ns)
+    utcStamp(ns)
 }
 
 pub main: () Int32 {
@@ -25,5 +25,5 @@ pub main: () Int32 {
     t.checkStr(utcStamp(4107542400000000000), "2100-03-01T00:00:00.000Z", "2100 has none")
     t.checkStr(utcStamp(9223372036854775807), "2262-04-11T23:47:16.854Z", "the last Int64")
     t.checkStr(utcStamp(-9223372036854775807 - 1), "1677-09-21T00:12:43.145Z", "the first Int64")
-    return t.finish()
+    t.finish()
 }

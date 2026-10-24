@@ -12,12 +12,12 @@ Account: Any {
             throw "${name} has ${balance}, not ${n}"
         }
         balance -= n
-        return balance
+        balance
     }
 }
 
 pick: (ok: Bool) Int32 {
-    return if ok { 1 } else { throw "not ok" }
+    if ok { 1 } else { throw "not ok" }
 }
 
 deep: (n: Int32) Int32 {
@@ -25,16 +25,19 @@ deep: (n: Int32) Int32 {
     if n == 0 {
         throw "bottom"
     }
-    return deep(n - 1) + 1
+    deep(n - 1) + 1
 }
 
 guarded: (s: Str) Int64 {
+    mut result: Int64 = -1
+    mut done: Bool = false
     try {
-        return number(s)
+        result = number(s)
+        done = true
     } on e: Str {
         trace("guarded: ${e}")
     }
-    return -1
+    result
 }
 
 loop: () Int32 {
@@ -54,14 +57,12 @@ loop: () Int32 {
         }
         n += 100
     }
-    return n
+    n
 }
 
 describe: (r: Result<Int32, Str>) Str {
-    if r.isOk() {
-        return "ok ${r.unwrap()} ${r.value}"
-    }
-    return "err ${r.unwrapErr()} ${r.error} ${r.isErr()}"
+    r.isOk() ? "ok ${r.unwrap()} ${r.value}"
+        : "err ${r.unwrapErr()} ${r.error} ${r.isErr()}"
 }
 
 main: () Void {

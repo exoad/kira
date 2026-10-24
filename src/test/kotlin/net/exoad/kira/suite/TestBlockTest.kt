@@ -80,19 +80,20 @@ class TestBlockTest {
             parsed(
                 """
                 f: (p: Pt, k: Int32) Int32 {
+                    mut r: Int32 = 0
                     if p == Pt { x > 0 } {
-                        return 1
+                        r = 1
                     }
                     if p == Pt { x > 0 } && k > 1 {
-                        return 2
+                        r = 2
                     }
                     if p != Pt { x > 0 } || k > 1 {
-                        return 3
+                        r = 3
                     }
                     if p == Pt {
-                        return 4
+                        r = 4
                     }
-                    return 0
+                    r
                 }
                 """,
             ),
@@ -109,43 +110,43 @@ class TestBlockTest {
     @Test
     fun anAssignmentInATestBlockIsRefusedWithTheTestToWrite() {
         for (check in listOf("x = 1", "x += 1", "line.start = p")) {
-            val e = parseError("f: (p: Pt, line: Line) Bool {\n    return p == Pt { $check }\n}")
+            val e = parseError("f: (p: Pt, line: Line) Bool {\n    p == Pt { $check }\n}")
             assertEquals("parse.test.assign", e.tag, check)
             assertTrue(e.message.contains("never assigns") && e.message.contains("(T { ... })"), e.message)
         }
-        assertTrue(parseError("f: (p: Pt) Bool {\n    return p == Pt { x = 1 }\n}").message.contains("'x == value'"))
-        assertEquals("parse.test.empty", parseError("f: (p: Pt) Bool {\n    return p == Pt { }\n}").tag)
+        assertTrue(parseError("f: (p: Pt) Bool {\n    p == Pt { x = 1 }\n}").message.contains("'x == value'"))
+        assertEquals("parse.test.empty", parseError("f: (p: Pt) Bool {\n    p == Pt { }\n}").tag)
     }
 
     @Test
     fun aTestWhereAValueIsBuiltIsRefusedWithBothSpellings() {
-        val construction = parseError("f: (k: Int32) Flags {\n    return Flags { k == 1 }\n}")
+        val construction = parseError("f: (k: Int32) Flags {\n    Flags { k == 1 }\n}")
         assertEquals("parse.build.test", construction.tag)
         assertTrue(construction.message.contains("A construction builds") && construction.message.contains("'v == T { k == value }'"), construction.message)
-        val with = parseError("f: (g: Flags) Flags {\n    return g with {\n        lit == true\n    }\n}")
+        val with = parseError("f: (g: Flags) Flags {\n    g with {\n        lit == true\n    }\n}")
         assertEquals("parse.build.test", with.tag)
         assertTrue(with.message.contains("A `with` block builds"), with.message)
         // A Bool computed by a comparison goes in parentheses; a member path on the left is no test.
-        expectNoErrors(TyperTestSupport.snippet(text("f: (k: Int32, p: Pt) Flags {\n    a: Flags = Flags { (k == 1) }\n    return Flags { p.x == 1 }\n}")))
+        expectNoErrors(TyperTestSupport.snippet(text("f: (k: Int32, p: Pt) Flags {\n    a: Flags = Flags { (k == 1) }\n    Flags { p.x == 1 }\n}")))
     }
 
     // ---- the typer ---------------------------------------------------------------------------
 
     @Test
     fun aTestBlockOnAValueOfItsOwnTypeIsNoConstantAndWarnsNothing() {
-        val p = TyperTestSupport.snippet(text("f: (p: Pt) Bool {\n    return p == Pt { x == 1 }\n}"))
+        val p = TyperTestSupport.snippet(text("f: (p: Pt) Bool {\n    p == Pt { x == 1 }\n}"))
         expectNoErrors(p)
         assertTrue(p.diagnostics.none { it.severity == Severity.WARNING }, TyperTestSupport.render(p))
         // Without the block the test is the types' and says so.
-        TyperTestSupport.expectDiagnostic(TyperTestSupport.snippet(text("f: (p: Pt) Bool {\n    return p == Pt\n}")), "types.conform.always")
+        TyperTestSupport.expectDiagnostic(TyperTestSupport.snippet(text("f: (p: Pt) Bool {\n    p == Pt\n}")), "types.conform.always")
     }
 
     @Test
     fun aCheckReadsTheMembersBareAndALocalOfAMemberNameIsAClash() {
-        val p = TyperTestSupport.snippet(text("f: (p: Pt, k: Int32) Bool {\n    return p == Pt { x == k }\n}"))
+        val p = TyperTestSupport.snippet(text("f: (p: Pt, k: Int32) Bool {\n    p == Pt { x == k }\n}"))
         expectNoErrors(p)
         assertEquals(1, p.model.testMembers.size)
-        val clash = TyperTestSupport.expectDiagnostic(TyperTestSupport.snippet(text("f: (p: Pt, x: Int32) Bool {\n    return p == Pt { y == x }\n}")), "types.test.clash")
+        val clash = TyperTestSupport.expectDiagnostic(TyperTestSupport.snippet(text("f: (p: Pt, x: Int32) Bool {\n    p == Pt { y == x }\n}")), "types.test.clash")
         assertTrue(clash.message.contains("this test block's Pt"), clash.message)
     }
 
@@ -153,7 +154,7 @@ class TestBlockTest {
 
     private val program = """
         probe: () Pt {
-            return Pt { 1, 2 }
+            Pt { 1, 2 }
         }
 
         f: (p: Pt, m: Maybe<Pt>, line: Line, k: Int32) Int32 {
@@ -162,19 +163,16 @@ class TestBlockTest {
             c: Bool = m != Pt { x == 1 }
             d: Bool = line == Line { start == Pt { x == 0 }, end.x > 1 }
             e: Bool = probe() == Pt { y == 2 }
-            if m == Pt { x > 0 } && a {
-                return m.x
-            }
-            return 0
+            m == Pt { x > 0 } && a ? m.x : 0
         }
 
         paths: (line: Line, s: Seg) Bool {
             a: Bool = line.start == Pt { x == 0 }
-            return a && s.tip == Pt { y == 2 }
+            a && s.tip == Pt { y == 2 }
         }
 
         hoisted: (k: Int32) Bool {
-            return probe() == Pt {
+            probe() == Pt {
                 (if x > k {
                     t: Int32 = x * 2
                     t
@@ -194,7 +192,8 @@ class TestBlockTest {
         // A field read again as the nested block's subject; a call held once.
         assertTrue(py.contains("    d = line.start.x == 0 and line.end.x > 1\n"), py)
         assertTrue(py.contains("    e = (lambda _k_s1: _k_s1.y == 2)(_probe())\n"), py)
-        assertTrue(py.contains("    if m is not None and m.x > 0 and a:\n        return m.x\n"), py)
+        // The ternary's first arm reads m as the Pt the block proved.
+        assertTrue(py.contains("    return m.x if m is not None and m.x > 0 and a else 0\n"), py)
         // A subject written as a field path is read again, a Maybe field's too.
         assertTrue(py.contains("    a = line.start.x == 0\n    return a and (s.tip is not None and s.tip.y == 2)\n"), py)
         // A def a check needs is written before the statement, so it takes the held subject, the lambda's parameter.
@@ -213,15 +212,15 @@ class TestBlockTest {
                 pub radius: Int32
 
                 override pub area: () Int32 {
-                    return radius
+                    radius
                 }
             }
         """.trimIndent()
         val src = DeclTestSupport.module(
             "app:main",
             text(
-                "$shapes\n\npub f: (s: Shape, m: Maybe<Pt>, line: Line, g: Seg) Int32 {\n    if s == Circle { radius > 1 } && m == Pt { x == 2 } {\n        return s.radius + m.x\n    }\n" +
-                    "    a: Bool = line == Line { start == Pt { x == 0 } }\n    b: Bool = line.end == Pt { y == 3 } && g.tip == Pt { x == 4 }\n    return a && b ? 1 : 0\n}",
+                "$shapes\n\npub f: (s: Shape, m: Maybe<Pt>, line: Line, g: Seg) Int32 {\n    if s == Circle { radius > 1 } && m == Pt { x == 2 } {\n        s.radius + m.x\n    } else {\n" +
+                    "        a: Bool = line == Line { start == Pt { x == 0 } }\n        b: Bool = line.end == Pt { y == 3 } && g.tip == Pt { x == 4 }\n        a && b ? 1 : 0\n    }\n}",
             ),
         )
         val emitted = DeclTestSupport.emit(src)
@@ -233,7 +232,7 @@ class TestBlockTest {
         // A subject written as a field path is no held value: read again, a Maybe field's as its value.
         assertTrue(out.contains("line.end.y == 3"), out)
         assertTrue(out.contains("kira::isSome(g.tip) && kira::unwrap(g.tip).x == 4"), out)
-        val held = DeclTestSupport.emit(DeclTestSupport.module("app:main", text("probe: () Pt {\n    return Pt { 1, 2 }\n}\n\npub f: () Bool {\n    return probe() == Pt { y == 2 }\n}")))
+        val held = DeclTestSupport.emit(DeclTestSupport.module("app:main", text("probe: () Pt {\n    Pt { 1, 2 }\n}\n\npub f: () Bool {\n    probe() == Pt { y == 2 }\n}")))
         assertTrue(
             held.diagnostics("app:main").any { it.code == "cpp.unsupported" && it.message.contains("bind it to a local first") },
             held.render(held.diagnostics("app:main")),

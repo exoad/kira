@@ -17,7 +17,7 @@ pub Tree: Struct {
 
 loud: () Int32 {
     trace(1)
-    return 1
+    1
 }
 
 pub refused: (p: Pt, t: Tree, k: Int32, x: Int32, f: (v: Int32) Int32, xs: List<Int32>) Void {

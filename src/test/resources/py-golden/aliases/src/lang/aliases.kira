@@ -9,7 +9,7 @@ Holder: Any {
     pub mut items: List<Int32>
 
     pub snapshot: () List<Int32> {
-        return items
+        items
     }
 
     pub mut setItems: (xs: List<Int32>) Void {
@@ -19,25 +19,25 @@ Holder: Any {
     // The callee writes the field the caller passed: the argument is the field as it was.
     pub mut poke: (xs: List<Int32>) Size {
         items.add(9)
-        return xs.size()
+        xs.size()
     }
 
     pub mut grow: () Int32 {
         items.add(0)
-        return 1
+        1
     }
 
     // The callee replaces the field its mut parameter is: the parameter is the field.
     pub mut reset: (mut xs: List<Int32>) Size {
         items = List<Int32> { }
         xs.add(1)
-        return items.size()
+        items.size()
     }
 }
 
 count: (xs: List<Int32>) Size {
     log.add(1)
-    return xs.size()
+    xs.size()
 }
 
 fill: (mut xs: List<Int32>, n: Int32) Void {
@@ -54,25 +54,25 @@ replace: (mut xs: List<Int32>, ys: List<Int32>) Void {
 
 pushTo: (mut xs: List<Int32>) Int32 {
     xs.add(100)
-    return 1
+    1
 }
 
 lenOf: (xs: List<Int32>, k: Int32) Size {
-    return xs.size() + (k as Size)
+    xs.size() + (k as Size)
 }
 
 echo: (xs: List<Int32>) List<Int32> {
-    return xs
+    xs
 }
 
 fresh: (n: Int32) List<Int32> {
     mut out: List<Int32> = List<Int32> { }
     fill(mut out, n)
-    return out
+    out
 }
 
 pick: (c: Bool, a: List<Int32>, b: List<Int32>) List<Int32> {
-    return if c { a } else { b }
+    c ? a : b
 }
 
 show: (xs: List<Int32>) Str {
@@ -85,7 +85,7 @@ show: (xs: List<Int32>) Str {
         s = s + "${xs[i]}"
         i += 1
     }
-    return s + "]"
+    s + "]"
 }
 
 main: () Void {

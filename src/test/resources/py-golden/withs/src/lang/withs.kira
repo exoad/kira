@@ -45,21 +45,21 @@ NAMED_TRIM: Trim = Trim { servoCenterUs = 1400, escMinUs = 1500 } with {
 }
 
 show: (b: Box) Str {
-    return "${b.w}x${b.h}=${b.area} [${b.tags.joinToString(",")}]"
+    "${b.w}x${b.h}=${b.area} [${b.tags.joinToString(",")}]"
 }
 
 trimText: (t: Trim) Str {
-    return "${t.servoCenterUs}/${t.escMinUs}"
+    "${t.servoCenterUs}/${t.escMinUs}"
 }
 
 wider: (b: Box, by: Int32) Box {
-    return b with {
+    b with {
         w = w + by
     }
 }
 
 sum: (a: Int32, b: Box) Int32 {
-    return a + b.area
+    a + b.area
 }
 
 main: () Void {
@@ -115,7 +115,7 @@ main: () Void {
         println("caught ${e}, ${show(b)}")
     }
     f: () Str = () Str {
-        return show(b with {
+        show(b with {
             h = 9
         })
     }

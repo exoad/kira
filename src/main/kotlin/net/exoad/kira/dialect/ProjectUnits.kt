@@ -26,7 +26,7 @@ object ProjectUnits {
      * a file's text by its canonical path, in place of the disk's; [extra]: files the group's
      * project leaves out (outside its srcDir), read in it as loose modules.
      */
-    fun load(group: File, literals: Boolean, overlay: Map<String, String> = emptyMap(), extra: List<String> = emptyList()): Loaded {
+    fun load(group: File, literals: Boolean, overlay: Map<String, String> = emptyMap(), extra: List<String> = emptyList(), returns: Boolean = literals): Loaded {
         val root = group.absoluteFile.toPath().normalize()
         val yaml = root.resolve("kira.yaml")
         val (deps, workspace, names) = when {
@@ -51,18 +51,18 @@ object ProjectUnits {
         val failures = LinkedHashMap<String, String>()
         for (f in (deps + workspace + extra).distinctBy { canonical(it) }) {
             val path = canonical(f)
-            val (ctx, error) = read(unit, path, overlay[path] ?: File(f).readText(), names[path] ?: ModuleNames.loose(f), literals)
+            val (ctx, error) = read(unit, path, overlay[path] ?: File(f).readText(), names[path] ?: ModuleNames.loose(f), literals, returns)
             if (ctx != null) sources[path] = ctx else failures[path] = error ?: "unreadable"
         }
         return Loaded(unit, sources, failures)
     }
 
-    /** [text] as the source [path] of [unit], module [uri], parsed: its context, or the parse error. */
-    fun read(unit: CompilationUnit, path: String, text: String, uri: String?, literals: Boolean): Pair<SourceContext?, String?> = try {
+    /** [text] as the source [path] of [unit], module [uri], parsed: its context, or the parse error; [returns] as [KiraParser]'s. */
+    fun read(unit: CompilationUnit, path: String, text: String, uri: String?, literals: Boolean, returns: Boolean = literals): Pair<SourceContext?, String?> = try {
         val processed = KiraPreprocessor(text).process().processedContent
         val bare = unit.addSource(path, processed, emptyList(), uri)
         val ctx = unit.addSource(path, processed, KiraLexer(bare).tokenize())
-        KiraParser(ctx, literals).parse()
+        KiraParser(ctx, literals, returns).parse()
         ctx to null
     } catch (e: DiagnosticsException) {
         null to ((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + " at ${e.location}")

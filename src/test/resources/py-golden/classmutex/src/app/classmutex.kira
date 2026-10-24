@@ -38,5 +38,5 @@ pub main: () Int32 {
     m.lock((mut b: Box) Void {
         trace("${b.n} ${b.seen.size()} ${b.seen[0]}")
     })
-    return 0
+    0
 }

@@ -12,43 +12,43 @@ mut gs: Str = "a"
 
 next: () Int32 {
     ticks += 1
-    return ticks
+    ticks
 }
 
 nextSize: () Size {
     idx += 1
-    return idx
+    idx
 }
 
 sub: (a: Int32, b: Int32) Int32 {
-    return a - b
+    a - b
 }
 
 bumpIdx: () Int32 {
     idx += 1
-    return 99
+    99
 }
 
 changeS: () Int32 {
     gs = "b"
-    return 1
+    1
 }
 
 pairS: (s: Str, k: Int32) Str {
-    return "${s}${k}"
+    "${s}${k}"
 }
 
 Box: Any {
     pub mut v: Int32
 
     pub pair: (a: Int32, b: Int32) Int32 {
-        return v * 100 + a * 10 + b
+        v * 100 + a * 10 + b
     }
 }
 
 makeBox: () Box {
     ticks += 1
-    return Box { ticks }
+    Box { ticks }
 }
 
 Counter: Any {
@@ -56,17 +56,17 @@ Counter: Any {
 
     pub mut bump: () Int32 {
         n += 10
-        return 1
+        1
     }
 
     pub mut run: () Int32 {
         n += bump()
-        return n
+        n
     }
 
     pub mut runPlain: () Int32 {
         n = n + bump()
-        return n
+        n
     }
 }
 
@@ -83,7 +83,7 @@ Track: Any {
 }
 
 show: (t: Track) Str {
-    return "a=${t.a} b=${t.b} c=${t.c} d=${t.d} seen=${t.seen}"
+    "a=${t.a} b=${t.b} c=${t.c} d=${t.d} seen=${t.seen}"
 }
 
 main: () Void {

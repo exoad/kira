@@ -5,11 +5,11 @@
 pub LIMIT: Int32 = 3
 
 pub sub: (a: Int32, b: Int32) Int32 {
-    return a - b                           // @type Int32
+    a - b                           // @type Int32
 }
 
 pub command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
-    return verb                            // @type Str place=Param(verb)
+    verb                            // @type Str place=Param(verb)
 }
 
 pub bump: (mut value: Int32, by: Int32 = 1) Void {
@@ -17,15 +17,15 @@ pub bump: (mut value: Int32, by: Int32 = 1) Void {
 }
 
 id<T>: (value: T) T {
-    return value                           // @type T
+    value                           // @type T
 }
 
 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
-    return f(x)                            // @type Int32 call=FN_VALUE
+    f(x)                            // @type Int32 call=FN_VALUE
 }
 
 twice: (x: Int32) Int32 {
-    return x * 2                           // @type Int32
+    x * 2                           // @type Int32
 }
 
 pub calls: () Void {
@@ -96,13 +96,13 @@ pub calls: () Void {
 pub NAME: Str = "kira"
 
 pub receivers: () Size {
-    return NAME.length()                   // @type Str coerce=StrConstReceiver @ NAME
+    NAME.length()                   // @type Str coerce=StrConstReceiver @ NAME
 }
 
 // R7 (D7): a @_const function types like any other; a static assert may call one, and one of
 // constants alone folds.
 pub @_const square: (x: Int32) Int32 {
-    return x * x                           // @type Int32
+    x * x                           // @type Int32
 }
 
 @_static_assert(square(3) == 9, "square") // @type Bool @ square(3) == 9
@@ -110,9 +110,9 @@ pub @_const square: (x: Int32) Int32 {
 
 // R19 (D33): two impure arguments; sourceOrder is their written order.
 next: () Int32 {
-    return 1
+    1
 }
 
 pub spilled: () Int32 {
-    return sub(next(), next())             // @type Int32 call=FREE(sub)
+    sub(next(), next())             // @type Int32 call=FREE(sub)
 }

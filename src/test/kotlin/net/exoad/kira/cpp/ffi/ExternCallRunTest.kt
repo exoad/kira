@@ -120,228 +120,228 @@ class ExternCallRunTest {
         }
 
         growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
+            List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
         }
 
         growGl: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GL = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7, 7) } }) }
+            List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GL = List<Int32> { values = @arrOf(7, 7, 7, 7, 7, 7, 7, 7, 7) } }) }
         }
 
         pub sGlobal: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
-            return lenAfterL(GS, fs)
+            lenAfterL(GS, fs)
         }
 
         pub sLent: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GSTRS = List<Str> { values = @arrOf("$LONGER") } }) }
-            return lenAfterL(GSTRS[0], fs)
+            lenAfterL(GSTRS[0], fs)
         }
 
         pub sField: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "$LONGER", n = 2 } }) }
-            return lenAfterL(GP.name, fs)
+            lenAfterL(GP.name, fs)
         }
 
         lenOfParam: (p: Str, fs: List<Fx<Tuple0, Void>>) Int32 {
-            return lenAfterL(p, fs)
+            lenAfterL(p, fs)
         }
 
         pub sParam: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
-            return lenOfParam(GS, fs)
+            lenOfParam(GS, fs)
         }
 
         pub sLiteral: () Int32 {
             reset()
-            return lenAfterL("abc", growGs())
+            lenAfterL("abc", growGs())
         }
 
         pub sConstant: () Int32 {
             reset()
-            return lenAfterL(GREETING, growGs())
+            lenAfterL(GREETING, growGs())
         }
 
         pub sComputed: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "" }) }
-            return lenAfterL(GS + "!", fs)
+            lenAfterL(GS + "!", fs)
         }
 
         pub sStructFx: () Int32 {
             reset()
             c: Cb = Cb { f = () Void { GS = "$LONGER" + GS } }
-            return lenAfterCb(GS, c)
+            lenAfterCb(GS, c)
         }
 
         pub sReceiver: () Int32 {
             reset()
             pump: Pump = pumpWith(growGs())
-            return pump.lenAfter(GS)
+            pump.lenAfter(GS)
         }
 
         tick: () List<Fx<Tuple0, Void>> {
             TICKS += 1
-            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "" }) }
+            List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "" }) }
         }
 
         pub sSpilled: () Int32 {
             reset()
-            return lenAfterL(GS, tick())
+            lenAfterL(GS, tick())
         }
 
         pub sDirect: () Int32 {
             reset()
-            return lenAfterF(GS, () Void { GS = "" })
+            lenAfterF(GS, () Void { GS = "" })
         }
 
         pub cCStr: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = growGs()
-            return lenAfterCL(GS, fs)
+            lenAfterCL(GS, fs)
         }
 
         pub cList: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GL = List<Int32> { values = @arrOf(9, 7) } }) }
-            return sumListL(GL, fs)
+            sumListL(GL, fs)
         }
 
         pub cArr: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GA = @arrOf(7, 7, 7) }) }
-            return sumArrL(GA, fs)
+            sumArrL(GA, fs)
         }
 
         pub cMaybe: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GM = null }) }
-            return lenMaybeL(GM, fs)
+            lenMaybeL(GM, fs)
         }
 
         pub cStruct: () Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "x", n = 2 } }) }
-            return ptLenL(GP, fs)
+            ptLenL(GP, fs)
         }
 
         pub cClass: () Int32 {
             GBOXES = List<Box> { }
             GBOXES.add(newBox(82))
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GBOXES = List<Box> { } }) }
-            return boxLenL(GBOXES[0], fs)
+            boxLenL(GBOXES[0], fs)
         }
 
         appendInto: (mut o: Str) Int32 {
-            return appendLen(GS, mut o)
+            appendLen(GS, mut o)
         }
 
         appendIntoC: (mut o: Str) Int32 {
-            return appendLenC(GS, mut o)
+            appendLenC(GS, mut o)
         }
 
         pub mViaMut: () Int32 {
             reset()
-            return appendInto(mut GS)
+            appendInto(mut GS)
         }
 
         pub mCStr: () Int32 {
             reset()
-            return appendIntoC(mut GS)
+            appendIntoC(mut GS)
         }
 
         pub nUnrelated: () Int32 {
             reset()
             mut n: Int32 = 0
-            return appendLenI(GS, mut n)
+            appendLenI(GS, mut n)
         }
 
         pub nNone: () Int32 {
             reset()
-            return lenS(GS)
+            lenS(GS)
         }
 
         pub gPeek: () Int32 {
             ys: List<Int32> = List<Int32> { values = @arrOf(10, 20) }
             mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
-            return peek(ys.view(), xs.view())
+            peek(ys.view(), xs.view())
         }
 
         pub gPlen: () Int32 {
             loc: Str = "abcd"
-            return plen(loc) + plen("xy") * 10
+            plen(loc) + plen("xy") * 10
         }
 
         viaN: (mut o: Int32) Int32 {
-            return ptNAfterMut(GP, mut o)
+            ptNAfterMut(GP, mut o)
         }
 
         viaL: (mut o: Int32) Int32 {
-            return firstAfterMut(GL, mut o)
+            firstAfterMut(GL, mut o)
         }
 
         viaS: (mut o: Str) Int32 {
-            return nameAfterMutS(GP, mut o)
+            nameAfterMutS(GP, mut o)
         }
 
         viaI: (mut o: List<Int32>) Int32 {
-            return firstAfterMutInner(GLL, mut o)
+            firstAfterMutInner(GLL, mut o)
         }
 
         pub r0N: () Int32 {
             reset()
-            return viaN(mut GP.n)
+            viaN(mut GP.n)
         }
 
         pub r0L: () Int32 {
             reset()
-            return viaL(mut GL[0])
+            viaL(mut GL[0])
         }
 
         pub r0S: () Int32 {
             reset()
-            return viaS(mut GP.name)
+            viaS(mut GP.name)
         }
 
         pub r0I: () Int32 {
             reset()
-            return viaI(mut GLL[0])
+            viaI(mut GLL[0])
         }
 
         pub r1S: (c: Bool) Int32 {
             reset()
-            return lenAfterL(if c { GS } else { GS2 }, growGs())
+            lenAfterL(c ? GS : GS2, growGs())
         }
 
         pub r1C: (c: Bool) Int32 {
             reset()
-            return lenAfterCL(if c { GS } else { GS2 }, growGs())
+            lenAfterCL(c ? GS : GS2, growGs())
         }
 
         pub r1L: (c: Bool) Int32 {
             reset()
-            return sumListL(if c { GL } else { GL2 }, growGl())
+            sumListL(c ? GL : GL2, growGl())
         }
 
         pub r1F: (c: Bool) Int32 {
             reset()
-            return firstAfterL(if c { GL } else { GL2 }, growGl())
+            firstAfterL(c ? GL : GL2, growGl())
         }
 
         pub r1P: (c: Bool) Int32 {
             reset()
             fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GP = Pt { name = "x", n = 2 } }) }
-            return ptNAfterL(if c { GP } else { GP2 }, fs)
+            ptNAfterL(c ? GP : GP2, fs)
         }
 
         pub r1Local: (c: Bool) Int32 {
             reset()
             a: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
             b: List<Int32> = List<Int32> { values = @arrOf(4, 5, 6) }
-            return sumListL(if c { a } else { b }, growGl())
+            sumListL(c ? a : b, growGl())
         }
         """,
     )
@@ -480,7 +480,7 @@ class ExternCallRunTest {
         pub bumpP: (mut n: Int32) Void;
 
         pub viaW: (s: Str) Int32 {
-            return lenS2(s)
+            lenS2(s)
         }
         """,
     )
@@ -493,34 +493,34 @@ class ExternCallRunTest {
         mut GS: Str = "$LONG"
 
         growGs: () List<Fx<Tuple0, Void>> {
-            return List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
+            List<Fx<Tuple0, Void>> { values = @arrOf(() Void { GS = "$LONGER" + GS }) }
         }
 
         pub t13: () Int32 {
             loc: Str = "abcd"
-            return lenS2(loc) + lenS2("xy") * 10
+            lenS2(loc) + lenS2("xy") * 10
         }
 
         pub t13b: () Int32 {
-            return viaW("abcd")
+            viaW("abcd")
         }
 
         pub pCopy: () Int32 {
             GS = "$LONG"
             fs: List<Fx<Tuple0, Void>> = growGs()
-            return lenAfterP(GS, fs)
+            lenAfterP(GS, fs)
         }
 
         pub pCStr: () Int32 {
             GS = "$LONG"
             fs: List<Fx<Tuple0, Void>> = growGs()
-            return clenAfterP(GS, fs)
+            clenAfterP(GS, fs)
         }
 
         pub pMut: () Int32 {
             mut n: Int32 = 1
             bumpP(mut n)
-            return n
+            n
         }
         """,
     )

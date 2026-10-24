@@ -10,100 +10,69 @@ kira.time as time
 withHeader: (name: Str, value: Str) HttpAnswer {
     mut h: Map<Str, Str> = Map<Str, Str> { }
     h.put(name, value)
-    return HttpAnswer { status = 200, headers = h }
+    HttpAnswer { status = 200, headers = h }
 }
 
 pub route: (r: HttpRequest) HttpAnswer {
     if r.path == "/text" {
-        return HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
-    }
-    if r.path == "/json" {
+        HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
+    } else if r.path == "/json" {
         mut h: Map<Str, Str> = Map<Str, Str> { }
         h.put("Cache-Control", "no-store")
         h.put("Location", "/text")
-        return HttpAnswer { status = 200, body = "{\"ok\": true}".bytes(), headers = h }
-    }
-    if r.path == "/missing" {
-        return HttpAnswer { status = 404 }
-    }
-    if r.path == "/refused" {
-        return HttpAnswer { status = 409, body = "{\"ok\": false}".bytes() }
-    }
-    if r.path == "/drop" {
-        return HttpAnswer { status = 0 }
-    }
-    if r.path == "/slow" {
+        HttpAnswer { status = 200, body = "{\"ok\": true}".bytes(), headers = h }
+    } else if r.path == "/missing" {
+        HttpAnswer { status = 404 }
+    } else if r.path == "/refused" {
+        HttpAnswer { status = 409, body = "{\"ok\": false}".bytes() }
+    } else if r.path == "/drop" {
+        HttpAnswer { status = 0 }
+    } else if r.path == "/slow" {
         sleepMs(800)
-        return HttpAnswer { status = 200, contentType = "text/plain", body = "slow".bytes() }
+        HttpAnswer { status = 200, contentType = "text/plain", body = "slow".bytes() }
+    } else {
+        if r.path == "/throw" {
+            throw "from the handler"
+        }
+        if r.path == "/panic" {
+            assert(false, "a handler's panic")
+        }
+        if r.path == "/exit" {
+            exit(9)
+        }
+        r.path == "/s100" ? HttpAnswer { status = 100, contentType = "text/plain", body = "low".bytes() }
+            : r.path == "/s999" ? HttpAnswer { status = 999, contentType = "text/plain", body = "high".bytes() }
+            : r.path == "/latin" ? withHeader("X-Name", "café")
+            // Each a program error, which ends the process.
+            : r.path == "/length" ? withHeader("content-length", "1")
+            : r.path == "/ctype" ? withHeader("Content-Type", "text/html")
+            : r.path == "/break" ? withHeader("X-Note", "one\r\nX-Injected: two")
+            : r.path == "/lf" ? withHeader("X-Note", "one\ntwo")
+            : r.path == "/ctypebreak" ? HttpAnswer { status = 200, contentType = "text/plain\r\nX-Injected: 1" }
+            : r.path == "/notlatin" ? withHeader("X-Price", "5 €")
+            : r.path == "/s1000" ? HttpAnswer { status = 1000, body = "x".bytes() }
+            : r.path == "/s99" ? HttpAnswer { status = 99, body = "x".bytes() }
+            : HttpAnswer { status = 200, contentType = "text/plain", body = "${r.method} ${r.path} '${r.host}' ${r.body.size()}: ${Str.of(r.body)}".bytes() }
     }
-    if r.path == "/throw" {
-        throw "from the handler"
-    }
-    if r.path == "/panic" {
-        assert(false, "a handler's panic")
-    }
-    if r.path == "/exit" {
-        exit(9)
-    }
-    if r.path == "/s100" {
-        return HttpAnswer { status = 100, contentType = "text/plain", body = "low".bytes() }
-    }
-    if r.path == "/s999" {
-        return HttpAnswer { status = 999, contentType = "text/plain", body = "high".bytes() }
-    }
-    if r.path == "/latin" {
-        return withHeader("X-Name", "café")
-    }
-    // Each a program error, which ends the process.
-    if r.path == "/length" {
-        return withHeader("content-length", "1")
-    }
-    if r.path == "/ctype" {
-        return withHeader("Content-Type", "text/html")
-    }
-    if r.path == "/break" {
-        return withHeader("X-Note", "one\r\nX-Injected: two")
-    }
-    if r.path == "/lf" {
-        return withHeader("X-Note", "one\ntwo")
-    }
-    if r.path == "/ctypebreak" {
-        return HttpAnswer { status = 200, contentType = "text/plain\r\nX-Injected: 1" }
-    }
-    if r.path == "/notlatin" {
-        return withHeader("X-Price", "5 €")
-    }
-    if r.path == "/s1000" {
-        return HttpAnswer { status = 1000, body = "x".bytes() }
-    }
-    if r.path == "/s99" {
-        return HttpAnswer { status = 99, body = "x".bytes() }
-    }
-    return HttpAnswer { status = 200, contentType = "text/plain", body = "${r.method} ${r.path} '${r.host}' ${r.body.size()}: ${Str.of(r.body)}".bytes() }
 }
 
 // A body of at most 64 bytes is read, any for /open; any other length is refused unread, the length it saw in the body.
 pub admit: (path: Str, n: Int64) HttpAnswer {
     if path != "/open" && (n < 0 || n > 64) {
-        code: Int32 = if n < 0 {
-            400
-        } else {
-            413
-        }
-        return HttpAnswer { status = code, contentType = "text/plain", body = "length ${n}".bytes() }
+        code: Int32 = n < 0 ? 400 : 413
+        HttpAnswer { status = code, contentType = "text/plain", body = "length ${n}".bytes() }
+    } else {
+        HttpAnswer { status = 0 }
     }
-    return HttpAnswer { status = 0 }
 }
 
 pub bind: (host: Str, port: Int32, post: Bool) Maybe<HttpServer> {
-    if post {
-        return httpServerWithPost(host, port, route, admit)
-    }
-    return httpServer(host, port, route)
+    post ? httpServerWithPost(host, port, route, admit)
+        : httpServer(host, port, route)
 }
 
 pub serveOn: (s: HttpServer) Bool {
-    return s.serve()
+    s.serve()
 }
 
 pub stop: (s: HttpServer) Void {
@@ -111,7 +80,7 @@ pub stop: (s: HttpServer) Void {
 }
 
 pub why: () Str {
-    return httpError()
+    httpError()
 }
 
 // serve on the main thread, which an onSignal handler ends as it ends kira:os's waits (D78): the driver's SIGINT 300 ms
@@ -129,14 +98,12 @@ pub serveOnSignal: () Str {
     if freed {
         again.value.shutdown()
     }
-    return "installed ${installed}: serve ${served}, the flag ${flag.load()}, early ${took < 5000}, freed ${freed}: ${reason}"
+    "installed ${installed}: serve ${served}, the flag ${flag.load()}, early ${took < 5000}, freed ${freed}: ${reason}"
 }
 
 bodyOf: (r: Maybe<HttpReply>) Str {
-    if r.isNone() {
-        return "none: " + httpError()
-    }
-    return "${r.value.status} ${Str.of(r.value.body)}"
+    r.isNone() ? "none: " + httpError()
+        : "${r.value.status} ${Str.of(r.value.body)}"
 }
 
 pub main: () Int32 {
@@ -190,5 +157,5 @@ pub main: () Int32 {
     t.check(base.body.size() == 1 && base.headers.size() == 0 && request.body.size() == 1 && reply.body.size() == 1, "each struct is a value, its List and Map copied with it")
     same: HttpReply = HttpReply { status = 1, body = "r".bytes() }
     t.check(same == reply && copied != reply && other != request && answer.body.size() == 2, "and compared field by field")
-    return t.finish()
+    t.finish()
 }

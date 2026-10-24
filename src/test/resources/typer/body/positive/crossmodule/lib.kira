@@ -1,13 +1,13 @@
 pub SCALE: Int32 = 100
 
 pub percent: (part: Int32, whole: Int32 = SCALE) Int32 {
-    return part * SCALE / whole            // @type Int32 const=100:Int32 @ SCALE
+    part * SCALE / whole            // @type Int32 const=100:Int32 @ SCALE
 }
 
 pub Meter: Any {
     pub reading: Int32
 
     pub half: () Int32 {
-        return reading / 2                 // @type Int32
+        reading / 2                 // @type Int32
     }
 }

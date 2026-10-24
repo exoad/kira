@@ -33,7 +33,7 @@ class CppClassCompileTest {
         pub Named: Any {
             pub id: () Str;
             pub greeting: () Str {
-                return "hello"
+                "hello"
             }
         }
 
@@ -54,15 +54,15 @@ class CppClassCompileTest {
             mut legs: Int32 = 4
 
             override pub id: () Str {
-                return name
+                name
             }
 
             pub sound: () Str {
-                return "..."
+                "..."
             }
 
             pub legCount: () Int32 {
-                return legs
+                legs
             }
         }
 
@@ -70,42 +70,42 @@ class CppClassCompileTest {
             mut tricks: Int32 = 0
 
             override pub sound: () Str {
-                return "woof"
+                "woof"
             }
 
             override pub size: () Int32 {
-                return tricks
+                tricks
             }
 
             pub me: () Dog {
-                return this
+                this
             }
 
             // Lambdas that escape and capture the receiver: [self = ...], cast to Dog.
             pub later: () Fx<Tuple0, Dog> {
-                return () Dog {
-                    return this
+                () Dog {
+                    this
                 }
             }
 
             pub mut laterMut: () Fx<Tuple0, Dog> {
-                return () Dog {
-                    return this
+                () Dog {
+                    this
                 }
             }
         }
 
         pub Both: Tagged, Labelled {
             override pub id: () Str {
-                return "both"
+                "both"
             }
 
             override pub tag: () Str {
-                return "t"
+                "t"
             }
 
             override pub label: () Str {
-                return "l"
+                "l"
             }
         }
 
@@ -113,7 +113,7 @@ class CppClassCompileTest {
         // not): id is inherited by dominance, so Pup forwards it (MSVC C4250 otherwise).
         pub Pup: Animal, Tagged {
             override pub tag: () Str {
-                return "pup"
+                "pup"
             }
         }
 
@@ -121,7 +121,7 @@ class CppClassCompileTest {
             pub value: T
 
             pub get: () T {
-                return value
+                value
             }
         }
 
@@ -130,12 +130,12 @@ class CppClassCompileTest {
             pub value: T
 
             pub me: () Cell<T> {
-                return this
+                this
             }
 
             pub mut later: () Fx<Tuple0, Cell<T>> {
-                return () Cell<T> {
-                    return this
+                () Cell<T> {
+                    this
                 }
             }
         }
@@ -146,17 +146,17 @@ class CppClassCompileTest {
             pub get: () T;
             pub take: (v: T) T;
             pub again: () T {
-                return get()
+                get()
             }
         }
 
         pub Five: Source<Int32> {
             override pub get: () Int32 {
-                return 5
+                5
             }
 
             override pub take: (v: Int32) Int32 {
-                return v
+                v
             }
         }
 
@@ -164,32 +164,32 @@ class CppClassCompileTest {
         // each override says const T& as its base does, or it overrides nothing.
         pub Flag: Source<Bool> {
             override pub get: () Bool {
-                return true
+                true
             }
 
             override pub take: (v: Bool) Bool {
-                return v
+                v
             }
         }
 
         pub Base<T>: Any {
             pub take: (v: T) Int32 {
-                return 0
+                0
             }
         }
 
         pub IntBase: Base<Int32> {
             override pub take: (v: Int32) Int32 {
-                return v
+                v
             }
         }
 
         pub makeFlag: () Source<Bool> {
-            return Flag {}
+            Flag {}
         }
 
         pub makeIntBase: () Base<Int32> {
-            return IntBase {}
+            IntBase {}
         }
 
         pub Holder: Any {
@@ -197,48 +197,48 @@ class CppClassCompileTest {
             mut spare: Maybe<Animal> = null
 
             pub getPet: () Animal {
-                return pet
+                pet
             }
 
             pub getSpare: () Maybe<Animal> {
-                return spare
+                spare
             }
         }
 
         pub makeDog: (name: Str) Dog {
-            return Dog { name }
+            Dog { name }
         }
 
         pub makePup: (name: Str) Pup {
-            return Pup { name }
+            Pup { name }
         }
 
         pub makeCell: (v: Int32) Cell<Int32> {
-            return Cell<Int32> { v }
+            Cell<Int32> { v }
         }
 
         pub makeFive: () Source<Int32> {
-            return Five {}
+            Five {}
         }
 
         pub makeBox: (v: Int32) Box<Int32> {
-            return Box<Int32> { v }
+            Box<Int32> { v }
         }
 
         pub asNamed: (d: Dog) Named {
-            return d
+            d
         }
 
         pub sizeOf<T: Sized>: (v: T) Int32 {
-            return v.size()
+            v.size()
         }
 
         pub dogSize: (d: Dog) Int32 {
-            return sizeOf<Dog>(d)
+            sizeOf<Dog>(d)
         }
 
         pub counter: () Ref<Int32> {
-            return Ref<Int32> { value = 7 }
+            Ref<Int32> { value = 7 }
         }
 
         // A skipped middle default of a narrow type: typed, or MSVC /W4 /WX sees an int
@@ -250,7 +250,7 @@ class CppClassCompileTest {
         }
 
         pub makeBand: () Band {
-            return Band { lo = 1, hi = 2 }
+            Band { lo = 1, hi = 2 }
         }
 
         // mut fx methods that write the receiver: not const, callable through a const Rc (D29).
@@ -263,7 +263,7 @@ class CppClassCompileTest {
 
             pub mut bump: () Int32 {
                 n += 1
-                return n
+                n
             }
 
             pub mut reset: () Void {
@@ -272,21 +272,21 @@ class CppClassCompileTest {
 
             pub mut again: () Int32 {
                 reset()
-                return n
+                n
             }
 
             pub mut take: () Int32 {
                 grab(mut n)
-                return n
+                n
             }
 
             pub peek: () Int32 {
-                return n
+                n
             }
         }
 
         pub makeCounter: () Counter {
-            return Counter {}
+            Counter {}
         }
 
         // A skipped middle default of an Arr type: make_shared deduces nothing from a bare
@@ -301,11 +301,11 @@ class CppClassCompileTest {
         }
 
         pub makeFrame: () Frame {
-            return Frame { id = 7 }
+            Frame { id = 7 }
         }
 
         pub makeStamped: () Stamped {
-            return Stamped { id = 8, stamp = 9 }
+            Stamped { id = 8, stamp = 9 }
         }
 
         // One override of a method two traits declare, writing its receiver: both pure virtuals lose const.
@@ -322,20 +322,20 @@ class CppClassCompileTest {
 
             override pub mut hit: () Int32 {
                 hits += 1
-                return hits
+                hits
             }
         }
 
         pub makeTarget: () Target {
-            return Target {}
+            Target {}
         }
 
         pub hitLeft: (l: Left) Int32 {
-            return l.hit()
+            l.hit()
         }
 
         pub hitRight: (r: Right) Int32 {
-            return r.hit()
+            r.hit()
         }
 
         // One override of a superclass method that also implements a trait's, writing: the trait's follows.
@@ -347,34 +347,34 @@ class CppClassCompileTest {
             pub mut count: Int32 = 0
 
             pub mut stamp: () Int32 {
-                return 1
+                1
             }
         }
 
         pub Counting: Plain, Stamper {
             override pub mut stamp: () Int32 {
                 count += 1
-                return count
+                count
             }
         }
 
         pub makeCounting: () Counting {
-            return Counting {}
+            Counting {}
         }
 
         pub stampVia: (s: Stamper) Int32 {
-            return s.stamp()
+            s.stamp()
         }
 
         pub stampPlain: (p: Plain) Int32 {
-            return p.stamp()
+            p.stamp()
         }
 
         // A struct takes a trait's default body as its own member: static dispatch through a bound and directly.
         pub Shape: Any {
             pub area: () Int32;
             pub same: () Int32 {
-                return area()
+                area()
             }
             pub mut grow: () Void;
             pub growOnce: () Void {
@@ -386,7 +386,7 @@ class CppClassCompileTest {
             pub side: Int32 = 3
 
             override pub area: () Int32 {
-                return side
+                side
             }
 
             override pub mut grow: () Void {
@@ -395,15 +395,15 @@ class CppClassCompileTest {
         }
 
         pub sameOf<T: Shape>: (s: T) Int32 {
-            return s.same()
+            s.same()
         }
 
         pub squareSame: (q: Square) Int32 {
-            return sameOf<Square>(q)
+            sameOf<Square>(q)
         }
 
         pub squareDirect: (q: Square) Int32 {
-            return q.same()
+            q.same()
         }
 
         // A subclass's escaping lambda that writes a field and calls a mut fx: the captured
@@ -412,7 +412,7 @@ class CppClassCompileTest {
             mut n: Int32 = 0
 
             pub get: () Int32 {
-                return n
+                n
             }
         }
 
@@ -424,28 +424,28 @@ class CppClassCompileTest {
             }
 
             pub later: () Fx<Tuple0, Int32> {
-                return () Int32 {
+                () Int32 {
                     k += 1
-                    return k
+                    k
                 }
             }
 
             pub laterReset: () Fx<Tuple0, Int32> {
-                return () Int32 {
+                () Int32 {
                     reset()
-                    return k
+                    k
                 }
             }
 
             pub peek: () Fx<Tuple0, Int32> {
-                return () Int32 {
-                    return k
+                () Int32 {
+                    k
                 }
             }
         }
 
         pub makeUpper: () Upper {
-            return Upper {}
+            Upper {}
         }
 
         // One name from two unrelated traits, a requirement beside a default: the struct takes
@@ -457,7 +457,7 @@ class CppClassCompileTest {
 
         pub Def: Any {
             pub f: () Int32 {
-                return 7
+                7
             }
         }
 
@@ -469,19 +469,19 @@ class CppClassCompileTest {
         }
 
         pub viaAbs: (a: Abs) Int32 {
-            return a.f()
+            a.f()
         }
 
         pub viaAbsBound<T: Abs>: (s: T) Int32 {
-            return s.f()
+            s.f()
         }
 
         pub sibBound: (s: Sib) Int32 {
-            return viaAbsBound<Sib>(s)
+            viaAbsBound<Sib>(s)
         }
 
         pub makeSib: () SibClass {
-            return SibClass {}
+            SibClass {}
         }
 
         // An override of an override of a generic root, at Int32: both say the root's const&.
@@ -491,18 +491,18 @@ class CppClassCompileTest {
 
         pub Mid: Feed<Int32> {
             override pub mut take: (v: Int32) Int32 {
-                return v
+                v
             }
         }
 
         pub Leaf: Mid {
             override pub mut take: (v: Int32) Int32 {
-                return 12
+                12
             }
         }
 
         pub makeLeaf: () Leaf {
-            return Leaf {}
+            Leaf {}
         }
 
         // An Fx parameter and an Fx return of a generic base, at Int32: kira::Fn<...(const T&)> stays so.
@@ -512,12 +512,12 @@ class CppClassCompileTest {
 
         pub Nums: Each<Int32> {
             override pub each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
-                return f(5)
+                f(5)
             }
         }
 
         pub makeNums: () Each<Int32> {
-            return Nums {}
+            Nums {}
         }
 
         pub Maker<T>: Any {
@@ -526,14 +526,14 @@ class CppClassCompileTest {
 
         pub IntMaker: Maker<Int32> {
             override pub make: () Fx<Tuple1<Int32>, Int32> {
-                return (x: Int32) Int32 {
-                    return x
+                (x: Int32) Int32 {
+                    x
                 }
             }
         }
 
         pub makeMaker: () Maker<Int32> {
-            return IntMaker {}
+            IntMaker {}
         }
 
         // An override taken by const& where Kira takes a value: the body reads the value it
@@ -543,19 +543,19 @@ class CppClassCompileTest {
 
             override pub mut take: (v: Int32) Int32 {
                 n = 100
-                return v
+                v
             }
         }
 
         pub makeAlias: () Alias {
-            return Alias {}
+            Alias {}
         }
 
         // A trait default whose parameter is named as a field of the struct that copies it.
         pub Scaled: Any {
             pub unit: () Int32;
             pub scaled: (side: Int32) Int32 {
-                return side
+                side
             }
         }
 
@@ -563,7 +563,7 @@ class CppClassCompileTest {
             pub side: Int32 = 3
 
             override pub unit: () Int32 {
-                return side
+                side
             }
         }
 
@@ -581,12 +581,12 @@ class CppClassCompileTest {
 
         pub HSink: Sink<Handle> {
             override pub put: (v: Handle) Int32 {
-                return useIt(v)
+                useIt(v)
             }
         }
 
         pub makeHSink: () Sink<Handle> {
-            return HSink {}
+            HSink {}
         }
 
         // A construction's D33 temporaries of pointer type.
@@ -596,7 +596,7 @@ class CppClassCompileTest {
         }
 
         pub makePtrHolder: () PtrHolder {
-            return PtrHolder { h = open(), g = open() }
+            PtrHolder { h = open(), g = open() }
         }
 
         // A method whose Str parameter names an object the body drops, and one that reads itself
@@ -607,12 +607,12 @@ class CppClassCompileTest {
 
             pub mut cut: (s: Str) Str {
                 next = null
-                return s
+                s
             }
 
             pub detach: (owner: Link) Str {
                 owner.drop()
-                return name
+                name
             }
 
             pub mut drop: () Void {
@@ -621,13 +621,13 @@ class CppClassCompileTest {
         }
 
         pub makeLink: (name: Str) Link {
-            return Link { name }
+            Link { name }
         }
 
         // A free function whose Str parameter names an object its other parameter drops.
         pub consume: (h: Link, s: Str) Str {
             h.drop()
-            return s
+            s
         }
 
         // A template's const T& parameter, bound to the field the body writes first.
@@ -637,12 +637,12 @@ class CppClassCompileTest {
 
             pub mut take: (v: T) T {
                 n = m
-                return v
+                v
             }
         }
 
         pub makeTwin: (n: Int32, m: Int32) Twin<Int32> {
-            return Twin<Int32> { n = n, m = m }
+            Twin<Int32> { n = n, m = m }
         }
 
         // A construction reads a field, a const& parameter, an implicit field and a mut global
@@ -653,7 +653,7 @@ class CppClassCompileTest {
 
             pub mut rename: () Int32 {
                 name = "new"
-                return 7
+                7
             }
         }
 
@@ -663,7 +663,7 @@ class CppClassCompileTest {
         }
 
         pub tagPair: (b: Tag, c: Tag) TagPair {
-            return TagPair { b.name, c.rename() }
+            TagPair { b.name, c.rename() }
         }
 
         pub Shelf: Any {
@@ -671,12 +671,12 @@ class CppClassCompileTest {
 
             pub mut empty: () Int32 {
                 tag = null
-                return 7
+                7
             }
         }
 
         pub shelved: (s: Str, h: Shelf) TagPair {
-            return TagPair { a = s, n = h.empty() }
+            TagPair { a = s, n = h.empty() }
         }
 
         pub Nest: Any {
@@ -684,7 +684,7 @@ class CppClassCompileTest {
 
             pub mut drop: () Int32 {
                 twig = null
-                return 7
+                7
             }
         }
 
@@ -693,7 +693,7 @@ class CppClassCompileTest {
             pub nest: Nest
 
             pub leave: () TagPair {
-                return TagPair { name, nest.drop() }
+                TagPair { name, nest.drop() }
             }
         }
 
@@ -701,7 +701,7 @@ class CppClassCompileTest {
 
         pub bumpSeed: () Int32 {
             seed += 10
-            return seed
+            seed
         }
 
         pub Duo: Any {
@@ -711,7 +711,7 @@ class CppClassCompileTest {
         }
 
         pub duo: () Duo {
-            return Duo { a = seed, c = bumpSeed() }
+            Duo { a = seed, c = bumpSeed() }
         }
 
         // The same spill in a field's default, a constructor's default argument: its lambda captures nothing.
@@ -728,7 +728,7 @@ class CppClassCompileTest {
             pub name: Str
 
             override pub greet: (n: Int32) Str {
-                return name
+                name
             }
         }
 
@@ -737,12 +737,12 @@ class CppClassCompileTest {
 
             pub mut swap: () Int32 {
                 kid = Kid { "other" }
-                return 7
+                7
             }
         }
 
         pub greetIt<T: Greets>: (x: T, h: Crib) Str {
-            return x.greet(h.swap())
+            x.greet(h.swap())
         }
 
         // R-D and OQ-2 (second-class round 3): a field default that is not PURE runs inside the constructor, in
@@ -753,7 +753,7 @@ class CppClassCompileTest {
 
         pub next: () Int32 {
             tick += 1
-            return tick
+            tick
         }
 
         pub Three: Any {
@@ -795,30 +795,30 @@ class CppClassCompileTest {
         }
 
         pub makeThree: () Three {
-            return Three {}
+            Three {}
         }
 
         pub makeLate: () Late {
-            return Late {}
+            Late {}
         }
 
         pub makeHigh: () High {
-            return High {}
+            High {}
         }
 
         pub makeMix: () Mix {
-            return Mix { y = next() }
+            Mix { y = next() }
         }
 
         pub makeMixGiven: () Mix {
-            return Mix { w = 70, y = next(), x = 50 }
+            Mix { w = 70, y = next(), x = 50 }
         }
 
         // A deferred default that calls a private function, in the constructor's definition; and a Maybe field whose
         // default is not PURE, given null: the null is the field's, not an omitted value.
         pick: () Maybe<Str> {
             tick += 100
-            return "picked"
+            "picked"
         }
 
         pub Slot: Any {
@@ -826,11 +826,11 @@ class CppClassCompileTest {
         }
 
         pub emptySlot: () Slot {
-            return Slot { item = null }
+            Slot { item = null }
         }
 
         pub fullSlot: () Slot {
-            return Slot {}
+            Slot {}
         }
     """
 

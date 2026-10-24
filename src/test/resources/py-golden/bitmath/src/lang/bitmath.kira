@@ -21,31 +21,31 @@ show: (v: Float64) Void {
 }
 
 ratio: (a: Float64, b: Float64) Float64 {
-    return a / b
+    a / b
 }
 
 lessOne: (v: Size) Size {
-    return v - 1
+    v - 1
 }
 
 lessOneU64: (v: UInt64) UInt64 {
-    return v - 1
+    v - 1
 }
 
 shlI8: (v: Int8, n: Int32) Int8 {
-    return v << n
+    v << n
 }
 
 shrI8: (v: Int8, n: Int32) Int8 {
-    return v >> n
+    v >> n
 }
 
 ushrI8: (v: Int8, n: Int32) Int8 {
-    return v >>> n
+    v >>> n
 }
 
 constantsI8: (v: Int8) Str {
-    return "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+    "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
 }
 
 compoundI8: (v: Int8, n: Int32) Str {
@@ -65,7 +65,7 @@ compoundI8: (v: Int8, n: Int32) Str {
     h <<= 7
     mut k: Int8 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI8: (v: Int8) Void {
@@ -89,19 +89,19 @@ lineI8: (v: Int8) Void {
 }
 
 shlI16: (v: Int16, n: Int32) Int16 {
-    return v << n
+    v << n
 }
 
 shrI16: (v: Int16, n: Int32) Int16 {
-    return v >> n
+    v >> n
 }
 
 ushrI16: (v: Int16, n: Int32) Int16 {
-    return v >>> n
+    v >>> n
 }
 
 constantsI16: (v: Int16) Str {
-    return "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+    "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
 }
 
 compoundI16: (v: Int16, n: Int32) Str {
@@ -121,7 +121,7 @@ compoundI16: (v: Int16, n: Int32) Str {
     h <<= 15
     mut k: Int16 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI16: (v: Int16) Void {
@@ -145,19 +145,19 @@ lineI16: (v: Int16) Void {
 }
 
 shlI32: (v: Int32, n: Int32) Int32 {
-    return v << n
+    v << n
 }
 
 shrI32: (v: Int32, n: Int32) Int32 {
-    return v >> n
+    v >> n
 }
 
 ushrI32: (v: Int32, n: Int32) Int32 {
-    return v >>> n
+    v >>> n
 }
 
 constantsI32: (v: Int32) Str {
-    return "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+    "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
 }
 
 compoundI32: (v: Int32, n: Int32) Str {
@@ -177,7 +177,7 @@ compoundI32: (v: Int32, n: Int32) Str {
     h <<= 31
     mut k: Int32 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI32: (v: Int32) Void {
@@ -201,19 +201,19 @@ lineI32: (v: Int32) Void {
 }
 
 shlI64: (v: Int64, n: Int32) Int64 {
-    return v << n
+    v << n
 }
 
 shrI64: (v: Int64, n: Int32) Int64 {
-    return v >> n
+    v >> n
 }
 
 ushrI64: (v: Int64, n: Int32) Int64 {
-    return v >>> n
+    v >>> n
 }
 
 constantsI64: (v: Int64) Str {
-    return "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+    "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
 }
 
 compoundI64: (v: Int64, n: Int32) Str {
@@ -233,7 +233,7 @@ compoundI64: (v: Int64, n: Int32) Str {
     h <<= 63
     mut k: Int64 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI64: (v: Int64) Void {
@@ -257,19 +257,19 @@ lineI64: (v: Int64) Void {
 }
 
 shlU8: (v: UInt8, n: Int32) UInt8 {
-    return v << n
+    v << n
 }
 
 shrU8: (v: UInt8, n: Int32) UInt8 {
-    return v >> n
+    v >> n
 }
 
 ushrU8: (v: UInt8, n: Int32) UInt8 {
-    return v >>> n
+    v >>> n
 }
 
 constantsU8: (v: UInt8) Str {
-    return "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+    "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
 }
 
 compoundU8: (v: UInt8, n: Int32) Str {
@@ -289,7 +289,7 @@ compoundU8: (v: UInt8, n: Int32) Str {
     h <<= 7
     mut k: UInt8 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU8: (v: UInt8) Void {
@@ -313,19 +313,19 @@ lineU8: (v: UInt8) Void {
 }
 
 shlU16: (v: UInt16, n: Int32) UInt16 {
-    return v << n
+    v << n
 }
 
 shrU16: (v: UInt16, n: Int32) UInt16 {
-    return v >> n
+    v >> n
 }
 
 ushrU16: (v: UInt16, n: Int32) UInt16 {
-    return v >>> n
+    v >>> n
 }
 
 constantsU16: (v: UInt16) Str {
-    return "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+    "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
 }
 
 compoundU16: (v: UInt16, n: Int32) Str {
@@ -345,7 +345,7 @@ compoundU16: (v: UInt16, n: Int32) Str {
     h <<= 15
     mut k: UInt16 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU16: (v: UInt16) Void {
@@ -369,19 +369,19 @@ lineU16: (v: UInt16) Void {
 }
 
 shlU32: (v: UInt32, n: Int32) UInt32 {
-    return v << n
+    v << n
 }
 
 shrU32: (v: UInt32, n: Int32) UInt32 {
-    return v >> n
+    v >> n
 }
 
 ushrU32: (v: UInt32, n: Int32) UInt32 {
-    return v >>> n
+    v >>> n
 }
 
 constantsU32: (v: UInt32) Str {
-    return "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+    "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
 }
 
 compoundU32: (v: UInt32, n: Int32) Str {
@@ -401,7 +401,7 @@ compoundU32: (v: UInt32, n: Int32) Str {
     h <<= 31
     mut k: UInt32 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU32: (v: UInt32) Void {
@@ -425,19 +425,19 @@ lineU32: (v: UInt32) Void {
 }
 
 shlU64: (v: UInt64, n: Int32) UInt64 {
-    return v << n
+    v << n
 }
 
 shrU64: (v: UInt64, n: Int32) UInt64 {
-    return v >> n
+    v >> n
 }
 
 ushrU64: (v: UInt64, n: Int32) UInt64 {
-    return v >>> n
+    v >>> n
 }
 
 constantsU64: (v: UInt64) Str {
-    return "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+    "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
 }
 
 compoundU64: (v: UInt64, n: Int32) Str {
@@ -457,7 +457,7 @@ compoundU64: (v: UInt64, n: Int32) Str {
     h <<= 63
     mut k: UInt64 = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU64: (v: UInt64) Void {
@@ -481,19 +481,19 @@ lineU64: (v: UInt64) Void {
 }
 
 shlSize: (v: Size, n: Int32) Size {
-    return v << n
+    v << n
 }
 
 shrSize: (v: Size, n: Int32) Size {
-    return v >> n
+    v >> n
 }
 
 ushrSize: (v: Size, n: Int32) Size {
-    return v >>> n
+    v >>> n
 }
 
 constantsSize: (v: Size) Str {
-    return "${v << 0} ${v << 1} ${v << 31} ${v << 32} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 31} ${v >> 32} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 31} ${v >>> 32} ${v >>> 63}"
+    "${v << 0} ${v << 1} ${v << 31} ${v << 32} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 31} ${v >> 32} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 31} ${v >>> 32} ${v >>> 63}"
 }
 
 compoundSize: (v: Size, n: Int32) Str {
@@ -513,7 +513,7 @@ compoundSize: (v: Size, n: Int32) Str {
     h <<= 63
     mut k: Size = v
     k >>>= 1
-    return "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineSize: (v: Size) Void {
@@ -537,27 +537,27 @@ lineSize: (v: Size) Void {
 }
 
 shlByU8: (v: UInt32, n: UInt8) UInt32 {
-    return v << n
+    v << n
 }
 
 shrBySize: (v: Int64, n: Size) Int64 {
-    return v >> n
+    v >> n
 }
 
 ushrBy64: (v: Int16, n: Int64) Int16 {
-    return v >>> n
+    v >>> n
 }
 
 bit64: (n: Int32) Int64 {
-    return 1 << n
+    1 << n
 }
 
 byte: (n: Int32) UInt8 {
-    return 1 << n
+    1 << n
 }
 
 mixed: (a: UInt16, b: UInt16, n: Int32) UInt16 {
-    return (a << n | b >> n) ^ (a & b) << 2
+    (a << n | b >> n) ^ (a & b) << 2
 }
 
 Flags: Any {
@@ -578,12 +578,12 @@ Flags: Any {
 
 at: (i: Size) Size {
     trace("at ${i}")
-    return i
+    i
 }
 
 given: (v: Int32) Int32 {
     trace("value ${v}")
-    return v
+    v
 }
 
 indexed: () Void {

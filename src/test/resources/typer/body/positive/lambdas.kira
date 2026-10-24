@@ -2,8 +2,8 @@
 // captures by value (TyperBodyModelTest checks the capture lists).
 
 pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
-    return (x: Int32) Int32 {            // @type Fx<Tuple1<Int32>, Int32>
-        return x * k                       // @type Int32 place=Param(k) @ k
+    (x: Int32) Int32 {            // @type Fx<Tuple1<Int32>, Int32>
+        x * k                       // @type Int32 place=Param(k) @ k
     }
 }
 
@@ -19,23 +19,23 @@ pub mutLambda: () Void {
 }
 
 pub shared: () Fx<Tuple0, Int32> {
-    counter: Ref<Int32> = Ref<Int32> { value = 0 } // @type Ref<Int32>
-    return () Int32 {                    // @type Fx<Tuple0, Int32>
+    counter: Ref<Int32> = Ref<Int32> { value = 0 }; // @type Ref<Int32>
+    () Int32 {                    // @type Fx<Tuple0, Int32>
         counter.value = counter.value + 1  // @type Void
-        return counter.value               // @type Int32 member=Field(Ref.value: Int32)
+        counter.value               // @type Int32 member=Field(Ref.value: Int32)
     }
 }
 
 pub store: () Int32 {
-    add: Fx<Tuple2<Int32, Int32>, Int32> = (a: Int32, b: Int32) Int32 { return a + b } // @type Fx<Tuple2<Int32, Int32>, Int32>
+    add: Fx<Tuple2<Int32, Int32>, Int32> = (a: Int32, b: Int32) Int32 { a + b } // @type Fx<Tuple2<Int32, Int32>, Int32>
     three: Int32 = add(1, 2)               // @type Int32 call=FN_VALUE
-    return three
+    three
 }
 
 pub nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
-    return (a: Int32) Fx<Tuple1<Int32>, Int32> {
-        return (b: Int32) Int32 {
-            return base + a + b            // @type Int32
+    (a: Int32) Fx<Tuple1<Int32>, Int32> {
+        (b: Int32) Int32 {
+            base + a + b            // @type Int32
         }
     }
 }
@@ -44,8 +44,8 @@ pub Gain: Struct {
     pub k: Int32 = 3
 
     pub scaler: () Fx<Tuple1<Int32>, Int32> {
-        return (x: Int32) Int32 {
-            return x * k                   // @type Int32 place=Field(This(Gain).k) @ k
+        (x: Int32) Int32 {
+            x * k                   // @type Int32 place=Field(This(Gain).k) @ k
         }
     }
 }

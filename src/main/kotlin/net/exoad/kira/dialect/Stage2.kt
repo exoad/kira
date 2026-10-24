@@ -74,7 +74,7 @@ object Stage2 {
                 val nc = again.sources[path]
                 val diff = when {
                     nc == null -> "the new text does not parse: ${again.failures[path]}"
-                    texts.getValue(path).contains('[') && ProjectUnits.read(CompilationUnit(bootstrap = false), path, texts.getValue(path), null, literals = false).first == null ->
+                    texts.getValue(path).contains('[') && ProjectUnits.read(CompilationUnit(bootstrap = false), path, texts.getValue(path), null, literals = false, returns = true).first == null ->
                         "the new text still holds a `[...]` literal"
                     else -> Proof(loaded.sources.getValue(path), nc, run.rewritten).compare()?.let { "tree: $it" }
                         ?: typed(loaded.sources.getValue(path), program, nc, program2)?.let { "type: $it" }

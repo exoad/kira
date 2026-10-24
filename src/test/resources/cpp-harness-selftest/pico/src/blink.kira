@@ -2,5 +2,5 @@ pub @_const val PERIOD_TICKS: Int32 = 4;
 
 pub isOn: (tick: Int32) Bool
 {
-    return (tick / PERIOD_TICKS) % 2 == 0;
+    (tick / PERIOD_TICKS) % 2 == 0;
 }

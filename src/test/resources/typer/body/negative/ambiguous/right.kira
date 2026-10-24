@@ -1,5 +1,5 @@
 pub SCALE: Int32 = 1000
 
 pub percent: (part: Int32) Int32 {
-    return part * SCALE / 10
+    part * SCALE / 10
 }

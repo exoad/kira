@@ -4,5 +4,5 @@ pub mut count: Int32 = 0
 
 pub bump: () Int32 {
     count += 1
-    return count
+    count
 }

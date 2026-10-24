@@ -13,5 +13,5 @@ pub main: () Int32 {
     }
     trace(hex)
     trace("${s == "café Aß"}")
-    return 0
+    0
 }

@@ -66,7 +66,7 @@ class DialectFixTest {
             module(
                 "probe:b.shapes",
                 "pub Handler: Any {\n    pub handle: () Str\n}\npub Impl: Handler {\n    pub tag: Str = \"impl\"\n\n" +
-                    "    pub override handle: () Str {\n        return tag\n    }\n}\npub run: (h: Handler) Str {\n    return h.handle()\n}",
+                    "    pub override handle: () Str {\n        tag\n    }\n}\npub run: (h: Handler) Str {\n    h.handle()\n}",
             ),
             module("probe:main", "probe.b.shapes as shapes\n\nmain: () Void {\n    i: Impl = Impl { }\n    println(shapes.run(i))\n}"),
         )
@@ -95,8 +95,8 @@ class DialectFixTest {
 
     // ---- 2. import aliases -------------------------------------------------------------------------
 
-    private val utilA = module("probe:a.util", "pub which: () Str {\n    return \"a\"\n}\npub onlyA: () Str {\n    return \"onlyA\"\n}")
-    private val utilB = module("probe:b.util", "pub which: () Str {\n    return \"b\"\n}")
+    private val utilA = module("probe:a.util", "pub which: () Str {\n    \"a\"\n}\npub onlyA: () Str {\n    \"onlyA\"\n}")
+    private val utilB = module("probe:b.util", "pub which: () Str {\n    \"b\"\n}")
 
     @Test
     fun twoModulesUnderOneAliasAreRefused() {
@@ -124,7 +124,7 @@ class DialectFixTest {
                 pub x: Int32 = 1
 
                 pub override greet: () Str {
-                    return "hi"
+                    "hi"
                 }
             }
             pub Sub: Base {
@@ -191,13 +191,13 @@ class DialectFixTest {
             pub onClick: $slot
 
             pub twice: (n: Int32) Int32 {
-                return onClick(onClick(n))
+                onClick(onClick(n))
             }
         }
 
         main: () Void {
-            b: Btn = Btn { onClick = (n: Int32) Int32 { return n + 1 } }
-            c: Btn = Btn { "c", (n: Int32) Int32 { return n } }
+            b: Btn = Btn { onClick = (n: Int32) Int32 { n + 1 } }
+            c: Btn = Btn { "c", (n: Int32) Int32 { n } }
             n: Int32 = b.onClick(1) + b.twice(1) + c.onClick(5)
         }
         """
@@ -228,7 +228,7 @@ class DialectFixTest {
                 pub s: Int32 = 3
 
                 pub override area: () Int32 {
-                    return s * s
+                    s * s
                 }
             }
             Base: Any {
@@ -237,7 +237,7 @@ class DialectFixTest {
             }
             Kid: Base {
                 pub override run: (n: Int32) Int32 {
-                    return n + x
+                    n + x
                 }
             }
 

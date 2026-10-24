@@ -62,7 +62,7 @@ pub Conn: Any {
     pub mut putFrame: (feed: Int32, msg: List<UInt8>, ms: Float64) Bool {
         dropped: Bool = latest.containsKey(feed)
         latest[feed] = Slot { msg, ms }
-        return dropped
+        dropped
     }
 
     pub room: (feed: Int32) Bool {
@@ -73,40 +73,48 @@ pub Conn: Any {
             cap = LIDAR_IN_FLIGHT
         }
         f: Maybe<Flight> = unacked.get(feed)
-        if f.isNone() {
-            return 0 < cap
-        }
-        return f.unwrap().items.size() < cap
+        f.isNone() ? 0 < cap : f.unwrap().items.size() < cap
     }
 
     pub hasWork: () Bool {
         if pong || !text.isEmpty() {
-            return true
-        }
-        fs: Arr<Int32> = latest.keys()
-        mut i: Size = 0
-        while i < fs.size() {
-            if room(fs[i]) {
-                return true
+            true
+        } else {
+            fs: Arr<Int32> = latest.keys()
+            mut i: Size = 0
+            mut result: Bool = false
+            mut found: Bool = false
+            while i < fs.size() {
+                if room(fs[i]) {
+                    result = true
+                    found = true
+                    break
+                }
+                i += 1
             }
-            i += 1
-        }
-        hs: Arr<Int32> = h264.keys()
-        i = 0
-        while i < hs.size() {
-            if !h264.get(hs[i]).unwrap().q.isEmpty() && room(hs[i]) {
-                return true
+            if found {
+                result
+            } else {
+                hs: Arr<Int32> = h264.keys()
+                i = 0
+                mut result2: Bool = false
+                while i < hs.size() {
+                    if !h264.get(hs[i]).unwrap().q.isEmpty() && room(hs[i]) {
+                        result2 = true
+                        break
+                    }
+                    i += 1
+                }
+                result2
             }
-            i += 1
         }
-        return false
     }
 
     mut flight: (feed: Int32) Flight {
         if !unacked.containsKey(feed) {
             unacked[feed] = Flight { }
         }
-        return unacked.get(feed).unwrap()
+        unacked.get(feed).unwrap()
     }
 
     mut takeText: (mut out: List<Out>, key: Str) Void {
@@ -148,15 +156,13 @@ pub Conn: Any {
             }
             i += 1
         }
-        return out
+        out
     }
 
     pub mut ack: (feed: Int32) Maybe<Sent> {
         f: Maybe<Flight> = unacked.get(feed)
-        if f.isNone() || f.unwrap().items.isEmpty() {
-            return null
-        }
-        return f.unwrap().items.removeAt(0)
+        f.isNone() || f.unwrap().items.isEmpty() ? null
+            : f.unwrap().items.removeAt(0)
     }
 
     pub oldestUnackedMs: () Maybe<Float64> {
@@ -175,10 +181,7 @@ pub Conn: Any {
             }
             i += 1
         }
-        if !found {
-            return null
-        }
-        return best
+        !found ? null : best
     }
 
     // A feed switched off and on again: frames in flight then are never drawn.
@@ -188,7 +191,7 @@ pub Conn: Any {
     }
 
     pub hasH264: (f: Int32) Bool {
-        return h264.containsKey(f)
+        h264.containsKey(f)
     }
 
     // An empty initMsg is init_msg None.
@@ -209,37 +212,42 @@ pub Conn: Any {
     pub mut offerH264: (f: Int32, kind: Int32, msg: List<UInt8>) Offer {
         found: Maybe<Stream> = h264.get(f)
         if found.isNone() {
-            return Offer { false, 0 }
-        }
-        st: Stream = found.unwrap()
-        mut dropped: Int32 = 0
-        if kind == 0 {
-            st.q.clear()
-            st.q.add(Frag { msg })
-            st.key = true
-            unacked.remove(f)
+            Offer { false, 0 }
         } else {
-            if st.key && kind != 1 {
-                return Offer { false, 1 }
-            }
-            st.key = false
-            st.q.add(Frag { msg })
-            if st.q.size() > H264_BACKLOG {
-                n: Size = st.q.size()
-                mut kept: List<Frag> = List<Frag> { }
-                mut i: Size = 0
-                while i < n {
-                    if st.q[i].msg[1] == 0 {
-                        kept.add(st.q[i])
-                    }
-                    i += 1
-                }
-                st.q = kept
+            st: Stream = found.unwrap()
+            mut dropped: Int32 = 0
+            mut result: Maybe<Offer> = null
+            mut found2: Bool = false
+            if kind == 0 {
+                st.q.clear()
+                st.q.add(Frag { msg })
                 st.key = true
-                dropped = (n - kept.size()) as Int32
+                unacked.remove(f)
+            } else {
+                if st.key && kind != 1 {
+                    result = Offer { false, 1 }
+                    found2 = true
+                } else {
+                    st.key = false
+                    st.q.add(Frag { msg })
+                    if st.q.size() > H264_BACKLOG {
+                        n: Size = st.q.size()
+                        mut kept: List<Frag> = List<Frag> { }
+                        mut i: Size = 0
+                        while i < n {
+                            if st.q[i].msg[1] == 0 {
+                                kept.add(st.q[i])
+                            }
+                            i += 1
+                        }
+                        st.q = kept
+                        st.key = true
+                        dropped = (n - kept.size()) as Int32
+                    }
+                }
             }
+            found2 ? result.value : Offer { true, dropped }
         }
-        return Offer { true, dropped }
     }
 }
 
@@ -250,7 +258,7 @@ frame: (n: Size, first: UInt8) List<UInt8> {
         b.add(first + (i as UInt8))
         i += 1
     }
-    return b
+    b
 }
 
 // feed, kind, capture ms as a little-endian double, a tail.
@@ -258,7 +266,7 @@ fragment: (kind: UInt8, ms: Float64) List<UInt8> {
     mut b: List<UInt8> = frame(12, 0)
     b.set(1, kind)
     writeF64Le(b.slice(2, 8), 0, ms)
-    return b
+    b
 }
 
 outs: (xs: List<Out>) Str {
@@ -268,7 +276,7 @@ outs: (xs: List<Out>) Str {
         s = s + " ${xs[i].opcode}:${xs[i].payload.size()}"
         i += 1
     }
-    return "[" + s + " ]"
+    "[" + s + " ]"
 }
 
 feeds: (c: Conn) Str {
@@ -293,7 +301,7 @@ feeds: (c: Conn) Str {
         s = s + " ${hk[i]}/${c.h264.get(hk[i]).unwrap().q.size()}"
         i += 1
     }
-    return s
+    s
 }
 
 main: () Void {

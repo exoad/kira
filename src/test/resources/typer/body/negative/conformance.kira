@@ -8,7 +8,7 @@ pub Circle: Shape {
     pub radius: Int32
 
     override pub area: () Int32 {
-        return radius
+        radius
     }
 }
 
@@ -16,7 +16,7 @@ pub Square: Shape {
     pub side: Int32
 
     override pub area: () Int32 {
-        return side
+        side
     }
 }
 
@@ -24,7 +24,7 @@ pub Box<T>: Shape {
     pub value: T
 
     override pub area: () Int32 {
-        return 0
+        0
     }
 }
 
@@ -33,7 +33,7 @@ pub Pt: Struct {
 }
 
 pub same<T>: (v: T) Bool {
-    return v == Int32                      // @error types.conform.unsupported
+    v == Int32                      // @error types.conform.unsupported
 }
 
 pub never: (s: Shape, c: Circle, i: Int32, p: Pt, f: (x: Int32) Int32) Void {
@@ -52,10 +52,13 @@ pub notAfter: (s: Shape, m: Maybe<Int32>, k: Int32) Int32 {
         trace(0)
     }
     v: Int32 = m                           // @error types.assign.mismatch
+    mut result: Int32 = 0
+    mut found: Bool = false
     if s != Circle {
         if k > 0 {
-            return 0
+            result = 0
+            found = true
         }
     }
-    return s.radius                        // @error types.member.unknown
+    found ? result : s.radius                        // @error types.member.unknown
 }

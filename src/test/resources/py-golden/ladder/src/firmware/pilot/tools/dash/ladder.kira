@@ -84,76 +84,76 @@ pub Ladder: Any {
             // Nothing offered: no evidence either way.
             verdict = "idle"
             good = 0
-            return level
-        }
-        if warm {
+            level
+        } else if warm {
             warm = false
             verdict = "warm"
-            return level
-        }
-        offered: Float64 = offeredKbs.value
-        mut delivered: Float64 = 0.0
-        if !deliveredKbs.isNull() {
-            delivered = max(0.0, deliveredKbs.value)
-        }
-        ratio: Float64 = delivered / offered
-        mut lost: Float64 = 0.0
-        if !dropped.isNull() {
-            lost = dropped.value as Float64
-        }
-        mut v: Str = "fair"
-        if ratio < 0.4 || (!ageMs.isNull() && ageMs.value > 1500.0) {
-            v = "severe"
-        } else if ratio < 0.75 || (!ageMs.isNull() && ageMs.value > 500.0) || lost >= max(2.0, 0.3 * fps) {
-            v = "bad"
-        } else if ratio >= 0.85 && (ageMs.isNull() || ageMs.value < 300.0) && lost <= max(1.0, 0.1 * fps) {
-            v = "good"
-        }
-        hist.add(Second { delivered, offered, v })
-        if hist.size() > KEEP {
-            hist.removeAt(0)
-        }
-        if v == "good" {
-            good += 1
+            level
         } else {
-            good = 0
-        }
-        mut nbad: Size = 0
-        mut i: Size = since(DOWN_OF)
-        while i < hist.size() {
-            if hist[i].verdict == "bad" || hist[i].verdict == "severe" {
-                nbad += 1
+            offered: Float64 = offeredKbs.value
+            mut delivered: Float64 = 0.0
+            if !deliveredKbs.isNull() {
+                delivered = max(0.0, deliveredKbs.value)
             }
-            i += 1
-        }
-        trying: Bool = !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S
-        mut fullS: Size = FULL_S
-        if trying {
-            fullS = PROBE_FULL_S
-        }
-        full: Bool = hist.size() >= fullS && sumRatio(fullS) < FULL_RATIO
-        if level > 0 && (v == "severe" || nbad >= DOWN_BAD || full) {
-            if v == "fair" {
-                verdict = "full"
+            ratio: Float64 = delivered / offered
+            mut lost: Float64 = 0.0
+            if !dropped.isNull() {
+                lost = dropped.value as Float64
+            }
+            mut v: Str = "fair"
+            if ratio < 0.4 || (!ageMs.isNull() && ageMs.value > 1500.0) {
+                v = "severe"
+            } else if ratio < 0.75 || (!ageMs.isNull() && ageMs.value > 500.0) || lost >= max(2.0, 0.3 * fps) {
+                v = "bad"
+            } else if ratio >= 0.85 && (ageMs.isNull() || ageMs.value < 300.0) && lost <= max(1.0, 0.1 * fps) {
+                v = "good"
+            }
+            hist.add(Second { delivered, offered, v })
+            if hist.size() > KEEP {
+                hist.removeAt(0)
+            }
+            if v == "good" {
+                good += 1
+            } else {
+                good = 0
+            }
+            mut nbad: Size = 0
+            mut i: Size = since(DOWN_OF)
+            while i < hist.size() {
+                if hist[i].verdict == "bad" || hist[i].verdict == "severe" {
+                    nbad += 1
+                }
+                i += 1
+            }
+            trying: Bool = !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S
+            mut fullS: Size = FULL_S
+            if trying {
+                fullS = PROBE_FULL_S
+            }
+            full: Bool = hist.size() >= fullS && sumRatio(fullS) < FULL_RATIO
+            if level > 0 && (v == "severe" || nbad >= DOWN_BAD || full) {
+                if v == "fair" {
+                    verdict = "full"
+                } else {
+                    verdict = v
+                }
+                mut step: Int32 = 1
+                if ratio < 0.5 {
+                    step = 2
+                }
+                mut to: Int32 = level - step
+                if to < 0 {
+                    to = 0
+                }
+                move(to, nowS)
+            } else if level < top && (good as Float64) >= waitUp(level + 1, nowS) && sumRatio(good) >= UP_RATIO {
+                verdict = "up"
+                move(level + 1, nowS)
             } else {
                 verdict = v
             }
-            mut step: Int32 = 1
-            if ratio < 0.5 {
-                step = 2
-            }
-            mut to: Int32 = level - step
-            if to < 0 {
-                to = 0
-            }
-            move(to, nowS)
-        } else if level < top && (good as Float64) >= waitUp(level + 1, nowS) && sumRatio(good) >= UP_RATIO {
-            verdict = "up"
-            move(level + 1, nowS)
-        } else {
-            verdict = v
+            level
         }
-        return level
     }
 
     // How many good seconds a step up into `to` waits for: UP_S, doubled for each failed try
@@ -169,7 +169,7 @@ pub Ladder: Any {
             wait = wait * 2.0
             n += 1
         }
-        return min(wait, BACKOFF_MAX_S)
+        min(wait, BACKOFF_MAX_S)
     }
 
     // A fall within PROBE_S of stepping up into this level is a failed try of it.
@@ -200,17 +200,11 @@ pub Ladder: Any {
             offered += hist[i].offered
             i += 1
         }
-        if offered > 0.0 {
-            return delivered / offered
-        }
-        return 1.0
+        offered > 0.0 ? delivered / offered : 1.0
     }
 
     // Where the last n seconds of the history start.
     since: (n: Size) Size {
-        if hist.size() > n {
-            return hist.size() - n
-        }
-        return 0
+        hist.size() > n ? hist.size() - n : 0
     }
 }

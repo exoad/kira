@@ -74,29 +74,35 @@ namespace proto
           out.kind = KIND_EMPTY;
           return out;
       }
-      const kira::Str head = kira::str::substring(out.line, b, e);
-      if(head == "ERR")
+      else
       {
-          out.kind = KIND_ERR;
-          out.rest = tailFrom(out.line, e);
-          return out;
-      }
-      if(head == "OK" || head == "INFO")
-      {
-          out.kind = head == "OK" ? KIND_OK : KIND_INFO;
-          kira::Size tb{0};
-          kira::Size te{0};
-          wordAt(out.line, e, tb, te);
-          if(tb < te)
+          const kira::Str head = kira::str::substring(out.line, b, e);
+          if(head == "ERR")
           {
-              out.topic = kira::Str(kira::str::substring(out.line, tb, te));
-              out.rest = tailFrom(out.line, te);
+              out.kind = KIND_ERR;
+              out.rest = tailFrom(out.line, e);
+              return out;
           }
-          return out;
+          else if(head == "OK" || head == "INFO")
+          {
+              out.kind = head == "OK" ? KIND_OK : KIND_INFO;
+              kira::Size tb{0};
+              kira::Size te{0};
+              wordAt(out.line, e, tb, te);
+              if(tb < te)
+              {
+                  out.topic = kira::Str(kira::str::substring(out.line, tb, te));
+                  out.rest = tailFrom(out.line, te);
+              }
+              return out;
+          }
+          else
+          {
+              out.kind = KIND_OTHER;
+              out.rest = kira::Str(out.line);
+              return out;
+          }
       }
-      out.kind = KIND_OTHER;
-      out.rest = kira::Str(out.line);
-      return out;
   }
 
   bool field(const kira::Str& text, const kira::Str& key, kira::Str& out)
@@ -105,24 +111,29 @@ namespace proto
       {
           return false;
       }
-      const kira::Size klen{kira::str::length(key)};
-      kira::Size i{0};
-      while(i + klen <= kira::str::length(text))
+      else
       {
-          const bool boundary{i == 0 || isSpace(kira::str::at(text, i - 1))};
-          if(boundary && kira::Str(kira::str::substring(text, i, i + klen)) == key)
+          const kira::Size klen{kira::str::length(key)};
+          kira::Size i{0};
+          bool result{false};
+          while(i + klen <= kira::str::length(text))
           {
-              kira::Size to{i + klen};
-              while(to < kira::str::length(text) && !isSpace(kira::str::at(text, to)))
+              const bool boundary{i == 0 || isSpace(kira::str::at(text, i - 1))};
+              if(boundary && kira::Str(kira::str::substring(text, i, i + klen)) == key)
               {
-                  to += 1;
+                  kira::Size to{i + klen};
+                  while(to < kira::str::length(text) && !isSpace(kira::str::at(text, to)))
+                  {
+                      to += 1;
+                  }
+                  out = kira::Str(kira::str::substring(text, i + klen, to));
+                  result = true;
+                  break;
               }
-              out = kira::Str(kira::str::substring(text, i + klen, to));
-              return true;
+              i += 1;
           }
-          i += 1;
+          return result;
       }
-      return false;
   }
 
   bool fieldInt(const kira::Str& text, const kira::Str& key, std::int32_t& out)
@@ -132,13 +143,19 @@ namespace proto
       {
           return false;
       }
-      const kira::Maybe<std::int64_t> v = kira::str::toInt64(raw);
-      if(!kira::isSome(v))
+      else
       {
-          return false;
+          const kira::Maybe<std::int64_t> v = kira::str::toInt64(raw);
+          if(!kira::isSome(v))
+          {
+              return false;
+          }
+          else
+          {
+              out = static_cast<std::int32_t>(kira::unwrap(v));
+              return true;
+          }
       }
-      out = static_cast<std::int32_t>(kira::unwrap(v));
-      return true;
   }
 
   bool fieldFloat(const kira::Str& text, const kira::Str& key, float& out)
@@ -148,13 +165,19 @@ namespace proto
       {
           return false;
       }
-      const kira::Maybe<double> v = kira::str::toFloat64(raw);
-      if(!kira::isSome(v))
+      else
       {
-          return false;
+          const kira::Maybe<double> v = kira::str::toFloat64(raw);
+          if(!kira::isSome(v))
+          {
+              return false;
+          }
+          else
+          {
+              out = static_cast<float>(kira::unwrap(v));
+              return true;
+          }
       }
-      out = static_cast<float>(kira::unwrap(v));
-      return true;
   }
 
   kira::Str steer(float fraction)
@@ -183,11 +206,7 @@ namespace proto
 
   kira::Str command(const kira::Str& verb, const kira::Str& args)
   {
-      if(kira::str::isEmpty(verb))
-      {
-          return "";
-      }
-      return kira::str::isEmpty(args) ? kira::Str(verb) : kira::cat(verb, " ", args);
+      return kira::str::isEmpty(verb) ? kira::Str("") : kira::str::isEmpty(args) ? kira::Str(verb) : kira::cat(verb, " ", args);
   }
 }
 #include "kira/macro_pop.hxx"

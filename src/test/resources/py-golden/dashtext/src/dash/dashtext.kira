@@ -17,7 +17,7 @@ pub Scan: Any {
 }
 
 space: (c: Char) Bool {
-    return c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
+    c == ' ' || (c >= '\t' && c <= '\r') || (c >= (28 as Char) && c <= (31 as Char))
 }
 
 // text.strip() over ASCII.
@@ -30,22 +30,25 @@ strip: (s: Str) Str {
     while b > a && space(s[b - 1]) {
         b -= 1
     }
-    return s.substring(a, b)
+    s.substring(a, b)
 }
 
 // str.isdigit() over ASCII: not empty, every character 0-9.
 isDigits: (s: Str) Bool {
     if s.isEmpty() {
-        return false
-    }
-    mut i: Size = 0
-    while i < s.length() {
-        if s[i] < '0' || s[i] > '9' {
-            return false
+        false
+    } else {
+        mut i: Size = 0
+        mut result: Bool = true
+        while i < s.length() {
+            if s[i] < '0' || s[i] > '9' {
+                result = false
+                break
+            }
+            i += 1
         }
-        i += 1
+        result
     }
-    return true
 }
 
 // int(s) % m for digits of any length, digit by digit.
@@ -56,26 +59,30 @@ digitsMod: (s: Str, m: Int64) Int64 {
         v = (v * 10 + ((s[i] as Int64) - 48)) % m
         i += 1
     }
-    return v
+    v
 }
 
 // min(int(s), cap) for digits of any length.
 digitsCapped: (s: Str, cap: Int64) Int64 {
     mut v: Int64 = 0
     mut i: Size = 0
+    mut result: Int64 = 0
+    mut found: Bool = false
     while i < s.length() {
         v = v * 10 + ((s[i] as Int64) - 48)
         if v > cap {
-            return cap
+            result = cap
+            found = true
+            break
         }
         i += 1
     }
-    return v
+    found ? result : v
 }
 
 // The reader's test: the stripped line is a scan when it starts "F ".
 pub isScan: (line: Str) Bool {
-    return strip(line).startsWith("F ")
+    strip(line).startsWith("F ")
 }
 
 pub scan: (line: Str) Scan {
@@ -97,21 +104,19 @@ pub scan: (line: Str) Scan {
         }
         out.angles.add(digitsMod(f[0], 36000) as UInt16)
         out.dists.add(d as UInt16)
-        out.quals.add(if f.size() > 2 && isDigits(f[2]) { digitsCapped(f[2], 255) as UInt8 } else { 0 })
+        out.quals.add(f.size() > 2 && isDigits(f[2]) ? digitsCapped(f[2], 255) as UInt8
+            : 0)
     }
-    return out
+    out
 }
 
 flag: (w: Str) Str {
-    return if w == "1" { "1" } else { "0" }
+    w == "1" ? "1" : "0"
 }
 
 // The int of an isdigit() word, none past Int64.
 number: (w: Str) Maybe<Int64> {
-    if !isDigits(w) {
-        return null
-    }
-    return w.toInt64()
+    !isDigits(w) ? null : w.toInt64()
 }
 
 // ws_command(page, words) as the action it takes, or "ignored".
@@ -119,45 +124,38 @@ wsCommand: (words: List<Str>) Str {
     w0: Str = words[0]
     n: Size = words.size()
     if w0 == "all" && n == 2 {
-        return "all " + flag(words[1])
-    }
-    if w0 == "sel" && n == 2 && number(words[1]).isSome() {
-        return "sel ${number(words[1]).value}"
-    }
-    if w0 == "both" && n == 2 {
-        return "both " + flag(words[1])
-    }
-    if w0 == "rot" && n == 3 && number(words[1]).isSome() && number(words[2]).isSome() {
+        "all " + flag(words[1])
+    } else if w0 == "sel" && n == 2 && number(words[1]).isSome() {
+        "sel ${number(words[1]).value}"
+    } else if w0 == "both" && n == 2 {
+        "both " + flag(words[1])
+    } else if w0 == "rot" && n == 3 && number(words[1]).isSome() && number(words[2]).isSome() {
         deg: Int64 = number(words[2]).value
         if deg != 0 && deg != 90 && deg != 180 && deg != 270 {
-            return "ignored"
+            "ignored"
+        } else {
+            i: Int64 = number(words[1]).value
+            i == LIDAR ? "rot lidar ${deg}" : "rot ${i} ${deg}"
         }
-        i: Int64 = number(words[1]).value
-        return if i == LIDAR { "rot lidar ${deg}" } else { "rot ${i} ${deg}" }
-    }
-    if w0 == "h264" && n == 3 && number(words[1]).isSome() {
-        return "h264 ${number(words[1]).value} " + flag(words[2])
-    }
-    if w0 == "mask" && n >= 2 {
+    } else if w0 == "h264" && n == 3 && number(words[1]).isSome() {
+        "h264 ${number(words[1]).value} " + flag(words[2])
+    } else if w0 == "mask" && n >= 2 {
         mut out: Str = "mask"
         mut k: Size = 1
         while k < n {
             out = out + " [" + words[k] + "]"
             k += 1
         }
-        return out
-    }
-    if w0 == "low" && n == 3 && number(words[1]).isSome() {
-        return "low ${number(words[1]).value} " + flag(words[2])
-    }
-    if (w0 == "cam" || w0 == "rec") && n == 3 && number(words[1]).isSome() {
+        out
+    } else if w0 == "low" && n == 3 && number(words[1]).isSome() {
+        "low ${number(words[1]).value} " + flag(words[2])
+    } else if (w0 == "cam" || w0 == "rec") && n == 3 && number(words[1]).isSome() {
         i: Int64 = number(words[1]).value
-        if w0 == "rec" && i == LIDAR {
-            return "rec lidar " + flag(words[2])
-        }
-        return w0 + " ${i} " + flag(words[2])
+        w0 == "rec" && i == LIDAR ? "rec lidar " + flag(words[2])
+            : w0 + " ${i} " + flag(words[2])
+    } else {
+        "ignored"
     }
-    return "ignored"
 }
 
 // One text frame: `ctrl` when it came on the control link.
@@ -166,44 +164,44 @@ pub command: (text: Str, ctrl: Bool) Str {
     w0: Str = words[0]
     n: Size = words.size()
     if w0 == "h" {
-        return "heartbeat"
-    }
-    if w0 == "a" && n == 2 && number(words[1]).isSome() {
-        return "ack ${number(words[1]).value}"
-    }
-    if w0 == "p" && (n == 2 || n == 3) {
+        "heartbeat"
+    } else if w0 == "a" && n == 2 && number(words[1]).isSome() {
+        "ack ${number(words[1]).value}"
+    } else if w0 == "p" && (n == 2 || n == 3) {
+        mut result: Str = ""
+        mut found: Bool = false
         if n == 3 {
             rtt: Maybe<Float64> = words[2].toFloat64()
             if rtt.isSome() {
-                return "ping [" + words[1] + "] rtt ${rtt.value}"
+                result = "ping [" + words[1] + "] rtt ${rtt.value}"
+                found = true
             }
         }
-        return "ping [" + words[1] + "]"
+        found ? result : "ping [" + words[1] + "]"
+    } else {
+        !ctrl ? "ignored" : wsCommand(words)
     }
-    if !ctrl {
-        return "ignored"
-    }
-    return wsCommand(words)
 }
 
 // A page's text frame as ws_reader reads it: its bytes decoded, data.decode("utf-8", "replace")
 // (Str.of, D55), then split on spaces.
 pub frame: (data: View<UInt8>, ctrl: Bool) Str {
-    return command(Str.of(data), ctrl)
+    command(Str.of(data), ctrl)
 }
 
 scanText: (line: Str) Str {
     if !isScan(line) {
-        return "not a scan"
+        "not a scan"
+    } else {
+        s: Scan = scan(line)
+        mut out: Str = "rot ${s.rotMhz}:"
+        mut i: Size = 0
+        while i < s.angles.size() {
+            out = out + " ${s.angles[i]},${s.dists[i]},${s.quals[i]}"
+            i += 1
+        }
+        out
     }
-    s: Scan = scan(line)
-    mut out: Str = "rot ${s.rotMhz}:"
-    mut i: Size = 0
-    while i < s.angles.size() {
-        out = out + " ${s.angles[i]},${s.dists[i]},${s.quals[i]}"
-        i += 1
-    }
-    return out
 }
 
 main: () Void {

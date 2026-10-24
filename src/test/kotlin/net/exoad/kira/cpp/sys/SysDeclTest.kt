@@ -112,27 +112,27 @@ class SysDeclTest {
             kira.test as test
 
             pub clock: () Int64 {
-                return monoNowNs() + monoNowMs() + wallNowNs()
+                monoNowNs() + monoNowMs() + wallNowNs()
             }
 
             pub shared: (t: Thread, m: Mutex<Int32>, a: Atomic<Bool>, q: BlockingQueue<Str>) Bool {
-                return t.stopRequested()
+                t.stopRequested()
             }
 
             pub net: (u: UdpSocket, l: TcpListener, s: TcpStream, p: Poller, d: Datagram, r: Ready) Int32 {
-                return u.localPort() + d.port + r.events + POLL_READ
+                u.localPort() + d.port + r.events + POLL_READ
             }
 
             pub devices: (port: Serial, proc: Process) Int64 {
-                return port.handle() + proc.stdoutHandle()
+                port.handle() + proc.stdoutHandle()
             }
 
             pub files: (path: Str) Bool {
-                return exists(path) && makeDirs(path)
+                exists(path) && makeDirs(path)
             }
 
             pub report: (suite: Suite) Int32 {
-                return suite.finish()
+                suite.finish()
             }
             """
         )

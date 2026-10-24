@@ -336,10 +336,10 @@ class TyperPhaseTest {
         val p = snippet(
             """
             first: (x: Int32) Int32 {
-                return x
+                x
             }
             second: (x: Str) Str {
-                return x
+                x
             }
             """
         )
@@ -369,7 +369,7 @@ class TyperPhaseTest {
             pub Holder<T: Named>: Any {
                 pub item: T
                 pub map<U>: (f: Fx<Tuple1<T>, U>) U {
-                    return f(item)
+                    f(item)
                 }
             }
             """
@@ -391,7 +391,7 @@ class TyperPhaseTest {
             pub Keyed<K>: Any {
                 pub key: () K
                 pub describe: () Str {
-                    return "keyed"
+                    "keyed"
                 }
             }
             pub Named: Keyed<Str> {
@@ -400,15 +400,15 @@ class TyperPhaseTest {
             pub Tag: Named {
                 pub label: Str
                 pub key: () Str {
-                    return label
+                    label
                 }
                 pub name: () Str {
-                    return label
+                    label
                 }
             }
             pub Broken: Keyed<Int32> {
                 pub key: () Str {
-                    return "no"
+                    "no"
                 }
             }
             """
@@ -550,7 +550,7 @@ class TyperPhaseTest {
         val p = snippet(
             """
             size: (s: Str) Size {
-                return s.length()
+                s.length()
             }
             """
         )
@@ -565,7 +565,7 @@ class TyperPhaseTest {
             false, emptyList(), emptyList(), emptyList(), KType.SIZE,
         )
         val line = TypedModelDumper.dump(p, source).lines().single { "length" in it }
-        assertEquals("main.kira:2:12  s.length()  Size  call=MAGIC(Str.length)", line)
+        assertEquals("main.kira:2:5  s.length()  Size  call=MAGIC(Str.length)", line)
     }
 
     @Test

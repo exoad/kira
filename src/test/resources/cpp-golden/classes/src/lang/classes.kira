@@ -11,7 +11,7 @@ pub Owner: Any {
     pet: Pet
 
     pub getPet: () Pet {
-        return pet
+        pet
     }
 }
 
@@ -19,7 +19,7 @@ pub Scaler: Any {
     pub scale: (v: Int32) Int32;
     pub factor: () Int32;
     pub describe: () Str {
-        return "scales by ${factor()}"
+        "scales by ${factor()}"
     }
 }
 
@@ -27,27 +27,27 @@ pub Doubler: Scaler {
     k: Int32
 
     override pub scale: (v: Int32) Int32 {
-        return v * k
+        v * k
     }
 
     override pub factor: () Int32 {
-        return k
+        k
     }
 }
 
 pub apply: (s: Scaler, v: Int32) Int32 {
-    return s.scale(v)
+    s.scale(v)
 }
 
 pub Animal: Any {
     pub name: Str
 
     pub sound: () Str {
-        return "..."
+        "..."
     }
 
     pub describe: () Str {
-        return "${name} says ${sound()}"
+        "${name} says ${sound()}"
     }
 }
 
@@ -55,12 +55,12 @@ pub Dog: Animal {
     mut tricks: Int32 = 0
 
     override pub sound: () Str {
-        return "woof"
+        "woof"
     }
 
     pub mut learn: () Int32 {
         tricks += 1
-        return tricks
+        tricks
     }
 }
 
@@ -68,27 +68,24 @@ pub Box<T>: Any {
     pub value: T
 
     pub get: () T {
-        return value
+        value
     }
 }
 
 pub boxed: (v: Int32) Box<Int32> {
-    return Box<Int32> { value = v }
+    Box<Int32> { value = v }
 }
 
 pub makeCounter: () Ref<Int32> {
-    return Ref<Int32> { value = 0 }
+    Ref<Int32> { value = 0 }
 }
 
 pub bump: (c: Ref<Int32>) Int32 {
     c.value = c.value + 1
-    return c.value
+    c.value
 }
 
 pub petName: (w: Weak<Pet>) Str {
     p: Maybe<Pet> = w.upgrade()
-    if p.isNone() {
-        return "gone"
-    }
-    return p.unwrap().name
+    p.isNone() ? "gone" : p.unwrap().name
 }

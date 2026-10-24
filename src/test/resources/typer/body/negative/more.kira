@@ -12,7 +12,7 @@ pub Square: Struct, Shape {
     pub side: Int32 = 1
 
     override pub area: () Int32 {
-        return side * side
+        side * side
     }
 }
 
@@ -21,7 +21,7 @@ pub Pet: Any {
 }
 
 pair: (a: Int32, b: Int32) Int32 {
-    return a + b
+    a + b
 }
 
 setTo: (mut out: Int32, v: Int32) Void {
@@ -29,11 +29,11 @@ setTo: (mut out: Int32, v: Int32) Void {
 }
 
 give: () Int32 {
-    return 1
+    1
 }
 
 compute: () Int32 {
-    return 2
+    2
 }
 
 pub COUNT: Int32 = compute()               // @error types.const.not-constant
@@ -75,7 +75,7 @@ pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     m: Map<Str, Int32> = Map<Str, Int32> { }
     got: Int32 = m["k"]                    // @error types.index.map-read
     bits: UInt32 = bitCast<UInt32>(1.5)    // @error types.bitcast.size
-    f: Fx<Tuple1<Int32>, Int32> = (x: Int64) Int32 { return 1 } // @error types.lambda.mismatch
+    f: Fx<Tuple1<Int32>, Int32> = (x: Int64) Int32 { 1 } // @error types.lambda.mismatch
     this.x = 1                             // @error types.this.outside
     lit: UInt32 = -1                       // @error types.literal.range
     fl: Int32 = 1.5                        // @error types.literal.float-to-int
@@ -94,11 +94,7 @@ pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     flags.sort()                           // @error types.call.bound
     flagMin: Maybe<Bool> = flags.minOrNull() // @error types.call.bound
     give()                                 // no error: a discarded value is the emitter's static_cast<void>
-    return                                 // @error types.return.missing
-}
-
-pub voidReturn: () Void {
-    return 5                               // @error types.return.value
+    i
 }
 
 pub generic: () Void {
@@ -115,11 +111,11 @@ pub exposed: (x: Int32 = PRIVATE_LIMIT) Void { // @error types.default.private
 @_static_assert(true, MSG)                 // @error types.static-assert.message
 
 ident<T>: (v: T) T {
-    return v
+    v
 }
 
 makeArr: () Arr<UInt8, 2> {
-    return @arrOf(1, 2)
+    @arrOf(1, 2)
 }
 
 pub yetMore: (i: Int32, s: Str, xs: List<Int32>, f: Fx<Tuple1<Int32>, Int32>) Void {

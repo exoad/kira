@@ -20,5 +20,5 @@ pub main: () Int32 {
         order = order + x
     }
     trace(order)
-    return 0
+    0
 }

@@ -13,10 +13,7 @@ WIDE: Int32 = HOPS * 10
 
 pub isEven: (n: Int32) Bool {
     steps += 1
-    if n == 0 {
-        return true
-    }
-    return isOdd(n - 1)
+    n == 0 ? true : isOdd(n - 1)
 }
 
 show: (xs: List<Int32>) Str {
@@ -29,7 +26,7 @@ show: (xs: List<Int32>) Str {
         s = s + "${xs[i]}"
         i += 1
     }
-    return s + "]"
+    s + "]"
 }
 
 main: () Void {

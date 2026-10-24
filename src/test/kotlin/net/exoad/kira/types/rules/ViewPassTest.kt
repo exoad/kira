@@ -44,32 +44,27 @@ class ViewPassTest {
         val p = snippet(
             """
             pub tail: (s: View<Char>, n: Size) View<Char> {
-                return s.from(n)
+                s.from(n)
             }
             pub wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
                 n: Size = w.size()
-                if s.size() < n || s.slice(0, n) != w {
-                    return null
-                }
-                if s.size() > n && s[n] != ' ' {
-                    return null
-                }
-                return n
+                s.size() < n || s.slice(0, n) != w ? null
+                    : s.size() > n && s[n] != ' ' ? null : n
             }
             pub pick: (a: View<Char>, b: View<Char>, first: Bool) View<Char> {
-                return if first { a } else { b.from(1) }
+                first ? a : b.from(1)
             }
             pub sum: (buf: View<UInt8>) UInt32 {
                 mut s: UInt32 = 0
                 for b: UInt8 in buf {
                     s += b as UInt32
                 }
-                return s
+                s
             }
             pub useIt: (text: View<Char>, bytes: View<UInt8>) Size {
                 n: Size = tail(tail(text, 1), 1).size()
                 t: UInt32 = sum(bytes.slice(0, 2)) + sum(bytes.from(1))
-                return n + wordEnd(text, "ab").unwrapOr(0)
+                n + wordEnd(text, "ab").unwrapOr(0)
             }
             """,
         )
@@ -81,27 +76,27 @@ class ViewPassTest {
         val p = snippet(
             """
             pub total: (v: View<Char>) Size {
-                return v.size()
+                v.size()
             }
             pub SBuf: Struct {
                 pub data: Arr<Char, 4> = @arrOf('a', 'b', 'c', 'd')
                 pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
                 pub rest: () View<Char> {
-                    return all().from(1)
+                    all().from(1)
                 }
             }
             pub CBuf: Any {
                 pub mut data: List<Char> = List<Char> {}
                 pub all: () View<Char> {
-                    return this.data.view()
+                    this.data.view()
                 }
             }
             pub useIt: (c: CBuf) Size {
                 b: SBuf = SBuf {}
                 local: CBuf = CBuf {}
-                return total(b.all()) + total(b.rest()) + total(c.all()) + total(local.all())
+                total(b.all()) + total(b.rest()) + total(c.all()) + total(local.all())
             }
             """,
         )
@@ -119,28 +114,28 @@ class ViewPassTest {
                 mut xs: List<Int32> = List<Int32> {}
                 xs.add(1)
                 xs.add(2)
-                return xs
+                xs
             }
             pub nextSize: () Size {
                 idx = idx + 1
-                return idx
+                idx
             }
             pub total: (v: View<Int32>) Int32 {
                 mut t: Int32 = 0
                 for x: Int32 in v {
                     t += x
                 }
-                return t
+                t
             }
             pub tail: (xs: View<Int32>, at: Size) View<Int32> {
-                return xs.from(at)
+                xs.from(at)
             }
             pub text: (v: View<Char>) Size {
-                return v.size()
+                v.size()
             }
             pub useIt: (s: Str) Int32 {
                 n: Size = text((s + "x").view()) + text("lit")
-                return total(makeList()) + total(makeList().view().from(1)) + total(tail(makeList(), nextSize()))
+                total(makeList()) + total(makeList().view().from(1)) + total(tail(makeList(), nextSize()))
             }
             """,
         )
@@ -165,56 +160,56 @@ class ViewPassTest {
             mut count: Int32 = 0
             pub nextSize: () Size {
                 idx = idx + 1
-                return idx
+                idx
             }
             pub bump: () Int32 {
                 count += 1
-                return count
+                count
             }
             pub total: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub total2: (v: View<Int32>, n: Int32) Int32 {
-                return n
+                n
             }
             pub tail: (xs: View<Int32>, at: Size) View<Int32> {
-                return xs.from(at)
+                xs.from(at)
             }
             pub crc: (buf: View<UInt8>) UInt32 {
-                return buf.size() as UInt32
+                buf.size() as UInt32
             }
             pub writeU32: (p: MutView<UInt8>, v: UInt32) Void {
                 p[0] = (v & 0xFF) as UInt8
             }
             pub readHeader: (buf: View<UInt8>, mut out: Header) Bool {
                 out.size = buf.size() as UInt32
-                return true
+                true
             }
             pub a5: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
                 xs.add(1)
                 xs.add(total(xs.view()))
-                return total(xs)
+                total(xs)
             }
             pub a6: () UInt32 {
                 mut p: Arr<UInt8, 32> = Arr<UInt8, 32> {}
                 writeU32(p.from(20), crc(p.slice(12, 8)))
-                return crc(p)
+                crc(p)
             }
             pub first: (n: Int32, v: View<Int32>) Int32 {
-                return n
+                n
             }
             pub header: (mut h: Header) Bool {
                 mut buf: List<UInt8> = List<UInt8> {}
                 mut local: Header = Header {}
-                return readHeader(buf.view(), mut local) && readHeader(buf.view(), mut h)
+                readHeader(buf.view(), mut local) && readHeader(buf.view(), mut h)
             }
             pub scalars: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
-                return total(tail(xs, nextSize())) + total2(xs.view(), bump())
+                total(tail(xs, nextSize())) + total2(xs.view(), bump())
             }
             pub before: (xs: List<Int32>) Int32 {
-                return first(bump(), xs.view()) + total(xs.view())
+                first(bump(), xs.view()) + total(xs.view())
             }
             """,
         )
@@ -233,14 +228,14 @@ class ViewPassTest {
                 pub mut n: Int32 = 0
                 pub mut note: () Int32 {
                     n += 1
-                    return n
+                    n
                 }
             }
             pub total: (v: View<Int32>, k: Int32) Int32 {
-                return k
+                k
             }
             pub size: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub Sensor: Any {
                 pub mut buf: List<Int32> = List<Int32> {}
@@ -250,7 +245,7 @@ class ViewPassTest {
                     k: Int32 = log.note()
                     t: Int32 = total(buf.view(), k)
                     trace(t)
-                    return log.note() + size(buf.view())
+                    log.note() + size(buf.view())
                 }
             }
             """,
@@ -276,41 +271,41 @@ class ViewPassTest {
             mut COUNTS: List<Int32> = List<Int32> {}
             pub nextSize: () Size {
                 idx = idx + 1
-                return idx
+                idx
             }
             pub bump: () Int32 {
                 count += 1
-                return count
+                count
             }
             pub Log: Any {
                 pub mut n: Int32 = 0
                 pub mut note: () Int32 {
                     n += 1
-                    return n
+                    n
                 }
             }
             pub total: (v: View<Int32>, k: Int32) Int32 {
-                return k
+                k
             }
             pub size: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub tail: (xs: View<Int32>, at: Size) View<Int32> {
-                return xs.from(at)
+                xs.from(at)
             }
             pub fill: (p: MutView<Int32>, v: Int32) Void {
                 p[0] = v
             }
             pub readHeader: (buf: View<UInt8>, mut out: Header) Bool {
                 out.size = buf.size() as UInt32
-                return true
+                true
             }
             pub Sensor: Any {
                 pub mut buf: List<Int32> = List<Int32> {}
                 pub mut raw: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
                 pub log: Log = Log {}
                 pub read: () Int32 {
-                    return total(buf.view(), log.note())
+                    total(buf.view(), log.note())
                 }
                 pub show: () Void {
                     trace(size(buf.view()) + total(buf.view(), log.note()))
@@ -320,13 +315,13 @@ class ViewPassTest {
                 }
             }
             pub header: (buf: List<UInt8>, mut h: Header) Bool {
-                return readHeader(buf.view(), mut h)
+                readHeader(buf.view(), mut h)
             }
             pub scalars: (xs: List<Int32>) Int32 {
-                return size(tail(xs, nextSize())) + total(xs.view(), bump())
+                size(tail(xs, nextSize())) + total(xs.view(), bump())
             }
             pub global: () Int32 {
-                return total(COUNTS.view(), bump())
+                total(COUNTS.view(), bump())
             }
             """,
         )
@@ -342,7 +337,7 @@ class ViewPassTest {
         val p = snippet(
             """
             pub run: (f: Fx<Tuple0, Size>) Size {
-                return f()
+                f()
             }
             pub eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Size {
                 mut at: Size = 0
@@ -350,13 +345,13 @@ class ViewPassTest {
                     each(buf.slice(at, 1))
                     at += 1
                 }
-                return at
+                at
             }
             pub withView: (v: View<UInt8>) Size {
                 n: Size = run(() Size {
-                    return v.size()
+                    v.size()
                 })
-                return n + eachPacket(v, (p: View<UInt8>) Void {
+                n + eachPacket(v, (p: View<UInt8>) Void {
                     trace(p.size() + v.size())
                 })
             }
@@ -370,14 +365,14 @@ class ViewPassTest {
         val p = snippet(
             """
             pub twice<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
-                return f(x) + f(x)
+                f(x) + f(x)
             }
             pub relay<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
-                return twice<T>(x, f)
+                twice<T>(x, f)
             }
             pub useIt: (s: View<Char>) Size {
-                return relay<View<Char>>(s, (v: View<Char>) Size {
-                    return v.size()
+                relay<View<Char>>(s, (v: View<Char>) Size {
+                    v.size()
                 })
             }
             """,
@@ -404,14 +399,14 @@ class ViewPassTest {
             """
             mut GL: List<Int32> = List<Int32> {}
             pub total: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub mk: () List<Int32> {
-                return List<Int32> {}
+                List<Int32> {}
             }
             pub useIt: (xs: List<Int32>, v: View<Int32>) Int32 {
                 mut ys: List<Int32> = List<Int32> {}
-                return total(ys.view()) + total(xs.view()) + total(GL.view()) + total(v) + total(mk().view())
+                total(ys.view()) + total(xs.view()) + total(GL.view()) + total(v) + total(mk().view())
             }
             """,
         )
@@ -452,33 +447,33 @@ class ViewPassTest {
             pub Buf: Any {
                 pub mut data: List<Char> = List<Char> {}
                 pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub Sub: Buf {
             }
             pub tail: (xs: View<Int32>, at: Size) View<Int32> {
-                return xs.from(at)
+                xs.from(at)
             }
             pub q1e: () View<Char> {
                 b: Buf = Buf {}
                 v: View<Char> = b.all()
-                return v
+                v
             }
             pub arrview: () Int32 {
                 mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
                 w: View<Int32> = arr.view()
                 arr = @arrOf(4, 5, 6)
-                return w[0]
+                w[0]
             }
             pub strelem: (names: List<Str>) Size {
                 s: View<Char> = names[0].view()
-                return s.size()
+                s.size()
             }
             pub lent: (xs: List<Int32>) Int32 {
                 u: View<Int32> = tail(xs, 1)
                 m: View<Int32> = xs
-                return u[0] + m[0]
+                u[0] + m[0]
             }
             """,
         )
@@ -502,7 +497,7 @@ class ViewPassTest {
                 pub mut item: Maybe<T> = null
             }
             pub word: (s: View<Char>) Maybe<View<Char>> {
-                return s.from(1)
+                s.from(1)
             }
             pub q10: (mut out: View<Char>) Void {
                 out = "x"
@@ -510,13 +505,13 @@ class ViewPassTest {
             pub q7: (a: View<Char>) Size {
                 mut vs: List<View<Char>> = List<View<Char>> {}
                 vs.add(a)
-                return vs.size()
+                vs.size()
             }
             pub q4b: (r: Ref<View<Char>>, a: Str) Void {
                 r.value = a.view()
             }
             pub pair: (a: View<UInt8>) Tuple2<View<UInt8>, Size> {
-                return Tuple2<View<UInt8>, Size> { a, a.size() }
+                Tuple2<View<UInt8>, Size> { a, a.size() }
             }
             pub holder: () Void {
                 h: Holder<View<Int32>> = Holder<View<Int32>> {}
@@ -540,27 +535,27 @@ class ViewPassTest {
         val p = snippet(
             """
             pub idG<T>: (x: T) T {
-                return x
+                x
             }
             pub keepG<T>: (x: T) Size {
                 mut xs: List<T> = List<T> {}
                 xs.add(x)
-                return xs.size()
+                xs.size()
             }
             pub relayG<T>: (x: T) Size {
-                return keepG<T>(x)
+                keepG<T>(x)
             }
             pub g1: (s: View<Char>) Size {
-                return idG<View<Char>>(s).size()
+                idG<View<Char>>(s).size()
             }
             pub g2: (s: View<Char>) Size {
-                return keepG<View<Char>>(s)
+                keepG<View<Char>>(s)
             }
             pub g3: (s: View<Char>) Size {
-                return relayG<View<Char>>(s)
+                relayG<View<Char>>(s)
             }
             pub ok: (s: View<Char>) Int32 {
-                return idG<Int32>(s.size() as Int32) + (keepG<Int32>(1) as Int32)
+                idG<Int32>(s.size() as Int32) + (keepG<Int32>(1) as Int32)
             }
             """,
         )
@@ -584,22 +579,22 @@ class ViewPassTest {
             pub K: Keeper {
                 override pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
                     KEPT.add(() Size {
-                        return f(x)
+                        f(x)
                     })
-                    return 0
+                    0
                 }
             }
             pub Base: Any {
                 pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
-                    return 0
+                    0
                 }
             }
             pub Sub: Base {
                 override pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
                     KEPT.add(() Size {
-                        return f(x)
+                        f(x)
                     })
-                    return 0
+                    0
                 }
             }
             pub Counter: Any {
@@ -607,22 +602,22 @@ class ViewPassTest {
             }
             pub C: Counter {
                 override pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
-                    return f(x)
+                    f(x)
                 }
             }
             pub p5a: (k: Keeper, s: View<Char>) Size {
-                return k.keep<View<Char>>(s, (v: View<Char>) Size {
-                    return v.size()
+                k.keep<View<Char>>(s, (v: View<Char>) Size {
+                    v.size()
                 })
             }
             pub p5b: (b: Base, s: View<Char>) Size {
-                return b.keep<View<Char>>(s, (v: View<Char>) Size {
-                    return v.size()
+                b.keep<View<Char>>(s, (v: View<Char>) Size {
+                    v.size()
                 })
             }
             pub ok: (c: Counter, s: View<Char>) Size {
-                return c.count<View<Char>>(s, (v: View<Char>) Size {
-                    return v.size()
+                c.count<View<Char>>(s, (v: View<Char>) Size {
+                    v.size()
                 })
             }
             """,
@@ -646,12 +641,12 @@ class ViewPassTest {
             pub Buf: Any {
                 pub mut data: List<Char> = List<Char> {}
                 pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub Sub: Buf {
                 override pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub Viewer: Any {
@@ -660,47 +655,47 @@ class ViewPassTest {
             pub Impl: Viewer {
                 pub mut data: List<Char> = List<Char> {}
                 override pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub Holder: Any {
                 pub mut data: List<Char> = List<Char> {}
                 pub mut cb: Maybe<Fx<Tuple0, Size>> = null
                 pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub Box<T>: Any {
                 pub mut data: List<Char> = List<Char> {}
                 pub mut item: Maybe<T> = null
                 pub all: () View<Char> {
-                    return data.view()
+                    data.view()
                 }
             }
             pub q1: () View<Char> {
                 b: Buf = Buf {}
                 b.data.add('a')
-                return b.all()
+                b.all()
             }
             pub q1d: () View<Char> {
                 b: Buf = Buf {}
-                return b.data.view()
+                b.data.view()
             }
             pub q2: () View<Char> {
                 h: Viewer = Impl {}
-                return h.all()
+                h.all()
             }
             pub q3b: () View<Char> {
                 h: Holder = Holder {}
-                return h.all()
+                h.all()
             }
             pub q9: () View<Char> {
                 i: Impl = Impl {}
-                return i.all()
+                i.all()
             }
             pub q11: () View<Char> {
                 b: Box<Fx<Tuple0, Int32>> = Box<Fx<Tuple0, Int32>> {}
-                return b.all()
+                b.all()
             }
             """,
         )
@@ -715,41 +710,41 @@ class ViewPassTest {
         val p = snippet(
             """
             pub mk: () List<Int32> {
-                return List<Int32> {}
+                List<Int32> {}
             }
             pub q7b: () View<Fx<Tuple0, Size>> {
                 mut fs: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
-                fs.add(() Size { return 1 as Size })
-                return fs.view()
+                fs.add(() Size { 1 as Size })
+                fs.view()
             }
             pub q7c<T>: (a: T) View<T> {
                 mut xs: List<T> = List<T> {}
                 xs.add(a)
-                return xs.view()
+                xs.view()
             }
             pub q7d: () View<Int32> {
                 mut xs: List<Int32> = List<Int32> {}
-                return xs
+                xs
             }
             pub q7e<T>: (a: T) View<T> {
                 mut xs: List<T> = List<T> {}
                 xs.add(a)
-                return xs
+                xs
             }
             pub param: (xs: List<Int32>) View<Int32> {
-                return xs.from(1)
+                xs.from(1)
             }
             pub temp: () View<Int32> {
-                return mk().view()
+                mk().view()
             }
             pub concat: (a: Str, b: Str) View<Char> {
-                return (a + b).view()
+                (a + b).view()
             }
             pub inLambda: (v: View<Char>) Size {
                 f: Fx<Tuple1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
-                    return w.from(1)
+                    w.from(1)
                 }
-                return f(v).size()
+                f(v).size()
             }
             """,
         )
@@ -763,13 +758,13 @@ class ViewPassTest {
         val p = snippet(
             """
             pub apply: (f: Fx<Tuple0, Size>) Size {
-                return f()
+                f()
             }
             pub useIt: (v: View<Char>) Size {
                 g: Fx<Tuple1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
-                    return v
+                    v
                 }
-                return g(v).size()
+                g(v).size()
             }
             """,
         )
@@ -787,17 +782,17 @@ class ViewPassTest {
         val p = snippet(
             """
             pub mk: () List<Int32> {
-                return List<Int32> {}
+                List<Int32> {}
             }
             pub total: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub r5: () Int32 {
                 mut t: Int32 = 0
                 for x: Int32 in mk().view() {
                     t += x
                 }
-                return t
+                t
             }
             pub local: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
@@ -805,10 +800,10 @@ class ViewPassTest {
                 for x: Int32 in xs.view() {
                     t += x
                 }
-                return t
+                t
             }
             pub branches: (a: View<Int32>, xs: List<Int32>, c: Bool) Int32 {
-                return total(if c {
+                total(if c {
                     n: Int32 = 1
                     a
                 } else {
@@ -844,28 +839,28 @@ class ViewPassTest {
             }
             pub inLocal: (v: View<Char>) Char {
                 f: Fx<Tuple0, Char> = () Char {
-                    return v[0]
+                    v[0]
                 }
-                return f()
+                f()
             }
             pub returned: (v: View<Char>) Fx<Tuple0, Char> {
-                return () Char {
-                    return v[0]
+                () Char {
+                    v[0]
                 }
             }
             pub q5b: (v: View<Char>) Void {
                 link(GH.unwrap(), () Char {
-                    return v[0]
+                    v[0]
                 })
             }
             pub q6: (v: View<Char>) Void {
                 GH.unwrap().keep(() Char {
-                    return v[0]
+                    v[0]
                 })
             }
             pub listed: (v: View<Char>, mut fs: List<Fx<Tuple0, Char>>) Void {
                 fs.add(() Char {
-                    return v[0]
+                    v[0]
                 })
             }
             """,
@@ -898,13 +893,13 @@ class ViewPassTest {
                 bx.item = x
             }
             pub get: () Cb2 {
-                return GH.unwrap()
+                GH.unwrap()
             }
             pub q4: (r: Ref<Maybe<Fx<Tuple0, Char>>>, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 r.value = () Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 }
             }
             pub q4c: (a: Str) Void {
@@ -912,21 +907,21 @@ class ViewPassTest {
                 v: View<Char> = s.view()
                 r: Ref<Maybe<Fx<Tuple0, Char>>> = GR.unwrap()
                 r.value = () Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 }
             }
             pub q4d: (r: Ref<List<Fx<Tuple0, Char>>>, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 r.value.add(() Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             pub q5: (holder: Cb2, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 link(holder, () Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             pub q5c: (bx: Box2, a: Str) Void {
@@ -934,7 +929,7 @@ class ViewPassTest {
                 v: View<Char> = s.view()
                 c: Cb2 = Cb2 {}
                 c.f = () Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 }
                 put(bx, c)
             }
@@ -942,21 +937,21 @@ class ViewPassTest {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 get().keep(() Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             pub q5b: (a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 link(GH.unwrap(), () Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             pub q6: (a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 GH.unwrap().keep(() Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             """,
@@ -984,12 +979,12 @@ class ViewPassTest {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 Cb2 {}.keep(() Char {
-                    return v.get(0 as Size)
+                    v.get(0 as Size)
                 })
             }
             pub q6cParam: (v: View<Char>) Void {
                 Cb2 {}.keep(() Char {
-                    return v[0]
+                    v[0]
                 })
             }
             """,
@@ -1007,20 +1002,20 @@ class ViewPassTest {
         val p = snippet(
             """
             pub count: (it: Iterable<Char>) Size {
-                return it.size()
+                it.size()
             }
             pub K: Struct {
                 pub it: Maybe<Iterable<Char>> = null
             }
             pub asTrait: (v: View<Char>) Size {
-                return count(v)
+                count(v)
             }
             pub inField: (v: View<Char>) Size {
                 k: K = K { it = v }
-                return 0
+                0
             }
             pub asAny: (v: View<UInt8>) UInt64 {
-                return bitCast<UInt64>(v)
+                bitCast<UInt64>(v)
             }
             """,
         )
@@ -1034,13 +1029,13 @@ class ViewPassTest {
         val p = snippet(
             """
             pub size: (v: View<Char>) Size {
-                return v.size()
+                v.size()
             }
             pub texts: (v: View<Char>, mut out: StrBuf<32>) Str {
                 out.add(v)
                 out.set("n=${'$'}{size(v)}")
                 trace(size(v.from(1)))
-                return "${'$'}{v.size()}"
+                "${'$'}{v.size()}"
             }
             """,
         )
@@ -1059,27 +1054,27 @@ class ViewPassTest {
             mut gl: List<Int32> = List<Int32> {}
             pub growL: () Int32 {
                 gl.add(1)
-                return 1
+                1
             }
             pub countOf: (v: View<Int32>, n: Int32) Int32 {
-                return v.size() as Int32 + n
+                v.size() as Int32 + n
             }
             pub f: (v: View<Int32>, mut xs: List<Int32>) Int32 {
                 xs.add(1)
-                return 1
+                1
             }
             pub Log: Any {
                 pub mut lines: List<Int32> = List<Int32> {}
                 pub mut note: () Int32 {
                     lines.add(1)
-                    return 1
+                    1
                 }
             }
             pub Sensor: Any {
                 pub mut buf: List<Int32> = List<Int32> {}
                 pub log: Log = Log {}
                 pub read: () Int32 {
-                    return countOf(buf.view(), log.note())
+                    countOf(buf.view(), log.note())
                 }
             }
             pub B: Any {
@@ -1087,20 +1082,20 @@ class ViewPassTest {
             }
             pub refill: (v: View<Int32>, b: B) Int32 {
                 b.arr = @arrOf(4, 5, 6)
-                return v[0]
+                v[0]
             }
             pub r3: () Int32 {
-                return countOf(gl, growL())
+                countOf(gl, growL())
             }
             pub named: () Int32 {
                 mut xs: List<Int32> = List<Int32> {}
-                return f(xs.view(), mut xs)
+                f(xs.view(), mut xs)
             }
             pub self: (mut sb: StrBuf<16>) Void {
                 sb.add(sb.view())
             }
             pub arrhanded: (b: B) Int32 {
-                return refill(b.arr.view(), b)
+                refill(b.arr.view(), b)
             }
             """,
         )
@@ -1121,32 +1116,32 @@ class ViewPassTest {
                 pub poke: () Int32;
             }
             pub countOf: (v: View<Int32>, n: Int32) Int32 {
-                return n
+                n
             }
             pub both: (v: View<Int32>, mut xs: List<Int32>) Int32 {
-                return 1
+                1
             }
             pub run: (f: Fx<Tuple0, Int32>) Int32 {
-                return f()
+                f()
             }
             pub grow: () Int32 {
                 gl.add(1)
-                return 1
+                1
             }
             pub viaTrait: (s: Sink) Int32 {
-                return countOf(gl.view(), s.poke())
+                countOf(gl.view(), s.poke())
             }
             pub viaLambda: () Int32 {
-                return countOf(gl.view(), run(() Int32 {
+                countOf(gl.view(), run(() Int32 {
                     gl.add(2)
-                    return 2
+                    2
                 }))
             }
             pub viaMutParam: (mut other: List<Int32>) Int32 {
-                return both(gl.view(), mut other)
+                both(gl.view(), mut other)
             }
             pub viaSharedParam: (xs: List<Int32>) Int32 {
-                return countOf(xs.view(), grow())
+                countOf(xs.view(), grow())
             }
             """,
         )
@@ -1188,7 +1183,7 @@ class ViewPassTest {
                     trace(v.size())
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1206,7 +1201,7 @@ class ViewPassTest {
                     b.arr = @arrOf(4, 5)
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1220,14 +1215,14 @@ class ViewPassTest {
                     pub mut swap: () Int32 {
                         v: View<Int32> = arr.view()
                         arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
-                        return v.get(0) + v.get(1)
+                        v.get(0) + v.get(1)
                     }
                 }
 
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     trace(b.swap())
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1247,14 +1242,14 @@ class ViewPassTest {
                 pub sum: (a: Arr<Int32>, b: Bag) Int32 {
                     v: View<Int32> = a.view()
                     b.refill()
-                    return v.get(0) + v.get(1)
+                    v.get(0) + v.get(1)
                 }
 
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     c: Bag = b
                     trace(sum(c.arr, b))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1272,13 +1267,13 @@ class ViewPassTest {
 
                 pub total: (v: View<Int32>, b: Bag) Int32 {
                     b.refill()
-                    return v.get(0) + v.get(1)
+                    v.get(0) + v.get(1)
                 }
 
                 pub main: () Int32 {
                     b: Bag = Bag {}
                     trace(total(b.arr.view(), b))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.write"),
@@ -1300,7 +1295,7 @@ class ViewPassTest {
                     refill(mut b.arr)
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1312,7 +1307,7 @@ class ViewPassTest {
                     pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
                     pub all: () View<Int32> {
-                        return arr.view()
+                        arr.view()
                     }
                 }
 
@@ -1322,7 +1317,7 @@ class ViewPassTest {
                     b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1336,7 +1331,7 @@ class ViewPassTest {
                     r.value = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1356,7 +1351,7 @@ class ViewPassTest {
                     trace(v.size())
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1371,7 +1366,7 @@ class ViewPassTest {
                         v: View<Char> = names[0].view()
                         names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
                         trace(v.get(0))
-                        return v.size()
+                        v.size()
                     }
                 }
 
@@ -1379,7 +1374,7 @@ class ViewPassTest {
                     b: Bag = Bag {}
                     b.names.add("the first long name that does not fit in the small string buffer")
                     trace(b.rename())
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1399,7 +1394,7 @@ class ViewPassTest {
                 pub firstChar: (s: Str, b: Bag) Char {
                     v: View<Char> = s.view()
                     b.rename()
-                    return v.get(0)
+                    v.get(0)
                 }
 
                 pub main: () Int32 {
@@ -1407,7 +1402,7 @@ class ViewPassTest {
                     b.names.add("the first long name that does not fit in the small string buffer")
                     c: Bag = b
                     trace(firstChar(c.names[0], b))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1439,7 +1434,7 @@ class ViewPassTest {
                     b.replace()
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1456,7 +1451,7 @@ class ViewPassTest {
                     trace(v.size())
                     trace(v.get(0))
                     trace(v.get(1))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.local"),
@@ -1480,7 +1475,7 @@ class ViewPassTest {
                     b.grow()
                     n: Int32 = v.get(1)
                     v = v.from(0)
-                    return n
+                    n
                 }
 
                 pub main: () Int32 {
@@ -1489,7 +1484,7 @@ class ViewPassTest {
                     b.items.add(2)
                     mut v: View<Int32> = b.items.view()
                     trace(peek(mut v, b))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.type", "rules.view.local"),
@@ -1513,7 +1508,7 @@ class ViewPassTest {
                     b.grow()
                     n: Int32 = vs.get(0).get(1)
                     vs.clear()
-                    return n
+                    n
                 }
 
                 pub main: () Int32 {
@@ -1523,7 +1518,7 @@ class ViewPassTest {
                     mut vs: List<View<Int32>> = List<View<Int32>> {}
                     vs.add(b.items.view())
                     trace(peek(mut vs, b))
-                    return 0
+                    0
                 }
                 """,
                 listOf("rules.view.type", "rules.view.type", "rules.view.write"),
@@ -1536,7 +1531,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 keepField: (r: Ref<List<Int32>>) Void {
@@ -1548,7 +1543,7 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 main: () Void {
@@ -1567,7 +1562,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 total: (v: MutView<Int32>) Int32 {
@@ -1575,7 +1570,7 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 main: () Void {
@@ -1603,7 +1598,7 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 main: () Void {
@@ -1624,7 +1619,7 @@ class ViewPassTest {
                 mut gv: Maybe<MutView<Int32>> = null
 
                 makeMRef: () Maybe<Ref<List<Int32>>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 keepM: (m: Maybe<Ref<List<Int32>>>) Void {
@@ -1636,7 +1631,7 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 main: () Void {
@@ -1655,7 +1650,7 @@ class ViewPassTest {
                 mut gref: Ref<List<MutView<Int32>>> = Ref<List<MutView<Int32>>> { value = List<MutView<Int32>> { } }
 
                 makeRef: () Ref<List<Int32>> {
-                    return Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                 }
 
                 total: (v: MutView<Int32>) Int32 {
@@ -1663,11 +1658,11 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
-                    return (r: Ref<List<T>>) Void {
+                    (r: Ref<List<T>>) Void {
                         sink.value.add(r.value.view())
                     }
                 }
@@ -1695,7 +1690,7 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
@@ -1722,7 +1717,7 @@ class ViewPassTest {
                         gl.add(i)
                         i += 1
                     }
-                    return 0
+                    0
                 }
 
                 total: (v: View<Int32>) Int32 {
@@ -1730,12 +1725,12 @@ class ViewPassTest {
                     for x: Int32 in v {
                         s += x
                     }
-                    return s
+                    s
                 }
 
                 growThenSum: (v: View<Int32>) Int32 {
                     k: Int32 = growL()
-                    return total(v) + k
+                    total(v) + k
                 }
 
                 main: () Void {
@@ -1778,13 +1773,13 @@ class ViewPassTest {
         val p = snippet(
             """
             pub kira: (p: Unsafe<Int32>) Int32 {
-                return 1
+                1
             }
             pub Holder: Struct {
                 pub p: Unsafe<Int32>
             }
             pub made: () Unsafe<Int32> {
-                return made()
+                made()
             }
             pub @_extern(cpp = "ext::fill", header = "ext.hxx") fill: (mut out: Unsafe<CStr>) Void;
             pub mut SAVED: Maybe<CStr> = null
@@ -1815,7 +1810,7 @@ class ViewPassTest {
                 fillP(xs.view(), xs.size(), 7)
                 fillP(arr.view(), 3, 1)
                 setFirst(xs.view(), 9)
-                return peek(ys.view(), xs.view())
+                peek(ys.view(), xs.view())
             }
             pub shared: (mut xs: List<Int32>) Void {
                 fillP(xs.view(), xs.size(), 7)
@@ -1851,20 +1846,20 @@ class ViewPassTest {
             pub mut ticks: Int32 = 0
             pub next: () Int32 {
                 ticks += 1
-                return ticks
+                ticks
             }
             pub makeList: () List<Int32> {
-                return List<Int32> { values = @arrOf(2) }
+                List<Int32> { values = @arrOf(2) }
             }
             pub minus: (v: View<Int32>, k: Int32) Int32 {
-                return v.size() as Int32 - k
+                v.size() as Int32 - k
             }
             pub total: (v: View<Int32>) Int32 {
-                return v.size() as Int32
+                v.size() as Int32
             }
             pub f: (c: Bool) Int32 {
-                a: Int32 = minus(if c { makeList().view() } else { gl.view() }, next())
-                b: Int32 = total(if c { makeList().view() } else { gl.view() })
+                a: Int32 = minus(c ? makeList().view() : gl.view(), next())
+                b: Int32 = total(c ? makeList().view() : gl.view())
                 mut d: Int32 = 0
                 if c {
                     d = total(makeList().view())
@@ -1872,8 +1867,8 @@ class ViewPassTest {
                     d = total(gl.view())
                 }
                 mut xs: List<Int32> = List<Int32> { values = @arrOf(3) }
-                e: Int32 = total(if c { xs.view() } else { xs.view().from(1) })
-                return a + b + d + e
+                e: Int32 = total(c ? xs.view() : xs.view().from(1))
+                a + b + d + e
             }
             """,
         )
@@ -1888,7 +1883,7 @@ class ViewPassTest {
         val p = snippet(
             """
             pub user: (v: View<Int32>, sink: Fx<Tuple1<Fx<Tuple0, Int32>>, Void>) Void {
-                sink(() Int32 { return v[0] })
+                sink(() Int32 { v[0] })
             }
             """,
         )
@@ -1912,27 +1907,27 @@ class ViewPassTest {
                 pub mut items: List<List<Int32>> = List<List<Int32>> { }
                 pub mut m: Maybe<List<Int32>> = null
                 pub itemsView: () View<Int32> {
-                    return items.get(0).view()
+                    items.get(0).view()
                 }
                 pub mut wipeThen: (v: View<Int32>) Int32 {
                     items = List<List<Int32>> { }
-                    return total(v)
+                    total(v)
                 }
                 pub me: () H {
-                    return this
+                    this
                 }
                 pub mut reset: () Int32 {
                     items = List<List<Int32>> { }
-                    return 0
+                    0
                 }
                 pub mut viaMe: () Int32 {
-                    return sumK(me().items.get(0).view(), reset())
+                    sumK(me().items.get(0).view(), reset())
                 }
                 pub mut viaMeIdx: () Int32 {
-                    return sumK(me().items[0].view(), reset())
+                    sumK(me().items[0].view(), reset())
                 }
                 pub mut viaThisMe: () Int32 {
-                    return sumK(this.me().items.get(0).view(), reset())
+                    sumK(this.me().items.get(0).view(), reset())
                 }
             }
             pub total: (v: View<Int32>) Int32 {
@@ -1940,24 +1935,24 @@ class ViewPassTest {
                 for x: Int32 in v {
                     s += x
                 }
-                return s
+                s
             }
             pub sumK: (v: View<Int32>, k: Int32) Int32 {
-                return total(v) + k
+                total(v) + k
             }
             pub wipe: (h: H) Int32 {
                 h.items = List<List<Int32>> { }
-                return 0
+                0
             }
             pub wipeThen: (v: View<Int32>, h: H) Int32 {
                 wipe(h)
-                return total(v)
+                total(v)
             }
             pub pick: (h: H) H {
-                return h
+                h
             }
             pub pickM: (h: H) Maybe<H> {
-                return h
+                h
             }
             pub rows: (h: H) Int32 {
                 a: Int32 = wipeThen(pick(h).items.get(0).view(), h)
@@ -1971,7 +1966,7 @@ class ViewPassTest {
                 m: Int32 = sumK(pickM(h).unwrap().items.get(0).view(), wipe(h))
                 n: Int32 = sumK(pickM(h).value.items[0].view(), wipe(h))
                 q: Int32 = wipeThen(pickM(h).unwrap().items.get(0).view(), h)
-                return a + b + c + d + e + f + g + k + m + n + q
+                a + b + c + d + e + f + g + k + m + n + q
             }
             """,
         )
@@ -1996,17 +1991,17 @@ class ViewPassTest {
             }
             pub mut G: Int32 = 0
             pub mk: () S {
-                return S { }
+                S { }
             }
             pub bump: () Int32 {
                 G += 1
-                return 0
+                0
             }
             pub sumK: (v: View<Int32>, k: Int32) Int32 {
-                return k
+                k
             }
             pub rows: () Int32 {
-                return sumK(mk().items.get(0).view(), bump()) + sumK(mk().items[0].view(), bump())
+                sumK(mk().items.get(0).view(), bump()) + sumK(mk().items[0].view(), bump())
             }
             """,
         )
@@ -2028,7 +2023,7 @@ class ViewPassTest {
                 t: Thread = Thread { name = "w", body = () Void {
                     gl = @listOf(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700)
                 } }
-                return 0
+                0
             }
 
             sumView: (v: View<Int32>, n: Int32) Int32 {
@@ -2036,7 +2031,7 @@ class ViewPassTest {
                 for x: Int32 in v {
                     t += x
                 }
-                return t
+                t
             }
 
             main: () Void {

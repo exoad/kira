@@ -1,5 +1,5 @@
 golden.py.importname.pkg.b as b
 
 pub twice: () Int32 {
-    return tick() + tick()
+    tick() + tick()
 }

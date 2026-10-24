@@ -10,7 +10,7 @@ pub Circle: Shape {
     pub filled: Bool = false
 
     override pub area: () Int32 {
-        return 3 * radius * radius
+        3 * radius * radius
     }
 }
 
@@ -18,7 +18,7 @@ pub Square: Shape {
     pub side: Int32
 
     override pub area: () Int32 {
-        return side * side
+        side * side
     }
 }
 
@@ -28,7 +28,7 @@ pub Pt: Struct {
 
     // The receiver as the subject: its fields read through it.
     pub atOrigin: () Bool {
-        return this == Pt { x == 0, y == 0 }
+        this == Pt { x == 0, y == 0 }
     }
 }
 
@@ -43,45 +43,33 @@ pub Holder: Any {
 }
 
 pub make: (r: Int32) Shape {
-    if r > 0 {
-        return Circle { radius = r }
-    }
-    return Square { side = -r }
+    r > 0 ? Circle { radius = r } : Square { side = -r }
 }
 
 pub hold: (r: Int32, x: Int32) Holder {
-    if x < 0 {
-        return Holder { make(r), null }
-    }
-    return Holder { make(r), Pt { x, 0 } }
+    x < 0 ? Holder { make(r), null } : Holder { make(r), Pt { x, 0 } }
 }
 
 // A run-time test, then the checks through the narrowed name.
 pub big: (s: Shape) Bool {
-    return s == Circle { radius > 10, !filled }
+    s == Circle { radius > 10, !filled }
 }
 
 // `!=`: its else branch sees the block passed, and after an if that leaves, the rest does.
 pub describe: (s: Shape) Str {
-    if s != Circle { radius > 2 } {
-        return "other"
-    }
-    return "circle ${s.radius}"
+    s != Circle { radius > 2 } ? "other" : "circle ${s.radius}"
 }
 
 // A nested block tests a field: a class field by a dynamic_cast, a Maybe field for a value.
 pub held: (h: Holder) Bool {
-    return h == Holder { shape == Circle { radius > 2 }, at == Pt { x == 1 } }
+    h == Holder { shape == Circle { radius > 2 }, at == Pt { x == 1 } }
 }
 
 // A struct's fields, nested, and a Maybe of one, in the rest of an `&&`.
 pub onLine: (line: Line, m: Maybe<Pt>) Bool {
-    return line == Line { start == Pt { x == 0 }, end.y > 0 } && m == Pt { y == 1 }
+    line == Line { start == Pt { x == 0 }, end.y > 0 } && m == Pt { y == 1 }
 }
 
 pub sideOf: (s: Shape) Int32 {
-    if s == Square { side > 0 } {
-        return s.side
-    }
-    return -1
+    s == Square { side > 0 } ? s.side : -1
 }

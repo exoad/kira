@@ -6,75 +6,72 @@ pub MOOD_CALM: Int32 = 0
 pub MOOD_BUSY: Int32 = 1
 
 pub greet: (name: Str, n: Int32) Str {
-    return "hello ${name}, you are ${n}"
+    "hello ${name}, you are ${n}"
 }
 
 // Every piece kind an interpolation takes. A UInt8 is a number, a Char a
 // character.
 pub describe: (b: Bool, f: Float64, g: Float32, c: Char, u: UInt8, m: Int32) Str {
-    return "b=${b} f=${f} g=${g} c=${c} u=${u} m=${m}"
+    "b=${b} f=${f} g=${g} c=${c} u=${u} m=${m}"
 }
 
 pub show: (v: Float64) Str {
-    return v as Str
+    v as Str
 }
 
 pub flag: (b: Bool) Str {
-    return b as Str
+    b as Str
 }
 
 // Fixed decimals rounded as printf's %.*f (D50), and lowercase hex (D51).
 pub fixedOf: (v: Float64, places: Int32) Str {
-    return v.fixed(places)
+    v.fixed(places)
 }
 
 pub speedLine: (mps: Float64) Str {
-    return "${mps.fixed(1)} m/s"
+    "${mps.fixed(1)} m/s"
 }
 
 pub hexOf: (v: Int32) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 pub hex64: (v: UInt64) Str {
-    return v.toHex()
+    v.toHex()
 }
 
 pub bitsOf: (v: Int16) Str {
-    return (v as UInt16).toHex()
+    (v as UInt16).toHex()
 }
 
 pub padded: (v: Int32) Str {
-    return (v as Str).padStart(5, '0')
+    (v as Str).padStart(5, '0')
 }
 
 pub parseInt: (s: Str) Maybe<Int64> {
-    return s.toInt64()
+    s.toInt64()
 }
 
 pub parseFloat: (s: Str) Maybe<Float64> {
-    return s.toFloat64()
+    s.toFloat64()
 }
 
 pub joined: (a: Str, b: Str) Str {
-    return a + " " + b
+    a + " " + b
 }
 
 pub bracketed: (s: Str) Str {
-    return "<" + s + ">"
+    "<" + s + ">"
 }
 
 pub initial: (s: Str) Char {
-    return s[0]
+    s[0]
 }
 
 pub same: (a: Str, b: Str) Bool {
-    return a == b
+    a == b
 }
 
 pub middle: (s: Str) Str {
-    if s.length() < 2 {
-        return ""
-    }
-    return s.substring(1, s.length() - 1)
+    s.length() < 2 ? "" : s.substring(1, s.length() - 1)
 }

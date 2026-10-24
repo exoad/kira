@@ -110,7 +110,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             add: (a: Int32, b: Int32) Int32 {
-                return a + b
+                a + b
             }
 
             stub: (x: Str) Void;
@@ -132,7 +132,7 @@ class ParserSuiteTest {
 
                 pub increment: () Int32 {
                     value = value + 1
-                    return value
+                    value
                 }
             }
             """
@@ -150,7 +150,7 @@ class ParserSuiteTest {
 
             pub Loud: Speaker {
                 pub volume: () Int32 {
-                    return 8
+                    8
                 }
             }
             """
@@ -184,7 +184,7 @@ class ParserSuiteTest {
             }
 
             id<T: Any>: (value: T) T {
-                return value
+                value
             }
             """
         )
@@ -228,7 +228,7 @@ class ParserSuiteTest {
         parseModule(
             """
             id<T>: (v: T) T {
-                return v
+                v
             }
 
             main: () Void {
@@ -244,13 +244,9 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             f: (x: Int64) Bool {
-                if x < -LIMIT {
-                    return false
-                }
-                if x > (LIMIT) {
-                    return false
-                }
-                return x < -LIMIT || x > (LIMIT)
+                low: Bool = x < -LIMIT
+                high: Bool = x > (LIMIT)
+                x < -LIMIT || x > (LIMIT)
             }
             """
         )
@@ -315,6 +311,7 @@ class ParserSuiteTest {
         parseModule(
             """
             pick: (x: Int32) Int32 {
+                mut result: Int32 = 0
                 for mut i: 0..10 {
                     if i == 2 {
                         continue
@@ -323,10 +320,11 @@ class ParserSuiteTest {
                         break
                     }
                     if i == 4 {
-                        return i
+                        result = i
+                        break
                     }
                 }
-                return 0
+                result
             }
             """
         )
@@ -415,7 +413,7 @@ class ParserSuiteTest {
                 b: Int64 = n + x as Int64
                 c: Bool = x as Int64 > n
                 d: Int64 = -x as Int64
-                return x as Int32 + 1
+                x as Int32 + 1
             }
             """
         )
@@ -461,7 +459,7 @@ class ParserSuiteTest {
             g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
                 c: Bool = (x as Int64) < n
                 d: List<Int32> = xs as List<Int32>
-                return c
+                c
             }
             """
         )
@@ -501,7 +499,7 @@ class ParserSuiteTest {
                 for j: Int64 in 0 as Int64..n as Int64 {
                     s += j
                 }
-                return s
+                s
             }
             """
         )
@@ -575,7 +573,7 @@ class ParserSuiteTest {
             pub Node: Any {
                 pub label: Str
                 pub get: () Str {
-                    return this.label
+                    this.label
                 }
             }
             """
@@ -587,8 +585,8 @@ class ParserSuiteTest {
         // `(x: Int32) Int32` is the spelling of Fx<Tuple1<Int32>, Int32>, `() Void` of Fx<Tuple0, Void>.
         val ast = parseModule(
             """
-            f: (x: Int32) Int32 = (x: Int32) Int32 { return x }
-            g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { return x }
+            f: (x: Int32) Int32 = (x: Int32) Int32 { x }
+            g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x }
             h: () Void = () Void { }
             k: Fx<Tuple0, Void> = () Void { }
             """
@@ -629,9 +627,8 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun parsesBareReturn() {
-        val ast = parseModule(
-            """
+    fun aReturnIsRefusedButOldTextStillReadsABareOne() {
+        val src = """
             stop: (n: Int32) Void {
                 if n < 0 {
                     return
@@ -640,7 +637,10 @@ class ParserSuiteTest {
                 return;
             }
             """
-        )
+        val refused = assertThrows<DiagnosticsException> { parseModule(src) }
+        assertEquals("parse.removed", refused.tag)
+        // With the refusal off, as kira-dialect reads stage 2's text: a bare return is NoExpr.
+        val ast = net.exoad.kira.compiler.frontend.parser.DialectGates.stage3(false) { parseModule(src) }
         val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
         val returns = mutableListOf<ReturnStatement>()
         fun walk(statements: List<Statement>?) {

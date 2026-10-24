@@ -23,7 +23,7 @@ show: (xs: List<Int32>) Str {
         }
         s = s + "${xs[i]}"
     }
-    return s + "]"
+    s + "]"
 }
 
 grid: (rows: Size, cols: Size) List<List<Int32>> {
@@ -36,7 +36,7 @@ grid: (rows: Size, cols: Size) List<List<Int32>> {
         out.add(row)
         row.add(-1)
     }
-    return out
+    out
 }
 
 total: (g: List<List<Int32>>) Int32 {
@@ -46,7 +46,7 @@ total: (g: List<List<Int32>>) Int32 {
             t += v
         }
     }
-    return t
+    t
 }
 
 main: () Void {

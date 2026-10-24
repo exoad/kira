@@ -18,16 +18,16 @@ class VisibilityPassTest {
                 "test:lib" to """
                     pub SCALE: Int32 = 100
                     pub percent: (v: Int32) Int32 {
-                        return clamp(v) * SCALE
+                        clamp(v) * SCALE
                     }
                     clamp: (v: Int32) Int32 {
-                        return v
+                        v
                     }
                 """,
                 "test:main" to """
                     test.lib as lib
                     pub f: () Int32 {
-                        return percent(3) + lib.percent(SCALE)
+                        percent(3) + lib.percent(SCALE)
                     }
                 """,
             ),
@@ -42,20 +42,20 @@ class VisibilityPassTest {
                 pub Counter: Any {
                     mut n: Int32 = 0
                     step: () Int32 {
-                        return 1
+                        1
                     }
                     pub mut bump: () Int32 {
                         n += step()
-                        return this.n
+                        this.n
                     }
                 }
                 pub Shape: Any {
                     pub area: () Int32;
                     scale: () Int32 {
-                        return 2
+                        2
                     }
                     pub scaled: () Int32 {
-                        return area() * scale()
+                        area() * scale()
                     }
                 }
                 """,
@@ -71,7 +71,7 @@ class VisibilityPassTest {
                 pub Cfg: Any {
                     n: Int32
                     pub get: () Int32 {
-                        return n
+                        n
                     }
                 }
                 pub Pt: Struct {
@@ -81,7 +81,7 @@ class VisibilityPassTest {
                     c: Cfg = Cfg { n = 1 }
                     d: Cfg = Cfg { 2 }
                     p: Pt = Pt { x = 3 }
-                    return c.get() + d.get()
+                    c.get() + d.get()
                 }
                 """,
             ),
@@ -96,16 +96,16 @@ class VisibilityPassTest {
             "test:lib" to """
                 LIMIT: Int32 = 3
                 helper: () Int32 {
-                    return LIMIT
+                    LIMIT
                 }
                 pub ok: () Int32 {
-                    return 1
+                    1
                 }
             """,
             "test:main" to """
                 test.lib as lib
                 pub f: () Int32 {
-                    return helper() + LIMIT + lib.helper() + ok()
+                    helper() + LIMIT + lib.helper() + ok()
                 }
             """,
         )
@@ -120,7 +120,7 @@ class VisibilityPassTest {
             pub Counter: Any {
                 mut n: Int32 = 0
                 step: () Int32 {
-                    return 1
+                    1
                 }
                 pub mut bump: () Void {
                     n += 1
@@ -129,7 +129,7 @@ class VisibilityPassTest {
             pub f: (c: Counter) Int32 {
                 c.bump()
                 c.n = 2
-                return c.n + c.step()
+                c.n + c.step()
             }
             """,
         )
@@ -144,12 +144,12 @@ class VisibilityPassTest {
             pub Base: Any {
                 mut n: Int32 = 0
                 secret: () Int32 {
-                    return n
+                    n
                 }
             }
             pub Derived: Base {
                 pub peek: () Int32 {
-                    return n + secret()
+                    n + secret()
                 }
             }
             """,

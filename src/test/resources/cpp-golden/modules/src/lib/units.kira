@@ -5,18 +5,9 @@
 pub SCALE: Int32 = 100
 
 clampPct: (v: Int32) Int32 {
-    if v < 0 {
-        return 0
-    }
-    if v > SCALE {
-        return SCALE
-    }
-    return v
+    v < 0 ? 0 : v > SCALE ? SCALE : v
 }
 
 pub percent: (part: Int32, whole: Int32) Int32 {
-    if whole == 0 {
-        return 0
-    }
-    return clampPct(part * SCALE / whole)
+    whole == 0 ? 0 : clampPct(part * SCALE / whole)
 }

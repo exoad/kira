@@ -7,9 +7,9 @@ pub mut start: List<Int32> = @listOf(SCALE, 7)
 
 pub record: (m: Meter, raw: Int32) Int32 {
     total += m.read(raw)
-    return bump(1)
+    bump(1)
 }
 
 pub fresh: (label: Str) Meter {
-    return Meter { label }
+    Meter { label }
 }

@@ -20,15 +20,15 @@ hex: (v: View<UInt8>) Str {
         s = s + v[i].toHex().padStart(2, '0')
         i += 1
     }
-    return s
+    s
 }
 
 pub read: (b: View<UInt8>) Str {
-    return Str.of(b)
+    Str.of(b)
 }
 
 shown: (b: List<UInt8>) Str {
-    return "[" + hex(b) + "] -> [" + hex(read(b).bytes()) + "]"
+    "[" + hex(b) + "] -> [" + hex(read(b).bytes()) + "]"
 }
 
 // A running digest: what each text reads as, then a 0xFF, which UTF-8 never holds.
@@ -50,12 +50,12 @@ pub Digest: Any {
     }
 
     pub said: () Str {
-        return "${count} sequences, ${total} bytes read, digest ${h.toHex()}"
+        "${count} sequences, ${total} bytes read, digest ${h.toHex()}"
     }
 }
 
 edges: () List<UInt8> {
-    return @listOf(0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC1, 0xC2, 0xDF, 0xE0, 0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF)
+    @listOf(0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC1, 0xC2, 0xDF, 0xE0, 0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF)
 }
 
 main: () Void {

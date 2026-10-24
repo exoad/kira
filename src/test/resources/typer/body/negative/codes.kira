@@ -14,7 +14,7 @@ pub codes: (s: Str, v: View<UInt8>, i: Int32, p: Point) Void {
     b: UInt32 = bitCast<UInt32>()          // @error types.bitcast.args
     c: UInt32 = bitCast(1.5)               // @error types.bitcast.type-args
     d: Int32 = Point(1)                    // @error types.call.type-name
-    e: Fx<Tuple2<Int32, Int32>, Int32> = (a: Int32, a: Int32) Int32 { return a } // @error types.decl.duplicate
+    e: Fx<Tuple2<Int32, Int32>, Int32> = (a: Int32, a: Int32) Int32 { a } // @error types.decl.duplicate
     s[0] = 'a'                             // @error types.index.str-write
     v[0] = 1                               // @error types.index.view-write
     g: Bool = i == Str                     // @error types.conform.never

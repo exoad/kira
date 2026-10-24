@@ -45,7 +45,7 @@ class IntrinsicSlotTest {
             }
             @_extern monotonic: () Float64
             pub @_extern(raises = "OSError ValueError") readText: (path: Str) Str
-            pub @_const square: (x: Int32) Int32 { return x * x }
+            pub @_const square: (x: Int32) Int32 { x * x }
             pub @_extern(cpp = "bibo::Scan", header = "car.hxx") Scan: Struct { }
             pub @_extern(c = "LIMIT", header = "limits.h") LIMIT: Int32
             pub @_magic @_global true: Bool = Bool { }
@@ -74,7 +74,7 @@ class IntrinsicSlotTest {
             pub @_magic Pair<A, B>: Any {
                 pub @_magic first: A
                 pub mut @_extern(cpp = "AddLine") addLine: (color: UInt32) Void;
-                override pub @_const size: () Int32 { return 2 }
+                override pub @_const size: () Int32 { 2 }
             }
             pub Hall: Struct {
                 pub mut @_const feed: (next: UInt8) Void { }
@@ -170,7 +170,7 @@ class IntrinsicSlotTest {
             }
             pub V2: Any {
                 pub x: Float32 = 0.0
-                pub @_op_add_: (other: V2) V2 { return V2 { x + other.x } }
+                pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
             }
             """
         )

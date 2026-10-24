@@ -12,7 +12,7 @@ check: (n: Int32) Int32 {
     if n > 4 {
         throw "big ${n}"
     }
-    return n
+    n
 }
 
 pub main: () Int32 {
@@ -30,5 +30,5 @@ pub main: () Int32 {
     }
     type = 9
     trace(type)
-    return 0
+    0
 }

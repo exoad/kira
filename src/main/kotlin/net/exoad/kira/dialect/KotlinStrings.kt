@@ -21,15 +21,15 @@ object KotlinStrings {
     private const val HOLE = "zzKtHole"
     private const val SNIPPET = "module \"kt:snippet\"\n"
 
-    /** [stage2]: stage 1's Kira to stage 2's ([Stage2]) instead of the old dialect to stage 1's. */
-    fun convertAll(paths: List<String>, check: Boolean, stage2: Boolean = false): Int {
+    /** [stage2]: stage 1's Kira to stage 2's ([Stage2]) instead of the old dialect to stage 1's; [stage3]: stage 2's to stage 3's ([Stage3]). */
+    fun convertAll(paths: List<String>, check: Boolean, stage2: Boolean = false, stage3: Boolean = false): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }.distinct().sorted()
         var changedFiles = 0
         var converted = 0
         var refused = 0
         for (f in files) {
             val text = f.readText()
-            val (out, n, bad) = convertFile(text, f.path, stage2)
+            val (out, n, bad) = convertFile(text, f.path, stage2, stage3)
             converted += n
             refused += bad
             if (out != text) {
@@ -37,12 +37,12 @@ object KotlinStrings {
                 if (!check) f.writeText(out)
             }
         }
-        println("kira-dialect kt${if (stage2) " --stage2" else ""}: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix, $roleChanges with a role to check")
+        println("kira-dialect kt${if (stage2) " --stage2" else ""}${if (stage3) " --stage3" else ""}: ${files.size} files, $converted literals converted in $changedFiles files, $refused left for a hand fix, $roleChanges with a role to check")
         return if (check && changedFiles > 0) 1 else 0
     }
 
     /** The file with each Kira literal converted; how many were; how many look like Kira and were not. */
-    fun convertFile(text: String, path: String, stage2: Boolean = false): Triple<String, Int, Int> {
+    fun convertFile(text: String, path: String, stage2: Boolean = false, stage3: Boolean = false): Triple<String, Int, Int> {
         val literals = literals(text)
         val sb = StringBuilder()
         var at = 0
@@ -51,7 +51,12 @@ object KotlinStrings {
         for (lit in literals) {
             val decoded = decode(text, lit)
             val source = text.substring(lit.bodyStart, lit.bodyEnd)
-            when (val result = if (stage2) stage2Kira(decoded.text, path, source) else convertKira(decoded.text, path, source)) {
+            val result = when {
+                stage3 -> stage3Kira(decoded.text, path, source)
+                stage2 -> stage2Kira(decoded.text, path, source)
+                else -> convertKira(decoded.text, path, source)
+            }
+            when (result) {
                 null -> {}
                 is Outcome.Refused -> {
                     bad++
@@ -96,13 +101,48 @@ object KotlinStrings {
         val out = run.apply()
         val again = CompilationUnit(bootstrap = false)
         stdlibTexts.forEach { (f, uri, text) -> ProjectUnits.read(again, f, text, uri, literals = true) }
-        val (nc, err) = ProjectUnits.read(again, file, out, "kt:snippet", literals = false)
+        val (nc, err) = ProjectUnits.read(again, file, out, "kt:snippet", literals = false, returns = true)
         if (nc == null) return Outcome.Refused("the new parser refuses the conversion ($err): $first")
         // Typed (and so linked) as the old one was, before the trees are compared.
         val program2 = KiraTyper.run(again, TyperMode.STRICT)
         Stage2.Proof(old, nc, run.rewritten).compare()?.let { return Outcome.Refused("tree: $it: $first") }
         Stage2.typed(old, program, nc, program2)?.let { return Outcome.Refused("type: $it: $first") }
         return Outcome.Converted(run.edits.sortedBy { it.start })
+    }
+
+    /**
+     * Stage 2's Kira in a literal to stage 3's, as [Stage3] does a file, written back as one edit; a literal
+     * that does not parse or has nothing to rewrite is left, one that keeps a return is refused.
+     */
+    private fun stage3Kira(kira: String, path: String, source: String): Outcome? {
+        if (!Regex("""\breturn\b|\bif\b""").containsMatchIn(kira)) return null
+        val (old, _) = ProjectUnits.read(CompilationUnit(bootstrap = false), "$path#literal", kira, "kt:snippet", literals = true)
+        if (old == null || notKira(old, kira) != null) return null
+        val first = source.lines().firstOrNull { it.isNotBlank() }?.trim()?.take(70) ?: ""
+        // A test's `is` is the removed word it means to be refused: only the returns and if values go.
+        val r = Stage3.convertText(kira, "$path#literal", "kt:snippet", rewritesIs = false)
+        if (r.problem != null) return Outcome.Refused("${r.problem}: $first")
+        if (r.hand.isNotEmpty()) return Outcome.Refused(r.hand.joinToString("; ") { "${it.first}: ${it.second}" } + ": $first")
+        val out = r.text ?: return null
+        // Typed alone beside the stdlib, both texts hold the same errors: a test's wrong program stays wrong.
+        val errors = { text: String ->
+            val unit = CompilationUnit(bootstrap = false)
+            stdlibTexts.forEach { (f, uri, t) -> ProjectUnits.read(unit, f, t, uri, literals = true) }
+            val (ctx, _) = ProjectUnits.read(unit, "$path#literal", text, "kt:snippet", literals = true)
+            if (ctx == null) null else KiraTyper.run(unit, TyperMode.STRICT).diagnostics
+                .filter { it.isError && (it.source == null || it.source === ctx) }.groupingBy { it.code }.eachCount()
+        }
+        val before = errors(kira)
+        val after = errors(out)
+        if (before != after) return Outcome.Refused("type: the errors $before became $after: $first")
+        var a = 0
+        while (a < kira.length && a < out.length && kira[a] == out[a]) a++
+        var b = 0
+        while (b < kira.length - a && b < out.length - a && kira[kira.length - 1 - b] == out[out.length - 1 - b]) b++
+        // A placeholder cut in two would not encode back: the span grows to whole words.
+        while (a > 0 && (kira[a - 1].isLetterOrDigit() || kira[a - 1] == '_')) a--
+        while (b > 0 && (kira[kira.length - b].isLetterOrDigit() || kira[kira.length - b] == '_')) b--
+        return Outcome.Converted(listOf(DialectConverter.Edit(a, kira.length - b, out.substring(a, out.length - b))))
     }
 
     /** The stdlib under `kira/` (path, module, text), each literal's unit reads it afresh. */

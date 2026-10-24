@@ -863,6 +863,11 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
+        // A returned `c ? a : b` lowers as the if/else of returns it reads as.
+        (returnStatement.expr as? net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr)?.let { returnsOf(it) }?.let {
+            it.accept(this)
+            return
+        }
         appendIndented("return")
         if (returnStatement.expr !is NoExpr) {
             buffer.append(" ")

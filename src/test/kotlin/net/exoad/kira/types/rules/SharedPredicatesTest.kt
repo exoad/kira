@@ -48,7 +48,7 @@ class SharedPredicatesTest {
                 pub m: () Int32;
             }
             pub table<X>: (a: Int32, b: Str, c: Bool, d: Int32, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: Tuple2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<Tuple0, Void>, o: List<Fx<Tuple0, Void>>, q: Maybe<Fx<Tuple0, Void>>, r: Tuple2<Int32, Fx<Tuple0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<Tuple0, Void>>, z: Gen<Int32>, zz: Gen<Fx<Tuple0, Void>>) Int32 {
-                return 0
+                0
             }
             """,
         )
@@ -81,7 +81,7 @@ class SharedPredicatesTest {
             pub slot: (p: Unsafe<Int32>) Int32;
         }
         pub kira: (p: Unsafe<Int32>) Int32 {
-            return 0
+            0
         }
     """
 
@@ -94,7 +94,7 @@ class SharedPredicatesTest {
             callees + """
             pub caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
                 mut ys: List<Int32> = List<Int32> { values = @arrOf(1) }
-                return ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
+                ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
             }
             """,
         )
@@ -137,11 +137,11 @@ class SharedPredicatesTest {
             pub @_extern(cpp = "ext::c", header = "ext.hxx") c: (x: Box) Int32;
             pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<Tuple0, Void>) Int32;
             pub k: (x: Box) Int32 {
-                return 0
+                0
             }
             pub caller: (bx: Box) Int32 {
                 fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
-                return a(1, "s") + b(fs) + c(bx) + d(() Void { }) + k(bx)
+                a(1, "s") + b(fs) + c(bx) + d(() Void { }) + k(bx)
             }
             """,
         )
@@ -174,54 +174,51 @@ class SharedPredicatesTest {
             pub K: Any {
                 pub n: Int32 = 0
                 pub get: () Int32 {
-                    return n
+                    n
                 }
             }
             pub Base: Any {
                 pub act: () Int32 {
-                    return 0
+                    0
                 }
             }
             pub Sub: Base {
                 override pub act: () Int32 {
                     G += 1
-                    return 1
+                    1
                 }
             }
             pub T: Any {
                 pub m: () Int32;
             }
             pub pure: () Int32 {
-                return 1
+                1
             }
             pub writesG: () Int32 {
                 G += 1
-                return 1
+                1
             }
             pub writesOwn: (mut x: Int32) Int32 {
                 x += 1
-                return x
+                x
             }
             pub apply: (f: Fx<Tuple0, Int32>) Int32 {
-                return f()
+                f()
             }
             pub swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
                 f = writesG
-                return f()
+                f()
             }
             pub ping: (n: Int32) Int32 {
-                if n > 0 {
-                    return pong(n - 1)
-                }
-                return 0
+                n > 0 ? pong(n - 1) : 0
             }
             pub pong: (n: Int32) Int32 {
                 mut k: Int32 = n
                 k += 1
-                return ping(k - 2)
+                ping(k - 2)
             }
             pub virt: (b: Base) Int32 {
-                return b.act()
+                b.act()
             }
             pub ext: (n: Int32, s: Str) Int32;
             pub extFx: (f: Fx<Tuple0, Int32>) Int32;
@@ -232,22 +229,22 @@ class SharedPredicatesTest {
                 ks: List<K> = List<K> { values = @arrOf(k) }
                 a: Int32 = pure() + writesG() + writesOwn(mut x)
                 c: Int32 = apply(() Int32 {
-                    return 1
+                    1
                 }) + apply(() Int32 {
                     G += 1
-                    return 1
+                    1
                 }) + apply(pure) + apply(writesG) + apply(f)
                 d: Int32 = f() + t.m() + virt(b) + ping(3) + k.get()
                 xs.add(1)
                 e: Bool = ks.contains(k) || xs.contains(1)
                 trace(a)
                 g: Int32 = ext(1, "s") + extFx(() Int32 {
-                    return 1
+                    1
                 }) + extFx(() Int32 {
                     G += 1
-                    return 1
+                    1
                 }) + extK(k)
-                return a + c + d + g
+                a + c + d + g
             }
             """,
         )
@@ -351,7 +348,7 @@ class SharedPredicatesTest {
             }
             pub bumped: () Int32 {
                 G += 1
-                return G
+                G
             }
             pub Defaulted: Any {
                 pub n: Int32 = bumped()

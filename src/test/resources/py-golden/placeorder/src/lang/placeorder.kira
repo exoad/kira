@@ -16,11 +16,11 @@ Shelf: Any {
         swaps += 1
         b.tag = swaps
         bags[0] = b
-        return 7
+        7
     }
 
     pub first: () Holder {
-        return bags[0]
+        bags[0]
     }
 }
 
@@ -29,22 +29,22 @@ mut gxs: List<Int32> = List<Int32> { }
 
 holderOf: (h: Holder) Holder {
     trace("holder")
-    return h
+    h
 }
 
 key: () Str {
     trace("key")
-    return "k"
+    "k"
 }
 
 idx: () Size {
     trace("idx")
-    return 0
+    0
 }
 
 val: () Int32 {
     trace("val")
-    return 1
+    1
 }
 
 swapGlobals: () Int32 {
@@ -53,7 +53,7 @@ swapGlobals: () Int32 {
     gxs = List<Int32> { }
     gxs.add(9)
     gxs.add(9)
-    return 3
+    3
 }
 
 show: (b: Holder) Str {
@@ -64,7 +64,7 @@ show: (b: Holder) Str {
         s = s + " ${ks[i]}"
         i += 1
     }
-    return s + " }"
+    s + " }"
 }
 
 main: () Void {

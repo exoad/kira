@@ -6,7 +6,7 @@ pub Pt: Struct {
     pub y: Int32 = 0
 
     pub sum: () Int32 {
-        return x + y
+        x + y
     }
 }
 
@@ -16,7 +16,7 @@ pub Line: Struct {
     pub closed: Bool = false
 
     pub length: () Int32 {
-        return end.x - start.x
+        end.x - start.x
     }
 }
 
@@ -28,14 +28,14 @@ pub Circle: Shape {
     pub radius: Int32
 
     override pub area: () Int32 {
-        return radius
+        radius
     }
 }
 
 LIMIT: Int32 = 4
 
 probe: () Pt {
-    return Pt { 1, 2 }
+    Pt { 1, 2 }
 }
 
 pub checks: (p: Pt, line: Line, m: Maybe<Pt>, s: Shape, k: Int32) Void {
@@ -53,13 +53,11 @@ pub checks: (p: Pt, line: Line, m: Maybe<Pt>, s: Shape, k: Int32) Void {
 // Inside the block the subject reads as what the identity test proved; after it, as lane B's tests do.
 pub narrowing: (m: Maybe<Pt>, s: Shape) Int32 {
     inside: Bool = m == Pt { x == m.y }                            // @type Int32 member=Field(Pt.y: Int32) @ m.y
-    if m == Pt { x > 0 } {
-        return m.x                                                 // @type Pt place=Param(m) @ m
-    }
-    if s != Circle { radius > 1 } {
-        return 0
-    }
-    return s.radius                                                // @type Circle place=Param(s) @ s
+    m == Pt { x > 0 }
+        ? m.x                                                      // @type Pt place=Param(m) @ m
+        : s != Circle { radius > 1 }
+        ? 0
+        : s.radius                                                 // @type Circle place=Param(s) @ s
 }
 
 // The outer scope comes after the members: a field of the enclosing type, then the module.
@@ -67,6 +65,6 @@ pub Grid: Struct {
     pub limit: Int32 = 3
 
     pub inside: (p: Pt) Bool {
-        return p == Pt { x < limit, y < LIMIT }                    // @type Int32 place=Field(This(Grid).limit) @ limit
+        p == Pt { x < limit, y < LIMIT }                           // @type Int32 place=Field(This(Grid).limit) @ limit
     }
 }

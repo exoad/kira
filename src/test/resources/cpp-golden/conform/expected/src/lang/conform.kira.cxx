@@ -51,66 +51,32 @@ namespace conform
   kira::Rc<Shape> make(std::int32_t r)
   {
       made += 1;
-      if(r > 0)
-      {
-          return std::make_shared<Circle>(r);
-      }
-      return std::make_shared<Square>(-r);
+      return r > 0 ? kira::Rc<Shape>(std::make_shared<Circle>(r)) : kira::Rc<Shape>(std::make_shared<Square>(-r));
   }
 
   bool big(const kira::Rc<Shape>& shape)
   {
-      if((dynamic_cast<const Circle*>(shape.get()) != nullptr) && std::dynamic_pointer_cast<Circle>(shape)->radius > 10)
-      {
-          return std::dynamic_pointer_cast<Circle>(shape)->radius < 100;
-      }
-      return false;
+      return (dynamic_cast<const Circle*>(shape.get()) != nullptr) && std::dynamic_pointer_cast<Circle>(shape)->radius > 10 ? std::dynamic_pointer_cast<Circle>(shape)->radius < 100 : false;
   }
 
   kira::Str describe(const kira::Rc<Shape>& s)
   {
-      if(!(dynamic_cast<const Circle*>(s.get()) != nullptr))
-      {
-          return "not a circle";
-      }
-      return kira::cat("circle of ", std::dynamic_pointer_cast<Circle>(s)->radius);
+      return !(dynamic_cast<const Circle*>(s.get()) != nullptr) ? kira::Str("not a circle") : kira::cat("circle of ", std::dynamic_pointer_cast<Circle>(s)->radius);
   }
 
   kira::Str tagged(const kira::Rc<Shape>& s)
   {
-      if((dynamic_cast<const Named*>(s.get()) != nullptr))
-      {
-          return std::dynamic_pointer_cast<Named>(s)->label();
-      }
-      return "untagged";
+      return (dynamic_cast<const Named*>(s.get()) != nullptr) ? std::dynamic_pointer_cast<Named>(s)->label() : kira::Str("untagged");
   }
 
   std::int32_t sideOr(const kira::Rc<Shape>& s)
   {
-      if(!(dynamic_cast<const Square*>(s.get()) != nullptr))
-      {
-          return -1;
-      }
-      else
-      {
-          return std::dynamic_pointer_cast<Square>(s)->side;
-      }
+      return !(dynamic_cast<const Square*>(s.get()) != nullptr) ? -1 : std::dynamic_pointer_cast<Square>(s)->side;
   }
 
   kira::Str kind(const kira::Rc<Shape>& s)
   {
-      if((dynamic_cast<const Circle*>(s.get()) != nullptr))
-      {
-          return kira::cat("r=", std::dynamic_pointer_cast<Circle>(s)->radius);
-      }
-      else if((dynamic_cast<const Square*>(s.get()) != nullptr))
-      {
-          return kira::cat("side=", std::dynamic_pointer_cast<Square>(s)->side);
-      }
-      else
-      {
-          return "other";
-      }
+      return (dynamic_cast<const Circle*>(s.get()) != nullptr) ? kira::cat("r=", std::dynamic_pointer_cast<Circle>(s)->radius) : (dynamic_cast<const Square*>(s.get()) != nullptr) ? kira::cat("side=", std::dynamic_pointer_cast<Square>(s)->side) : kira::Str("other");
   }
 
   bool smallOrNot(const kira::Rc<Shape>& s)
@@ -126,15 +92,7 @@ namespace conform
 
   std::int32_t tricks(const kira::Maybe<kira::Rc<Animal>>& a)
   {
-      if((dynamic_cast<const Dog*>(a.get()) != nullptr))
-      {
-          return std::dynamic_pointer_cast<Dog>(a)->tricks;
-      }
-      if(kira::isSome(a))
-      {
-          return 0;
-      }
-      return -1;
+      return (dynamic_cast<const Dog*>(a.get()) != nullptr) ? std::dynamic_pointer_cast<Dog>(a)->tricks : kira::isSome(a) ? 0 : -1;
   }
 
   std::int32_t radii(const kira::List<kira::Rc<Shape>>& xs)

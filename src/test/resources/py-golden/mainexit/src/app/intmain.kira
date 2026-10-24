@@ -7,5 +7,5 @@ main: () Int32 {
     if a.size() > 1 {
         throw "asked to: ${a[1]}"
     }
-    return 3
+    3
 }

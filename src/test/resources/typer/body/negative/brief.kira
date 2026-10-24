@@ -2,15 +2,15 @@
 // without else cannot be written (the parser refuses it); TyperBodyNegativeTest builds it.
 
 compute: () Int32 {
-    return 1
+    1
 }
 
 makeName: () Str {
-    return "n"
+    "n"
 }
 
 id<T>: (value: T) T {
-    return value
+    value
 }
 
 setTo: (mut out: Int32, v: Int32) Void {
@@ -18,7 +18,7 @@ setTo: (mut out: Int32, v: Int32) Void {
 }
 
 pair: (a: Int32, b: Int32) Int32 {
-    return a + b
+    a + b
 }
 
 pub NAME: Str = makeName()                 // @error types.const.str-literal
@@ -39,7 +39,7 @@ pub negatives: (s: Str, i: Int32, f: Float32, m: Maybe<Str>) Void {
 }
 
 pub fieldThroughMaybe: (m: Maybe<Str>) Bool {
-    return m.isEmpty                       // @error types.maybe.member
+    m.isEmpty                       // @error types.maybe.member
 }
 
 pub captures: () Void {
