@@ -135,6 +135,14 @@ class Stage3ReturnTest {
     }
 
     @Test
+    fun aLocalTheLoopChangesIsNotTheResultsStart() {
+        // Only a literal after the loop starts the result: `sum` changes in the loop, so a flag picks the value.
+        val old = "total: (xs: List<Int32>) Int32 {\n    mut sum: Int32 = 0\n    for x: Int32 in xs {\n        if x < 0 {\n            return x\n        }\n        sum += x\n    }\n    return sum\n}\n"
+        val want = "total: (xs: List<Int32>) Int32 {\n    mut sum: Int32 = 0\n    mut result: Int32 = 0\n    mut found: Bool = false\n    for x: Int32 in xs {\n        if x < 0 {\n            result = x\n            found = true\n            break\n        }\n        sum += x\n    }\n    found ? result : sum\n}\n"
+        assertEquals(want, convert(old))
+    }
+
+    @Test
     fun aReturnNoShapeReachesSetsTheResultAndAFlag() {
         // A try's handler returns and code follows the try.
         val old = "f: (s: Str) Int32 {\n    mut n: Int32 = 0\n    try {\n        n = parse(s)\n    } on e: Str {\n        return -1\n    }\n    trace(n)\n    return n * 2\n}\n\nparse: (s: Str) Int32 {\n    return 7\n}\n"
@@ -202,6 +210,17 @@ class Stage3ReturnTest {
                 return -seen
             }
 
+            total: (xs: List<Int32>) Int32 {
+                mut sum: Int32 = 0
+                for x: Int32 in xs {
+                    if x < 0 {
+                        return x
+                    }
+                    sum += x
+                }
+                return sum
+            }
+
             label: (a: Int32) Str {
                 if a == 0 {
                     trace("zero")
@@ -229,6 +248,8 @@ class Stage3ReturnTest {
                 trace(firstOver(@listOf(1, 2), 6))
                 trace(deep(@listOf(@listOf(1, 2), @listOf(3, 5, 7))))
                 trace(deep(@listOf(@listOf(1))))
+                trace(total(@listOf(1, 2, 3)))
+                trace(total(@listOf(1, -4, 3)))
                 trace(label(0))
                 trace(label(3))
                 trace(label(8))
@@ -250,7 +271,7 @@ class Stage3ReturnTest {
                 file.delete()
             }
         }
-        assertEquals("-1\n0\n1\n9\n-1\n4\n-1\nzero\nz\nsmall 6\nbig\n4\n", outs[0])
+        assertEquals("-1\n0\n1\n9\n-1\n4\n-1\n6\n-4\nzero\nz\nsmall 6\nbig\n4\n", outs[0])
         assertEquals(outs[0], outs[1])
     }
 
