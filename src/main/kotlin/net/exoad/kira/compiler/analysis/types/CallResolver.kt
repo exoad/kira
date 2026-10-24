@@ -127,9 +127,9 @@ internal class CallResolver(private val c: PhaseC) {
         // 1b. A method of a `with`'s receiver, then an Fx field of it, through the receiver's temporary.
         scope.withMember(name)?.let { frame ->
             c.members.method(frame.type, name)?.let { hit ->
-                c.exprs.captureValue(frame.temp, frame.declaredIn, ctx)
+                c.exprs.captureValue(frame.captured, frame.declaredIn, ctx)
                 model.refs[id] = hit.fn
-                model.withMembers[id] = frame.expr
+                frame.record(id, model)
                 return method(e, frame.self, frame.type, hit, id, hint, implicitThis = false, ctx = ctx, scope = scope)
             }
             val ct = c.exprs.synth(id, ctx, scope)

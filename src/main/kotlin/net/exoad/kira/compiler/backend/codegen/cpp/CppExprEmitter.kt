@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
+import net.exoad.kira.compiler.analysis.types.Conformance
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.ConversionKind
 import net.exoad.kira.compiler.analysis.types.FieldInit
@@ -286,6 +287,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** Whether the module is compiled freestanding (design 10): no exceptions, no heap, no hosted runtime. */
     val freestanding: Boolean get() = ctx.symbol.profile == Profile.FREESTANDING || ctx.options.isFreestanding(ctx.symbol.uri)
 
+    /** A test block's temporary (stage 3b) that reads as its subject, a name or a field seen as the identity, while its checks are written. */
+    private val testSubjects: IdentityHashMap<LocalSymbol, CppEx> = IdentityHashMap()
+
     // ---- entry ------------------------------------------------------------------------------
 
     /** [e] with its coercion, parenthesized for a parent of precedence [parentPrec]. */
@@ -465,6 +469,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun identifier(id: Identifier): CppEx {
         val sym = model.symbolOf(id) ?: return internal(id, "no symbol was recorded for '${id.value}'")
+        (sym as? LocalSymbol)?.let { testSubjects[it] }?.let { return it }
+        if (sym is FieldSymbol) model.testMembers[id]?.let { model.tests[it] }?.let { return field(it.self, sym) }
         val name = nameOfSymbol(sym, id) ?: return internal(id, "'${id.value}' names ${sym.javaClass.simpleName}, which is not a value")
         return model.narrowings[id]?.let { narrowedRead(name, it) } ?: CppEx(name, CppPrec.PRIMARY)
     }
@@ -482,6 +488,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** `value == Identity` (stage 3): a constant the types decided, kira::isSome of a Maybe, or a dynamic_cast. */
     private fun conformance(e: TypeCheckExpr): CppEx {
         val v = model.conformances[e] ?: return internal(e, "no conformance was recorded")
+        if (e.checks != null) {
+            return testBlock(e, v)
+        }
         val value = coerced(e.value)
         val test = when {
             v.always -> {
@@ -496,6 +505,36 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             v.subtype != null -> CppEx("(dynamic_cast<const ${ctx.qualified(v.subtype)}*>(${wrap(value, CppPrec.POSTFIX)}.get()) != nullptr)", CppPrec.PRIMARY)
             else -> CppEx("kira::isSome(${value.text})", CppPrec.POSTFIX)
         }
+        return if (e.negated) CppEx("!${wrap(test, CppPrec.UNARY)}", CppPrec.UNARY) else test
+    }
+
+    /**
+     * `value == T { checks }` (stage 3b): the identity test the types leave, then each check, by `&&`;
+     * the checks read the subject again, so it is a name or a field of one, any other value refused.
+     */
+    private fun testBlock(e: TypeCheckExpr, v: Conformance): CppEx {
+        val info = model.tests[e] ?: return internal(e, "no test block was recorded")
+        val temp = info.temp
+        if (temp != null && !info.path) {
+            return unsupported(e, "a test block on a value that is no name or field (bind it to a local first)")
+        }
+        val value = coerced(e.value)
+        val parts = mutableListOf<CppEx>()
+        when {
+            v.always -> {}
+            v.subtype != null && freestanding -> return unsupported(e, "a run-time type test in a freestanding module (no RTTI)")
+            v.subtype != null && !polymorphic(v.value) ->
+                return unsupported(e, "a run-time type test on ${v.value.display()} (a C++ class without virtual methods)")
+            v.subtype != null -> parts += CppEx("(dynamic_cast<const ${ctx.qualified(v.subtype)}*>(${wrap(value, CppPrec.POSTFIX)}.get()) != nullptr)", CppPrec.PRIMARY)
+            else -> parts += CppEx("kira::isSome(${value.text})", CppPrec.POSTFIX)
+        }
+        if (temp != null) {
+            // A field read as the identity, as a narrowed name reads.
+            testSubjects[temp] = v.narrowed?.let { narrowedRead(value.text, Narrowing(v.value, it)) } ?: value
+        }
+        e.checks.orEmpty().forEach { parts += coerced(it) }
+        temp?.let { testSubjects.remove(it) }
+        val test = if (parts.size == 1) parts[0] else CppEx(parts.joinToString(" && ") { wrap(it, CppPrec.AND) }, CppPrec.AND)
         return if (e.negated) CppEx("!${wrap(test, CppPrec.UNARY)}", CppPrec.UNARY) else test
     }
 

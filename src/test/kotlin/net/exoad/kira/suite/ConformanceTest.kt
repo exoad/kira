@@ -99,10 +99,9 @@ class ConformanceTest {
     }
 
     @Test
-    fun aTestBlockIsStage3bAndAnIfBodyIsNoTestBlock() {
-        val e = parseError("f: (p: Pt) Bool {\n    return p == Pt { x == 1 }\n}")
-        assertEquals("parse.conform.block", e.tag)
-        assertTrue(e.message.contains("not part of Kira yet") && e.message.contains("x == (T { ... })"), e.message)
+    fun aTestBlockIsStage3bsAndAnIfBodyIsNoTestBlock() {
+        // Stage 3b lifted the refusal: this is a test block now (TestBlockTest).
+        expectNoErrors(snippet("f: (p: Pt) Bool {\n    return p == Pt { x == 1 }\n}"))
         // A construction to compare with goes in parentheses.
         assertIs<BinaryExpr>(compare("p == (Pt { 1 })"))
         // In a condition the brace opens the body.

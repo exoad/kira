@@ -89,6 +89,12 @@ data class Conformance(val value: KType, val always: Boolean, val subtype: Symbo
 data class Narrowing(val from: KType, val to: KType)
 
 /**
+ * A test block (stage 3b): [self] reads its bare members, the subject if a local or parameter, else
+ * [temp], the subject held once; [path]: a field or name a backend may read again in place of [temp].
+ */
+data class TestInfo(val self: Identifier, val temp: LocalSymbol?, val path: Boolean)
+
+/**
  * Purity (EffectsPass), ordered: what evaluating an expression (or calling a function) does
  * to its siblings under D33. An absent entry means [IMPURE].
  *
@@ -245,6 +251,12 @@ class TypedModel {
 
     /** Each read of a local or parameter that a conformance test around it narrowed. */
     val narrowings: IdentityHashMap<Identifier, Narrowing> = IdentityHashMap()
+
+    /** Each test block typed (stage 3b), keyed by its conformance test. */
+    val tests: IdentityHashMap<TypeCheckExpr, TestInfo> = IdentityHashMap()
+
+    /** A bare name in a test block that is a member of its identity: read through [TestInfo.self]. */
+    val testMembers: IdentityHashMap<Identifier, TypeCheckExpr> = IdentityHashMap()
 
     /** The classes some `with` copies. */
     val withCopied: MutableSet<ClassSymbol> = java.util.Collections.newSetFromMap(IdentityHashMap())

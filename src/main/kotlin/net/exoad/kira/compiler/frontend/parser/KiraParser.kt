@@ -1212,7 +1212,8 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 continue
             }
             if ((binaryOpType == BinaryOp.EQUALS || binaryOpType == BinaryOp.NOT_EQUAL) && startsIdentity()) {
-                left = putOrigin(TypeCheckExpr(left, parseIdentity(), binaryOpType == BinaryOp.NOT_EQUAL), origin)
+                val identity = parseIdentity()
+                left = putOrigin(TypeCheckExpr(left, identity, binaryOpType == BinaryOp.NOT_EQUAL, parseTestBlock()), origin)
                 continue
             }
             if (binaryOpType == BinaryOp.TYPE_CAST) {
@@ -1347,20 +1348,94 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         else -> false
     }
 
-    /** The identity [startsIdentity] saw; a test block after it (`x == T { f == v }`) is stage 3b's. */
-    private fun parseIdentity(): Type {
-        val type = if (at(Token.Type.S_OPEN_PARENTHESIS)) parseFunctionType(namesOptional = true) else parseType()
-        if (at(Token.Type.S_OPEN_BRACE) && !noObjectInit) {
+    /** The identity [startsIdentity] saw. */
+    private fun parseIdentity(): Type =
+        if (at(Token.Type.S_OPEN_PARENTHESIS)) parseFunctionType(namesOptional = true) else parseType()
+
+    /**
+     * The test block after an identity (stage 3b), `{ status == 200, ok }`, its checks ANDed; null with no brace.
+     * In a bare condition the brace is the body's unless the condition goes on after it: `if r == Reply { ok } { ... }`.
+     */
+    private fun parseTestBlock(): List<Expr>? {
+        if (!at(Token.Type.S_OPEN_BRACE) || (noObjectInit && !conditionGoesOn())) return null
+        val open = here()
+        advancePointer()
+        val checks = mutableListOf<Expr>()
+        withNoObjectInit(false) {
+            while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
+                if (checks.isNotEmpty()) {
+                    expectThenAdvance(Token.Type.S_COMMA)
+                }
+                val checkAt = here()
+                if (at(Token.Type.IDENTIFIER) && peek(1).type == Token.Type.S_EQUAL) refuseAssignInTest(peek(1).canonicalLocation, peek().content)
+                val check = parseExpr()
+                if (check is AssignmentExpr || check is CompoundAssignmentExpr || check is PlaceAssignmentExpr) refuseAssignInTest(checkAt, null)
+                checks.add(putOrigin(check, checkAt))
+            }
+        }
+        expectThenAdvance(Token.Type.S_CLOSE_BRACE)
+        if (checks.isEmpty()) {
             Diagnostics.panic(
-                "parse.conform.block",
-                "A test block, 'x == T { field == value }', is not part of Kira yet (stage 3b). " +
-                    "To compare with a value you build, put it in parentheses: 'x == (T { ... })'.",
-                location = here(),
+                "parse.test.empty",
+                "A test block holds at least one check, 'x == T { field == value }'; 'x == T' alone tests the identity.",
+                location = open,
                 selectorLength = 1,
                 context = context
             )
         }
-        return type
+        return checks
+    }
+
+    /**
+     * Whether the block opening at the pointer is followed by a `{`, `&&`, `||` or `?`: none can
+     * follow an if's or while's body, so the block is a test block in the condition.
+     */
+    private fun conditionGoesOn(): Boolean {
+        var depth = 0
+        var i = 0
+        while (true) {
+            when (peek(i).type) {
+                Token.Type.S_OPEN_BRACE -> depth++
+                Token.Type.S_CLOSE_BRACE -> if (--depth == 0) return peek(i + 1).type in conditionTokens
+                Token.Type.S_EOF -> return false
+                else -> {}
+            }
+            i++
+        }
+    }
+
+    private val conditionTokens = setOf(Token.Type.S_OPEN_BRACE, Token.Type.OP_CMP_AND, Token.Type.OP_CMP_OR, Token.Type.S_QUESTION_MARK)
+
+    private fun refuseAssignInTest(at: SourcePosition, name: String?): Nothing = Diagnostics.panic(
+        "parse.test.assign",
+        "A test block tests, so it never assigns: write '${name ?: "x"} == value'. " +
+            "'{ ${name ?: "x"} = value }' builds a value; to compare with one, put the construction in parentheses: 'v == (T { ... })'.",
+        location = at,
+        selectorLength = 1,
+        context = context
+    )
+
+    /** A bare name compared with `==` or `!=` (or tested against an identity), unparenthesized: a test's spelling (stage 3b). */
+    private fun isTestShaped(e: Expr): Boolean = e !in context.astParenthesized && when (e) {
+        is BinaryExpr -> (e.operator == BinaryOp.EQUALS || e.operator == BinaryOp.NOT_EQUAL) && e.leftExpr is Identifier &&
+            e.leftExpr !in context.astParenthesized
+        is TypeCheckExpr -> e.value is Identifier && e.value !in context.astParenthesized
+        else -> false
+    }
+
+    /** A test where a value is built, a construction's argument or a `with` block's statement: refused with the spellings that build and that test. */
+    private fun refuseTestInBuild(e: Expr, where: String, builds: String) {
+        if (!isTestShaped(e)) return
+        val name = ((e as? BinaryExpr)?.leftExpr ?: (e as TypeCheckExpr).value) as Identifier
+        val op = if ((e as? BinaryExpr)?.operator == BinaryOp.NOT_EQUAL || (e as? TypeCheckExpr)?.negated == true) "!=" else "=="
+        Diagnostics.panic(
+            "parse.build.test",
+            "$where builds, so '${name.value} $op' is no test here: $builds. A test block follows an identity: " +
+                "'v == T { ${name.value} $op value }'. A Bool computed by a comparison goes in parentheses: '(${name.value} $op value)'.",
+            location = originOf(e),
+            selectorLength = max(1, name.value.length),
+            context = context
+        )
     }
 
     /**
@@ -1797,7 +1872,9 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         try {
             withNoObjectInit(false) {
                 while (!at(Token.Type.S_CLOSE_BRACE) && !at(Token.Type.S_EOF)) {
-                    statements.add(parseStatement(null))
+                    val s = parseStatement(null)
+                    if (s.javaClass == Statement::class.java) refuseTestInBuild(s.expr, "A `with` block", "assign a member with 'x = value'")
+                    statements.add(s)
                 }
             }
         } finally {
@@ -2677,7 +2754,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                             selectorLength = max(1, startToken.content.length)
                         )
                     }
-                    args.add(parseExpr())
+                    args.add(parseExpr().also { refuseTestInBuild(it, "A construction", "give a field with 'x = value'") })
                 }
             }
         }

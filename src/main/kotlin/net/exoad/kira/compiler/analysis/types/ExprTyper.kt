@@ -336,16 +336,17 @@ internal class ExprTyper(private val c: PhaseC) {
         }
     }
 
-    /** [id], a member of [frame]'s receiver read bare in its block: a field through the receiver's temporary. */
+    /** [id], a member of [frame]'s receiver read bare in its block: a field through the receiver's temporary (a test block's subject). */
     private fun withMember(id: Identifier, frame: WithFrame, ctx: BodyContext): KType {
         val (f, type) = c.members.field(frame.type, id.value) ?: run {
-            c.report("types.member.method-value", "'${id.value}' is a method of the `with`'s receiver; call it (${id.value}(...)).", id)
+            val of = if (frame.expr is TypeCheckExpr) "this test block's ${frame.type.display()}" else "the `with`'s receiver"
+            c.report("types.member.method-value", "'${id.value}' is a method of $of; call it (${id.value}(...)).", id)
             return KType.Error
         }
         model.refs[id] = f
-        model.places[id] = Place.Field(Place.Local(frame.temp), f)
-        model.withMembers[id] = frame.expr
-        captureValue(frame.temp, frame.declaredIn, ctx)
+        model.places[id] = Place.Field(frame.place, f)
+        frame.record(id, model)
+        captureValue(frame.captured, frame.declaredIn, ctx)
         return type
     }
 

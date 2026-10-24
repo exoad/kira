@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Coercion
+import net.exoad.kira.compiler.analysis.types.Conformance
 import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.ConversionKind
 import net.exoad.kira.compiler.analysis.types.Effect
@@ -129,6 +130,9 @@ class PyModuleEmitter(
 
     /** The call being written as a whole statement. */
     private var statementCall: FunctionCallExpr? = null
+
+    /** A test block's temporary (stage 3b) that reads as its subject, a name or a field, while its checks are written. */
+    private val testSubjects: IdentityHashMap<LocalSymbol, Py> = IdentityHashMap()
 
     /** The functions the sidecar must define, with their arities, checked at import (D67). */
     private val sidecarNames = mutableListOf<Pair<String, Int>>()
@@ -685,6 +689,9 @@ class PyModuleEmitter(
 
         /** The lines that run before the statement being written: each `with` in it. Null outside a statement. */
         var pre: MutableList<String>? = null
+
+        /** The held test-block subjects (lambda parameters) around the expression: a def before the statement takes them. */
+        val held = mutableListOf<String>()
     }
 
     private fun block(statements: List<Statement>, f: Frame): List<String> {
@@ -1253,6 +1260,10 @@ class PyModuleEmitter(
     private fun withField(id: Identifier, field: FieldSymbol): String? =
         model.withMembers[id]?.let { model.withs[it] }?.let { "${local(it.temp.name)}.${pyName(field)}" }
 
+    /** A field of a test block's identity named bare in it: through the block's subject. */
+    private fun testField(id: Identifier, field: FieldSymbol, f: Frame): String? =
+        model.testMembers[id]?.let { model.tests[it] }?.let { "${wrap(expr(it.self, f), PyPrec.POSTFIX)}.${pyName(field)}" }
+
     /**
      * A lambda (D74): a module-level def, or a factory of its captures run where the lambda is, so
      * each closure holds the copies C++'s `[k]`, `[c_k = k]` and `[*this]` take.
@@ -1349,8 +1360,9 @@ class PyModuleEmitter(
     }
 
     private fun identifier(id: Identifier, f: Frame): Py = when (val sym = model.symbolOf(id)) {
-        is LocalSymbol, is ParamSymbol -> Py(local(sym.name), PyPrec.ATOM)
-        is FieldSymbol -> (withField(id, sym) ?: fieldOfThis(sym, id, f))?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
+        is LocalSymbol -> testSubjects[sym] ?: Py(local(sym.name), PyPrec.ATOM)
+        is ParamSymbol -> Py(local(sym.name), PyPrec.ATOM)
+        is FieldSymbol -> (withField(id, sym) ?: testField(id, sym, f) ?: fieldOfThis(sym, id, f))?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
         is GlobalSymbol -> globalRead(sym, id)
         is FnSymbol -> fnValue(sym, id)
         else -> refusePy(id, "the name '${id.value}'")
@@ -1424,7 +1436,7 @@ class PyModuleEmitter(
     private fun listPlace(e: Expr, f: Frame): String? = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol, is ParamSymbol -> local(sym.name)
-            is FieldSymbol -> withField(e, sym) ?: fieldOfThis(sym, e, f)
+            is FieldSymbol -> withField(e, sym) ?: testField(e, sym, f) ?: fieldOfThis(sym, e, f)
             is GlobalSymbol -> ref(sym, e)
             else -> refuseText(e, "this List")
         }
@@ -1804,6 +1816,9 @@ class PyModuleEmitter(
     /** `value == Identity` (stage 3): a constant the types decided, `isinstance`, or a Maybe's `is not None`. */
     private fun conformance(e: TypeCheckExpr, f: Frame): Py {
         val v = model.conformances[e] ?: return refusePy(e, "a conformance test the typer did not decide")
+        if (e.checks != null) {
+            return testBlock(e, v, f)
+        }
         val value = expr(e.value, f)
         if (v.always) {
             // The value is still evaluated unless it is a name.
@@ -1815,6 +1830,33 @@ class PyModuleEmitter(
             return if (e.negated) Py("not ${wrap(test, PyPrec.NOT)}", PyPrec.NOT) else test
         }
         return Py("${wrap(value, PyPrec.CMP + 1)} ${if (e.negated) "is" else "is not"} None", PyPrec.CMP)
+    }
+
+    /**
+     * `value == T { checks }` (stage 3b): the identity test the types leave, then each check, by `and`;
+     * a subject that is no name or field is held once, the parameter of a lambda called on it.
+     */
+    private fun testBlock(e: TypeCheckExpr, v: Conformance, f: Frame): Py {
+        val info = model.tests[e] ?: return refusePy(e, "a test block the typer did not resolve")
+        val temp = info.temp
+        val held = temp != null && !info.path
+        val subject = if (held) Py(local(temp!!.name), PyPrec.ATOM) else expr(e.value, f)
+        if (temp != null && !held) testSubjects[temp] = subject
+        if (held) f.held += subject.text
+        val parts = mutableListOf<Py>()
+        when {
+            v.always -> {}
+            v.subtype != null -> parts += Py("isinstance(${wrap(subject, PyPrec.TERNARY)}, ${ref(v.subtype, e) ?: "None"})", PyPrec.POSTFIX)
+            else -> parts += Py("${wrap(subject, PyPrec.CMP + 1)} is not None", PyPrec.CMP)
+        }
+        e.checks.orEmpty().forEach { parts += expr(it, f) }
+        if (held) f.held.removeLast()
+        temp?.let { testSubjects.remove(it) }
+        var test = if (parts.size == 1) parts[0] else Py(parts.joinToString(" and ") { wrap(it, PyPrec.AND) }, PyPrec.AND)
+        if (held) {
+            test = Py("(lambda ${local(temp!!.name)}: ${test.text})(${wrap(expr(e.value, f), PyPrec.TERNARY)})", PyPrec.POSTFIX)
+        }
+        return if (e.negated) Py("not ${wrap(test, PyPrec.NOT)}", PyPrec.NOT) else test
     }
 
     /** A comparison of numbers, Bools or Strs, or `==` and `!=` of two structs (their `__eq__`, C++'s defaulted operator==). */
@@ -2033,8 +2075,9 @@ class PyModuleEmitter(
         } finally {
             statementCall = statement
         }
-        pre += listOf("def $name():") + indent(body)
-        return Py("$name()", PyPrec.POSTFIX)
+        val held = f.held.joinToString(", ")
+        pre += listOf("def $name($held):") + indent(body)
+        return Py("$name($held)", PyPrec.POSTFIX)
     }
 
     /** An if-expression Python cannot write as `a if c else b`: an arm holds statements. */

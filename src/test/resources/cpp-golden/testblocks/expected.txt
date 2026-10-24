@@ -1,0 +1,13 @@
+
+testblocks - test blocks on classes and structs
+
+  ok    a class's test, then its checks
+  ok    after an if on != that leaves, the rest sees the block passed
+  ok    a Circle whose check fails is no match
+  ok    a nested block on a class field and a Maybe field
+  ok    a Square field and an empty Maybe field are no match
+  ok    a struct's nested fields and a Maybe
+  ok    the body sees a Square
+  ok    the receiver as the subject
+
+8 checks, 0 failed
