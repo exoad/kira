@@ -6,4 +6,3 @@ module control.flow:app.ranges  profile=HOSTED ns=ranges imports=[]
   fn sumTo: (limit: Int32) Int32  body
 diag error rules.visibility.module control.flow/app/main.kira:10:20  Function 'sumTo' is declared in control.flow:app.ranges but is not pub, so control.flow:app.main cannot use it. Mark it `pub`.
 diag error rules.visibility.module control.flow/app/main.kira:11:18  Function 'parityLabel' is declared in control.flow:app.checks but is not pub, so control.flow:app.main cannot use it. Mark it `pub`.
-diag warning types.for.legacy control.flow/app/ranges.kira:3:5  `for mut i: a..b` includes b and is deprecated (D17); write `for i: T in a..(b + 1)`, whose range excludes its end.

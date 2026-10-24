@@ -1,13 +1,13 @@
 golden.py.throwing.lib.parse as parse
 
-mut log: List<Int32> = List<Int32> { }
+log: Mutable<List<Int32>> = List<Int32> { }
 
-Account: Any {
+Account: Mutable<Any> {
     pub name: Str
-    pub mut balance: Int32 = 0
-    pub mut last: Result<Int32, Str> = Result.success(0)
+    pub balance: Mutable<Int32> = 0
+    pub last: Mutable<Result<Int32, Str>> = Result.success(0)
 
-    pub mut take: (n: Int32) Int32 {
+    pub take: (n: Int32) Int32 {
         if n > balance {
             throw "${name} has ${balance}, not ${n}"
         }
@@ -29,8 +29,8 @@ deep: (n: Int32) Int32 {
 }
 
 guarded: (s: Str) Int64 {
-    mut result: Int64 = -1
-    mut done: Bool = false
+    result: Mutable<Int64> = -1
+    done: Mutable<Bool> = false
     try {
         result = number(s)
         done = true
@@ -41,7 +41,7 @@ guarded: (s: Str) Int64 {
 }
 
 loop: () Int32 {
-    mut n: Int32 = 0
+    n: Mutable<Int32> = 0
     for i: Int32 in 0..5 {
         try {
             if i % 2 == 1 {
@@ -83,7 +83,7 @@ main: () Void {
     } on err: Str {
         trace("${err} after ${log.size()}")
     }
-    mut a: Account = Account { "amy" }
+    a: Mutable<Account> = Account { "amy" }
     a.balance = 5
     try {
         trace(a.take(2))

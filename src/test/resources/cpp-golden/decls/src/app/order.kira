@@ -5,7 +5,7 @@
 
 // A constant and state of a struct declared later: the header defines Pt first.
 pub ORIGIN: Pt = Pt {}
-pub mut cursor: Pt = Pt {}
+pub cursor: Mutable<Pt> = Pt {}
 
 // Forward references among values: each names what the source declares later.
 pub Arr<UInt8, N> as Frame
@@ -30,7 +30,7 @@ pub Pt: Struct {
     pub y: Int32 = 0
 
     // A parameter named like a field would shadow it in C++.
-    pub mut setX: (x: Int32) Void;
+    pub withX: (x: Int32) Pt;
 }
 
 // Private declarations the public ones name go in the header's namespace impl_.
@@ -70,11 +70,11 @@ pub Sized: Struct {
 pub Cfg: Struct {
     pub limit: Maybe<Int32> = null
 }
-pub mut last: Maybe<Int32> = null
+pub last: Mutable<Maybe<Int32>> = null
 pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
 
-// Unsafe<T> is const T* unless mut.
-pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+// Unsafe<T> is const T*.
+pub peek: (p: Unsafe<Int32>) Int32;
 
 // A literal under a Maybe carries the narrow type it converts to: std::optional's
 // converting constructor is a template, and int to unsigned char inside it is
@@ -92,10 +92,10 @@ pub narrow: (x: Maybe<Int16> = 3) Int32;
 // declaration, and its empty default is value-initialized in place (libc++
 // rejects the prvalue form before Later is complete); a Deque element must be
 // complete on libc++ and MSVC, so Later is defined before Queued.
-pub Early: Struct {
+pub Early: Mutable<Any> {
     pub xs: List<Later> = List<Later> {}
 }
-pub Queued: Struct {
+pub Queued: Mutable<Any> {
     pub d: Deque<Later> = Deque<Later> {}
 }
 pub Later: Struct {

@@ -14,7 +14,7 @@ module decls:negative  profile=HOSTED ns=negative imports=[]
     fn tag: () Int32  pub virtual body
     flat [Marker.tag]
   class Late : Marker  pub
-diag warning rules.naming.constant decls/negative.kira:4:5  Constant 'value' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean 'VALUE'?
+diag warning rules.naming.constant decls/negative.kira:4:5  Constant 'value' does not conform to UPPER_SNAKE_CASE (a module-level binding that is not Mutable is a constant); did you mean 'VALUE'?
 diag error types.type.unknown decls/negative.kira:4:12  Unknown type 'Missing'.
 diag error types.alias.cycle decls/negative.kira:7:1  Alias 'Ping' refers to itself (Ping -> Pong -> Ping); an alias is inlined, so it cannot be recursive.
 diag error types.decl.duplicate decls/negative.kira:13:5  'twice' is already declared in module decls:negative (line 12).

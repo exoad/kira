@@ -37,6 +37,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * The tables TypedModelDumper does not print, checked one fact at a time: captures, loop
@@ -135,19 +136,21 @@ class TyperBodyModelTest {
 
     @Test
     fun aStructLambdaWritingAFieldWritesItsCopy() {
-        val p = snippet(
-            """
-            pub S: Struct {
-                pub k: Int32 = 0
-                pub mut f: () Fx<Tuple0, Void> {
-                    () Void {
-                        k = 1
+        DialectGates.stage4(false) {
+            val p = snippet(
+                """
+                pub S: Struct {
+                    pub k: Int32 = 0
+                    pub mut f: () Fx<Tuple0, Void> {
+                        () Void {
+                            k = 1
+                        }
                     }
                 }
-            }
-            """
-        )
-        TyperTestSupport.expectDiagnostic(p, "types.lambda.assign-capture")
+                """
+            )
+            TyperTestSupport.expectDiagnostic(p, "types.lambda.assign-capture")
+        }
     }
 
     // ---- loops (design 5.4) ------------------------------------------------------------------
@@ -163,21 +166,20 @@ class TyperBodyModelTest {
                 for c: Char in v { }
                 for e: Tuple2<Str, Int32> in m { }
                 for k: Int64 in s { }
-                for mut j: 0..n { }
             }
             """
         )
-        assertEquals(listOf("types.for.legacy"), p.diagnostics.map { it.code })
+        assertEquals(emptyList<String>(), p.diagnostics.map { it.code })
         val plans = BodyTestSupport.every<ForIterationStatement>(p).map { p.model.loops[it]!! }
         assertEquals(
-            listOf(LoopKind.RANGE, LoopKind.LIST, LoopKind.ARR, LoopKind.VIEW, LoopKind.MAP, LoopKind.SET, LoopKind.RANGE_INCLUSIVE),
+            listOf(LoopKind.RANGE, LoopKind.LIST, LoopKind.ARR, LoopKind.VIEW, LoopKind.MAP, LoopKind.SET),
             plans.map { it.kind },
         )
-        assertEquals(listOf("Size", "Int32", "UInt8", "Char", "Tuple2<Str, Int32>", "Int64", "Int32"), plans.map { it.element.display() })
-        assertEquals(listOf(false, false, false, false, false, false, true), plans.map { it.isLegacy })
+        assertEquals(listOf("Size", "Int32", "UInt8", "Char", "Tuple2<Str, Int32>", "Int64"), plans.map { it.element.display() })
+        assertEquals(listOf(false, false, false, false, false, false), plans.map { it.isLegacy })
         val vars = plans.map { it.variable as LocalSymbol }
-        assertEquals(listOf("i", "x", "b", "c", "e", "k", "j"), vars.map { it.name })
-        assertEquals(listOf(false, false, false, false, false, false, true), vars.map { it.isMut }, "only the legacy `for mut` variable is mut")
+        assertEquals(listOf("i", "x", "b", "c", "e", "k"), vars.map { it.name })
+        assertEquals(listOf(false, false, false, false, false, false), vars.map { it.isMut }, "a loop variable is not mut")
         BodyTestSupport.every<ForIterationStatement>(p).forEachIndexed { i, s ->
             assertSame(vars[i], p.model.declSyms[s.forIterationExpr])
             assertSame(vars[i], p.model.refs[s.forIterationExpr.initializer])
@@ -218,15 +220,15 @@ class TyperBodyModelTest {
         pub command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
             verb
         }
-        pub bump: (mut value: Int32, by: Int32 = 1) Void {
-            value += by
+        pub bump: (values: List<Int32>, by: Int32 = 1) Void {
+            values.add(by)
         }
         pub caller: () Void {
             r1: Int32 = sub(b = 3, a = 10)
             r2: Str = command("go")
             r3: Str = command("go", retries = 5)
-            mut n: Int32 = 0
-            bump(mut n)
+            n: List<Int32> = List<Int32> { }
+            bump(n)
         }
     """
 
@@ -258,9 +260,9 @@ class TyperBodyModelTest {
     }
 
     @Test
-    fun aMutArgumentIsGivenByReferenceAndIsAPlace() {
+    fun aListArgumentTheCalleeChangesIsGivenByReferenceAndIsAPlace() {
         val p = snippet(calls)
-        val call = BodyTestSupport.node<FunctionCallExpr>(p, "bump(mut n)")
+        val call = BodyTestSupport.node<FunctionCallExpr>(p, "bump(n)")
         val rc = p.model.calls[call]!!
         assertEquals(listOf("given n byRef", "default by trailing"), rc.args.map(::binding))
         val n = (rc.args[0] as ArgBinding.Given).expr
@@ -563,12 +565,12 @@ class TyperBodyModelTest {
     fun aConstructionListsEveryFieldInheritedFirstInDeclarationOrder() {
         val p = snippet(
             """
-            pub Animal: Any {
+            pub Animal: Mutable<Any> {
                 pub name: Str
-                pub mut age: Int32 = 0
+                pub age: Mutable<Int32> = 0
             }
-            pub Dog: Animal {
-                pub mut tricks: Int32 = 0
+            pub Dog: Mutable<Animal> {
+                pub tricks: Mutable<Int32> = 0
             }
             pub f: () Dog {
                 Dog { "Rex", tricks = 2 }
@@ -640,7 +642,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: () Void {
-                mut a: Int32 = 1
+                a: Mutable<Int32> = 1
                 try {
                     a += 1
                 } on e: Str {
@@ -661,9 +663,9 @@ class TyperBodyModelTest {
     fun fieldsReachedThroughTheImplicitReceiverArePlacesOfThis() {
         val p = snippet(
             """
-            pub P: Struct {
-                pub x: Int32 = 0
-                pub mut bump: () Void {
+            pub P: Mutable<Any> {
+                pub x: Mutable<Int32> = 0
+                pub bump: () Void {
                     x += 1
                 }
             }

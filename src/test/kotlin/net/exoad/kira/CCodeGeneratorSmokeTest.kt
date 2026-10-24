@@ -20,7 +20,7 @@ class CCodeGeneratorSmokeTest {
             }
 
             main: () Void {
-                mut z: Int32 = add(x, y)
+                z: Mutable<Int32> = add(x, y)
                 trace(z)
             }
         """.trimIndent()

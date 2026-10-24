@@ -5,15 +5,19 @@
 #include "kira/macro_push.hxx"
 namespace net
 {
-  struct Link;
+  class Link;
 
-  struct Link
+  class Link final
   {
-      ::kira::os::Datagram last = ::kira::os::Datagram{};
-      kira::Maybe<kira::Rc<kira::os::UdpSocket>> sock = kira::none;
-      kira::Rc<kira::os::Poller> poll = std::make_shared<kira::os::Poller>();
-      std::int32_t events = ::kira::os::POLL_READ;
-      std::int32_t port = 0;
+  public:
+      Link(::kira::os::Datagram last_ = ::kira::os::Datagram{}, kira::Maybe<kira::Rc<kira::os::UdpSocket>> sock_ = kira::none, kira::Rc<kira::os::Poller> poll_ = std::make_shared<kira::os::Poller>(), std::int32_t events_ = ::kira::os::POLL_READ, std::int32_t port_ = 0);
+      Link(const Link&) = delete;
+      Link& operator=(const Link&) = delete;
+      ::kira::os::Datagram last;
+      kira::Maybe<kira::Rc<kira::os::UdpSocket>> sock;
+      kira::Rc<kira::os::Poller> poll;
+      std::int32_t events;
+      std::int32_t port;
   };
 
   [[nodiscard]] bool send(const kira::Rc<kira::os::UdpSocket>& s, const ::kira::os::Datagram& d);

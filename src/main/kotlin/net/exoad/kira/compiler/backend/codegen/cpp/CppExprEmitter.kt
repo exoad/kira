@@ -499,6 +499,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 return if (e.value is Identifier || e.value is ThisExpr) CppEx(k, CppPrec.PRIMARY)
                 else CppEx("(static_cast<void>(${value.text}), $k)", CppPrec.PRIMARY)
             }
+            v.mutables != null -> return unsupported(e, "a run-time test of `Mutable<..>` (it is lowered on the py target)")
             v.subtype != null && freestanding -> return unsupported(e, "a run-time type test in a freestanding module (no RTTI)")
             v.subtype != null && !polymorphic(v.value) ->
                 return unsupported(e, "a run-time type test on ${v.value.display()} (a C++ class without virtual methods)")
@@ -522,6 +523,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val parts = mutableListOf<CppEx>()
         when {
             v.always -> {}
+            v.mutables != null -> return unsupported(e, "a run-time test of `Mutable<..>` (it is lowered on the py target)")
             v.subtype != null && freestanding -> return unsupported(e, "a run-time type test in a freestanding module (no RTTI)")
             v.subtype != null && !polymorphic(v.value) ->
                 return unsupported(e, "a run-time type test on ${v.value.display()} (a C++ class without virtual methods)")

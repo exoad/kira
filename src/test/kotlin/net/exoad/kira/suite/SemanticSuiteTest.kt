@@ -261,8 +261,8 @@ class SemanticSuiteTest {
             """
             sub: (a: Int32, b: Int32) Int32 { a - b }
 
-            Esc: Any {
-                pub mut pulse: Int32
+            Esc: Mutable<Any> {
+                pub pulse: Mutable<Int32>
                 pub set: (v: Int32, scale: Int32) Void { pulse = v * scale }
             }
 
@@ -431,7 +431,7 @@ class SemanticSuiteTest {
             pub Int32 as Age
 
             main: () Void {
-                mut count: Int32 = 0
+                count: Mutable<Int32> = 0
                 friend: Pet = Pet { }
             }
             """
@@ -527,7 +527,7 @@ class SemanticSuiteTest {
         val results = analyze(
             """
             main: () Void {
-                mut i: Int32 = 0
+                i: Mutable<Int32> = 0
                 while i < 3 {
                     i = i + 1
                 }
@@ -536,7 +536,7 @@ class SemanticSuiteTest {
                 } else {
                     trace("other")
                 }
-                for mut j: 0..5 {
+                for j: Int32 in 0..6 {
                     trace(j)
                 }
             }

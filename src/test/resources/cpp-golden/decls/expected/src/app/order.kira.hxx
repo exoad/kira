@@ -9,8 +9,8 @@ namespace order
   struct Sized;
   struct Cfg;
   struct Narrow;
-  struct Early;
-  struct Queued;
+  class Early;
+  class Queued;
   struct Later;
 
   inline constexpr kira::Size N = 4;
@@ -44,7 +44,7 @@ namespace order
       std::int32_t x = 0;
       std::int32_t y = 0;
 
-      void setX(std::int32_t x_p);
+      [[nodiscard]] Pt withX(std::int32_t x_p) const;
   };
 
   inline constexpr Pt ORIGIN = Pt{};
@@ -86,24 +86,32 @@ namespace order
       std::uint8_t b = 7;
   };
 
-  struct Early
-  {
-      kira::List<Later> xs{};
-  };
-
   struct Later
   {
       std::int32_t v = 0;
   };
 
-  struct Queued
+  class Early final
   {
-      kira::Deque<Later> d{};
+  public:
+      explicit Early(kira::List<Later> xs_ = kira::List<Later>{});
+      Early(const Early&) = delete;
+      Early& operator=(const Early&) = delete;
+      kira::List<Later> xs;
+  };
+
+  class Queued final
+  {
+  public:
+      explicit Queued(kira::Deque<Later> d_ = kira::Deque<Later>{});
+      Queued(const Queued&) = delete;
+      Queued& operator=(const Queued&) = delete;
+      kira::Deque<Later> d;
   };
 
   [[nodiscard]] std::int32_t scaleBy(std::int32_t limit_p);
   [[nodiscard]] kira::Maybe<std::int32_t> find(const kira::Str& key, const kira::Maybe<std::int32_t>& hint = kira::none);
-  [[nodiscard]] std::int32_t peek(const std::int32_t* p, std::int32_t* q);
+  [[nodiscard]] std::int32_t peek(const std::int32_t* p);
   [[nodiscard]] std::int32_t narrow(const kira::Maybe<std::int16_t>& x = std::int16_t{3});
 }
 #include "kira/macro_pop.hxx"

@@ -43,7 +43,7 @@ class EscapePassTest {
                 inner()
             }
             pub collect: (q: Fx<Tuple1<Int32>, Int32>) Void {
-                mut xs: List<Fx<Tuple1<Int32>, Int32>> = List<Fx<Tuple1<Int32>, Int32>> {}
+                xs: Mutable<List<Fx<Tuple1<Int32>, Int32>>> = List<Fx<Tuple1<Int32>, Int32>> {}
                 xs.add(q)
             }
             """,
@@ -63,8 +63,8 @@ class EscapePassTest {
     fun thisEscapesOnlyWhenItLeavesTheMethod() {
         val p = snippet(
             """
-            pub Counter: Any {
-                pub mut k: Int32 = 5
+            pub Counter: Mutable<Any> {
+                pub k: Mutable<Int32> = 5
                 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                     f(x)
                 }
@@ -74,8 +74,8 @@ class EscapePassTest {
                     }, x)
                 }
             }
-            pub Leaky: Any {
-                pub mut k: Int32 = 5
+            pub Leaky: Mutable<Any> {
+                pub k: Mutable<Int32> = 5
                 pub multiplier: () Fx<Tuple1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
@@ -133,7 +133,7 @@ class EscapePassTest {
     fun escapingIsAFixpointThroughEveryCallee() {
         val p = snippet(
             """
-            mut KEPT: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> {}
+            KEPT: Mutable<List<Fx<Tuple0, Int32>>> = List<Fx<Tuple0, Int32>> {}
             pub keep: (k: Fx<Tuple0, Int32>) Void {
                 KEPT.add(k)
             }
@@ -184,8 +184,8 @@ class EscapePassTest {
     fun thisPassedOnEscapesButAStructOrATraitMarksNoClass() {
         val p = snippet(
             """
-            pub Node: Any {
-                pub mut n: Int32 = 0
+            pub Node: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
                 pub register: () Void {
                     remember(this)
                 }
@@ -193,7 +193,7 @@ class EscapePassTest {
                     n
                 }
             }
-            mut NODES: List<Node> = List<Node> {}
+            NODES: Mutable<List<Node>> = List<Node> {}
             pub remember: (x: Node) Void {
                 NODES.add(x)
             }
@@ -229,7 +229,7 @@ class EscapePassTest {
         // rules.view.capture. passOn hands its g to an overload that only calls it: no escape.
         val p = snippet(
             """
-            mut GF: Maybe<Fx<Tuple0, Int32>> = null
+            GF: Mutable<Maybe<Fx<Tuple0, Int32>>> = null
             pub Keeper: Struct {
                 pub k: Int32 = 0
                 pub @op_add: (f: Fx<Tuple0, Int32>) Int32 {

@@ -9,8 +9,8 @@ pub Line: Struct {
 }
 
 bar: (pct: Int32) Str {
-    mut out: Str = ""
-    mut i: Int32 = 0
+    out: Mutable<Str> = ""
+    i: Mutable<Int32> = 0
     while i < pct / 10 {
         out = out + "#"
         i += 1

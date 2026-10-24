@@ -1,14 +1,14 @@
-// Containers of containers are values all the way down (D44): each copy below is written to
-// show the other did not move.
+// Containers of containers are shared all the way down (stage 4): each name below sees what
+// the other changes.
 
 kira.tuples as tuples
 
-Book: Any {
-    pub mut pages: Map<Str, List<Int32>> = Map<Str, List<Int32>> { }
-    pub mut last: Maybe<List<Int32>> = null
+Book: Mutable<Any> {
+    pub pages: Mutable<Map<Str, List<Int32>>> = Map<Str, List<Int32>> { }
+    pub last: Mutable<Maybe<List<Int32>>> = null
 
-    pub mut note: (key: Str, v: Int32) Void {
-        mut row: List<Int32> = pages.get(key).unwrapOr(List<Int32> { })
+    pub note: (key: Str, v: Int32) Void {
+        row: Mutable<List<Int32>> = pages.get(key).unwrapOr(List<Int32> { })
         row.add(v)
         pages.put(key, row)
         last = row
@@ -16,7 +16,7 @@ Book: Any {
 }
 
 show: (xs: List<Int32>) Str {
-    mut s: Str = "["
+    s: Mutable<Str> = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
             s = s + " "
@@ -27,9 +27,9 @@ show: (xs: List<Int32>) Str {
 }
 
 grid: (rows: Size, cols: Size) List<List<Int32>> {
-    mut out: List<List<Int32>> = List<List<Int32>> { }
+    out: Mutable<List<List<Int32>>> = List<List<Int32>> { }
     for r: Size in 0..rows {
-        mut row: List<Int32> = List<Int32> { }
+        row: Mutable<List<Int32>> = List<Int32> { }
         for c: Size in 0..cols {
             row.add((r * 10 + c) as Int32)
         }
@@ -40,7 +40,7 @@ grid: (rows: Size, cols: Size) List<List<Int32>> {
 }
 
 total: (g: List<List<Int32>>) Int32 {
-    mut t: Int32 = 0
+    t: Mutable<Int32> = 0
     for row: List<Int32> in g {
         for v: Int32 in row {
             t += v
@@ -50,14 +50,14 @@ total: (g: List<List<Int32>>) Int32 {
 }
 
 main: () Void {
-    mut g: List<List<Int32>> = grid(2, 3)
+    g: Mutable<List<List<Int32>>> = grid(2, 3)
     trace("${show(g[0])} ${show(g[1])} ${total(g)}")
-    mut row: List<Int32> = g[0]
+    row: Mutable<List<Int32>> = g[0]
     row.add(99)
     g[1][0] = 7
     g[0].add(5)
     trace("${show(g[0])} ${show(g[1])} ${show(row)}")
-    mut h: List<List<Int32>> = g
+    h: Mutable<List<List<Int32>>> = g
     h[0][0] = -5
     h.add(row)
     row.add(100)
@@ -69,14 +69,14 @@ main: () Void {
     trace("${fixed[0].size()} ${fixed.size()}")
 
     // a Map of Lists, through a class, and its copies
-    mut b: Book = Book { }
+    b: Mutable<Book> = Book { }
     b.note("a", 1)
     b.note("a", 2)
     b.note("b", 3)
-    mut snap: Map<Str, List<Int32>> = b.pages
+    snap: Mutable<Map<Str, List<Int32>>> = b.pages
     b.note("a", 4)
     trace("${show(snap.get("a").unwrap())} ${show(b.pages.get("a").unwrap())} ${show(b.last.unwrap())}")
-    mut got: List<Int32> = b.pages.get("b").unwrap()
+    got: Mutable<List<Int32>> = b.pages.get("b").unwrap()
     got.add(30)
     trace(show(b.pages.get("b").unwrap()))
     es: Arr<Tuple2<Str, List<Int32>>> = b.pages.entries()
@@ -85,13 +85,13 @@ main: () Void {
     trace(show(vs[1]))
 
     // a Map of Maps, a List of Maps, a Maybe of a List
-    mut mm: Map<Str, Map<Str, Int32>> = Map<Str, Map<Str, Int32>> { }
-    mut inner: Map<Str, Int32> = Map<Str, Int32> { }
+    mm: Mutable<Map<Str, Map<Str, Int32>>> = Map<Str, Map<Str, Int32>> { }
+    inner: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
     inner["x"] = 1
     mm["one"] = inner
     inner["y"] = 2
     trace("${mm.get("one").unwrap().size()} ${inner.size()}")
-    mut lm: List<Map<Str, Int32>> = List<Map<Str, Int32>> { }
+    lm: Mutable<List<Map<Str, Int32>>> = List<Map<Str, Int32>> { }
     lm.add(inner)
     lm[0]["z"] = 3
     trace("${lm[0].size()} ${inner.size()}")

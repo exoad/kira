@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import java.math.BigInteger
 import java.util.IdentityHashMap
 
@@ -68,6 +69,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
         traits.forEach { t -> each(t) { flatten(t, IdentityHashMap()) } }
         classes.forEach { c -> each(c) { overrides(c) } }
         traits.forEach { t -> each(t) { traitOverrides(t) } }
+        if (DialectGates.mutability) step("mutable types") { MutableTypes(program, classes, traits).run() }
         step("body types") { bodyTypes() }
         globals.forEach { g -> each(g) { constEval.valueOf(g) } }
         step("defaults") { defaults() }
@@ -698,7 +700,8 @@ internal class SignatureResolver(private val program: TypedProgram) {
         if (a.typeParams.size != b.typeParams.size || a.params.size != b.params.size) {
             return false
         }
-        if (a.isMutMethod != b.isMutMethod) {
+        // Stage 4: whether a function changes its receiver is its type's, not its signature's.
+        if (a.isMutMethod != b.isMutMethod && !DialectGates.mutability) {
             return false
         }
         val ownMap = a.typeParams.zip(b.typeParams).associate { (x, y) -> x to KType.Param(y) }
@@ -766,7 +769,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
                     "${typeParamsText(m.typeParams, bounds)}; it has ${typeParamsText(m.typeParams)}.",
                 m.decl,
             )
-        } else if (m.isMutMethod != base.isMutMethod) {
+        } else if (m.isMutMethod != base.isMutMethod && !DialectGates.mutability) {
             // `mut fx` decides C++ `const`: a mismatch would declare a second function, not an override.
             program.report(
                 "types.override.signature",
@@ -827,6 +830,18 @@ internal class SignatureResolver(private val program: TypedProgram) {
     private fun walkTypes(node: ASTNode, scope: TypeScope) {
         when (node) {
             is Type -> resolver.resolve(node, scope)
+            // `v == Mutable<P>` (stage 4): the test's identity is P, and the value must be Mutable too.
+            is net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr -> {
+                val t = node.type
+                val id = t.identifier as? Identifier
+                if (id != null && id !is IntrinsicExpr && id !is net.exoad.kira.compiler.frontend.parser.ast.elements.QualifiedIdentifier &&
+                    id.value == TypeResolver.MUTABLE && t.children.size == 1
+                ) {
+                    model.typeRefs[t] = resolver.resolve(t.children[0], scope)
+                    model.mutableTests.add(node)
+                }
+                AstTree.children(node).forEach { walkTypes(it, scope) }
+            }
             is FunctionDecl -> {
                 // A function declared inside a body: its own type parameters are in scope for it.
                 val params = node.generics.mapIndexedNotNull { i, g ->

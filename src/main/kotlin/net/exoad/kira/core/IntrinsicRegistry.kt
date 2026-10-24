@@ -31,6 +31,7 @@ object IntrinsicRegistry {
             ConstIntrinsic,
             StaticAssertIntrinsic,
             InferIntrinsic,
+            MutatesIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics are known names the parser accepts as identifiers; they are not
         // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
@@ -86,6 +87,7 @@ object IntrinsicRegistry {
         ExternIntrinsic.name,
         ConstIntrinsic.name,
         InferIntrinsic.name,
+        MutatesIntrinsic.name,
     )
 
     /**
@@ -98,6 +100,20 @@ object IntrinsicRegistry {
         override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
             if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {
                 throw KiraRuntimeException("@_infer takes no arguments (modifier like)")
+            }
+        }
+
+        override fun apply(invocation: IntrinsicExpr, target: ASTNode, compilationUnit: CompilationUnit, context: SourceContext): ASTNode = NoExpr
+    }
+
+    /**
+     * `@_mutates` (stage 4): on a function the host supplies (a `@_magic`, `@_opaque` or `@_extern` type's), the
+     * host's code changes the receiver (`List.add`); a function with a body says so by its body. No arguments.
+     */
+    object MutatesIntrinsic : CompilerIntrinsic("_mutates", setOf(FunctionDecl::class)) {
+        override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
+            if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {
+                throw KiraRuntimeException("@_mutates takes no arguments (modifier like)")
             }
         }
 

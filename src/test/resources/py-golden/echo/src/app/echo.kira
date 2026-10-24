@@ -26,11 +26,11 @@ pub main: () Void {
         println(talk(port, @listOf(line)).joinToString(" "))
     }
     replies: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
-    mut clients: List<Thread> = List<Thread> { }
+    clients: Mutable<List<Thread>> = List<Thread> { }
     for c: Int32 in 0..3 {
         clients.add(spawn("client ${c}", () Void {
             got: List<Str> = talk(port, @listOf("c${c} one", "c${c} two"))
-            replies.lock((mut all: List<Str>) Void {
+            replies.lock((all: List<Str>) Void {
                 all.add(got.joinToString(" | "))
             })
         }))
@@ -39,7 +39,7 @@ pub main: () Void {
         t.join()
     }
     stopServing()
-    replies.lock((mut all: List<Str>) Void {
+    replies.lock((all: List<Str>) Void {
         all.sort()
         for r: Str in all {
             println(r)

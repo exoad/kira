@@ -45,7 +45,7 @@ namespace bibo::text
       return n;
   }
 
-  bool toInt(kira::View<char> s, std::int32_t& out)
+  kira::Maybe<std::int32_t> toInt(kira::View<char> s)
   {
       kira::Size from{0};
       while(from < s.size() && isBlank(kira::at(s, from)))
@@ -55,20 +55,12 @@ namespace bibo::text
       const kira::Size end{trimEnd(s)};
       if(from >= end)
       {
-          return false;
+          return kira::none;
       }
       else
       {
           const kira::Maybe<std::int64_t> v = kira::parseInt64(s.slice(from, end - from));
-          if(!kira::isSome(v))
-          {
-              return false;
-          }
-          else
-          {
-              out = static_cast<std::int32_t>(kira::unwrap(v));
-              return true;
-          }
+          return !kira::isSome(v) ? kira::Maybe<std::int32_t>(kira::none) : kira::Maybe<std::int32_t>(static_cast<std::int32_t>(kira::unwrap(v)));
       }
   }
 

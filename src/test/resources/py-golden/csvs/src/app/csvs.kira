@@ -27,9 +27,9 @@ pub line: (cells: List<Str>) Str {
 
 // Every row of the file; a row csv refuses ends the program here, as Python's csv.Error ended powerpage's reader.
 pub strictRows: (path: Str) List<List<Str>> {
-    mut out: List<List<Str>> = @listOf()
+    out: Mutable<List<List<Str>>> = @listOf()
     r: CsvReader = openCsv(path).value
-    mut row: Maybe<List<Str>> = r.next()
+    row: Mutable<Maybe<List<Str>>> = r.next()
     while row.isSome() {
         out.add(row.value)
         row = r.next()

@@ -9,7 +9,7 @@ kira.bytes as bytes
 // hand-written ones and Python's decoder.
 
 header: (opcode: UInt8, n: Size) List<UInt8> {
-    mut out: List<UInt8> = List<UInt8> { }
+    out: Mutable<List<UInt8>> = List<UInt8> { }
     out.add(0x80 | opcode)
     if n < 126 {
         out.add(n as UInt8)
@@ -30,7 +30,7 @@ header: (opcode: UInt8, n: Size) List<UInt8> {
 
 // ws_frame(opcode, payload)
 frame: (opcode: UInt8, payload: List<UInt8>) List<UInt8> {
-    mut out: List<UInt8> = header(opcode, payload.size())
+    out: Mutable<List<UInt8>> = header(opcode, payload.size())
     out.addAll(payload.toArr())
     out
 }
@@ -42,7 +42,7 @@ pub send: (text: Str) List<UInt8> {
 
 // Page.close(code, reason): ws_frame(8, code.to_bytes(2, "big") + reason.encode())
 pub close: (code: UInt16, reason: Str) List<UInt8> {
-    mut payload: List<UInt8> = @listOf(0, 0)
+    payload: Mutable<List<UInt8>> = @listOf(0, 0)
     writeU16Be(payload.view(), 0, code)
     payload.addAll(reason.bytes().toArr())
     frame(8, payload)
@@ -66,8 +66,8 @@ pub closeOf: (f: View<UInt8>) Str {
 }
 
 hex: (v: View<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < v.size() {
         if i > 0 {
             s = s + " "
@@ -86,7 +86,7 @@ main: () Void {
     trace(hex(close(1000, "the drive socket closed")))
     trace(hex(close(4001, "ünï")))
     trace(hex(close(1011, "")))
-    mut long: Str = ""
+    long: Mutable<Str> = ""
     while long.bytes().size() < 300 {
         long = long + "é"
     }

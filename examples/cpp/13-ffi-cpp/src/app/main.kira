@@ -9,9 +9,6 @@ main: () Int32 {
     trace(box.area())
     trace(hypotSq(3, 4))
     trace(cLen("kira-ffi"))
-    mut count: Int32 = 0
-    countTo(mut count, 7)
-    trace(count)
     trace(LIMIT)
     0
 }

@@ -7,7 +7,7 @@ kira.test as test
 dirOf: (path: Str) Str {
     parts: List<Str> = path.replace("\\", "/").split("/")
     last: Size = parts.size() - 1
-    mut kept: List<Str> = @listOf()
+    kept: Mutable<List<Str>> = @listOf()
     for i: Size in 0..last {
         kept.add(parts[i])
     }
@@ -23,7 +23,7 @@ bytesOf: (m: Maybe<List<UInt8>>) Str {
 }
 
 temporaryIn: (dir: Str) Bool {
-    mut result: Bool = false
+    result: Mutable<Bool> = false
     for name: Str in listDir(dir) {
         if name.endsWith(".tmp") {
             result = true

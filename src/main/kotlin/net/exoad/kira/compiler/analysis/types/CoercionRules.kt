@@ -72,6 +72,35 @@ internal class TypeFacts(private val builtins: Builtins) {
     fun isStruct(t: KType): Boolean = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.kind == ClassKind.STRUCT
 
     /**
+     * A type declared `Mutable<P>` (stage 4): a user type, a trait, or a stdlib one such as List; or a type parameter
+     * bounded by one, which only Mutable types satisfy.
+     */
+    fun isMutableType(t: KType?, seen: MutableSet<TypeParamSymbol> = HashSet()): Boolean = when (t) {
+        is KType.Nominal -> (t.sym as? TypeSymbol)?.isMutable == true
+        is KType.Param -> seen.add(t.sym) && t.sym.bounds.any { isMutableType(it, seen) }
+        else -> false
+    }
+
+    /**
+     * Whether a value of [t] is shared and changes through any binding (stage 4's rule, its gate on): a Mutable
+     * type's value is held by reference, so `xs.add(v)` needs no Mutable binding, only `xs = ...` does.
+     */
+    fun shares(t: KType?): Boolean = net.exoad.kira.compiler.frontend.parser.DialectGates.mutability && isMutableType(t)
+
+    /**
+     * Whether a value of [t] changes, or holds one that does (stage 4's contagion): a Mutable type, or a Maybe, a
+     * Result or a tuple of one. A type parameter, a function or a value type holds none it says.
+     */
+    fun carriesMutable(t: KType?, seen: MutableSet<KType> = HashSet()): Boolean {
+        val n = t as? KType.Nominal ?: return false
+        if (isMutableType(n)) return true
+        val sym = n.sym as? ClassSymbol ?: return false
+        if (sym.kind != ClassKind.MAGIC || !seen.add(n)) return false
+        val wraps = sym.name == "Maybe" || sym.name == "Result" || Builtins.tupleArity(sym.name) != null
+        return wraps && n.typeArgs().any { carriesMutable(it, seen) }
+    }
+
+    /**
      * A value whose copies share one object: a class or trait reference, a `Ref<T>` (D46), a
      * `Weak<T>`, an `Unsafe<T>`, a stdlib module's class (kira:sync's Atomic, an `Rc` as the
      * rule passes hold it). Writing through one does not write a copy. A type parameter

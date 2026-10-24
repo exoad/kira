@@ -900,10 +900,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             appendIndentedLine("}")
             return
         }
-        if (!iterExpr.isLegacy) {
-            throw UnsupportedConstruct(iterExpr, "'for x: T in xs' over a container (only a range is lowered here)", TARGET_NAME)
-        }
-
         // Iteration over a container: an Arr is a native array; KiraList and
         // KiraSet keep their elements in `.values`. (This used to be a stub
         // that ran the body exactly once.)

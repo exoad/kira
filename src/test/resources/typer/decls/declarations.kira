@@ -15,7 +15,7 @@ pub SMALL: Int8 = -128
 pub PRIMES: Arr<Int32> = @arrOf(2, 3, 5, 7)
 pub FIXED: Arr<UInt8, LEN> = @arrOf(1, 2, 3, 4)
 LEN: Size = 4
-pub mut counter: Int32 = 0
+pub counter: Mutable<Int32> = 0
 pub nowhere: Maybe<Int32> = null
 
 pub Int64 as Id
@@ -42,20 +42,20 @@ pub Keyed<K>: Any {
     pub key: () K
 }
 
-pub Animal: Any {
+pub Animal: Mutable<Any> {
     pub name: Str
-    pub mut age: Int32 = 0
+    pub age: Mutable<Int32> = 0
 
     pub describe: () Str {
         name
     }
 
-    pub mut birthday: () Void {
+    pub birthday: () Void {
         age = age + 1
     }
 }
 
-pub Dog: Animal, Shouter, Keyed<Str> {
+pub Dog: Mutable<Animal>, Shouter, Keyed<Str> {
     pub breed: Str
 
     pub describe: () Str {
@@ -85,10 +85,6 @@ pub Box<T: Speaker>: Any {
 
 pick<T>: (a: T, b: T, first: Bool) T {
     first ? a : b
-}
-
-pub bump: (mut value: Int32, by: Int32) Void {
-    value = value + by
 }
 
 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {

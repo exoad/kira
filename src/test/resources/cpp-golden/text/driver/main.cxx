@@ -44,13 +44,13 @@ namespace
       check(bibo::text::trimEnd(kira::lit("PING\r\n")) == 4 && bibo::text::trimEnd(kira::lit(" \t")) == 0,
             "trimEnd drops CR, LF, space and tab");
 
-      std::int32_t us = -1;
-      check(bibo::text::toInt(kira::lit(" 1541 \r\n"), us) && us == 1541, "toInt allows surrounding space");
-      check(bibo::text::toInt(kira::lit("-300"), us) && us == -300, "and a sign");
-      us = 7;
-      check(!bibo::text::toInt(kira::lit("12abc"), us) && us == 7, "12abc is refused, and out is untouched");
-      check(!bibo::text::toInt(kira::lit("   "), us) && !bibo::text::toInt(kira::lit(""), us), "blank is refused");
-      check(!bibo::text::toInt(kira::lit("1 2"), us), "two numbers are refused");
+      const auto spaced = bibo::text::toInt(kira::lit(" 1541 \r\n"));
+      check(kira::isSome(spaced) && kira::unwrap(spaced) == 1541, "toInt allows surrounding space");
+      const auto signed_ = bibo::text::toInt(kira::lit("-300"));
+      check(kira::isSome(signed_) && kira::unwrap(signed_) == -300, "and a sign");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("12abc"))), "12abc is refused");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("   "))) && !kira::isSome(bibo::text::toInt(kira::lit(""))), "blank is refused");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("1 2"))), "two numbers are refused");
 
       kira::StrBuf<32> reply;
       bibo::text::driveReply(1500, -12, reply);

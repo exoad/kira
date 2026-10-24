@@ -85,7 +85,7 @@ class ParitySuiteTest {
                 trace(1 << 4)
                 trace(256 >> 2)
                 trace(-16 >> 2)
-                mut x: Int32 = 1
+                x: Mutable<Int32> = 1
                 x <<= 1
                 trace(x)
             }
@@ -102,7 +102,7 @@ class ParitySuiteTest {
             main: () Void {
                 trace(-16 >>> 28)
                 trace(-16 >>> 2)
-                mut x: Int32 = -16
+                x: Mutable<Int32> = -16
                 x >>>= 28
                 trace(x)
             }
@@ -254,8 +254,8 @@ class ParitySuiteTest {
             """
             main: () Void {
                 xs: Arr<Int32> = @arrOf(1, 2, 3)
-                mut sum: Int32 = 0
-                for mut x: xs {
+                sum: Mutable<Int32> = 0
+                for x: Int32 in xs {
                     sum = sum + x
                 }
                 trace(sum)
@@ -263,7 +263,7 @@ class ParitySuiteTest {
                 names: List<Str> = List<Str> { }
                 names.add("ada")
                 names.add("grace")
-                for mut n: names {
+                for n: Str in names {
                     trace(n)
                 }
 
@@ -271,15 +271,15 @@ class ParitySuiteTest {
                 seen.add(3)
                 seen.add(3)
                 seen.add(4)
-                mut total: Int32 = 0
-                for mut v: seen {
+                total: Mutable<Int32> = 0
+                for v: Int32 in seen {
                     total = total + v
                 }
                 trace(total)
 
                 empty: List<Int32> = List<Int32> { }
-                mut ran: Int32 = 0
-                for mut e: empty {
+                ran: Mutable<Int32> = 0
+                for e: Int32 in empty {
                     ran = ran + 1
                 }
                 trace(3 - ran)
@@ -299,8 +299,8 @@ class ParitySuiteTest {
                 a - b
             }
 
-            Esc: Any {
-                pub mut pulse: Int32
+            Esc: Mutable<Any> {
+                pub pulse: Mutable<Int32>
                 pub set: (v: Int32, scale: Int32) Void {
                     pulse = v * scale
                 }

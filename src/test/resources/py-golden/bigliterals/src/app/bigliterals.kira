@@ -7,7 +7,7 @@ pub main: () Int32 {
     minus: Int64 = 0xFFFFFFFFFFFFFFFF
     trace("${all} ${top} ${half} ${minus}")
     s: Str = "caf\u00e9 A\u00DF"
-    mut hex: Str = ""
+    hex: Mutable<Str> = ""
     for b: UInt8 in s.bytes() {
         hex = hex + b.toHex().padStart(2, '0')
     }

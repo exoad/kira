@@ -38,22 +38,22 @@ Second: Any {
     pub verdict: Str
 }
 
-pub Ladder: Any {
+pub Ladder: Mutable<Any> {
     // The level, 0 the lowest. Construction clamps it to 0..top.
-    pub mut level: Int32
+    pub level: Mutable<Int32>
     // The highest level: the last index of streamenc.py's LADDER.
     top: Int32
     // The last second's: good, fair, bad, severe, full, up, idle or warm.
-    pub mut verdict: Str = ""
-    mut hist: List<Second> = List<Second> { }
-    mut good: Size = 0
+    pub verdict: Mutable<Str> = ""
+    hist: Mutable<List<Second>> = List<Second> { }
+    good: Mutable<Size> = 0
     // When the current level was stepped up into.
-    mut enteredUp: Maybe<Float64> = null
+    enteredUp: Mutable<Maybe<Float64>> = null
     // Per level: the failed tries, and when the last one failed.
-    mut fails: List<Int32> = List<Int32> { }
-    mut failedAt: List<Float64> = List<Float64> { }
+    fails: Mutable<List<Int32>> = List<Int32> { }
+    failedAt: Mutable<List<Float64>> = List<Float64> { }
     // The page's first second: its encoder starting, not the link.
-    mut warm: Bool = true
+    warm: Mutable<Bool> = true
 
     initially {
         if level > top {
@@ -62,7 +62,7 @@ pub Ladder: Any {
         if level < 0 {
             level = 0
         }
-        mut n: Int32 = 0
+        n: Mutable<Int32> = 0
         while n <= top {
             fails.add(0)
             failedAt.add(0.0)
@@ -72,7 +72,7 @@ pub Ladder: Any {
 
     // One second's numbers in, the level for the next second out. fps is the frame rate of the
     // level the page is at. Unknown numbers are null.
-    pub mut update: (
+    pub update: (
         deliveredKbs: Maybe<Float64>,
         offeredKbs: Maybe<Float64>,
         ageMs: Maybe<Float64>,
@@ -91,16 +91,16 @@ pub Ladder: Any {
             level
         } else {
             offered: Float64 = offeredKbs.value
-            mut delivered: Float64 = 0.0
+            delivered: Mutable<Float64> = 0.0
             if !deliveredKbs.isNull() {
                 delivered = max(0.0, deliveredKbs.value)
             }
             ratio: Float64 = delivered / offered
-            mut lost: Float64 = 0.0
+            lost: Mutable<Float64> = 0.0
             if !dropped.isNull() {
                 lost = dropped.value as Float64
             }
-            mut v: Str = "fair"
+            v: Mutable<Str> = "fair"
             if ratio < 0.4 || (!ageMs.isNull() && ageMs.value > 1500.0) {
                 v = "severe"
             } else if ratio < 0.75 || (!ageMs.isNull() && ageMs.value > 500.0) || lost >= max(2.0, 0.3 * fps) {
@@ -117,8 +117,8 @@ pub Ladder: Any {
             } else {
                 good = 0
             }
-            mut nbad: Size = 0
-            mut i: Size = since(DOWN_OF)
+            nbad: Mutable<Size> = 0
+            i: Mutable<Size> = since(DOWN_OF)
             while i < hist.size() {
                 if hist[i].verdict == "bad" || hist[i].verdict == "severe" {
                     nbad += 1
@@ -126,7 +126,7 @@ pub Ladder: Any {
                 i += 1
             }
             trying: Bool = !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S
-            mut fullS: Size = FULL_S
+            fullS: Mutable<Size> = FULL_S
             if trying {
                 fullS = PROBE_FULL_S
             }
@@ -137,11 +137,11 @@ pub Ladder: Any {
                 } else {
                     verdict = v
                 }
-                mut step: Int32 = 1
+                step: Mutable<Int32> = 1
                 if ratio < 0.5 {
                     step = 2
                 }
-                mut to: Int32 = level - step
+                to: Mutable<Int32> = level - step
                 if to < 0 {
                     to = 0
                 }
@@ -158,13 +158,13 @@ pub Ladder: Any {
 
     // How many good seconds a step up into `to` waits for: UP_S, doubled for each failed try
     // there, at most BACKOFF_MAX_S. A level's failures are forgotten FORGET_S after the last.
-    mut waitUp: (to: Int32, nowS: Float64) Float64 {
+    waitUp: (to: Int32, nowS: Float64) Float64 {
         at: Size = to as Size
         if fails[at] > 0 && nowS - failedAt[at] > FORGET_S {
             fails[at] = 0
         }
-        mut wait: Float64 = UP_S
-        mut n: Int32 = 0
+        wait: Mutable<Float64> = UP_S
+        n: Mutable<Int32> = 0
         while n < fails[at] && wait < BACKOFF_MAX_S {
             wait = wait * 2.0
             n += 1
@@ -173,7 +173,7 @@ pub Ladder: Any {
     }
 
     // A fall within PROBE_S of stepping up into this level is a failed try of it.
-    mut move: (to: Int32, nowS: Float64) Void {
+    move: (to: Int32, nowS: Float64) Void {
         down: Bool = to < level
         if down && !enteredUp.isNull() && nowS - enteredUp.value <= PROBE_S {
             at: Size = level as Size
@@ -192,9 +192,9 @@ pub Ladder: Any {
 
     // Delivered over offered, summed over the last n seconds (all of them, when fewer).
     sumRatio: (n: Size) Float64 {
-        mut delivered: Float64 = 0.0
-        mut offered: Float64 = 0.0
-        mut i: Size = since(n)
+        delivered: Mutable<Float64> = 0.0
+        offered: Mutable<Float64> = 0.0
+        i: Mutable<Size> = since(n)
         while i < hist.size() {
             delivered += hist[i].delivered
             offered += hist[i].offered

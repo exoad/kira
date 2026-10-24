@@ -6,7 +6,7 @@ namespace bibo::text
 {
   [[nodiscard]] kira::Maybe<kira::Size> wordEnd(kira::View<char> s, kira::View<char> w);
   [[nodiscard]] kira::Size trimEnd(kira::View<char> s);
-  [[nodiscard]] bool toInt(kira::View<char> s, std::int32_t& out);
+  [[nodiscard]] kira::Maybe<std::int32_t> toInt(kira::View<char> s);
   void driveReply(std::int32_t servo, std::int32_t esc, kira::StrBuf<32>& out);
   void speedReply(double mps, std::int32_t places, kira::StrBuf<32>& out);
   [[nodiscard]] bool isCommand(kira::View<char> s, kira::View<char> verb);

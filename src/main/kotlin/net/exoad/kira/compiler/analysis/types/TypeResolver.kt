@@ -40,6 +40,11 @@ class TypeScope(
  * is a `types.alias.cycle` error.
  */
 class TypeResolver(private val program: TypedProgram) {
+    companion object {
+        /** The stage 4 wrapper's name, `Mutable<T>`. */
+        const val MUTABLE = "Mutable"
+    }
+
     lateinit var constEval: ConstEval
 
     private val model = program.model
@@ -76,6 +81,16 @@ class TypeResolver(private val program: TypedProgram) {
         val name = id.value
         if (id is QualifiedIdentifier) {
             return qualified(t, id, scope)
+        }
+        if (name == MUTABLE && t.children.size == 1) {
+            // Stage 4: the one wrapper a binding, a type's parent or a test names; anywhere else it says nothing.
+            program.report(
+                "types.mutable.position",
+                "Mutable<T> is a binding's type ('x: Mutable<T>'), a type's parent ('T: Mutable<P>') or a test's identity " +
+                    "('v == Mutable<Any>'); a parameter, a result or a type argument is never Mutable: write ${KiraUnparser.type(t.children[0])}.",
+                t,
+            )
+            return resolve(t.children[0], scope)
         }
         scope.findTypeParam(name)?.let { tp ->
             model.refs[id] = tp

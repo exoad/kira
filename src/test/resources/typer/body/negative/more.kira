@@ -24,10 +24,6 @@ pair: (a: Int32, b: Int32) Int32 {
     a + b
 }
 
-setTo: (mut out: Int32, v: Int32) Void {
-    out = v
-}
-
 give: () Int32 {
     1
 }
@@ -51,11 +47,6 @@ pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     two: Int32 = pair(1)                   // @error types.call.missing-arg
     three: Int32 = pair(1, 2, 3)           // @error types.call.arity
     again: Int32 = pair(1, a = 2, b = 3)   // @error types.call.duplicate-arg
-    notMut: Int32 = pair(mut i, 2)         // @error types.call.mut-unexpected
-    frozen: Int32 = 0
-    setTo(mut frozen, 1)                   // @error types.call.mut-immutable
-    mut wide: Int64 = 0
-    setTo(mut wide, 1)                     // @error types.call.mut-type
     flag: Bool = i as Bool                 // @error types.cast.invalid
     nope: Int32 = missing                  // @error types.name.unknown
     field: Int32 = p.age                   // @error types.member.unknown
@@ -87,7 +78,7 @@ pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     hx: Str = half.toHex()                 // @error types.member.unknown
     tenths: Str = i.fixed(1)               // @error types.member.unknown
     names: List<Str> = @listOf("a")
-    mut flags: List<Bool> = @listOf(true)
+    flags: Mutable<List<Bool>> = @listOf(true)
     joined: Str = xs.joinToString(",")     // @error types.call.bound
     numDigit: Bool = i.isDigit()           // @error types.member.unknown
     textSum: Str = names.sum()             // @error types.call.bound

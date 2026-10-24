@@ -126,7 +126,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                mut i: Int32 = 0
+                i: Mutable<Int32> = 0
                 while i < 3 {
                     i = i + 1
                 }
@@ -142,13 +142,13 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                for mut i: 0..3 {
+                for i: Int32 in 0..4 {
                     trace(i)
                 }
             }
             """
         )
-        assertTrue(output.contains("for(Int32 i = 0; i <= 3; ++i)"), output)
+        assertTrue(output.contains("for(Int32 i = 0; i < 4; ++i)"), output)
         assertTrue(output.contains("print(\"%d\\n\", i);"), output)
     }
 
@@ -159,7 +159,7 @@ class CodegenSuiteTest {
         val output = emit(
             """
             main: () Void {
-                mut a: Int32 = 1
+                a: Mutable<Int32> = 1
                 a += 2
             }
             """
@@ -323,7 +323,7 @@ class CodegenSuiteTest {
             emit(
                 """
                 main: () Void {
-                    for mut x: mystery {
+                    for x: Int32 in mystery {
                         trace(x)
                     }
                 }

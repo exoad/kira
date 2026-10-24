@@ -1,7 +1,7 @@
 // Stage 3's expressions: a block's last expression is its value, `if` and `try` give values, `c ? a : b`.
 // py only: C++ does not lower a try used as a value.
 
-mut calls: Int32 = 0
+calls: Mutable<Int32> = 0
 
 Box: Struct {
     pub w: Int32
@@ -47,7 +47,7 @@ safeSize: (s: Str) Int32 {
 
 // An if value whose arms need statements, writing a local of the function.
 bucket: (x: Int32) Str {
-    mut seen: Int32 = 0
+    seen: Mutable<Int32> = 0
     label: Str = if x > 10 {
         seen = x - 10
         "big+${seen}"
@@ -104,7 +104,7 @@ grade: (n: Int32) Str {
 // A loop inside an arm; a nested if as an arm's last expression.
 total: (upTo: Int32, enabled: Bool) Int32 {
     v: Int32 = if enabled {
-        mut s: Int32 = 0
+        s: Mutable<Int32> = 0
         for i: Int32 in 0..upTo {
             s += i
         }

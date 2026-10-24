@@ -7,5 +7,10 @@ namespace hold
   {
     [[maybe_unused]] kira::Rc<kira::sync::BlockingQueue<std::int32_t>> backlog = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();
   }
+
+  Holder::Holder(kira::Rc<kira::sync::BlockingQueue<kira::Str>> q_, kira::Maybe<kira::Rc<kira::sync::Thread>> worker_, std::int32_t count_)
+      : q(std::move(q_)), worker(std::move(worker_)), count(count_)
+  {
+  }
 }
 #include "kira/macro_pop.hxx"

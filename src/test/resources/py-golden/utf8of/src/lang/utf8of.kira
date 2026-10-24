@@ -11,8 +11,8 @@ FNV_BASIS: UInt64 = 0x4BF29CE484222325
 FNV_PRIME: UInt64 = 0x100000001B3
 
 hex: (v: View<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < v.size() {
         if i > 0 {
             s = s + " "
@@ -32,14 +32,14 @@ shown: (b: List<UInt8>) Str {
 }
 
 // A running digest: what each text reads as, then a 0xFF, which UTF-8 never holds.
-pub Digest: Any {
-    pub mut h: UInt64 = FNV_BASIS
-    pub mut count: Int64 = 0
-    pub mut total: Int64 = 0
+pub Digest: Mutable<Any> {
+    pub h: Mutable<UInt64> = FNV_BASIS
+    pub count: Mutable<Int64> = 0
+    pub total: Mutable<Int64> = 0
 
-    pub mut add: (b: View<UInt8>) Void {
+    pub add: (b: View<UInt8>) Void {
         text: List<UInt8> = Str.of(b).bytes()
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < text.size() {
             h = (h ^ (text[i] as UInt64)) * FNV_PRIME
             i += 1
@@ -73,20 +73,20 @@ main: () Void {
     trace(shown(@listOf(0xF0, 0x9F, 0x9A, 0x78)))
     trace(shown(@listOf(0xC2)))
     trace(shown(@listOf(0xE1, 0x80, 0xE1, 0x80, 0x80)))
-    mut one: Digest = Digest { }
-    mut single: List<UInt8> = @listOf(0)
-    mut a: Int32 = 0
+    one: Mutable<Digest> = Digest { }
+    single: Mutable<List<UInt8>> = @listOf(0)
+    a: Mutable<Int32> = 0
     while a < 256 {
         single[0] = a as UInt8
         one.add(single)
         a += 1
     }
     trace("every 1-byte sequence: " + one.said())
-    mut two: Digest = Digest { }
-    mut pair: List<UInt8> = @listOf(0, 0)
+    two: Mutable<Digest> = Digest { }
+    pair: Mutable<List<UInt8>> = @listOf(0, 0)
     a = 0
     while a < 256 {
-        mut c: Int32 = 0
+        c: Mutable<Int32> = 0
         while c < 256 {
             pair[0] = a as UInt8
             pair[1] = c as UInt8
@@ -97,21 +97,21 @@ main: () Void {
     }
     trace("every 2-byte sequence: " + two.said())
     e: List<UInt8> = edges()
-    mut three: Digest = Digest { }
-    mut four: Digest = Digest { }
-    mut q: List<UInt8> = @listOf(0, 0, 0, 0)
-    mut t: List<UInt8> = @listOf(0, 0, 0)
-    mut i: Size = 0
+    three: Mutable<Digest> = Digest { }
+    four: Mutable<Digest> = Digest { }
+    q: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0)
+    t: Mutable<List<UInt8>> = @listOf(0, 0, 0)
+    i: Mutable<Size> = 0
     while i < e.size() {
-        mut j: Size = 0
+        j: Mutable<Size> = 0
         while j < e.size() {
-            mut k: Size = 0
+            k: Mutable<Size> = 0
             while k < e.size() {
                 t[0] = e[i]
                 t[1] = e[j]
                 t[2] = e[k]
                 three.add(t)
-                mut l: Size = 0
+                l: Mutable<Size> = 0
                 while l < e.size() {
                     q[0] = e[i]
                     q[1] = e[j]
@@ -128,14 +128,14 @@ main: () Void {
     }
     trace("every 3-byte sequence of the boundary bytes: " + three.said())
     trace("every 4-byte sequence of the boundary bytes: " + four.said())
-    mut rnd: Digest = Digest { }
-    mut s: UInt64 = 20261005
-    mut n: Int32 = 0
+    rnd: Mutable<Digest> = Digest { }
+    s: Mutable<UInt64> = 20261005
+    n: Mutable<Int32> = 0
     while n < 30000 {
         s = s ^ (s << 13)
         s = s ^ (s >> 7)
         s = s ^ (s << 17)
-        mut seq: List<UInt8> = List<UInt8> { }
+        seq: Mutable<List<UInt8>> = List<UInt8> { }
         want: UInt64 = s % 9
         while (seq.size() as UInt64) < want {
             s = s ^ (s << 13)

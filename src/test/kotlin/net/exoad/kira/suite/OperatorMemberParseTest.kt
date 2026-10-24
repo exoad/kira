@@ -22,6 +22,7 @@ import java.util.logging.Logger
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * `w2-9-1-parse`: the member operator form (1.3.1, 1.3.2) and `final` (1.8), parsed. Phase A/B
@@ -43,28 +44,30 @@ class OperatorMemberParseTest {
 
     @Test
     fun memberOperatorParsesInAClassWithMutAndOverride() {
-        val ast = parse(
-            """
-            pub V2: Any {
-                pub x: Float32 = 0.0
-                pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
-            }
-            pub Box: Any {
-                pub v: Int32 = 0
-                mut pub @_op_set_: (i: Int32, value: Int32) Void { v = value }
-            }
-            """
-        )
-        val v2 = decls(ast).filterIsInstance<ClassDecl>()[0]
-        val add = v2.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
-        val addName = assertIs<IntrinsicExpr>(add.name)
-        assertEquals("_op_add_", addName.intrinsicKey.name)
+        DialectGates.stage4(false) {
+            val ast = parse(
+                """
+                pub V2: Any {
+                    pub x: Float32 = 0.0
+                    pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
+                }
+                pub Box: Any {
+                    pub v: Int32 = 0
+                    mut pub @_op_set_: (i: Int32, value: Int32) Void { v = value }
+                }
+                """
+            )
+            val v2 = decls(ast).filterIsInstance<ClassDecl>()[0]
+            val add = v2.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
+            val addName = assertIs<IntrinsicExpr>(add.name)
+            assertEquals("_op_add_", addName.intrinsicKey.name)
 
-        val box = decls(ast).filterIsInstance<ClassDecl>()[1]
-        val set = box.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
-        val setName = assertIs<IntrinsicExpr>(set.name)
-        assertEquals("_op_set_", setName.intrinsicKey.name)
-        assertTrue(Modifier.MUTABLE in set.modifiers, "@_op_set_ must parse as mut fx: ${set.modifiers}")
+            val box = decls(ast).filterIsInstance<ClassDecl>()[1]
+            val set = box.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
+            val setName = assertIs<IntrinsicExpr>(set.name)
+            assertEquals("_op_set_", setName.intrinsicKey.name)
+            assertTrue(Modifier.MUTABLE in set.modifiers, "@_op_set_ must parse as mut fx: ${set.modifiers}")
+        }
     }
 
     @Test

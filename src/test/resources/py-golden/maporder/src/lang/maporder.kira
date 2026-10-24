@@ -1,8 +1,8 @@
 // A Map's order (D27), its methods and m[k] = v; expected.txt is the C++ backend's run.
 
-mut ticks: Int32 = 0
-mut keyAt: Int32 = 0
-mut seen: Map<Str, Int32> = Map<Str, Int32> { }
+ticks: Mutable<Int32> = 0
+keyAt: Mutable<Int32> = 0
+seen: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
 
 next: () Int32 {
     ticks += 1
@@ -16,8 +16,8 @@ nextKey: () Str {
 
 keysOf: (m: Map<Str, Int32>) Str {
     ks: Arr<Str> = m.keys()
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < ks.size() {
         if i > 0 {
             s = s + " "
@@ -30,8 +30,8 @@ keysOf: (m: Map<Str, Int32>) Str {
 
 valuesOf: (m: Map<Str, Int32>) Str {
     vs: Arr<Int32> = m.valuesArr()
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < vs.size() {
         s = s + " ${vs[i]}"
         i += 1
@@ -40,8 +40,8 @@ valuesOf: (m: Map<Str, Int32>) Str {
 }
 
 bytesText: (b: Arr<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < b.size() {
         s = s + " ${b[i]}"
         i += 1
@@ -53,11 +53,11 @@ maybeText: (v: Maybe<Int32>) Str {
     v.isSome() ? "some ${v.value}" : "none"
 }
 
-Index: Any {
-    pub mut byName: Map<Str, Int32> = Map<Str, Int32> { }
-    pub mut count: Int32 = 0
+Index: Mutable<Any> {
+    pub byName: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    pub count: Mutable<Int32> = 0
 
-    pub mut add: (name: Str) Int32 {
+    pub add: (name: Str) Int32 {
         if !byName.containsKey(name) {
             count += 1
             byName[name] = count
@@ -67,7 +67,7 @@ Index: Any {
 }
 
 main: () Void {
-    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
     trace(m.isEmpty())
     m.put("b", 1)
     m.put("a", 2)
@@ -105,8 +105,8 @@ main: () Void {
     m.put("k1", 1)
     trace(keysOf(m))
 
-    mut order: Map<Int32, Str> = Map<Int32, Str> { }
-    mut i: Int32 = -3
+    order: Mutable<Map<Int32, Str>> = Map<Int32, Str> { }
+    i: Mutable<Int32> = -3
     while i <= 3 {
         order[i * 7] = "v${i}"
         i += 1
@@ -116,46 +116,46 @@ main: () Void {
     order[0] = "back"
     order[-7] = "again"
     ks: Arr<Int32> = order.keys()
-    mut line: Str = ""
-    mut j: Size = 0
+    line: Mutable<Str> = ""
+    j: Mutable<Size> = 0
     while j < ks.size() {
         line = line + " ${ks[j]}:${order.get(ks[j]).value}"
         j += 1
     }
     trace(line)
 
-    mut flags: Map<Bool, Int32> = Map<Bool, Int32> { }
+    flags: Mutable<Map<Bool, Int32>> = Map<Bool, Int32> { }
     flags[true] = 1
     flags[false] = 2
     flags[true] = 3
     trace(flags.get(true).value * 10 + flags.get(false).value)
     trace(flags.size())
-    mut chars: Map<Char, Int32> = Map<Char, Int32> { }
+    chars: Mutable<Map<Char, Int32>> = Map<Char, Int32> { }
     chars['z'] = 26
     chars['a'] = 1
     cs: Arr<Char> = chars.keys()
     trace("${cs[0]}${cs[1]} ${chars.get('a').value}")
-    mut table: Map<UInt8, UInt8> = Map<UInt8, UInt8> { }
+    table: Mutable<Map<UInt8, UInt8>> = Map<UInt8, UInt8> { }
     table[0xFE] = 1
     table[3] = 0x80
     table[0x10] = 255
     table[3] = 7
     trace(bytesText(table.keys()))
     trace(bytesText(table.valuesArr()))
-    mut wide: Map<UInt64, Int64> = Map<UInt64, Int64> { }
-    mut top: UInt64 = 0
+    wide: Mutable<Map<UInt64, Int64>> = Map<UInt64, Int64> { }
+    top: Mutable<UInt64> = 0
     top -= 1
     wide[top] = -9223372036854775807
     wide[0] = 1
     trace(wide.get(top).value)
     trace(wide.keys()[0])
-    mut signed: Map<Int8, Bool> = Map<Int8, Bool> { }
+    signed: Mutable<Map<Int8, Bool>> = Map<Int8, Bool> { }
     signed[-128] = true
     trace(signed.containsKey(-128))
     trace(signed.containsKey(127))
 
     // containsValue compares with ==: a NaN is never found.
-    mut f: Map<Str, Float64> = Map<Str, Float64> { }
+    f: Mutable<Map<Str, Float64>> = Map<Str, Float64> { }
     nan: Float64 = 0.0 / 0.0
     f["nan"] = nan
     f["zero"] = -0.0
@@ -163,7 +163,7 @@ main: () Void {
     trace(f.containsValue(0.0))
     trace(f.size())
 
-    mut ix: Index = Index { }
+    ix: Mutable<Index> = Index { }
     trace(ix.add("x"))
     trace(ix.add("y"))
     trace(ix.add("x"))

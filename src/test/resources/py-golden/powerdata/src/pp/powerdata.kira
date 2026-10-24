@@ -62,7 +62,7 @@ pub body: (nowS: Float64, seconds: Int64, latest: Json, st: Json, series: List<J
     b.put("latest", latest)
     b.put("stats", st)
     s: Json = Json.arr()
-    mut i: Size = 0
+    i: Mutable<Size> = 0
     while i < series.size() {
         s.add(series[i])
         i += 1

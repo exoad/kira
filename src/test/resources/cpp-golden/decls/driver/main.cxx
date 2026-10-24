@@ -27,9 +27,11 @@ static_assert(std::is_same_v<decltype(order::COUNT), const std::int32_t> && std:
 
 namespace order
 {
-  void Pt::setX(std::int32_t x_p)
+  Pt Pt::withX(std::int32_t x_p) const
   {
-      x = x_p;
+      Pt p = *this;
+      p.x = x_p;
+      return p;
   }
 
   std::int32_t scaleBy(std::int32_t limit_p)
@@ -47,9 +49,8 @@ namespace order
       return key.empty() ? kira::none : hint;
   }
 
-  std::int32_t peek(const std::int32_t* p, std::int32_t* q)
+  std::int32_t peek(const std::int32_t* p)
   {
-      *q = *p + 1;
       return *p;
   }
 
@@ -74,10 +75,12 @@ namespace golden::shapes
       return (x < 0 ? -x : x) + (y < 0 ? -y : y);
   }
 
-  void Point::shift(std::int32_t dx, std::int32_t dy)
+  Point Point::shifted(std::int32_t dx, std::int32_t dy) const
   {
-      x += dx;
-      y += dy;
+      Point p = *this;
+      p.x += dx;
+      p.y += dy;
+      return p;
   }
 
   std::int32_t Box::area() const
@@ -142,8 +145,7 @@ int main()
         check(b.area() == 10000, "a const method declared in the struct");
     }
     {
-        Point p{};
-        p.shift(2);
+        const Point p = Point{}.shifted(2);
         check(p.x == 2 && p.y == 0, "a defaulted method parameter is filled in");
         check(p.manhattan() == 2, "and a const method reads the fields");
     }
@@ -163,8 +165,7 @@ int main()
     {
         order::cursor.x = 7;
         check(order::cursor.x == 7 && order::ORIGIN.y == 0, "state and a constant of a struct type declared later");
-        order::Pt p{};
-        p.setX(4);
+        const order::Pt p = order::Pt{}.withX(4);
         check(p.x == 4, "a parameter named like a field is renamed");
         check(order::scaleBy(2) == 6, "a parameter named like a module declaration is renamed");
         const order::Sized sized{};
@@ -173,9 +174,8 @@ int main()
         const order::Cfg cfg{};
         check(!kira::isSome(cfg.limit) && !kira::isSome(order::last), "null defaults are kira::none");
         check(!kira::isSome(order::find("k")) && kira::isSome(order::find("k", 3)), "a null default argument, filled or given");
-        std::int32_t in = 41;
-        std::int32_t out = 0;
-        check(order::peek(&in, &out) == 41 && out == 42, "Unsafe<T> is const T*, T* when mut");
+        const std::int32_t in = 41;
+        check(order::peek(&in) == 41, "Unsafe<T> is const T*");
         check(order::narrow() == 3 && order::narrow(std::int16_t{9}) == 9, "a narrow literal as a Maybe default argument");
         const order::Early early{};
         const order::Queued queued{};

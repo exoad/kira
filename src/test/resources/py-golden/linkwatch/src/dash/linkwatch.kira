@@ -5,13 +5,13 @@
 // and \x1c to \x1f. The expected output is the C++ backend's run of main, then the driver's run
 // of these against the hand-written ones.
 
-pub Link: Any {
-    pub mut connected: Bool = false
-    pub mut ssid: Str = ""
-    pub mut freqMhz: Maybe<Int64> = null
-    pub mut dbm: Maybe<Int64> = null
-    pub mut txMbps: Maybe<Float64> = null
-    pub mut rxMbps: Maybe<Float64> = null
+pub Link: Mutable<Any> {
+    pub connected: Mutable<Bool> = false
+    pub ssid: Mutable<Str> = ""
+    pub freqMhz: Mutable<Maybe<Int64>> = null
+    pub dbm: Mutable<Maybe<Int64>> = null
+    pub txMbps: Mutable<Maybe<Float64>> = null
+    pub rxMbps: Mutable<Maybe<Float64>> = null
 }
 
 space: (c: Char) Bool {
@@ -24,7 +24,7 @@ digit: (c: Char) Bool {
 
 // Where s stops being whitespace from `at` on.
 skipSpace: (s: Str, at: Size) Size {
-    mut i: Size = at
+    i: Mutable<Size> = at
     while i < s.length() && space(s[i]) {
         i += 1
     }
@@ -36,7 +36,7 @@ lstrip: (s: Str) Str {
 }
 
 rstrip: (s: Str) Str {
-    mut n: Size = s.length()
+    n: Mutable<Size> = s.length()
     while n > 0 && space(s[n - 1]) {
         n -= 1
     }
@@ -53,7 +53,7 @@ allSpace: (s: Str) Bool {
 
 // The digits at the start of s (\d+ over ASCII), "" for none.
 digitsAt: (s: Str) Str {
-    mut n: Size = 0
+    n: Mutable<Size> = 0
     while n < s.length() && digit(s[n]) {
         n += 1
     }
@@ -63,8 +63,8 @@ digitsAt: (s: Str) Str {
 // The rest of the first line whose start, after whitespace, is `key` and whose rest `value`
 // takes: "^\s*<key><value>" with re.M, and the line's rest after the key for `value` to read.
 after: (lines: List<Str>, key: Str, at: Size) Maybe<Size> {
-    mut i: Size = at
-    mut result: Maybe<Size> = null
+    i: Mutable<Size> = at
+    result: Mutable<Maybe<Size>> = null
     while i < lines.size() {
         if lstrip(lines[i]).startsWith(key) {
             result = i
@@ -85,7 +85,7 @@ notConnected: (line: Str) Bool {
     if !s.startsWith("Not connected") {
         false
     } else {
-        mut tail: Str = s.substring(13, s.length())
+        tail: Mutable<Str> = s.substring(13, s.length())
         if tail.startsWith(".") {
             tail = tail.substring(1, tail.length())
         }
@@ -95,8 +95,8 @@ notConnected: (line: Str) Bool {
 
 // The first int a "^\s*<key>(-?\d+)" line gives, signed when `signed`.
 intAfter: (lines: List<Str>, key: Str, signed: Bool) Maybe<Int64> {
-    mut at: Size = 0
-    mut result: Maybe<Int64> = null
+    at: Mutable<Size> = 0
+    result: Mutable<Maybe<Int64>> = null
     while at < lines.size() {
         i: Maybe<Size> = after(lines, key, at)
         if i.isNone() {
@@ -117,8 +117,8 @@ intAfter: (lines: List<Str>, key: Str, signed: Bool) Maybe<Int64> {
 
 // The first float a "^\s*<key>([\d.]+) MBit/s" line gives.
 rateAfter: (lines: List<Str>, key: Str) Maybe<Float64> {
-    mut at: Size = 0
-    mut result: Maybe<Float64> = null
+    at: Mutable<Size> = 0
+    result: Mutable<Maybe<Float64>> = null
     while at < lines.size() {
         i: Maybe<Size> = after(lines, key, at)
         if i.isNone() {
@@ -126,7 +126,7 @@ rateAfter: (lines: List<Str>, key: Str) Maybe<Float64> {
             break
         }
         r: Str = rest(lines[i.value], key)
-        mut n: Size = 0
+        n: Mutable<Size> = 0
         while n < r.length() && (digit(r[n]) || r[n] == '.') {
             n += 1
         }
@@ -143,9 +143,9 @@ rateAfter: (lines: List<Str>, key: Str) Maybe<Float64> {
 pub parseLink: (text: Str) Maybe<Link> {
     out: Link = Link { }
     lines: List<Str> = text.split("\n")
-    mut i: Size = 0
-    mut result: Maybe<Link> = null
-    mut found: Bool = false
+    i: Mutable<Size> = 0
+    result: Mutable<Maybe<Link>> = null
+    found: Mutable<Bool> = false
     while i < lines.size() {
         if notConnected(lines[i]) {
             result = out
@@ -163,7 +163,7 @@ pub parseLink: (text: Str) Maybe<Link> {
             out.connected = true
             s: Maybe<Size> = after(lines, "SSID:", 0)
             if s.isSome() {
-                mut r: Str = rest(lines[s.value], "SSID:")
+                r: Mutable<Str> = rest(lines[s.value], "SSID:")
                 if r.startsWith(" ") {
                     r = r.substring(1, r.length())
                 }
@@ -186,9 +186,9 @@ lineBreak: (c: Char) Bool {
 // text.splitlines(): \r\n is one break, and the text after the last break is a line only
 // when it is not empty.
 pub splitLines: (text: Str) List<Str> {
-    mut out: List<Str> = List<Str> { }
-    mut start: Size = 0
-    mut i: Size = 0
+    out: Mutable<List<Str>> = List<Str> { }
+    start: Mutable<Size> = 0
+    i: Mutable<Size> = 0
     while i < text.length() {
         if lineBreak(text[i]) {
             out.add(text.substring(start, i))
@@ -207,10 +207,10 @@ pub splitLines: (text: Str) List<Str> {
 
 // s.split(): the words between runs of whitespace.
 pub words: (s: Str) List<Str> {
-    mut out: List<Str> = List<Str> { }
-    mut i: Size = skipSpace(s, 0)
+    out: Mutable<List<Str>> = List<Str> { }
+    i: Mutable<Size> = skipSpace(s, 0)
     while i < s.length() {
-        mut j: Size = i
+        j: Mutable<Size> = i
         while j < s.length() && !space(s[j]) {
             j += 1
         }
@@ -224,8 +224,8 @@ pub words: (s: Str) List<Str> {
 // level that is no finite number (int() raises on an infinity there).
 pub parseWireless: (text: Str, iface: Str) Maybe<Int64> {
     lines: List<Str> = splitLines(text)
-    mut i: Size = 0
-    mut result: Maybe<Int64> = null
+    i: Mutable<Size> = 0
+    result: Mutable<Maybe<Int64>> = null
     while i < lines.size() {
         line: Str = lines[i]
         if strip(line).startsWith(iface + ":") {
@@ -252,9 +252,9 @@ pub parseWireless: (text: Str, iface: Str) Maybe<Int64> {
 // first_managed: the interface named on the line before the first "type managed".
 pub firstManaged: (text: Str) Maybe<Str> {
     lines: List<Str> = splitLines(text)
-    mut name: Str = ""
-    mut i: Size = 0
-    mut result: Maybe<Str> = null
+    name: Mutable<Str> = ""
+    i: Mutable<Size> = 0
+    result: Mutable<Maybe<Str>> = null
     while i < lines.size() {
         s: Str = strip(lines[i])
         if s.startsWith("Interface ") {

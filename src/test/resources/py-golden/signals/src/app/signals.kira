@@ -15,7 +15,7 @@ pub main: () Int32 {
         onInt: Bool = onSignal(SIGNAL_INT, stop)
         onTerm: Bool = onSignal(SIGNAL_TERM, stop)
         println("installed ${onInt} ${onTerm}")
-        mut ticks: Int32 = 0
+        ticks: Mutable<Int32> = 0
         while !stop.load() && ticks < 500 {
             ticks += 1
             if ticks == 3 {
@@ -35,7 +35,7 @@ pub main: () Int32 {
         worker: Thread = spawn("worker", () Void {
             sleepMs(200)
             raiseInt()
-            mut ticks: Int32 = 0
+            ticks: Mutable<Int32> = 0
             while !stop.load() && ticks < 300 {
                 ticks += 1
                 sleepMs(10)

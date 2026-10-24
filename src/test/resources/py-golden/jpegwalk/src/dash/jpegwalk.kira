@@ -12,19 +12,19 @@ pub JpegSize: Any {
     pub h: UInt32
 }
 
-pub Jpeg: Any {
+pub Jpeg: Mutable<Any> {
     pub data: List<UInt8>
 }
 
-pub Split: Any {
-    pub mut jpegs: List<Jpeg> = List<Jpeg> { }
-    pub mut rest: List<UInt8> = List<UInt8> { }
+pub Split: Mutable<Any> {
+    pub jpegs: Mutable<List<Jpeg>> = List<Jpeg> { }
+    pub rest: Mutable<List<UInt8>> = List<UInt8> { }
 }
 
 // The index of the first FF and [second] at or after [start], or null (bytes.find).
 findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
-    mut j: Size = start
-    mut result: Maybe<Size> = null
+    j: Mutable<Size> = start
+    result: Mutable<Maybe<Size>> = null
     while j + 2 <= buf.size() {
         if buf[j] == 0xFF && buf[j + 1] == second {
             result = j
@@ -41,10 +41,10 @@ pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
     if n < 4 || frame[0] != 0xFF || frame[1] != 0xD8 || frame[n - 2] != 0xFF || frame[n - 1] != 0xD9 {
         null
     } else {
-        mut i: Size = 2
-        mut w: UInt32 = 0
-        mut h: UInt32 = 0
-        mut result: Maybe<JpegSize> = null
+        i: Mutable<Size> = 2
+        w: Mutable<UInt32> = 0
+        h: Mutable<UInt32> = 0
+        result: Mutable<Maybe<JpegSize>> = null
         while i + 4 <= n {
             if frame[i] != 0xFF {
                 result = null
@@ -81,9 +81,9 @@ pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
 // jpeg_end(buf, soi): the index just past the EOI of the JPEG starting at soi, or null while it
 // is incomplete. In the entropy-coded data after SOS an FF is always stuffed or a marker.
 pub jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
-    mut i: Size = soi + 2
+    i: Mutable<Size> = soi + 2
     n: Size = buf.size()
-    mut result: Maybe<Size> = null
+    result: Mutable<Maybe<Size>> = null
     while i + 4 <= n {
         if buf[i] != 0xFF {
             j: Maybe<Size> = findPair(buf, i, 0xD9)
@@ -111,10 +111,10 @@ pub jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
 
 // split_jpegs(buf): the complete JPEGs, and the rest from the SOI of an incomplete one.
 pub splitJpegs: (buf: View<UInt8>) Split {
-    mut out: Split = Split { }
-    mut pos: Size = 0
-    mut result: Maybe<Split> = null
-    mut found: Bool = false
+    out: Mutable<Split> = Split { }
+    pos: Mutable<Size> = 0
+    result: Mutable<Maybe<Split>> = null
+    found: Mutable<Bool> = false
     while true {
         soi: Maybe<Size> = findPair(buf, pos, 0xD8)
         if soi.isNull() {
@@ -137,8 +137,8 @@ pub splitJpegs: (buf: View<UInt8>) Split {
 
 // ---- main: synthetic JPEGs -------------------------------------------------------------------
 
-append: (mut out: List<UInt8>, v: View<UInt8>) Void {
-    mut i: Size = 0
+append: (out: List<UInt8>, v: View<UInt8>) Void {
+    i: Mutable<Size> = 0
     while i < v.size() {
         out.add(v[i])
         i += 1
@@ -146,17 +146,17 @@ append: (mut out: List<UInt8>, v: View<UInt8>) Void {
 }
 
 // A marker segment: FF, the marker, its big-endian length (which counts itself) and its body.
-segment: (mut out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
+segment: (out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
     n: Size = body.size() + 2
     out.add(0xFF)
     out.add(marker)
     out.add((n >> 8) as UInt8)
     out.add(n as UInt8)
-    append(mut out, body)
+    append(out, body)
 }
 
 filled: (n: Size, b: UInt8) List<UInt8> {
-    mut out: List<UInt8> = List<UInt8> { }
+    out: Mutable<List<UInt8>> = List<UInt8> { }
     while out.size() < n {
         out.add(b)
     }
@@ -166,22 +166,22 @@ filled: (n: Size, b: UInt8) List<UInt8> {
 // SOI, APP0, a DQT whose table holds FF D9, SOF0 at w x h, a DHT, SOS, scan data with a stuffed
 // FF 00 and a restart marker, then EOI unless [cut].
 jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
-    mut out: List<UInt8> = @listOf(0xFF, 0xD8)
+    out: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8)
     app0: Arr<UInt8, 14> = @arrOf(0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00)
-    segment(mut out, 0xE0, app0)
-    mut dqt: List<UInt8> = filled(65, 0x10)
+    segment(out, 0xE0, app0)
+    dqt: Mutable<List<UInt8>> = filled(65, 0x10)
     dqt.set(20, 0xFF)
     dqt.set(21, 0xD9)
-    segment(mut out, 0xDB, dqt)
-    mut sof: Arr<UInt8, 15> = @arrOf(0x08, 0, 0, 0, 0, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01)
+    segment(out, 0xDB, dqt)
+    sof: Mutable<Arr<UInt8, 15>> = @arrOf(0x08, 0, 0, 0, 0, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01)
     sof[1] = (h >> 8) as UInt8
     sof[2] = h as UInt8
     sof[3] = (w >> 8) as UInt8
     sof[4] = w as UInt8
-    segment(mut out, 0xC0, sof)
-    segment(mut out, 0xC4, filled(28, 0x01))
+    segment(out, 0xC0, sof)
+    segment(out, 0xC4, filled(28, 0x01))
     sos: Arr<UInt8, 10> = @arrOf(0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F, 0x00)
-    segment(mut out, 0xDA, sos)
+    segment(out, 0xDA, sos)
     scan: Arr<UInt8> = @arrOf(0x12, 0x34, 0xFF, 0x00, 0x56, 0xFF, 0xD0, 0x78, 0x9A, 0xFF, 0x00, 0xBC)
     out.addAll(scan)
     if !cut {
@@ -216,24 +216,24 @@ main: () Void {
     trace(showEnd(jpegEnd(a, 0)))
     trace(showEnd(jpegEnd(c, 0)))
     // a fill byte FF before a marker is skipped
-    mut padded: List<UInt8> = @listOf(0xFF, 0xD8, 0xFF)
-    append(mut padded, a.from(2))
+    padded: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8, 0xFF)
+    append(padded, a.from(2))
     trace(show(jpegSize(padded)))
     trace(showEnd(jpegEnd(padded, 0)))
     // a JPEG with no SOF, and one whose SOS comes before its SOF
-    mut bare: List<UInt8> = @listOf(0xFF, 0xD8)
+    bare: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8)
     sos: Arr<UInt8, 10> = @arrOf(0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F, 0x00)
-    segment(mut bare, 0xDA, sos)
+    segment(bare, 0xDA, sos)
     bare.add(0xFF)
     bare.add(0xD9)
     trace(show(jpegSize(bare)))
     trace(showEnd(jpegEnd(bare, 0)))
     // a restart before any scan
-    mut early: List<UInt8> = @listOf(0xFF, 0xD8, 0xFF, 0xD0, 0x00, 0x00, 0xFF, 0xD9)
+    early: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8, 0xFF, 0xD0, 0x00, 0x00, 0xFF, 0xD9)
     trace(show(jpegSize(early)))
     trace(showEnd(jpegEnd(early, 0)))
     // a stream: noise, a, b, noise, then the start of c
-    mut stream: List<UInt8> = @listOf(0x00, 0x11, 0xFF, 0x22)
+    stream: Mutable<List<UInt8>> = @listOf(0x00, 0x11, 0xFF, 0x22)
     stream.addAll(a.toArr())
     stream.addAll(b.toArr())
     stream.add(0x00)

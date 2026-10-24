@@ -28,11 +28,13 @@ class ProfilePassTest {
                 pub Frame: Struct {
                     pub bytes: Arr<UInt8, 8> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
                     pub mode: Int32 = MODE_A
-                    pub mut clear: () Void {
-                        bytes[0] = 0
+                    pub cleared: () Frame {
+                        b: Mutable<Arr<UInt8, 8>> = bytes
+                        b[0] = 0
+                        Frame { b, mode }
                     }
                 }
-                pub mut STATE: Int32 = 0
+                pub STATE: Mutable<Int32> = 0
                 pub Show: Any {
                     pub code: () Int32;
                 }
@@ -44,7 +46,7 @@ class ProfilePassTest {
                         f(b)
                     }
                 }
-                pub reply: (servo: Int32, mut out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
+                pub reply: (servo: Int32, out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
                     out.set("OK drive servo=${'$'}{servo}")
                     servo < 0 ? null : Tuple2<Int32, Int32> { servo, servo }
                 }

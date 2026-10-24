@@ -11,9 +11,9 @@ py: (code: Str) List<Str> {
 }
 
 drain: (p: Process) Str {
-    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
-    mut text: Str = ""
-    mut n: Int64 = p.readStdout(buf.from(0))
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
+    text: Mutable<Str> = ""
+    n: Mutable<Int64> = p.readStdout(buf.from(0))
     while n > 0 {
         text = text + Str.of(buf.slice(0, n as Size))
         n = p.readStdout(buf.from(0))
@@ -22,10 +22,10 @@ drain: (p: Process) Str {
 }
 
 readSome: (p: PipedProcess, want: Size) Str {
-    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
-    mut text: Str = ""
-    mut result: Str = ""
-    mut found: Bool = false
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
+    text: Mutable<Str> = ""
+    result: Mutable<Str> = ""
+    found: Mutable<Bool> = false
     while text.size() < want {
         n: Int64 = p.readStdout(buf.from(0))
         if n <= 0 {
@@ -61,7 +61,7 @@ pub readOnSignal: () Str {
     flag: Atomic<Bool> = Atomic<Bool> { value = false }
     installed: Bool = onSignal(SIGNAL_INT, flag)
     p: Process = spawnProcess(py("import time; time.sleep(1)")).value
-    mut buf: List<UInt8> = @listOf(0, 0, 0, 0)
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0)
     before: Int64 = monoNowMs()
     n: Int64 = p.readStdout(buf.from(0))
     took: Int64 = monoNowMs() - before

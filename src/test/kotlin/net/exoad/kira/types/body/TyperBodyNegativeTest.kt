@@ -46,7 +46,7 @@ class TyperBodyNegativeTest {
     @Test
     fun aMutableGlobalArrLiteralHasItsCountChecked() {
         // Phase B never folds a mut global's initializer, so the Arr<T, N> count is checked here.
-        val p = snippet("pub mut BUF: Arr<UInt8, 2> = @arrOf(1, 2, 3)")
+        val p = snippet("pub BUF: Mutable<Arr<UInt8, 2>> = @arrOf(1, 2, 3)")
         assertEquals(listOf("types.const.arr-size"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
     }
 
@@ -58,9 +58,9 @@ class TyperBodyNegativeTest {
 
     @Test
     fun aNonConstantMutableGlobalIsRefusedAndAConstantOneIsNot() {
-        val bad = snippet("seed: () Int32 {\n    4\n}\npub mut state: Int32 = seed()")
+        val bad = snippet("seed: () Int32 {\n    4\n}\npub state: Mutable<Int32> = seed()")
         assertEquals(listOf("types.global.mut-init"), bad.diagnostics.map { it.code }, TyperTestSupport.render(bad))
-        val good = snippet("pub LIMIT: Int32 = 4\npub mut state: Int32 = LIMIT * 2\npub mut xs: Arr<Int32> = @arrOf(1, 2)")
+        val good = snippet("pub LIMIT: Int32 = 4\npub state: Mutable<Int32> = LIMIT * 2\npub xs: Mutable<Arr<Int32>> = @arrOf(1, 2)")
         TyperTestSupport.expectNoErrors(good)
     }
 
@@ -88,7 +88,7 @@ class TyperBodyNegativeTest {
     fun aRunTimeBindingIsNamedWhereverItSitsInTheExpression() {
         // The reason is the offending leaf, not only a top-level call: under an operator, in a
         // mut global's initializer, and in a static assert's condition.
-        val p = snippet("pub SCALED: Float64 = sqrt(2.0) * 2.0\npub mut SEED: Float64 = 1.0 + sqrt(4.0)\n@_static_assert(sqrt(4.0) == 2.0, \"two\")")
+        val p = snippet("pub SCALED: Float64 = sqrt(2.0) * 2.0\npub SEED: Mutable<Float64> = 1.0 + sqrt(4.0)\n@_static_assert(sqrt(4.0) == 2.0, \"two\")")
         assertEquals(
             listOf("types.const.not-constant", "types.global.mut-init", "types.static-assert.not-constant"),
             p.diagnostics.map { it.code }.sorted(),
@@ -112,11 +112,11 @@ class TyperBodyNegativeTest {
         assertEquals(listOf("types.const.not-constant", "types.static-assert.not-constant"), p.diagnostics.map { it.code }.sorted(), TyperTestSupport.render(p))
         assertEquals(
             "'DSIZE' is a module constant, so its value is fixed at compile time; DYN.size() is not " +
-                "('DYN' is built at run time: Arr<Int32> is no literal type in C++). Declare it `mut` for state, or compute it where it is used.",
+                "('DYN' is built at run time: Arr<Int32> is no literal type in C++). Declare it 'DSIZE: Mutable<Size>' for state, or compute it where it is used.",
             p.diagnostics.single { it.code == "types.const.not-constant" }.message,
         )
         // A construction of such a type is no constant operand either, however constant its fields.
-        val q = snippet("pub Bag: Struct {\n    pub items: List<Int32> = @listOf()\n    pub n: Int32 = 1\n}\npub BAG: Bag = Bag { }\npub TMP: Int32 = Bag { }.n")
+        val q = snippet("pub Bag: Mutable<Any> {\n    pub items: List<Int32> = @listOf()\n    pub n: Int32 = 1\n}\npub BAG: Bag = Bag { }\npub TMP: Int32 = Bag { }.n")
         assertEquals(listOf("types.const.not-constant"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
         assertTrue(q.diagnostics.single().message.contains("(Bag { } is built at run time: Bag is no literal type in C++)"), q.diagnostics.single().message)
     }
@@ -126,8 +126,8 @@ class TyperBodyNegativeTest {
         // D49 asks only that no initialization order can matter: literals, nested literals, a
         // StrBuf, a tuple of literal fields and their reads are fine.
         val p = snippet(
-            "pub LIMIT: Int32 = 4\npub mut state: Int32 = LIMIT * 2\npub mut xs: Arr<Int32> = @arrOf(1, 2)\npub mut ys: List<List<Int32>> = @listOf(@listOf(1), @listOf(2))\n" +
-                "pub mut buf: StrBuf<16> = StrBuf<16> { }\npub mut m: Maybe<Int32> = null\n" +
+            "pub LIMIT: Int32 = 4\npub state: Mutable<Int32> = LIMIT * 2\npub xs: Mutable<Arr<Int32>> = @arrOf(1, 2)\npub ys: Mutable<List<List<Int32>>> = @listOf(@listOf(1), @listOf(2))\n" +
+                "pub buf: Mutable<StrBuf<16>> = StrBuf<16> { }\npub m: Mutable<Maybe<Int32>> = null\n" +
                 "pub P: Tuple2<Int32, Bool> = Tuple2<Int32, Bool> { 1, true }\npub PF: Int32 = P.first",
         )
         TyperTestSupport.expectNoErrors(p)
@@ -154,17 +154,17 @@ class TyperBodyNegativeTest {
         // Only Named and its subclasses satisfy `T: Named`, and every one is an Rc: the lambda's
         // capture of n shares the object, as `n: Named` does. Through a chain of bounds too.
         val p = snippet(
-            "pub Named: Any {\n    pub name: Str\n    pub mut hits: Int32 = 0\n    pub mut hit: () Void {\n        hits += 1\n    }\n}\n" +
+            "pub Named: Mutable<Any> {\n    pub name: Str\n    pub hits: Mutable<Int32> = 0\n    pub hit: () Void {\n        hits += 1\n    }\n}\n" +
                 "pub lam<T: Named>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.hit()\n    }\n}\n" +
                 "pub viaU<T: U, U: Named>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.hit()\n    }\n}",
         )
         TyperTestSupport.expectNoErrors(p)
-        // A trait bound may be satisfied by a struct, which a lambda copies: still refused.
+        // A Mutable trait's bound is satisfied by Mutable types alone, each held by reference: nothing is copied.
         val q = snippet(
-            "pub Counter: Any {\n    pub mut bump: () Void;\n}\n" +
+            "pub Counter: Mutable<Any> {\n    pub bump: () Void;\n}\n" +
                 "pub lam<T: Counter>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.bump()\n    }\n}",
         )
-        assertEquals(listOf("types.lambda.assign-capture"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
+        assertEquals(emptyList<String>(), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
     }
 
     @Test
@@ -187,7 +187,7 @@ class TyperBodyNegativeTest {
         assertEquals(listOf("types.const.not-constant"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
         assertEquals(
             "'K' is a module constant, so its value is fixed at compile time; W { } is not " +
-                "(the default of field 'n', seed(), runs at run time). Declare it `mut` for state, or compute it where it is used.",
+                "(the default of field 'n', seed(), runs at run time). Declare it 'K: Mutable<W>' for state, or compute it where it is used.",
             p.diagnostics.single().message,
         )
     }
@@ -197,8 +197,8 @@ class TyperBodyNegativeTest {
         val p = snippet("pub Crc: Any {\n    pub poly: Int64 = 4129\n}\npub CRC: Crc = Crc { }\npub WIDE: Crc = Crc { 7 }")
         TyperTestSupport.expectNoErrors(p)
         val q = snippet(
-            "pub Base: Any {\n    pub mut n: Int32 = 1\n\n    initially {\n        n = 2\n    }\n}\n" +
-                "pub Leaf: Base {\n    pub m: Int32 = 0\n}\npub K: Leaf = Leaf { }",
+            "pub Base: Mutable<Any> {\n    pub n: Mutable<Int32> = 1\n\n    initially {\n        n = 2\n    }\n}\n" +
+                "pub Leaf: Mutable<Base> {\n    pub m: Int32 = 0\n}\npub K: Leaf = Leaf { }",
         )
         assertEquals(listOf("types.const.not-constant"), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
     }
@@ -218,8 +218,8 @@ class TyperBodyNegativeTest {
             TyperTestSupport.module("test:lib", "pub DYN: Arr<Int32> = @arrOf(1, 2, 3)"),
             TyperTestSupport.module(
                 "test:main",
-                "test.lib as lib\n\npub W2: Struct {\n    pub n: Size = lib.DYN.size()\n}\npub mut G: W2 = W2 { }\npub mut H: Size = lib.DYN.size()\n" +
-                    "pub Bag: Struct {\n    pub items: List<Int32> = @listOf()\n    pub n: Size = lib.DYN.size()\n}\npub mut GB: Bag = Bag { }\npub mut OK: Bag = Bag { n = 3 }",
+                "test.lib as lib\n\npub W2: Struct {\n    pub n: Size = lib.DYN.size()\n}\npub G: Mutable<W2> = W2 { }\npub H: Mutable<Size> = lib.DYN.size()\n" +
+                    "pub Bag: Mutable<Any> {\n    pub items: List<Int32> = @listOf()\n    pub n: Size = lib.DYN.size()\n}\npub GB: Mutable<Bag> = Bag { }\npub OK: Mutable<Bag> = Bag { n = 3 }",
             ),
         )
         assertEquals(List(3) { "types.global.mut-init" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
@@ -275,7 +275,7 @@ class TyperBodyNegativeTest {
         )
         assertEquals(
             "'B' is a module constant, so its value is fixed at compile time; A + A is not " +
-                "('@op_add' runs at run time: it is not @_const). Declare it `mut` for state, or compute it where it is used.",
+                "('@op_add' runs at run time: it is not @_const). Declare it 'B: Mutable<V2>' for state, or compute it where it is used.",
             p.diagnostics.first().message,
         )
         assertTrue(p.diagnostics.last().message.endsWith("A == A is not ('@op_eq' runs at run time: it is not @_const)."), p.diagnostics.last().message)
@@ -284,7 +284,7 @@ class TyperBodyNegativeTest {
     @Test
     fun indexingAStrIsNoConstant() {
         // R15 lowers s[i] to kira::str::at(s, i), which is not constexpr (rt.hxx).
-        val p = snippet("pub SEP: Str = \",\"\npub SC: Char = SEP[0]\npub mut MC: Char = SEP[0]\n@_static_assert(SEP[0] == ',', \"sep\")")
+        val p = snippet("pub SEP: Str = \",\"\npub SC: Char = SEP[0]\npub MC: Mutable<Char> = SEP[0]\n@_static_assert(SEP[0] == ',', \"sep\")")
         assertEquals(
             listOf("types.const.not-constant", "types.global.mut-init", "types.static-assert.not-constant"),
             p.diagnostics.map { it.code },
@@ -300,7 +300,7 @@ class TyperBodyNegativeTest {
         // Through a Maybe, through two structs, and through a fixed array: each is refused as
         // a run-time value, not reported as an internal StackOverflowError.
         val p = snippet(
-            "pub Node: Struct {\n    pub v: Int32 = 0\n    pub next: Maybe<Node> = null\n}\npub N0: Node = Node { }\npub mut HEAD: Node = Node { }\npub NV: Int32 = N0.v\n" +
+            "pub Node: Struct {\n    pub v: Int32 = 0\n    pub next: Maybe<Node> = null\n}\npub N0: Node = Node { }\npub HEAD: Mutable<Node> = Node { }\npub NV: Int32 = N0.v\n" +
                 "pub Na: Struct {\n    pub b: Maybe<Nb> = null\n}\npub Nb: Struct {\n    pub a: Maybe<Na> = null\n}\npub NA0: Na = Na { }\npub NAB: Maybe<Nb> = NA0.b\n" +
                 "pub Tree: Struct {\n    pub kids: Arr<Tree, 2>\n}\npub T0: Maybe<Tree> = null\npub T1: Maybe<Tree> = T0",
         )
@@ -365,8 +365,8 @@ class TyperBodyNegativeTest {
     @Test
     fun anEmptyContainerConstructionStartsAMutGlobalLikeAnArrayLiteral() {
         val p = snippet(
-            "pub mut XS: List<Int32> = List<Int32> { }\npub mut YS: List<Int32> = @listOf()\npub mut M: Map<Str, Int32> = Map<Str, Int32> { }\n" +
-                "pub mut S: Set<Int32> = Set<Int32> { }\npub C: Any {\n    pub mut n: Int32 = 0\n\n    initially {\n        n = 1\n    }\n}\npub mut OBJ: C = C { }",
+            "pub XS: Mutable<List<Int32>> = List<Int32> { }\npub YS: Mutable<List<Int32>> = @listOf()\npub M: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }\n" +
+                "pub S: Mutable<Set<Int32>> = Set<Int32> { }\npub C: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    initially {\n        n = 1\n    }\n}\npub OBJ: Mutable<C> = C { }",
         )
         assertEquals(listOf("types.global.mut-init"), p.diagnostics.map { it.code }, TyperTestSupport.render(p))
         assertTrue(p.diagnostics.single().message.contains("'OBJ' starts from C { }."), p.diagnostics.single().message)

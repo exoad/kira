@@ -11,12 +11,12 @@ pub main: () Void {
     seen: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
     t: Thread = spawn("other", () Void {
         e: Str = Json.error()
-        seen.lock((mut xs: List<Str>) Void {
+        seen.lock((xs: List<Str>) Void {
             xs.add(e)
         })
     })
     t.join()
-    seen.lock((mut xs: List<Str>) Void {
+    seen.lock((xs: List<Str>) Void {
         println("another thread reads [${xs[0]}]")
     })
     println("parser parsed [1]: ${parsed("[1]")}")

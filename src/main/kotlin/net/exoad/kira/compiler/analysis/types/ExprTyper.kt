@@ -144,9 +144,20 @@ internal class PhaseC(val program: TypedProgram) {
                     (owner is ClassSymbol && (owner.kind == ClassKind.CLASS || owner.kind == ClassKind.OPAQUE || owner.name == "Ref"))
                 if (throughReference) false else p.receiver?.let { writesCapture(it, ctx) } ?: false
             }
-            is Place.Index -> if (p.kind == IndexKind.MUT_VIEW || p.kind == IndexKind.VIEW) false else writesCapture(p.container, ctx)
+            is Place.Index -> if (p.kind == IndexKind.MUT_VIEW || p.kind == IndexKind.VIEW || sharedContainer(p.container)) false else writesCapture(p.container, ctx)
         }
     }
+
+    /** Stage 4: the value at [p] is of a Mutable type, shared, so writing its element writes no capture. */
+    private fun sharedContainer(p: Place): Boolean = facts.shares(
+        when (p) {
+            is Place.Local -> p.sym.type
+            is Place.Param -> p.sym.type
+            is Place.Global -> p.sym.type
+            is Place.Field -> p.sym.type
+            else -> null
+        }
+    )
 
     /** [sym] was declared inside [frame] or a lambda nested in it. */
     private fun declaredWithin(sym: Symbol, frame: LambdaFrame): Boolean {

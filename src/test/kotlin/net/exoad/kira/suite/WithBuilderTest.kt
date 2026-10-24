@@ -34,11 +34,11 @@ class WithBuilderTest {
             pub escMinUs: Int64
         }
 
-        Counter: Any {
-            pub mut frames: Int64 = 0
+        Counter: Mutable<Any> {
+            pub frames: Mutable<Int64> = 0
             pub label: Str = ""
 
-            pub mut count: () Void {
+            pub count: () Void {
                 frames += 1
             }
         }
@@ -155,13 +155,13 @@ class WithBuilderTest {
 
     @Test
     fun aWithThatWouldRunAtAnotherTimeIsRefused() {
-        val loop = snippet("main: () Void {\n    p: P = P { 1, 2 }\n    mut i: Int32 = 0\n    while (p with {\n        x = 1\n    }).x > i {\n        i += 1\n    }\n}")
+        val loop = snippet("main: () Void {\n    p: P = P { 1, 2 }\n    i: Mutable<Int32> = 0\n    while (p with {\n        x = 1\n    }).x > i {\n        i += 1\n    }\n}")
         assertTrue(expectDiagnostic(loop, "types.with.position").message.contains("while condition"))
         val shortCircuit = snippet("main: () Void {\n    p: P = P { 1, 2 }\n    ok: Bool = p.x > 0 && (p with {\n        x = 2\n    }).x > 0\n}")
         assertTrue(expectDiagnostic(shortCircuit, "types.with.position").message.contains("&&"))
         val sibling = snippet(
             "pick: (a: P, b: P) Int32 {\n    a.x + b.x\n}\n\n" +
-                "main: () Void {\n    mut r: P = P { 0, 0 }\n    n: Int32 = pick(r, r with {\n        r = P { 5, 5 }\n    })\n}",
+                "main: () Void {\n    r: Mutable<P> = P { 0, 0 }\n    n: Int32 = pick(r, r with {\n        r = P { 5, 5 }\n    })\n}",
         )
         assertTrue(expectDiagnostic(sibling, "types.with.position").message.contains("evaluates r first"))
         val defaulted = snippet("Holder: Any {\n    pub p: P = P { 1, 2 } with {\n        x = 3\n    }\n}")
@@ -254,7 +254,7 @@ class WithBuilderTest {
             File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
             val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
             file.writeText(
-                "$types\n\nRow: Any {\n    pub mut n: Int32 = 0\n\n    pub copy: () Row {\n        Row { n }\n    }\n}\n\n" +
+                "$types\n\nRow: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    pub copy: () Row {\n        Row { n }\n    }\n}\n\n" +
                     "main: () Void {\n    p: P = P { 1, 2 }\n    q: P = p.copy(x = 4, y = p.y + 1)\n    r: Row = Row { }\n    s: Row = r.copy()\n}\n",
             )
             assertEquals(0, Stage2.convertAll(listOf(dir.path), check = false))

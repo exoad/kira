@@ -71,9 +71,9 @@ class TestBlockValueTest {
         return p.model.narrowings.entries.map { (id, n) -> "${id.value}:${n.from.display()}->${n.to.display()}" }.sorted()
     }
 
-    /** [kira]'s printed lines on py, with stage 3's refusals off when it is [old] text. */
+    /** [kira]'s printed lines on py, with stage 3's refusals off when it is [old] text; both still spell stage 4's `mut`. */
     private fun runPy(kira: String, old: Boolean): String {
-        val py = if (old) DialectGates.stage3(false) { PyTestSupport.emit(kira).python() } else PyTestSupport.emit(kira).python()
+        val py = DialectGates.stage4(false) { if (old) DialectGates.stage3(false) { PyTestSupport.emit(kira).python() } else PyTestSupport.emit(kira).python() }
         val file = Files.createTempFile("testblock-run", ".py").toFile()
         try {
             file.writeText(py)

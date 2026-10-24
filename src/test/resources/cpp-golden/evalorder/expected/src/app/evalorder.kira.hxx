@@ -6,13 +6,23 @@
 namespace evalorder
 {
   struct Box;
+  class Cell;
 
   struct Box
   {
       std::int32_t v = 0;
 
       [[nodiscard]] std::int32_t pair(std::int32_t a, std::int32_t b) const;
+  };
+
+  class Cell final
+  {
+  public:
+      explicit Cell(std::int32_t v_ = 0);
+      Cell(const Cell&) = delete;
+      Cell& operator=(const Cell&) = delete;
       void grow(std::int32_t a, std::int32_t b);
+      std::int32_t v;
   };
 
   void main();

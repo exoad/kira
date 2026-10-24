@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * Design 4.2 and table 5.2 over small modules. The parts that lower bodies and
@@ -109,8 +110,8 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub mut servoMin: Int32 = 1230
-                mut calls: Int32 = 0
+                pub servoMin: Mutable<Int32> = 1230
+                calls: Mutable<Int32> = 0
                 LOCAL: Float32 = 0.10
                 """,
             ),
@@ -130,7 +131,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                mut calls: Int32 = 0
+                calls: Mutable<Int32> = 0
                 LOCAL: Float32 = 0.10
                 helper: (v: Float32) Float32 { v * LOCAL }
                 orphan: () Void { }
@@ -168,25 +169,27 @@ class CppDeclEmitterTest {
 
     @Test
     fun aStructIsAnAggregateWithDefaultsRequireFieldsAndMethods() {
-        val h = header(
-            """
-            pub Reply: Struct {
-                pub kind: Int32 = 0
-                pub topic: Str = ""
-                pub band: Int32
-                pub weight: Float32 = 0.25
+        DialectGates.stage4(false) {
+            val h = header(
+                """
+                pub Reply: Struct {
+                    pub kind: Int32 = 0
+                    pub topic: Str = ""
+                    pub band: Int32
+                    pub weight: Float32 = 0.25
 
-                pub width: () Int32;
-                pub mut widen: (by: Int32 = 1) Void;
-                pub @_const twice: () Int32;
-            }
-            """
-        )
-        assertContains(
-            h,
-            "  struct Reply;\n",
-            "  struct Reply\n  {\n      std::int32_t kind = 0;\n      kira::Str topic = \"\";\n      std::int32_t band{};\n      float weight = 0.25f;\n\n      [[nodiscard]] std::int32_t width() const;\n      void widen(std::int32_t by = 1);\n      [[nodiscard]] constexpr std::int32_t twice() const;\n  };",
-        )
+                    pub width: () Int32;
+                    pub mut widen: (by: Int32 = 1) Void;
+                    pub @_const twice: () Int32;
+                }
+                """
+            )
+            assertContains(
+                h,
+                "  struct Reply;\n",
+                "  struct Reply\n  {\n      std::int32_t kind = 0;\n      kira::Str topic = \"\";\n      std::int32_t band{};\n      float weight = 0.25f;\n\n      [[nodiscard]] std::int32_t width() const;\n      void widen(std::int32_t by = 1);\n      [[nodiscard]] constexpr std::int32_t twice() const;\n  };",
+            )
+        }
     }
 
     @Test
@@ -202,20 +205,22 @@ class CppDeclEmitterTest {
 
     @Test
     fun structsAreOrderedByByValueContainment() {
-        val h = header(
-            """
-            pub Outer: Struct { pub a: Inner = Inner {} pub m: Maybe<Mid> = null }
-            pub Mid: Struct { pub xs: Arr<Inner, 2> = @arrOf(Inner {}, Inner {}) pub list: List<Outer> = List<Outer> {} }
-            pub Inner: Struct { pub v: Int32 = 0 }
-            """,
-            parts = fakeBodies,
-        )
-        val inner = h.indexOf("struct Inner\n")
-        val mid = h.indexOf("struct Mid\n")
-        val outer = h.indexOf("struct Outer\n")
-        assertTrue(inner in 1 until mid && mid < outer, "Inner, then Mid, then Outer:\n$h")
-        // the forward declarations keep source order
-        assertContains(h, "  struct Outer;\n  struct Mid;\n  struct Inner;\n")
+        DialectGates.stage4(false) {
+            val h = header(
+                """
+                pub Outer: Struct { pub a: Inner = Inner {} pub m: Maybe<Mid> = null }
+                pub Mid: Struct { pub xs: Arr<Inner, 2> = @arrOf(Inner {}, Inner {}) pub list: List<Outer> = List<Outer> {} }
+                pub Inner: Struct { pub v: Int32 = 0 }
+                """,
+                parts = fakeBodies,
+            )
+            val inner = h.indexOf("struct Inner\n")
+            val mid = h.indexOf("struct Mid\n")
+            val outer = h.indexOf("struct Outer\n")
+            assertTrue(inner in 1 until mid && mid < outer, "Inner, then Mid, then Outer:\n$h")
+            // the forward declarations keep source order
+            assertContains(h, "  struct Outer;\n  struct Mid;\n  struct Inner;\n")
+        }
     }
 
     @Test
@@ -306,24 +311,26 @@ class CppDeclEmitterTest {
 
     @Test
     fun structMethodsAreDefinedOutOfLineWhereTheStructSays() {
-        val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module(
-                "test:main",
-                """
-                pub Pt: Struct {
-                    pub x: Int32 = 0
-                    pub width: () Int32 { x }
-                    pub mut @_const grow: (by: Int32) Void { x += by }
-                }
-                """,
-            ),
-            uri = "test:main",
-            parts = fakeBodies,
-        )
-        val h = CppWriter.normalize(emitted.header)
-        val s = CppWriter.normalize(emitted.source ?: fail("no source"))
-        assertContains(h, "      [[nodiscard]] std::int32_t width() const;\n      constexpr void grow(std::int32_t by);\n  };\n\n  constexpr void Pt::grow(std::int32_t by)\n  {\n      return {}; // body of grow\n  }\n}")
-        assertContains(s, "  std::int32_t Pt::width() const\n  {\n      return {}; // body of width\n  }")
+        DialectGates.stage4(false) {
+            val (emitted, _) = DeclTestSupport.emitWith(
+                DeclTestSupport.module(
+                    "test:main",
+                    """
+                    pub Pt: Struct {
+                        pub x: Int32 = 0
+                        pub width: () Int32 { x }
+                        pub mut @_const grow: (by: Int32) Void { x += by }
+                    }
+                    """,
+                ),
+                uri = "test:main",
+                parts = fakeBodies,
+            )
+            val h = CppWriter.normalize(emitted.header)
+            val s = CppWriter.normalize(emitted.source ?: fail("no source"))
+            assertContains(h, "      [[nodiscard]] std::int32_t width() const;\n      constexpr void grow(std::int32_t by);\n  };\n\n  constexpr void Pt::grow(std::int32_t by)\n  {\n      return {}; // body of grow\n  }\n}")
+            assertContains(s, "  std::int32_t Pt::width() const\n  {\n      return {}; // body of width\n  }")
+        }
     }
 
     @Test

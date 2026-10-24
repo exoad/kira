@@ -179,7 +179,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 c.report(
                     "types.const.not-constant",
                     "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not" +
-                        "$why. Declare it `mut` for state, or compute it where it is used.",
+                        "$why. Declare it ${if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "'${g.name}: Mutable<${g.type.display()}>'" else "`mut`"} for state, or compute it where it is used.",
                     init,
                 )
             }

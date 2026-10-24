@@ -15,12 +15,13 @@ namespace evalorder
     kira::List<kira::List<std::int32_t>> gll = kira::List<kira::List<std::int32_t>>{};
     kira::List<std::int32_t> gls = kira::List<std::int32_t>{};
     kira::List<std::int32_t> gv = kira::List<std::int32_t>{1, 2, 3};
+    std::int32_t gx = 0;
     Box gb = Box{.v = 1};
 
     [[nodiscard]] std::int32_t next();
     [[nodiscard]] kira::Size nextSize();
     [[nodiscard]] std::int32_t sub(std::int32_t a, std::int32_t b);
-    void store(std::int32_t& into, std::int32_t tens, std::int32_t ones);
+    [[nodiscard]] std::int32_t tensOnes(std::int32_t tens, std::int32_t ones);
     [[nodiscard]] Box makeBox();
     [[nodiscard]] kira::Size setFirst();
     [[nodiscard]] std::int32_t changeS();
@@ -42,7 +43,7 @@ namespace evalorder
     [[nodiscard]] std::int32_t growGls();
     [[nodiscard]] std::int32_t setGv();
     [[nodiscard]] std::int32_t poke(kira::MutView<std::int32_t> m);
-    [[nodiscard]] std::int32_t inc(std::int32_t& v);
+    [[nodiscard]] std::int32_t incGx();
     [[nodiscard]] kira::Size pushTo(kira::List<std::int32_t>& into);
     [[nodiscard]] kira::Size lenOf(const kira::List<std::int32_t>& items, kira::Size k);
     [[nodiscard]] std::int32_t applyTo(const kira::Fn<std::int32_t(std::int32_t)>& f, std::int32_t n);
@@ -66,9 +67,9 @@ namespace evalorder
         return a - b;
     }
 
-    void store(std::int32_t& into, std::int32_t tens, std::int32_t ones)
+    std::int32_t tensOnes(std::int32_t tens, std::int32_t ones)
     {
-        into = tens * 10 + ones;
+        return tens * 10 + ones;
     }
 
     Box makeBox()
@@ -91,7 +92,7 @@ namespace evalorder
 
     std::int32_t bumpB()
     {
-        gb.v = 9;
+        gb = Box{.v = 9};
         return 0;
     }
 
@@ -207,9 +208,9 @@ namespace evalorder
         return 1;
     }
 
-    std::int32_t inc(std::int32_t& v)
+    std::int32_t incGx()
     {
-        v += 10;
+        gx += 10;
         return 1;
     }
 
@@ -249,7 +250,12 @@ namespace evalorder
       return v * 100 + a * 10 + b;
   }
 
-  void Box::grow(std::int32_t a, std::int32_t b)
+  Cell::Cell(std::int32_t v_)
+      : v(v_)
+  {
+  }
+
+  void Cell::grow(std::int32_t a, std::int32_t b)
   {
       v = v * 100 + a * 10 + b;
   }
@@ -280,11 +286,11 @@ namespace evalorder
           return sub(t0_, t1_);
       }());
       std::int32_t slot{0};
-      [&]() -> void
+      slot = [&]() -> std::int32_t
       {
           const std::int32_t t0_ = next();
           const std::int32_t t1_ = next();
-          store(slot, t0_, t1_);
+          return tensOnes(t0_, t1_);
       }();
       kira::trace(slot);
       kira::trace([&]() -> kira::Str
@@ -330,9 +336,13 @@ namespace evalorder
       [&]() -> void
       {
           const kira::Size t0_ = nextSize();
-          const std::int32_t t1_ = next();
-          const std::int32_t t2_ = next();
-          store(kira::at(slots, t0_), t1_, t2_);
+          const std::int32_t t1_ = [&]() -> std::int32_t
+          {
+              const std::int32_t t2_ = next();
+              const std::int32_t t3_ = next();
+              return tensOnes(t2_, t3_);
+          }();
+          kira::at(slots, t0_) = t1_;
       }();
       kira::trace(kira::at(slots, 1));
       [&]() -> void
@@ -350,16 +360,16 @@ namespace evalorder
       }();
       kira::trace(kira::at(slots, 3));
       kira::trace(idx);
-      std::array<Box, 1> boxes = {Box{}};
+      std::array<kira::Rc<Cell>, 1> boxes = {std::make_shared<Cell>()};
       idx = 0;
       [&]() -> void
       {
-          const kira::Size t0_ = nextSize() - 1;
+          kira::Rc<Cell> t0_ = kira::at(boxes, nextSize() - 1);
           const std::int32_t t1_ = next();
           const std::int32_t t2_ = next();
-          kira::at(boxes, t0_).grow(t1_, t2_);
+          t0_->grow(t1_, t2_);
       }();
-      kira::trace(kira::at(boxes, 0).v);
+      kira::trace(kira::at(boxes, 0)->v);
       std::array<std::array<std::int32_t, 3>, 3> grid = {std::array<std::int32_t, 3>{0, 0, 0}, std::array<std::int32_t, 3>{0, 0, 0}, std::array<std::int32_t, 3>{0, 0, 0}};
       idx = 0;
       [&]() -> void
@@ -382,22 +392,30 @@ namespace evalorder
       {
           const kira::Size t0_ = row;
           const kira::Size t1_ = nextSize();
-          const std::int32_t t2_ = next();
-          const std::int32_t t3_ = next();
-          store(kira::at(kira::at(grid, t0_), t1_), t2_, t3_);
+          const std::int32_t t2_ = [&]() -> std::int32_t
+          {
+              const std::int32_t t3_ = next();
+              const std::int32_t t4_ = next();
+              return tensOnes(t3_, t4_);
+          }();
+          kira::at(kira::at(grid, t0_), t1_) = t2_;
       }();
       kira::trace(kira::at(kira::at(grid, 1), 1));
-      std::array<std::array<Box, 3>, 3> cells = {std::array<Box, 3>{Box{}, Box{}, Box{}}, std::array<Box, 3>{Box{}, Box{}, Box{}}, std::array<Box, 3>{Box{}, Box{}, Box{}}};
+      std::array<std::array<kira::Rc<Cell>, 3>, 3> cells = {std::array<kira::Rc<Cell>, 3>{std::make_shared<Cell>(), std::make_shared<Cell>(), std::make_shared<Cell>()}, std::array<kira::Rc<Cell>, 3>{std::make_shared<Cell>(), std::make_shared<Cell>(), std::make_shared<Cell>()}, std::array<kira::Rc<Cell>, 3>{std::make_shared<Cell>(), std::make_shared<Cell>(), std::make_shared<Cell>()}};
       idx = 0;
       [&]() -> void
       {
-          const kira::Size t0_ = nextSize();
-          const kira::Size t1_ = nextSize();
+          kira::Rc<Cell> t0_ = [&]() -> kira::Rc<Cell>
+          {
+              const kira::Size t1_ = nextSize();
+              const kira::Size t2_ = nextSize();
+              return kira::at(kira::at(cells, t1_), t2_);
+          }();
+          const std::int32_t t1_ = next();
           const std::int32_t t2_ = next();
-          const std::int32_t t3_ = next();
-          kira::at(kira::at(cells, t0_), t1_).grow(t2_, t3_);
+          t0_->grow(t1_, t2_);
       }();
-      kira::trace(kira::at(kira::at(cells, 1), 2).v);
+      kira::trace(kira::at(kira::at(cells, 1), 2)->v);
       idx = 0;
       kira::trace(sumTail(kira::List<std::int32_t>{1, 2, 3, 4}));
       idx = 0;
@@ -466,11 +484,11 @@ namespace evalorder
           return adder(t0_, t1_);
       }();
       kira::trace(f(0));
-      std::int32_t x{5};
+      gx = 5;
       kira::trace([&]() -> std::int32_t
       {
-          const std::int32_t t0_ = x;
-          const std::int32_t t1_ = inc(x);
+          const std::int32_t t0_ = gx;
+          const std::int32_t t1_ = incGx();
           return sub(t0_, t1_);
       }());
       kira::List<std::int32_t> xs = kira::List<std::int32_t>{1, 2};
@@ -480,14 +498,14 @@ namespace evalorder
           const kira::Size t1_ = pushTo(xs);
           return lenOf(t0_, t1_);
       }());
-      std::int32_t z{5};
+      gx = 5;
       [&]() -> void
       {
-          const std::int32_t t0_ = z;
-          const std::int32_t t1_ = inc(z);
-          z = t0_ + t1_;
+          const std::int32_t t0_ = gx;
+          const std::int32_t t1_ = incGx();
+          gx = t0_ + t1_;
       }();
-      kira::trace(z);
+      kira::trace(gx);
       const kira::Fn<std::int32_t(const kira::Fn<std::int32_t(std::int32_t)>&, std::int32_t)> g = applyTo;
       kira::trace(g(twice, 5));
       gll.push_back(kira::List<std::int32_t>{1});
@@ -500,11 +518,7 @@ namespace evalorder
       kira::trace(kira::at(kira::at(gll, 0), 1));
       kira::trace(gll.size());
       gls.push_back(100);
-      [&]() -> void
-      {
-          const std::int32_t t0_ = growGls();
-          store(kira::at(gls, 0), t0_, 1);
-      }();
+      kira::at(gls, 0) = tensOnes(growGls(), 1);
       kira::trace(kira::at(gls, 0));
       kira::trace(gls.size());
       kira::trace([&]() -> std::int32_t

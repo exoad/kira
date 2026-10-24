@@ -60,7 +60,7 @@ class ArcLoweringTest {
             $pet
 
             main: () Void {
-                mut a: Pet = Pet { "m" }
+                a: Mutable<Pet> = Pet { "m" }
                 a = Pet { "n" }
                 trace(a.name)
             }
@@ -79,7 +79,7 @@ class ArcLoweringTest {
             $pet
 
             main: () Void {
-                for mut i: 0..3 {
+                for i: Int32 in 0..4 {
                     p: Pet = Pet { "m" }
                     trace(p.name)
                 }

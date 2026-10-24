@@ -2344,10 +2344,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             appendIndentedLine("}")
             return
         }
-        if (!iterExpr.isLegacy) {
-            throw UnsupportedConstruct(iterExpr, "'for x: T in xs' over a container (only a range is lowered here)", TARGET_NAME)
-        }
-
         // Iteration over a container. The target is evaluated once into a
         // view local (a shallow struct copy: the original keeps ownership),
         // each element is unslotted into a loop variable of the declared

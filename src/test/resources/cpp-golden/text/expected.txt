@@ -10,7 +10,7 @@ text - commands on views and a fixed buffer
   ok    trimEnd drops CR, LF, space and tab
   ok    toInt allows surrounding space
   ok    and a sign
-  ok    12abc is refused, and out is untouched
+  ok    12abc is refused
   ok    blank is refused
   ok    two numbers are refused
   ok    driveReply fills a StrBuf

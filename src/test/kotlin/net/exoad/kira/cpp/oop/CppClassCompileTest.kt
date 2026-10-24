@@ -9,6 +9,8 @@ import org.junit.jupiter.api.TestFactory
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * The class shapes compile under the warning contract (design 8.2) on gcc, clang, MSVC and
@@ -25,6 +27,8 @@ import kotlin.test.assertTrue
  * fakes ([OopTestSupport.FakeStmtEmitter]), so the Kira bodies here only return values and
  * assign; the shapes around them are the real classes part.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppClassCompileTest {
     private val uri = "oop:shapes"
 

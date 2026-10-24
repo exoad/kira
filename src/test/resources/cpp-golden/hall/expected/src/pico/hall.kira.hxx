@@ -28,7 +28,7 @@ namespace hall
       std::uint32_t periodUs = 0u;
 
       [[nodiscard]] constexpr std::uint32_t errors() const;
-      constexpr void feed(std::uint8_t next, std::uint64_t nowUs);
+      [[nodiscard]] constexpr Decoder fed(std::uint8_t next, std::uint64_t nowUs) const;
   };
 
   struct Speed
@@ -47,67 +47,77 @@ namespace hall
       return skips + invalid;
   }
 
-  constexpr void Decoder::feed(std::uint8_t next, std::uint64_t nowUs)
+  constexpr Decoder Decoder::fed(std::uint8_t next, std::uint64_t nowUs) const
   {
+      std::int32_t ticks_l{this->ticks};
+      std::uint32_t edges_l{this->edges};
+      std::uint32_t skips_l{this->skips};
+      std::uint32_t invalid_l{this->invalid};
+      std::uint32_t repeats_l{this->repeats};
+      std::uint8_t state_l{this->state};
+      bool primed_l{this->primed};
+      std::int8_t lastdir_l{this->lastDir};
+      std::uint64_t lastedgeus_l{this->lastEdgeUs};
+      std::uint32_t periodus_l{this->periodUs};
       const std::uint8_t bits{static_cast<std::uint8_t>(next & 7u)};
       const std::int8_t idx{kira::at(INDEX_OF, static_cast<kira::Size>(bits))};
       if(idx < 0)
       {
-          invalid += 1u;
-          state = bits;
-          primed = false;
+          invalid_l += 1u;
+          state_l = bits;
+          primed_l = false;
       }
-      else if(primed && bits == state)
+      else if(primed_l && bits == state_l)
       {
-          repeats += 1u;
+          repeats_l += 1u;
       }
-      else if(!primed)
+      else if(!primed_l)
       {
-          primed = true;
-          state = bits;
-          lastEdgeUs = nowUs;
+          primed_l = true;
+          state_l = bits;
+          lastedgeus_l = nowUs;
       }
       else
       {
-          const std::int32_t was{static_cast<std::int32_t>(kira::at(INDEX_OF, static_cast<kira::Size>(state)))};
+          const std::int32_t was{static_cast<std::int32_t>(kira::at(INDEX_OF, static_cast<kira::Size>(state_l)))};
           const std::int32_t step{(static_cast<std::int32_t>(idx) - was + 6) % 6};
-          state = bits;
+          state_l = bits;
           if(step == 1 || step == 5)
           {
               const std::int8_t dir{(step == 1) == FORWARD_ASCENDING ? std::int8_t{1} : std::int8_t{-1}};
-              ticks += static_cast<std::int32_t>(dir);
-              lastDir = dir;
-              edges += 1u;
-              const std::uint64_t gap{nowUs - lastEdgeUs};
-              periodUs = gap > 0xFFFFFFFF ? 0xFFFFFFFFu : static_cast<std::uint32_t>(gap);
-              lastEdgeUs = nowUs;
+              ticks_l += static_cast<std::int32_t>(dir);
+              lastdir_l = dir;
+              edges_l += 1u;
+              const std::uint64_t gap{nowUs - lastedgeus_l};
+              periodus_l = gap > 0xFFFFFFFF ? 0xFFFFFFFFu : static_cast<std::uint32_t>(gap);
+              lastedgeus_l = nowUs;
           }
           else
           {
-              skips += 1u;
-              lastEdgeUs = nowUs;
+              skips_l += 1u;
+              lastedgeus_l = nowUs;
           }
       }
+      return Decoder{.ticks = ticks_l, .edges = edges_l, .skips = skips_l, .invalid = invalid_l, .repeats = repeats_l, .state = state_l, .primed = primed_l, .lastDir = lastdir_l, .lastEdgeUs = lastedgeus_l, .periodUs = periodus_l};
   }
 
   inline Speed speed(std::int32_t windowTicks, const Decoder& d, std::uint64_t nowUs)
   {
-      Speed s = Speed{};
-      s.windowTps = windowTicks * static_cast<std::int32_t>(1000u / WINDOW_MS);
+      std::int32_t windowTps{windowTicks * static_cast<std::int32_t>(1000u / WINDOW_MS)};
       const std::uint64_t sinceEdge{nowUs - d.lastEdgeUs};
-      s.stopped = !d.primed || sinceEdge > static_cast<std::uint64_t>(STOPPED_US);
-      if(!s.stopped && d.periodUs > 0u)
+      const bool stopped{!d.primed || sinceEdge > static_cast<std::uint64_t>(STOPPED_US)};
+      std::int32_t periodTps{0};
+      if(!stopped && d.periodUs > 0u)
       {
-          s.periodTps = static_cast<std::int32_t>(kira::div(std::uint32_t{1000000}, d.periodUs)) * static_cast<std::int32_t>(d.lastDir);
+          periodTps = static_cast<std::int32_t>(kira::div(std::uint32_t{1000000}, d.periodUs)) * static_cast<std::int32_t>(d.lastDir);
       }
-      if(s.stopped)
+      if(stopped)
       {
-          s.periodTps = 0;
-          s.windowTps = 0;
+          periodTps = 0;
+          windowTps = 0;
       }
       const std::int32_t magnitude{windowTicks < 0 ? -windowTicks : windowTicks};
-      s.usePeriod = !s.stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0u;
-      return s;
+      return Speed{.windowTps = windowTps, .periodTps = periodTps, .stopped = stopped, .usePeriod = !stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0u};
   }
 
   constexpr Decoder settle(const std::array<std::uint8_t, 6>& steps, std::uint64_t t0)
@@ -116,7 +126,7 @@ namespace hall
       std::uint64_t t{t0};
       for(const std::uint8_t s : steps)
       {
-          d.feed(s, t);
+          d = d.fed(s, t);
           t += 1000;
       }
       return d;

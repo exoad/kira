@@ -31,11 +31,11 @@ pub crcLine: (crc: UInt16) Str {
 
 // dbw_gen.py's crc16: MSB first, no reflection.
 pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt16 {
-    mut crc: UInt16 = init
-    mut i: Size = 0
+    crc: Mutable<UInt16> = init
+    i: Mutable<Size> = 0
     while i < data.size() {
         crc = crc ^ ((data[i] as UInt16) << 8)
-        mut k: Int32 = 0
+        k: Mutable<Int32> = 0
         while k < 8 {
             if (crc & 0x8000) != 0 {
                 crc = (crc << 1) ^ poly
@@ -51,13 +51,13 @@ pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt1
 
 // dbw_gen.py's byte_table: the declaration, a brace, rows of twelve bytes, and the close.
 pub byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
-    mut out: List<Str> = List<Str> { }
+    out: Mutable<List<Str>> = List<Str> { }
     out.add(ind + decl + " =")
     out.add(ind + "{")
-    mut i: Size = 0
+    i: Mutable<Size> = 0
     while i < data.size() {
-        mut row: Str = ind + pad
-        mut k: Size = i
+        row: Mutable<Str> = ind + pad
+        k: Mutable<Size> = i
         while k < data.size() && k < i + 12 {
             if k > i {
                 row = row + ", "
@@ -89,14 +89,14 @@ main: () Void {
     trace(crcLine(crc16(check, 0x1021, 0xFFFF, 0)))
     trace(crcLine(crc16(check, 0x1021, 0, 0)))
     trace(crcLine(crc16(check, 0x8005, 0, 0xFFFF)))
-    mut data: List<UInt8> = List<UInt8> { }
-    mut b: Int32 = 0
+    data: Mutable<List<UInt8>> = List<UInt8> { }
+    b: Mutable<Int32> = 0
     while b < 26 {
         data.add((b * 37) as UInt8)
         b += 1
     }
     rows: List<Str> = byteTable("  ", "    ", "constexpr UInt8 TABLE[26]", data)
-    mut r: Size = 0
+    r: Mutable<Size> = 0
     while r < rows.size() {
         trace(rows[r])
         r += 1

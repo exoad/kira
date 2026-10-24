@@ -9,9 +9,9 @@ pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
 }
 
 // ImDrawList* is a handle C++ owns: opaque, with extern methods under their C++ names.
-pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Any {
-    pub mut @_extern(cpp = "AddLine") addLine: (a: Vec2, b: Vec2, color: UInt32) Void;
-    pub mut @_extern(cpp = "AddRectFilled") addRectFilled: (a: Vec2, b: Vec2, color: UInt32) Void;
+pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Mutable<Any> {
+    pub @_mutates @_extern(cpp = "AddLine") addLine: (a: Vec2, b: Vec2, color: UInt32) Void;
+    pub @_mutates @_extern(cpp = "AddRectFilled") addRectFilled: (a: Vec2, b: Vec2, color: UInt32) Void;
     pub @_extern(cpp = "VtxCount") vertexCount: () Int32;
 }
 
@@ -20,19 +20,8 @@ pub @_extern(cpp = "ImGui::Button", header = "imgui.h") button: (label: Str) Boo
 
 pub @_extern(cpp = "ImGui::Button", header = "imgui.h") buttonSized: (label: Str, size: Vec2) Bool;
 
-// SliderFloat(label, float*, lo, hi, fmt = "%.3f", flags = 0): mut v goes out as float*.
-pub @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h") sliderFloat: (label: Str, mut v: Float32, lo: Float32, hi: Float32) Bool;
-
-pub @_extern(cpp = "ImGui::SliderFloat", header = "imgui.h") sliderFloatFmt: (label: Str, mut v: Float32, lo: Float32, hi: Float32, format: CStr, flags: Int32) Bool;
-
-// Checkbox is overloaded: (label, bool*) and (label, int* flags, int value).
-pub @_extern(cpp = "ImGui::Checkbox", header = "imgui.h") checkbox: (label: Str, mut v: Bool) Bool;
-
-pub @_extern(cpp = "ImGui::Checkbox", header = "imgui.h") checkboxFlags: (label: Str, mut flags: Int32, value: Int32) Bool;
-
-// InputText(label, char* buf, size_t buf_size, flags = 0): a mut Unsafe<Char> is the
-// writable char* itself (table 5.1), passed by value with no proxy.
-pub @_extern(cpp = "ImGui::InputText", header = "imgui.h") inputText: (label: Str, mut buf: Unsafe<Char>, size: Size) Bool;
+// SliderFloat, Checkbox and InputText write through a pointer, which Kira has no spelling for since stage 4
+// (a parameter is never Mutable): the driver calls them through kira::ffi, as C++ does.
 
 pub @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h") getWindowDrawList: () DrawList;
 

@@ -39,9 +39,9 @@ pub Ready: Struct {
 }
 
 // A non-blocking UDP socket.
-pub @_magic UdpSocket: Any {
+pub @_magic UdpSocket: Mutable<Any> {
     // Binds to host:port; port 0 takes a free one, read back with localPort.
-    pub mut bind: (host: Str, port: Int32) Bool;
+    pub @_mutates bind: (host: Str, port: Int32) Bool;
     pub localPort: () Int32;
     // Bytes sent, or -1.
     pub sendTo: (data: View<UInt8>, host: Str, port: Int32) Int64;
@@ -50,42 +50,42 @@ pub @_magic UdpSocket: Any {
     pub recvFrom: (into: MutView<UInt8>) Maybe<Datagram>;
     // For Poller.add.
     pub handle: () Int64;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // A TCP listening socket, non-blocking: accept() returns none when no
 // connection is waiting, so poll its handle for POLL_READ first.
-pub @_magic TcpListener: Any {
+pub @_magic TcpListener: Mutable<Any> {
     // Listens on every interface; port 0 takes a free one (see localPort).
-    pub mut listen: (port: Int32) Bool;
+    pub @_mutates listen: (port: Int32) Bool;
     pub localPort: () Int32;
     // The next waiting connection, blocking for reads and writes, or none.
     pub accept: () Maybe<TcpStream>;
     pub handle: () Int64;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // One TCP connection: from accept(), or connect() on a fresh one. Reads
 // and writes block, on py too, so poll the handle for POLL_READ before a read
 // that must not wait.
-pub @_magic TcpStream: Any {
-    pub mut connect: (host: Str, port: Int32) Bool;
+pub @_magic TcpStream: Mutable<Any> {
+    pub @_mutates connect: (host: Str, port: Int32) Bool;
     // Bytes read; 0 when the peer closed; -1 on error.
     pub read: (into: MutView<UInt8>) Int64;
     // Bytes written (all of them, or -1): a short write is retried inside.
     pub write: (data: View<UInt8>) Int64;
     pub isOpen: () Bool;
     pub handle: () Int64;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // poll(2) (WSAPoll on Windows) over socket handles. Serial and process
 // handles are not pollable on Windows; those reads carry their own timeout.
-pub @_magic Poller: Any {
+pub @_magic Poller: Mutable<Any> {
     // Watches `handle` for the POLL_* bits in `events`; adding a handle
     // again replaces its events.
-    pub mut add: (handle: Int64, events: Int32) Void;
-    pub mut remove: (handle: Int64) Void;
+    pub @_mutates add: (handle: Int64, events: Int32) Void;
+    pub @_mutates remove: (handle: Int64) Void;
     // The handles that are ready, after waiting up to timeoutMs (negative:
     // without limit, zero: a poll). Empty on timeout, and empty on error
     // (see lastError), including the EINTR of a signal.
@@ -96,12 +96,12 @@ pub @_magic Poller: Any {
 
 // A serial port as raw 8N1, no flow control: termios, or a Win32 COM port.
 // On py it is pyserial's, imported at open: without it open is false, naming the missing module.
-pub @_magic Serial: Any {
+pub @_magic Serial: Mutable<Any> {
     // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
     // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
     // touch among them; any rate the driver takes on Windows). Windows'
     // pyserial words why an open failed only in its text: kind Other there.
-    pub mut open: (path: Str, baud: Int32) Bool;
+    pub @_mutates open: (path: Str, baud: Int32) Bool;
     // Bytes read, waiting up to timeoutMs for the first one: 0 when the wait
     // ran out, -1 on error, a device that hung up (a USB reset) among them.
     pub read: (into: MutView<UInt8>, timeoutMs: Int64) Int64;
@@ -109,7 +109,7 @@ pub @_magic Serial: Any {
     pub isOpen: () Bool;
     // The descriptor (POSIX only, pollable); -1 on Windows.
     pub handle: () Int64;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // --- files -----------------------------------------------------------------
@@ -148,14 +148,14 @@ pub @_magic makeDirs: (path: Str) Bool;
 pub @_magic freeBytes: (path: Str) Int64;
 
 // A file written as it goes: each write reaches the OS whole before it returns.
-pub @_magic FileOut: Any {
-    pub mut write: (data: View<UInt8>) Bool;
+pub @_magic FileOut: Mutable<Any> {
+    pub @_mutates write: (data: View<UInt8>) Bool;
     // Flushed to the disk (fsync).
     pub sync: () Bool;
     pub size: () Int64;
     // Closed, or its path no longer exists (moved or removed).
     pub isStale: () Bool;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // Creates the file if it is missing; every write goes to its end.
@@ -187,7 +187,7 @@ pub @_magic moduleDir: () Str;
 // A child process whose stdout is a pipe this side reads. Dropping the last
 // reference to a Process that is still running kills it and reaps it: a
 // child never outlives the handle that started it.
-pub @_magic Process: Any {
+pub @_magic Process: Mutable<Any> {
     // Bytes read from the child's stdout, blocking until some arrive: 0 at
     // the end of the pipe, -1 on error.
     pub readStdout: (into: MutView<UInt8>) Int64;
@@ -197,7 +197,7 @@ pub @_magic Process: Any {
     // signal number when a signal ended it (137 after kill(), on both
     // halves), -1 when nothing can be learned. A second wait returns the
     // same code.
-    pub mut wait: () Int32;
+    pub @_mutates wait: () Int32;
     pub isRunning: () Bool;
     // The read end of the stdout pipe (POSIX only, pollable); -1 on Windows.
     pub stdoutHandle: () Int64;
@@ -235,15 +235,15 @@ pub @_magic runCapture: (argv: List<Str>, input: Maybe<Str>, timeoutMs: Int64) M
 pub @_magic runInherit: (argv: List<Str>) Int32;
 
 // A child whose stdin, stdout and stderr are all pipes this side holds; dropped while running, it is killed.
-pub @_magic PipedProcess: Any {
+pub @_magic PipedProcess: Mutable<Any> {
     // Bytes written (all of them), or -1.
     pub writeStdin: (data: View<UInt8>) Int64;
-    pub mut closeStdin: () Void;
+    pub @_mutates closeStdin: () Void;
     pub readStdout: (into: MutView<UInt8>) Int64;
     // The next line of stderr with its \n (the last may lack one), a bad byte as U+FFFD; none at its end.
     pub readStderrLine: () Maybe<Str>;
     pub kill: () Void;
-    pub mut wait: () Int32;
+    pub @_mutates wait: () Int32;
     pub isRunning: () Bool;
     pub stdoutHandle: () Int64;
     pub pid: () Int64;

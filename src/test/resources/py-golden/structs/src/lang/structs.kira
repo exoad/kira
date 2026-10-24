@@ -1,47 +1,43 @@
-// A struct is a value (D1): each copy below is written to show the other did not move.
+// A type whose fields change is Mutable (stage 4), its values shared: each name below sees the other's change.
 
-pub Pt: Struct {
-    pub x: Int32 = 0
-    pub y: Int32 = 0
+pub Pt: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
+    pub y: Mutable<Int32> = 0
 
     pub sum: () Int32 {
         x + y
     }
 
-    pub mut shift: (dx: Int32) Void {
+    pub shift: (dx: Int32) Void {
         x += dx
     }
 
     pub moved: (dx: Int32) Pt {
-        mut p: Pt = this
+        p: Mutable<Pt> = this
         p.shift(dx)
         p
     }
 }
 
-Path: Struct {
+Path: Mutable<Any> {
     pub name: Str
-    pub pts: List<Pt> = List<Pt> { }
-    pub start: Pt = Pt { 1, 1 }
-    pub last: Maybe<Pt> = null
+    pub pts: Mutable<List<Pt>> = List<Pt> { }
+    pub start: Mutable<Pt> = Pt { 1, 1 }
+    pub last: Mutable<Maybe<Pt>> = null
 }
 
-Holder: Any {
-    pub mut at: Pt = Pt { }
+Holder: Mutable<Any> {
+    pub at: Mutable<Pt> = Pt { }
 
     pub get: () Pt {
         at
     }
 }
 
-mut origin: Pt = Pt { }
+origin: Mutable<Pt> = Pt { }
 
-bump: (mut p: Pt) Void {
+bump: (p: Pt) Void {
     p.x += 100
-}
-
-reset: (mut p: Pt) Void {
-    p = Pt { 5, 5 }
 }
 
 norm: (p: Pt) Int32 {
@@ -49,25 +45,23 @@ norm: (p: Pt) Int32 {
 }
 
 main: () Void {
-    mut a: Pt = Pt { 1, 2 }
-    mut b: Pt = a
+    a: Mutable<Pt> = Pt { 1, 2 }
+    b: Mutable<Pt> = a
     b.x = 10
     trace("${a.x} ${b.x}")
     a.shift(5)
     c: Pt = a.moved(1)
     trace("${a.x} ${c.x}")
-    bump(mut a)
+    bump(a)
     trace(a.x)
-    reset(mut b)
-    trace("${b.x} ${b.y}")
 
     // in a List: added, read and written as values
-    mut pts: List<Pt> = List<Pt> { }
+    pts: Mutable<List<Pt>> = List<Pt> { }
     pts.add(a)
     a.x = 0
     trace(pts[0].x)
     pts[0].x = 7
-    mut q: Pt = pts[0]
+    q: Mutable<Pt> = pts[0]
     q.y = 99
     trace("${pts[0].x} ${pts[0].y} ${q.y}")
     pts[0].shift(1)
@@ -75,7 +69,7 @@ main: () Void {
     pts[0] = q
     q.x = -1
     trace("${pts[0].x} ${pts.get(0).y}")
-    mut copied: List<Pt> = pts
+    copied: Mutable<List<Pt>> = pts
     copied[0].x = 1000
     trace("${pts[0].x} ${copied[0].x}")
     lit: List<Pt> = @listOf(a, q)
@@ -83,17 +77,17 @@ main: () Void {
     trace("${lit[0].y} ${lit[1].x}")
 
     // in a class and a struct
-    mut h: Holder = Holder { }
+    h: Mutable<Holder> = Holder { }
     h.at.x = 3
-    mut got: Pt = h.get()
+    got: Mutable<Pt> = h.get()
     got.x = 4
     trace(h.at.x)
     h.at = got
     got.x = 8
     trace(h.at.x)
-    mut path: Path = Path { "p" }
+    path: Mutable<Path> = Path { "p" }
     path.pts.add(Pt { 2, 2 })
-    mut other: Path = path
+    other: Mutable<Path> = path
     other.pts.add(Pt { 3, 3 })
     other.start.x = 50
     other.pts[0].y = 9
@@ -104,7 +98,7 @@ main: () Void {
 
     // a global
     origin.x = 9
-    mut o: Pt = origin
+    o: Mutable<Pt> = origin
     o.x = 1
     trace(origin.x)
     origin = o

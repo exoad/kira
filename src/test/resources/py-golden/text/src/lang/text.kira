@@ -79,8 +79,8 @@ sum: (a: Float64, b: Float64) Float64 {
 
 // v's shortest text, then v.fixed(p) for every p from -1 to 10 (clamped to 0..9).
 everyPlaces: (v: Float64) Str {
-    mut out: Str = "${v}:"
-    mut p: Int32 = -1
+    out: Mutable<Str> = "${v}:"
+    p: Mutable<Int32> = -1
     while p <= 10 {
         out = out + " " + v.fixed(p)
         p += 1

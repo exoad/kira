@@ -4,9 +4,9 @@
 kira.json as json
 kira.os as os
 
-mut kept: List<Json> = List<Json> { }
+kept: Mutable<List<Json>> = List<Json> { }
 
-pub Reply: Any {
+pub Reply: Mutable<Any> {
     pub status: Int32
     pub body: List<UInt8>
 }

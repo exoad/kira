@@ -12,49 +12,52 @@ import net.exoad.kira.types.rules.RulesTestSupport.method
 import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 class EffectsPassTest {
     // ---- positive: pure ------------------------------------------------------------------------
 
     @Test
     fun arithmeticLocalsAndPureCalleesArePure() {
-        val p = snippet(
-            """
-            pub LIMIT: Int32 = 3
-            pub P: Struct {
-                pub x: Int32 = 0
-                pub doubled: () Int32 {
-                    x * 2
+        DialectGates.stage4(false) {
+            val p = snippet(
+                """
+                pub LIMIT: Int32 = 3
+                pub P: Struct {
+                    pub x: Int32 = 0
+                    pub doubled: () Int32 {
+                        x * 2
+                    }
                 }
-            }
-            pub twice: (v: Int32) Int32 {
-                v * 2
-            }
-            pub quad: (v: Int32) Int32 {
-                mut acc: Int32 = twice(v)
-                acc += twice(v)
-                mut p: P = P {}
-                p.x = acc
-                mut xs: Arr<Int32, 2> = @arrOf(1, 2)
-                xs[0] = p.x
-                xs[0] + LIMIT + p.doubled()
-            }
-            pub len: (s: Str, xs: List<Int32>) Size {
-                mut ys: List<Int32> = List<Int32> {}
-                s.length() + xs.size() + ys.size()
-            }
-            """,
-        )
-        expectClean(p)
-        assertEquals(Effect.PURE, p.model.effect(fn(p, "twice")))
-        // Round 3, issue 9: a struct method's `this` and a Str or List parameter are `const&` to the caller's
-        // storage (design 5.1), so reading them is READS, and a caller of such a function is READS too; a
-        // local's own List is the function's alone.
-        assertEquals(Effect.READS, p.model.effect(fn(p, "quad")), "quad calls a struct method, which reads through its const S& this")
-        assertEquals(Effect.READS, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure, but s and xs are the caller's storage")
-        assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "ys.size()")), "a pure binding on a local receiver")
-        assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "twice(v)")), "a pure callee on a scalar")
-        assertEquals(Effect.READS, p.model.effect(method(p, "P", "doubled")), "a struct reads its fields through the reference its receiver is")
+                pub twice: (v: Int32) Int32 {
+                    v * 2
+                }
+                pub quad: (v: Int32) Int32 {
+                    mut acc: Int32 = twice(v)
+                    acc += twice(v)
+                    mut p: P = P {}
+                    p.x = acc
+                    mut xs: Arr<Int32, 2> = @arrOf(1, 2)
+                    xs[0] = p.x
+                    xs[0] + LIMIT + p.doubled()
+                }
+                pub len: (s: Str, xs: List<Int32>) Size {
+                    mut ys: List<Int32> = List<Int32> {}
+                    s.length() + xs.size() + ys.size()
+                }
+                """,
+            )
+            expectClean(p)
+            assertEquals(Effect.PURE, p.model.effect(fn(p, "twice")))
+            // Round 3, issue 9: a struct method's `this` and a Str or List parameter are `const&` to the caller's
+            // storage (design 5.1), so reading them is READS, and a caller of such a function is READS too; a
+            // local's own List is the function's alone.
+            assertEquals(Effect.READS, p.model.effect(fn(p, "quad")), "quad calls a struct method, which reads through its const S& this")
+            assertEquals(Effect.READS, p.model.effect(fn(p, "len")), "Str.length and List.size are marked pure, but s and xs are the caller's storage")
+            assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "ys.size()")), "a pure binding on a local receiver")
+            assertEquals(Effect.PURE, p.model.effect(BodyTestSupport.node<FunctionCallExpr>(p, "twice(v)")), "a pure callee on a scalar")
+            assertEquals(Effect.READS, p.model.effect(method(p, "P", "doubled")), "a struct reads its fields through the reference its receiver is")
+        }
     }
 
     @Test
@@ -78,7 +81,7 @@ class EffectsPassTest {
     fun expressionsCarryTheirOwnEffect() {
         val p = snippet(
             """
-            pub mut STATE: Int32 = 0
+            pub STATE: Mutable<Int32> = 0
             pub bump: () Int32 {
                 STATE += 1
                 STATE
@@ -107,86 +110,90 @@ class EffectsPassTest {
 
     @Test
     fun writesOutsideTheLocalsAreImpure() {
-        val p = snippet(
-            """
-            pub mut STATE: Int32 = 0
-            pub C: Any {
-                pub mut n: Int32 = 0
-                pub mut bump: () Void {
-                    n += 1
+        DialectGates.stage4(false) {
+            val p = snippet(
+                """
+                pub mut STATE: Int32 = 0
+                pub C: Any {
+                    pub mut n: Int32 = 0
+                    pub mut bump: () Void {
+                        n += 1
+                    }
+                    pub peek: () Int32 {
+                        n
+                    }
                 }
-                pub peek: () Int32 {
-                    n
+                pub global: () Void {
+                    STATE = 1
                 }
-            }
-            pub global: () Void {
-                STATE = 1
-            }
-            pub param: (mut out: Int32) Void {
-                out = 1
-            }
-            pub through: (c: C) Void {
-                c.n = 2
-            }
-            pub viewed: (v: MutView<UInt8>) Void {
-                v[0] = 1
-            }
-            pub ref: () Int32 {
-                r: Ref<Int32> = Ref<Int32> { value = 0 }
-                r.value = 1
-                r.value
-            }
-            """,
-        )
-        expectClean(p)
-        val model = p.model
-        assertEquals(Effect.IMPURE, model.effect(fn(p, "global")))
-        assertEquals(Effect.IMPURE, model.effect(fn(p, "param")))
-        assertEquals(Effect.IMPURE, model.effect(fn(p, "through")))
-        assertEquals(Effect.IMPURE, model.effect(fn(p, "viewed")))
-        assertEquals(Effect.IMPURE, model.effect(fn(p, "ref")))
-        assertEquals(Effect.IMPURE, model.effect(method(p, "C", "bump")), "a mut fx writing its receiver")
-        assertEquals(Effect.READS, model.effect(method(p, "C", "peek")), "a class reads its field through a reference a sibling could write: no effect, but READS")
+                pub param: (mut out: Int32) Void {
+                    out = 1
+                }
+                pub through: (c: C) Void {
+                    c.n = 2
+                }
+                pub viewed: (v: MutView<UInt8>) Void {
+                    v[0] = 1
+                }
+                pub ref: () Int32 {
+                    r: Ref<Int32> = Ref<Int32> { value = 0 }
+                    r.value = 1
+                    r.value
+                }
+                """,
+            )
+            expectClean(p)
+            val model = p.model
+            assertEquals(Effect.IMPURE, model.effect(fn(p, "global")))
+            assertEquals(Effect.IMPURE, model.effect(fn(p, "param")))
+            assertEquals(Effect.IMPURE, model.effect(fn(p, "through")))
+            assertEquals(Effect.IMPURE, model.effect(fn(p, "viewed")))
+            assertEquals(Effect.IMPURE, model.effect(fn(p, "ref")))
+            assertEquals(Effect.IMPURE, model.effect(method(p, "C", "bump")), "a mut fx writing its receiver")
+            assertEquals(Effect.READS, model.effect(method(p, "C", "peek")), "a class reads its field through a reference a sibling could write: no effect, but READS")
+        }
     }
 
     @Test
     fun readsOfSharedStateAreReadsAndThrowsAreImpure() {
-        // D33: an operand that observes what a sibling's effect could change is READS (two of them need no
-        // ordering); one a try could catch is IMPURE.
-        val p = snippet(
-            """
-            pub mut STATE: Int32 = 0
-            pub C: Any {
-                pub mut n: Int32 = 0
-            }
-            pub readG: () Int32 {
-                STATE
-            }
-            pub byRef: (mut x: Int32) Int32 {
-                x
-            }
-            pub element: (v: View<UInt8>) Int32 {
-                v[0] as Int32
-            }
-            pub through: (v: View<UInt8>) Size {
-                v.size()
-            }
-            pub field: (c: C) Int32 {
-                c.n
-            }
-            pub parse: (s: Str) Int32 {
-                if s.isEmpty() {
-                    throw "empty"
+        DialectGates.stage4(false) {
+            // D33: an operand that observes what a sibling's effect could change is READS (two of them need no
+            // ordering); one a try could catch is IMPURE.
+            val p = snippet(
+                """
+                pub mut STATE: Int32 = 0
+                pub C: Any {
+                    pub mut n: Int32 = 0
                 }
-                1
+                pub readG: () Int32 {
+                    STATE
+                }
+                pub byRef: (mut x: Int32) Int32 {
+                    x
+                }
+                pub element: (v: View<UInt8>) Int32 {
+                    v[0] as Int32
+                }
+                pub through: (v: View<UInt8>) Size {
+                    v.size()
+                }
+                pub field: (c: C) Int32 {
+                    c.n
+                }
+                pub parse: (s: Str) Int32 {
+                    if s.isEmpty() {
+                        throw "empty"
+                    }
+                    1
+                }
+                """,
+            )
+            expectClean(p)
+            for (name in listOf("readG", "byRef", "element", "through", "field")) {
+                assertEquals(Effect.READS, p.model.effect(fn(p, name)), name)
             }
-            """,
-        )
-        expectClean(p)
-        for (name in listOf("readG", "byRef", "element", "through", "field")) {
-            assertEquals(Effect.READS, p.model.effect(fn(p, name)), name)
+            assertEquals(Effect.IMPURE, p.model.effect(fn(p, "parse")), "a throw")
         }
-        assertEquals(Effect.IMPURE, p.model.effect(fn(p, "parse")), "a throw")
     }
 
     @Test
@@ -195,7 +202,7 @@ class EffectsPassTest {
         // `p[0] + bump()` is READS beside IMPURE, so it spills both; and READS flows up the call graph like IMPURE.
         val p = snippet(
             """
-            pub mut STATE: Int32 = 0
+            pub STATE: Mutable<Int32> = 0
             pub bump: () UInt32 {
                 STATE += 1
                 1
@@ -232,7 +239,7 @@ class EffectsPassTest {
     fun impurityFlowsUpTheCallGraph() {
         val p = snippet(
             """
-            pub mut STATE: Int32 = 0
+            pub STATE: Mutable<Int32> = 0
             pub bump: () Int32 {
                 STATE += 1
                 STATE
@@ -244,7 +251,7 @@ class EffectsPassTest {
                 uses(v)
             }
             pub builds: () Size {
-                mut xs: List<Int32> = List<Int32> {}
+                xs: Mutable<List<Int32>> = List<Int32> {}
                 xs.add(1)
                 xs.size()
             }
@@ -327,12 +334,12 @@ class EffectsPassTest {
         // (P2f's Maker); and a pure binding that compares a user class's elements runs its operators.
         val p = snippet(
             """
-            mut GXSS: List<List<Int32>> = List<List<Int32>> {}
-            mut GD: Int32 = 0
+            GXSS: Mutable<List<List<Int32>>> = List<List<Int32>> {}
+            GD: Mutable<Int32> = 0
             pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32;
             pub proto: () Int32;
-            pub Maker: Any {
-                pub mut n: Int32 = 0
+            pub Maker: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
                 initially {
                     GD = 1
                 }
@@ -376,7 +383,7 @@ class EffectsPassTest {
         // accessor on a local is PURE either way.
         val p = snippet(
             """
-            mut GL: List<Int32> = List<Int32> { values = @arrOf(1) }
+            GL: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1) }
             pub g: () Int32 {
                 GL.get(0)
             }
@@ -404,8 +411,8 @@ class EffectsPassTest {
             """
             kira.sync as sync
 
-            mut gs: Str = "old-text-long-enough-to-live-on-the-heap-000000"
-            mut gi: Int32 = 29
+            gs: Mutable<Str> = "old-text-long-enough-to-live-on-the-heap-000000"
+            gi: Mutable<Int32> = 29
 
             bump: () Int32 {
                 t: Thread = Thread { name = "w", body = () Void {
@@ -438,7 +445,7 @@ class EffectsPassTest {
         val c = snippet(
             """
             kira.sync as sync
-            pub mut G: Int32 = 0
+            pub G: Mutable<Int32> = 0
             pub Runner: Any {
                 pub f: Fx<Tuple0, Void>
                 initially {

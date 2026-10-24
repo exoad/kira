@@ -12,7 +12,7 @@ MAGIC1: UInt8 = 0xB1
 
 pub Arr<UInt8, 32> as Cmd
 
-pub Frame: Any {
+pub Frame: Mutable<Any> {
     pub version: UInt8
     pub flags: UInt8
     pub seq: UInt16
@@ -22,11 +22,11 @@ pub Frame: Any {
 
 // framing.crc: CRC-16/CCITT-FALSE, a bit at a time.
 pub crc16: (data: View<UInt8>) UInt16 {
-    mut crc: UInt16 = 0xFFFF
-    mut i: Size = 0
+    crc: Mutable<UInt16> = 0xFFFF
+    i: Mutable<Size> = 0
     while i < data.size() {
         crc ^= (data[i] as UInt16) << 8
-        mut bit: Int32 = 0
+        bit: Mutable<Int32> = 0
         while bit < 8 {
             crc = (crc & 0x8000) != 0 ? (crc << 1) ^ 0x1021 : crc << 1
             bit += 1
@@ -36,8 +36,8 @@ pub crc16: (data: View<UInt8>) UInt16 {
     crc
 }
 
-append: (mut out: List<UInt8>, v: View<UInt8>) Void {
-    mut i: Size = 0
+append: (out: List<UInt8>, v: View<UInt8>) Void {
+    i: Mutable<Size> = 0
     while i < v.size() {
         out.add(v[i])
         i += 1
@@ -47,11 +47,11 @@ append: (mut out: List<UInt8>, v: View<UInt8>) Void {
 // encode_raw: the magic, version, flags, seq, type and payload length, the payload, and the
 // CRC of all of it.
 pub encodeRaw: (typ: UInt16, payload: View<UInt8>, seq: UInt16, flags: UInt8, version: UInt8) List<UInt8> {
-    mut out: List<UInt8> = @listOf(MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0)
+    out: Mutable<List<UInt8>> = @listOf(MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0)
     writeU16Le(out.view(), 4, seq)
     writeU16Le(out.view(), 6, typ)
     writeU16Le(out.from(8), 0, payload.size() as UInt16)
-    append(mut out, payload)
+    append(out, payload)
     crc: UInt16 = crc16(out)
     out.add(0)
     out.add(0)
@@ -71,8 +71,8 @@ pub parseFrame: (data: View<UInt8>) Maybe<Frame> {
         } else if readU16Le(data, data.size() - 2) != crc16(data.slice(0, data.size() - 2)) {
             null
         } else {
-            mut payload: List<UInt8> = List<UInt8> { }
-            append(mut payload, data.slice(HEADER_BYTES, n))
+            payload: Mutable<List<UInt8>> = List<UInt8> { }
+            append(payload, data.slice(HEADER_BYTES, n))
             Frame { data[2], data[3], readU16Le(data, 4), readU16Le(data, 6), payload }
         }
     }
@@ -80,11 +80,11 @@ pub parseFrame: (data: View<UInt8>) Maybe<Frame> {
 
 // The L2's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
 pub crc32: (buf: View<UInt8>) UInt32 {
-    mut crc: UInt32 = 0xFFFFFFFF
-    mut i: Size = 0
+    crc: Mutable<UInt32> = 0xFFFFFFFF
+    i: Mutable<Size> = 0
     while i < buf.size() {
         crc ^= buf[i] as UInt32
-        mut bit: Int32 = 0
+        bit: Mutable<Int32> = 0
         while bit < 8 {
             crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
             bit += 1
@@ -97,7 +97,7 @@ pub crc32: (buf: View<UInt8>) UInt32 {
 // unilidar's command: the magic, kind, length, type and value little-endian, the CRC of the
 // type and value, and the tail.
 pub command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Cmd {
-    mut p: Cmd = Cmd { }
+    p: Mutable<Cmd> = Cmd { }
     p[0] = 0x55
     p[1] = 0xAA
     p[2] = 0x05
@@ -160,8 +160,8 @@ stamp: (p: MutView<UInt8>, v: UInt8) UInt32 {
 // ---- main ----------------------------------------------------------------------------------
 
 hex: (v: View<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < v.size() {
         if i > 0 {
             s = s + " "
@@ -180,7 +180,7 @@ main: () Void {
     trace(u32At(standby.from(8), 0))
     trace(crc32(standby.slice(12, 8)) == u32At(standby, 20))
 
-    mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     putU16(buf.view(), 0, 0xFFFF)
     putU32(buf.view(), 2, 0xDEADBEEF)
     putU64(buf.from(6), 0, 0x0102030405060708)
@@ -213,7 +213,7 @@ main: () Void {
         trace("v${f.version} flags ${f.flags} seq ${f.seq} type ${f.type} ${hex(f.payload)}")
     }
     trace(parseFrame(frame.slice(0, frame.size() - 1)).isNull())
-    mut bad: List<UInt8> = List<UInt8> { values = frame.toArr() }
+    bad: Mutable<List<UInt8>> = List<UInt8> { values = frame.toArr() }
     bad.set(10, 0x11)
     trace(parseFrame(bad).isNull())
     empty: List<UInt8> = List<UInt8> { }

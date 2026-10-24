@@ -46,13 +46,13 @@ class ExternIntrinsicTest {
                 pub ahead: () Float32;
             }
 
-            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
-                pub mut arm: () Bool;
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Mutable<Any> {
+                pub @_mutates arm: () Bool;
                 pub @_extern(cpp = "Ok") ok: () Bool;
             }
 
-            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Any {
-                pub mut @_extern(cpp = "AddLine") addLine: (color: UInt32) Void;
+            pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Mutable<Any> {
+                pub @_mutates @_extern(cpp = "AddLine") addLine: (color: UInt32) Void;
             }
 
             pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") openCar: () Car;
@@ -69,8 +69,8 @@ class ExternIntrinsicTest {
     fun theTypedModelKeepsEveryParameterAndTheMemberInheritsItsOwner() {
         val p = TyperTestSupport.snippet(
             """
-            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
-                pub mut arm: () Bool;
+            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Mutable<Any> {
+                pub @_mutates arm: () Bool;
                 pub @_extern(cpp = "Ok") ok: () Bool;
             }
             pub @_extern("c_cos", c = "cos", cpp = "std::cos", header = "<cmath>") cosine: (x: Float64) Float64;

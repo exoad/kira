@@ -260,9 +260,9 @@ class Stage3ReturnTest {
         val new = convert(old)
         assertTrue(!new.contains("return"), new)
         val python = PyTestSupport.python!!
-        // The old text compiles with stage 3's refusals off; the new one as the compiler stands.
+        // The old text compiles with stage 3's refusals off, the new one with them on; both still spell stage 4's `mut`.
         val outs = listOf(old to true, new to false).map { (text, isOld) ->
-            val py = if (isOld) DialectGates.stage3(false) { PyTestSupport.emit(text).python() } else PyTestSupport.emit(text).python()
+            val py = DialectGates.stage4(false) { if (isOld) DialectGates.stage3(false) { PyTestSupport.emit(text).python() } else PyTestSupport.emit(text).python() }
             val file = Files.createTempFile("stage3-run", ".py").toFile()
             try {
                 file.writeText(py)

@@ -15,7 +15,7 @@ pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
 
 // A free function passing a capturing lambda to a template parameter.
 pub addAll: (xs: List<Int32>, k: Int32) Int32 {
-    mut total: Int32 = 0
+    total: Mutable<Int32> = 0
     for x: Int32 in xs {
         total += applyTo((v: Int32) Int32 {
             v + k
@@ -46,8 +46,8 @@ pub Gain: Struct {
     }
 }
 
-pub Counter: Any {
-    pub mut k: Int32 = 5
+pub Counter: Mutable<Any> {
+    pub k: Mutable<Int32> = 5
 
     pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
         f(x)

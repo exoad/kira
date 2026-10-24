@@ -98,7 +98,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             immutable: Int32 = 1
-            mut mutable: Str = "a"
+            mutable: Mutable<Str> = "a"
             typed: Int32
             """
         )
@@ -126,9 +126,9 @@ class ParserSuiteTest {
     fun parsesClassWithFieldsAndMethods() {
         val ast = parseModule(
             """
-            pub Counter: Any {
+            pub Counter: Mutable<Any> {
                 pub value: Int32
-                mut pub label: Str = ""
+                pub label: Mutable<Str> = ""
 
                 pub increment: () Int32 {
                     value = value + 1
@@ -284,7 +284,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                mut i: Int32 = 0
+                i: Mutable<Int32> = 0
                 while i < 3 {
                     i = i + 1
                 }
@@ -298,7 +298,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                for mut i: 0..5 {
+                for i: Int32 in 0..6 {
                     trace(i)
                 }
             }
@@ -311,8 +311,8 @@ class ParserSuiteTest {
         parseModule(
             """
             pick: (x: Int32) Int32 {
-                mut result: Int32 = 0
-                for mut i: 0..10 {
+                result: Mutable<Int32> = 0
+                for i: Int32 in 0..11 {
                     if i == 2 {
                         continue
                     }
@@ -354,7 +354,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                mut a: Int32 = 1
+                a: Mutable<Int32> = 1
                 a += 2
                 a -= 1
                 a *= 3
@@ -492,7 +492,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             f: (n: Int32) Int64 {
-                mut s: Int64 = 0
+                s: Mutable<Int64> = 0
                 for i: Int64 in 0..n as Int64 {
                     s += i
                 }
@@ -659,8 +659,8 @@ class ParserSuiteTest {
         // Design 2.4 adds ClassDecl.initially (see ParserGrowthTest).
         val ast = parseModule(
             """
-            pub C: Any {
-                mut x: Int32 = 0
+            pub C: Mutable<Any> {
+                x: Mutable<Int32> = 0
                 initially { x = 1 }
             }
             """

@@ -6,7 +6,11 @@ import net.exoad.kira.types.rules.RulesTestSupport.message
 import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import org.junit.jupiter.api.Test
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class MutabilityPassTest {
     // ---- positive ----------------------------------------------------------------------------
 

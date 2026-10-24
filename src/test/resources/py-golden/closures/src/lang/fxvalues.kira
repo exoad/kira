@@ -1,11 +1,11 @@
 // Fx values past cpp-golden closures: calls through fields, Lists and Maybes of them, named
-// functions as values, and what each capture copies when the captured place is written later.
+// functions as values, and what each capture shares when the captured value changes later.
 
-pub Pt: Struct {
-    pub x: Int32 = 0
+pub Pt: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
     pub y: Int32 = 0
 
-    pub mut shift: (d: Int32) Void {
+    pub shift: (d: Int32) Void {
         x += d
     }
 
@@ -26,24 +26,24 @@ pub Pt: Struct {
     }
 }
 
-pub Bank: Any {
+pub Bank: Mutable<Any> {
     pub onAdd: Fx<Tuple1<Int32>, Int32>
-    pub mut items: List<Int32> = List<Int32> { }
+    pub items: Mutable<List<Int32>> = List<Int32> { }
 
-    pub mut add: (v: Int32) Void {
+    pub add: (v: Int32) Void {
         items.add(onAdd(v))
     }
 }
 
-pub Hooks: Any {
-    pub mut hooks: List<Fx<Tuple1<Int32>, Int32>> = List<Fx<Tuple1<Int32>, Int32>> { }
+pub Hooks: Mutable<Any> {
+    pub hooks: Mutable<List<Fx<Tuple1<Int32>, Int32>>> = List<Fx<Tuple1<Int32>, Int32>> { }
 
-    pub mut keep: (f: Fx<Tuple1<Int32>, Int32>) Void {
+    pub keep: (f: Fx<Tuple1<Int32>, Int32>) Void {
         hooks.add(f)
     }
 
     pub run: (v: Int32) Int32 {
-        mut t: Int32 = 0
+        t: Mutable<Int32> = 0
         for h: Fx<Tuple1<Int32>, Int32> in hooks {
             t += h(v)
         }
@@ -84,19 +84,19 @@ pub main: () Void {
     println("fxvalues")
     println("named ${applyTwice(double, 3)}")
 
-    mut fs: List<Fx<Tuple0, Int32>> = List<Fx<Tuple0, Int32>> { }
+    fs: Mutable<List<Fx<Tuple0, Int32>>> = List<Fx<Tuple0, Int32>> { }
     for i: Int32 in 0..3 {
         fs.add(() Int32 {
             i * 10
         })
     }
-    mut seen: Str = ""
+    seen: Mutable<Str> = ""
     for f: Fx<Tuple0, Int32> in fs {
         seen = seen + " ${f()}"
     }
     println("loop variable copied:${seen}")
 
-    mut xs: List<Int32> = @listOf(1, 2)
+    xs: Mutable<List<Int32>> = @listOf(1, 2)
     size: Fx<Tuple0, Size> = () Size {
         xs.size()
     }
@@ -106,23 +106,23 @@ pub main: () Void {
     give: Fx<Tuple0, List<Int32>> = () List<Int32> {
         xs
     }
-    mut got: List<Int32> = give()
+    got: Mutable<List<Int32>> = give()
     got.add(9)
-    println("a returned capture is a copy: ${give().size()} then ${got.size()}")
+    println("a returned capture is the List itself: ${give().size()} then ${got.size()}")
 
-    mut mine: List<Int32> = @listOf(7)
+    mine: Mutable<List<Int32>> = @listOf(7)
     counted: Fx<Tuple0, Size> = counterOf(mine)
     mine.add(8)
     println("a captured parameter: ${counted()} of ${mine.size()}")
 
-    mut p: Pt = Pt { 1, 2 }
+    p: Mutable<Pt> = Pt { 1, 2 }
     sumNow: Fx<Tuple0, Int32> = p.summer()
     xNow: Fx<Tuple0, Int32> = p.xs()
     holdP: Fx<Tuple0, Int32> = () Int32 {
         p.x * 100
     }
     p.shift(10)
-    println("struct copies: ${sumNow()} ${xNow()} ${holdP()} now ${p.sum()}")
+    println("a Mutable type's captures share it: ${sumNow()} ${xNow()} ${holdP()} now ${p.sum()}")
 
     println("nested ${adder(100)(10)(1)}")
 
@@ -140,17 +140,17 @@ pub main: () Void {
     })
     println("a List of Fx: ${hooks.run(10)}")
 
-    mut maybe: Maybe<Fx<Tuple1<Int32>, Int32>> = null
+    maybe: Mutable<Maybe<Fx<Tuple1<Int32>, Int32>>> = null
     println("none: ${maybe.isNone()}")
     maybe = double
     println("some: ${maybe.unwrap()(21)}")
 
-    fill: Fx<Tuple1<mut List<Int32>>, Void> = (mut out: List<Int32>) Void {
+    fill: Fx<Tuple1<List<Int32>>, Void> = (out: List<Int32>) Void {
         out.add(42)
     }
-    mut filled: List<Int32> = List<Int32> { }
-    fill(mut filled)
-    fill(mut filled)
+    filled: Mutable<List<Int32>> = List<Int32> { }
+    fill(filled)
+    fill(filled)
     println("a mut List parameter: ${filled.size()} ${filled[1]}")
 
     count: Ref<Int32> = Ref<Int32> { value = 0 }

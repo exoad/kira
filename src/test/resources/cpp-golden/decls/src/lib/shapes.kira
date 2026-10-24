@@ -53,12 +53,12 @@ pub Point: Struct {
     pub y: Int32 = 0
 
     pub manhattan: () Int32;
-    pub mut shift: (dx: Int32, dy: Int32 = 0) Void;
+    pub shifted: (dx: Int32, dy: Int32 = 0) Point;
 }
 
-pub mut created: Int32 = 0
+pub created: Mutable<Int32> = 0
 
 pub scaled: (v: Int32, by: Int32 = SCALE, unit: Str = UNIT_MM) Int32;
 pub describe: (b: Box, label: Str = "box??") Str;
 pub first: (points: Outline) Int32;
-pub total: (points: View<Int32>, mut sum: Int32) Bool;
+pub total: (points: View<Int32>) Int32;

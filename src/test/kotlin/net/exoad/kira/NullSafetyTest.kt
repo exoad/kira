@@ -150,7 +150,7 @@ class NullSafetyTest {
             }
 
             second: (s: Str) Size {
-                mut b: Size = s.length()
+                b: Mutable<Size> = s.length()
                 trace(s.length())
                 c: Size = b > 0 ? s.length() : b
                 c

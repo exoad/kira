@@ -5,8 +5,8 @@ module dialect:design  profile=HOSTED ns=design imports=[]
   global SPACE: Char  pub const value=' '
   global KIND_OK: Int32  pub const value=0:Int32
   global KIND_ERR: Int32  pub const value=1:Int32
-  struct Reply  pub
-    field kind: Int32  pub default=KIND_OK #0
+  class Reply  pub
+    field kind: Int32  pub mut default=KIND_OK #0
     field line: Str  pub default="" #1
     field code: Int32  pub require #2
     fn isOk: () Bool  pub body
@@ -19,15 +19,14 @@ module dialect:design  profile=HOSTED ns=design imports=[]
     field hi: Int32  pub default=10 #1
     fn width: () Int32  pub override body overrides=Measured.width
   trait Behaviour  pub
-    fn id: () Str  pub virtual
-    fn mayDrive: () Bool  pub virtual body
+    fn id: () Str  pub mut virtual
+    fn mayDrive: () Bool  pub mut virtual body
     fn step: (r: Reply) Reply  pub mut virtual
     flat [Behaviour.id, Behaviour.mayDrive, Behaviour.step]
   class Stop : Behaviour  pub initially
     field reason: Str  pub require #0
-    fn id: () Str  pub override virtual body overrides=Behaviour.id
+    fn id: () Str  pub mut override virtual body overrides=Behaviour.id
     fn step: (r: Reply) Reply  pub mut override virtual body overrides=Behaviour.step
   fn command: (verb: Str, args: Str = "", retries: Int32 = 3) Str  pub body
-  fn apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void  pub body
   fn isSpace: (c: Char) Bool  pub body
   fn frame: () Arr<UInt8, 32>  pub body

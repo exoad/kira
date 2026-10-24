@@ -277,7 +277,7 @@ class DialectFixTest {
             module(
                 "probe:main",
                 "probe.b.shapes as shapes\n\nHolder: Any {\n    pub item: shapes.Impl = shapes.Impl { tag = \"held\" }\n}\n\n" +
-                    "main: () Void {\n    x: shapes.Impl = shapes.Impl { }\n    mut xs: List<shapes.Impl> = List<shapes.Impl> { }\n" +
+                    "main: () Void {\n    x: shapes.Impl = shapes.Impl { }\n    xs: Mutable<List<shapes.Impl>> = List<shapes.Impl> { }\n" +
                     "    xs.add(x)\n    b: shapes.Box<Int32> = shapes.Box<Int32> { 7 }\n    h: Holder = Holder { }\n    println(x.tag + h.item.tag)\n}",
             ),
         )

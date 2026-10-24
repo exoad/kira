@@ -51,14 +51,14 @@ pub Animal: Any {
     }
 }
 
-pub Dog: Animal {
-    mut tricks: Int32 = 0
+pub Dog: Mutable<Animal> {
+    tricks: Mutable<Int32> = 0
 
     override pub sound: () Str {
         "woof"
     }
 
-    pub mut learn: () Int32 {
+    pub learn: () Int32 {
         tricks += 1
         tricks
     }

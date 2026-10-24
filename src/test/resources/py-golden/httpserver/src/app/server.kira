@@ -8,7 +8,7 @@ kira.time as time
 // throw, panic or exit in a handler ends the process (D76); main serves itself through kira:http's client.
 
 withHeader: (name: Str, value: Str) HttpAnswer {
-    mut h: Map<Str, Str> = Map<Str, Str> { }
+    h: Mutable<Map<Str, Str>> = Map<Str, Str> { }
     h.put(name, value)
     HttpAnswer { status = 200, headers = h }
 }
@@ -17,7 +17,7 @@ pub route: (r: HttpRequest) HttpAnswer {
     if r.path == "/text" {
         HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
     } else if r.path == "/json" {
-        mut h: Map<Str, Str> = Map<Str, Str> { }
+        h: Mutable<Map<Str, Str>> = Map<Str, Str> { }
         h.put("Cache-Control", "no-store")
         h.put("Location", "/text")
         HttpAnswer { status = 200, body = "{\"ok\": true}".bytes(), headers = h }
@@ -145,14 +145,14 @@ pub main: () Int32 {
     unbound: HttpServer = HttpServer { }
     t.check(!unbound.serve() && httpError() == "the server is unbound" && unbound.port() == -1, "an HttpServer no call bound serves nothing")
     base: HttpAnswer = HttpAnswer { body = "x".bytes() }
-    mut answer: HttpAnswer = base
+    answer: Mutable<HttpAnswer> = base
     answer.body.add(33)
     answer.headers.put("A", "b")
     request: HttpRequest = HttpRequest { body = "a".bytes() }
-    mut other: HttpRequest = request
+    other: Mutable<HttpRequest> = request
     other.body.add(98)
     reply: HttpReply = HttpReply { status = 1, body = "r".bytes() }
-    mut copied: HttpReply = reply
+    copied: Mutable<HttpReply> = reply
     copied.body.add(115)
     t.check(base.body.size() == 1 && base.headers.size() == 0 && request.body.size() == 1 && reply.body.size() == 1, "each struct is a value, its List and Map copied with it")
     same: HttpReply = HttpReply { status = 1, body = "r".bytes() }

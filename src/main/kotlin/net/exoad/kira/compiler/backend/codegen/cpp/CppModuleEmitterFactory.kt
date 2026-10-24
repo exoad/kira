@@ -63,6 +63,13 @@ class TypedCppModuleEmitter(
     private var layout: CppModuleLayout = CppModuleLayout(options, Paths.get("."))
     private var version: String = CppCompilerVersion.DEV
     private val usage: CppUsage by lazy { CppUsage.scan(program) }
+
+    /** Stage 4's copy-then-change sites of a value C++ holds by value ([CppSharedCopies]), each by its module's source. */
+    private val sharedCopies: Map<SourceContext, List<Pair<net.exoad.kira.compiler.frontend.parser.ast.ASTNode, String>>> by lazy {
+        if (!net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) emptyMap()
+        else CppSharedCopies(program).run().hand.groupBy { (n, _) -> program.locate(n)?.first }.filterKeys { it != null }.mapKeys { it.key!! }
+    }
+
     private var placements = CppPlacements()
 
     /** Design 4.3: a duplicate symbol in a shared namespace. Scanned once per layout, on the first emit, over every module. */
@@ -88,6 +95,9 @@ class TypedCppModuleEmitter(
                 listOf(CppDiagnostic(CppModuleEmitterFactory.INTERNAL_CODE, "the typer collected no module for ${source.file}", file = source.file)),
             )
         val ctx = contextOf(module)
+        // Stage 4 shares a List; C++ holds one by value, so a change only sharing allows, or a copy then changed, is not lowered.
+        program.model.sharedWrites.forEach { (node, at) -> if (at.first === module) ctx.unsupported(node, at.second) }
+        sharedCopies[module.source]?.forEach { (node, why) -> ctx.unsupported(node, why) }
         return try {
             val emitted = CppDeclEmitter(ctx, usage).emit()
             val duplicates = collisions().of(module)

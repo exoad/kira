@@ -21,6 +21,7 @@ import org.junit.jupiter.api.function.ThrowingSupplier
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * Every row of design table 5.5, and the class rules of W2.4's brief, over small modules
@@ -55,27 +56,29 @@ class CppClassShapeTest {
 
     @Test
     fun aTraitIsAnAbstractClassWithAVirtualDestructor() {
-        val (h, s) = both(
-            """
-            pub Behaviour: Any {
-                pub id: () Str;
-                pub mayDrive: () Bool {
-                    false
+        DialectGates.stage4(false) {
+            val (h, s) = both(
+                """
+                pub Behaviour: Any {
+                    pub id: () Str;
+                    pub mayDrive: () Bool {
+                        false
+                    }
+                    pub mut step: (p: Int32) Int32;
                 }
-                pub mut step: (p: Int32) Int32;
-            }
-            """
-        )
-        assertContains(
-            h,
-            "  class Behaviour\n  {\n  public:\n      virtual ~Behaviour() = default;\n" +
-                "      [[nodiscard]] virtual kira::Str id() const = 0;\n" +
-                "      [[nodiscard]] virtual bool mayDrive() const;\n" +
-                "      [[nodiscard]] virtual std::int32_t step(std::int32_t p) = 0;\n  };",
-        )
-        // the default body is in the .kira.cxx, never inline in the header
-        assertContains(s, "  bool Behaviour::mayDrive() const\n  {\n      return false;\n  }")
-        assertLacks(h, "Behaviour::mayDrive")
+                """
+            )
+            assertContains(
+                h,
+                "  class Behaviour\n  {\n  public:\n      virtual ~Behaviour() = default;\n" +
+                    "      [[nodiscard]] virtual kira::Str id() const = 0;\n" +
+                    "      [[nodiscard]] virtual bool mayDrive() const;\n" +
+                    "      [[nodiscard]] virtual std::int32_t step(std::int32_t p) = 0;\n  };",
+            )
+            // the default body is in the .kira.cxx, never inline in the header
+            assertContains(s, "  bool Behaviour::mayDrive() const\n  {\n      return false;\n  }")
+            assertLacks(h, "Behaviour::mayDrive")
+        }
     }
 
     @Test
@@ -209,11 +212,11 @@ class CppClassShapeTest {
     fun aClassHasAPublicSectionAndPrivateFieldsInDeclarationOrder() {
         val (h, s) = both(
             """
-            pub Governor: Any {
+            pub Governor: Mutable<Any> {
                 dry: Bool
                 pub seconds: Int32
-                mut secondsMs: Int64 = 0
-                mut label: Str = "gov"
+                secondsMs: Mutable<Int64> = 0
+                label: Mutable<Str> = "gov"
 
                 pub ms: () Int64 {
                     secondsMs
@@ -260,8 +263,8 @@ class CppClassShapeTest {
                 k: Int32
                 pub get: () Int32 { k }
             }
-            pub OneDefaulted: Any {
-                mut k: Int32 = 5
+            pub OneDefaulted: Mutable<Any> {
+                k: Mutable<Int32> = 5
                 pub get: () Int32 { k }
             }
             pub Two: Any {
@@ -281,13 +284,13 @@ class CppClassShapeTest {
     fun onlyTheTrailingDefaultsAreCppDefaultArguments() {
         val h = header(
             """
-            pub Base: Any {
-                mut a: Int32 = 1
+            pub Base: Mutable<Any> {
+                a: Mutable<Int32> = 1
                 pub getA: () Int32 { a }
             }
-            pub Leaf: Base {
+            pub Leaf: Mutable<Base> {
                 b: Int32
-                mut c: Int32 = 3
+                c: Mutable<Int32> = 3
                 pub getB: () Int32 { b + c }
             }
             """
@@ -330,8 +333,8 @@ class CppClassShapeTest {
                     "..."
                 }
             }
-            pub Dog: Animal {
-                mut tricks: Int32 = 0
+            pub Dog: Mutable<Animal> {
+                tricks: Mutable<Int32> = 0
                 override pub sound: () Str {
                     "woof"
                 }
@@ -352,13 +355,13 @@ class CppClassShapeTest {
     fun aMethodIsVirtualOnlyWhenOverriddenAndConstUnlessMut() {
         val h = header(
             """
-            pub Base: Any {
-                mut n: Int32 = 0
+            pub Base: Mutable<Any> {
+                n: Mutable<Int32> = 0
                 pub plain: () Int32 { n }
                 pub replaced: () Int32 { 1 }
-                pub mut bump: () Void { n = n + 1 }
+                pub bump: () Void { n = n + 1 }
             }
-            pub Leaf: Base {
+            pub Leaf: Mutable<Base> {
                 override pub replaced: () Int32 { 2 }
             }
             """
@@ -372,141 +375,143 @@ class CppClassShapeTest {
 
     @Test
     fun aPlainFxThatWritesItsReceiverIsRefusedSoConstFollowsTheDeclarations() {
-        // Round 2 derived `const` from a class method's body, because the typer let a plain fx write its receiver
-        // (D29). W2.5's MutabilityPass refuses that now (design 5.5, DECISIONS: `mut fx` marks state-changing
-        // methods): those shapes are the declaration's `mut` again.
-        val refused = OopTestSupport.typerErrors(
-            OopTestSupport.module(
-                uri,
+        DialectGates.stage4(false) {
+            // Round 2 derived `const` from a class method's body, because the typer let a plain fx write its receiver
+            // (D29). W2.5's MutabilityPass refuses that now (design 5.5, DECISIONS: `mut fx` marks state-changing
+            // methods): those shapes are the declaration's `mut` again.
+            val refused = OopTestSupport.typerErrors(
+                OopTestSupport.module(
+                    uri,
+                    """
+                    pub grab: (mut v: Int32) Void {
+                        v = 7
+                    }
+                    pub Counter: Any {
+                        mut n: Int32 = 0
+                        pub bump: () Int32 {
+                            n += 1
+                            n
+                        }
+                        pub mut reset: () Void {
+                            n = 0
+                        }
+                        pub again: () Int32 {
+                            reset()
+                            n
+                        }
+                        pub viaThis: () Void {
+                            this.n = 3
+                        }
+                    }
+                    """,
+                ),
+            )
+            assertTrue(refused.count { it.contains("[rules.mutability.this]") } == 2 && refused.any { it.contains("[rules.mutability.method]") && it.contains("again") }, refused.joinToString("\n"))
+            // What still takes const away: a `mut fx`, and what the rules let a plain fx do that a const method could not
+            // lower: a lambda that writes through the captured self (design 5.6, which MutabilityPass exempts), a field
+            // passed `mut` (grabIt), a view of a `mut` field, which the typer lends as a MutView in any class body
+            // (viewAll; allowed2 stopped compiling when this was narrowed), a trait default body calling a `mut fx` on
+            // its receiver (MutabilityPass has no class to judge a trait's `this` by); and a family one of those joins.
+            val (h, s) = both(
                 """
+                pub Tally: Struct {
+                    pub n: Int32 = 0
+                    pub mut tick: () Void {
+                        n += 1
+                    }
+                }
+                pub Poker: Any {
+                    pub mut poke: () Void;
+                    pub nudge: () Void {
+                        poke()
+                    }
+                }
+                pub Pet: Any {
+                    pub mut fed: Int32 = 0
+                    pub mut feed: () Void {
+                        fed += 1
+                    }
+                }
                 pub grab: (mut v: Int32) Void {
                     v = 7
                 }
-                pub Counter: Any {
+                pub Counter: Poker {
                     mut n: Int32 = 0
-                    pub bump: () Int32 {
+                    mut tally: Tally = Tally {}
+                    pet: Pet
+                    pub mut bump: () Int32 {
                         n += 1
                         n
                     }
                     pub mut reset: () Void {
                         n = 0
                     }
-                    pub again: () Int32 {
+                    pub mut again: () Int32 {
                         reset()
                         n
                     }
-                    pub viaThis: () Void {
+                    pub mut viaThis: () Void {
                         this.n = 3
                     }
-                }
-                """,
-            ),
-        )
-        assertTrue(refused.count { it.contains("[rules.mutability.this]") } == 2 && refused.any { it.contains("[rules.mutability.method]") && it.contains("again") }, refused.joinToString("\n"))
-        // What still takes const away: a `mut fx`, and what the rules let a plain fx do that a const method could not
-        // lower: a lambda that writes through the captured self (design 5.6, which MutabilityPass exempts), a field
-        // passed `mut` (grabIt), a view of a `mut` field, which the typer lends as a MutView in any class body
-        // (viewAll; allowed2 stopped compiling when this was narrowed), a trait default body calling a `mut fx` on
-        // its receiver (MutabilityPass has no class to judge a trait's `this` by); and a family one of those joins.
-        val (h, s) = both(
-            """
-            pub Tally: Struct {
-                pub n: Int32 = 0
-                pub mut tick: () Void {
-                    n += 1
-                }
-            }
-            pub Poker: Any {
-                pub mut poke: () Void;
-                pub nudge: () Void {
-                    poke()
-                }
-            }
-            pub Pet: Any {
-                pub mut fed: Int32 = 0
-                pub mut feed: () Void {
-                    fed += 1
-                }
-            }
-            pub grab: (mut v: Int32) Void {
-                v = 7
-            }
-            pub Counter: Poker {
-                mut n: Int32 = 0
-                mut tally: Tally = Tally {}
-                pet: Pet
-                pub mut bump: () Int32 {
-                    n += 1
-                    n
-                }
-                pub mut reset: () Void {
-                    n = 0
-                }
-                pub mut again: () Int32 {
-                    reset()
-                    n
-                }
-                pub mut viaThis: () Void {
-                    this.n = 3
-                }
-                pub mut tick: () Int32 {
-                    tally.tick()
-                    tally.n
-                }
-                pub mut take: () Int32 {
-                    grab(mut n)
-                    n
-                }
-                pub laterBump: () Fx<Tuple0, Int32> {
-                    () Int32 {
-                        n += 1
+                    pub mut tick: () Int32 {
+                        tally.tick()
+                        tally.n
+                    }
+                    pub mut take: () Int32 {
+                        grab(mut n)
                         n
                     }
+                    pub laterBump: () Fx<Tuple0, Int32> {
+                        () Int32 {
+                            n += 1
+                            n
+                        }
+                    }
+                    pub mut me: () Counter {
+                        n += 1
+                        this
+                    }
+                    override pub mut poke: () Void {
+                        n = 9
+                    }
+                    pub peek: () Int32 {
+                        n
+                    }
+                    pub feedPet: () Void {
+                        pet.feed()
+                    }
+                    pub petFed: () Int32 {
+                        pet.fed
+                    }
+                    mut nums: List<Int32> = List<Int32> {}
+                    pub grabIt: () Int32 {
+                        grab(mut n)
+                        n
+                    }
+                    pub viewAll: () Int32 {
+                        total(nums.view())
+                    }
                 }
-                pub mut me: () Counter {
-                    n += 1
-                    this
+                pub total: (v: View<Int32>) Int32 {
+                    0
                 }
-                override pub mut poke: () Void {
-                    n = 9
-                }
-                pub peek: () Int32 {
-                    n
-                }
-                pub feedPet: () Void {
-                    pet.feed()
-                }
-                pub petFed: () Int32 {
-                    pet.fed
-                }
-                mut nums: List<Int32> = List<Int32> {}
-                pub grabIt: () Int32 {
-                    grab(mut n)
-                    n
-                }
-                pub viewAll: () Int32 {
-                    total(nums.view())
-                }
-            }
-            pub total: (v: View<Int32>) Int32 {
-                0
-            }
-            """
-        )
-        assertContains(h, "      [[nodiscard]] std::int32_t grabIt();\n      [[nodiscard]] std::int32_t viewAll();\n")
-        assertContains(
-            h,
-            "      [[nodiscard]] std::int32_t bump();\n      void reset();\n      [[nodiscard]] std::int32_t again();\n      void viaThis();\n" +
-                "      [[nodiscard]] std::int32_t tick();\n      [[nodiscard]] std::int32_t take();\n      [[nodiscard]] kira::Fn<std::int32_t()> laterBump();\n" +
-                "      [[nodiscard]] kira::Rc<Counter> me();\n      void poke() override;\n      [[nodiscard]] std::int32_t peek() const;\n" +
-                // a mut fx on a field that is a class runs through the pointer: this stays const
-                "      void feedPet() const;\n      [[nodiscard]] std::int32_t petFed() const;\n",
-            // the trait's default body calls its mut requirement on this
-            "      virtual void poke() = 0;\n      virtual void nudge();\n",
-        )
-        assertContains(s, "  std::int32_t Counter::bump()\n", "  void Poker::nudge()\n", "  void Counter::feedPet() const\n")
-        // this as a value in a non-const method needs no const_pointer_cast
-        assertContains(s, "      return shared_from_this();")
+                """
+            )
+            assertContains(h, "      [[nodiscard]] std::int32_t grabIt();\n      [[nodiscard]] std::int32_t viewAll();\n")
+            assertContains(
+                h,
+                "      [[nodiscard]] std::int32_t bump();\n      void reset();\n      [[nodiscard]] std::int32_t again();\n      void viaThis();\n" +
+                    "      [[nodiscard]] std::int32_t tick();\n      [[nodiscard]] std::int32_t take();\n      [[nodiscard]] kira::Fn<std::int32_t()> laterBump();\n" +
+                    "      [[nodiscard]] kira::Rc<Counter> me();\n      void poke() override;\n      [[nodiscard]] std::int32_t peek() const;\n" +
+                    // a mut fx on a field that is a class runs through the pointer: this stays const
+                    "      void feedPet() const;\n      [[nodiscard]] std::int32_t petFed() const;\n",
+                // the trait's default body calls its mut requirement on this
+                "      virtual void poke() = 0;\n      virtual void nudge();\n",
+            )
+            assertContains(s, "  std::int32_t Counter::bump()\n", "  void Poker::nudge()\n", "  void Counter::feedPet() const\n")
+            // this as a value in a non-const method needs no const_pointer_cast
+            assertContains(s, "      return shared_from_this();")
+        }
     }
 
     @Test
@@ -515,8 +520,8 @@ class CppClassShapeTest {
             OopTestSupport.module(
                 uri,
                 """
-                pub Counter: Any {
-                    pub mut k: Int32 = 5
+                pub Counter: Mutable<Any> {
+                    pub k: Mutable<Int32> = 5
                     pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                         f(x)
                     }
@@ -548,11 +553,11 @@ class CppClassShapeTest {
     fun aSubclassMethodParameterNamedLikeABaseFieldIsRenamed() {
         val (h, s) = both(
             """
-            pub Base: Any {
-                mut k: Int32 = 0
+            pub Base: Mutable<Any> {
+                k: Mutable<Int32> = 0
                 pub get: () Int32 { k }
             }
-            pub Leaf: Base {
+            pub Leaf: Mutable<Base> {
                 pub scaled: (k: Int32) Int32 {
                     k
                 }
@@ -610,9 +615,9 @@ class CppClassShapeTest {
     fun aHeaderOnlyModuleDefinesTheMembersInlineInTheHeader() {
         val e = emit(
             """
-            pub Tally: Any {
-                mut n: Int32 = 0
-                pub mut add: (k: Int32) Void {
+            pub Tally: Mutable<Any> {
+                n: Mutable<Int32> = 0
+                pub add: (k: Int32) Void {
                     n = n + k
                 }
                 pub total: () Int32 {
@@ -661,8 +666,8 @@ class CppClassShapeTest {
             pub Box<T>: Any {
                 pub value: T
             }
-            pub IntBox: Box<Int32> {
-                mut hits: Int32 = 0
+            pub IntBox: Mutable<Box<Int32>> {
+                hits: Mutable<Int32> = 0
                 pub count: () Int32 { hits }
             }
             """
@@ -715,12 +720,12 @@ class CppClassShapeTest {
     fun thisAsAValueIsSharedFromThisAndTheClassDerivesShared() {
         val (h, s) = both(
             """
-            pub Node: Any {
-                mut hits: Int32 = 0
+            pub Node: Mutable<Any> {
+                hits: Mutable<Int32> = 0
                 pub me: () Node {
                     this
                 }
-                pub mut touch: () Node {
+                pub touch: () Node {
                     hits = hits + 1
                     this
                 }
@@ -735,30 +740,32 @@ class CppClassShapeTest {
 
     @Test
     fun theSharedBaseIsTheRootOfTheChainAndASubclassCastsDownToItself() {
-        val (h, s) = both(
-            """
-            pub Base: Any {
-                pub id: () Int32 { 1 }
-            }
-            pub makeBase: () Base {
-                Base { }
-            }
-            pub Leaf: Base {
-                pub me: () Leaf {
-                    this
+        DialectGates.stage4(false) {
+            val (h, s) = both(
+                """
+                pub Base: Any {
+                    pub id: () Int32 { 1 }
                 }
-                pub mut again: () Leaf {
-                    this
+                pub makeBase: () Base {
+                    Base { }
                 }
-            }
-            """
-        )
-        assertContains(h, "  class Base : public kira::Shared<Base>\n", "  class Leaf final : public Base\n")
-        assertContains(
-            s,
-            "      return std::static_pointer_cast<Leaf>(std::const_pointer_cast<Base>(shared_from_this()));",
-            "      return std::static_pointer_cast<Leaf>(shared_from_this());",
-        )
+                pub Leaf: Base {
+                    pub me: () Leaf {
+                        this
+                    }
+                    pub mut again: () Leaf {
+                        this
+                    }
+                }
+                """
+            )
+            assertContains(h, "  class Base : public kira::Shared<Base>\n", "  class Leaf final : public Base\n")
+            assertContains(
+                s,
+                "      return std::static_pointer_cast<Leaf>(std::const_pointer_cast<Base>(shared_from_this()));",
+                "      return std::static_pointer_cast<Leaf>(shared_from_this());",
+            )
+        }
     }
 
     @Test
@@ -780,16 +787,16 @@ class CppClassShapeTest {
     fun anEscapingLambdaThatCapturesTheReceiverMakesTheClassShared() {
         val h = header(
             """
-            pub Counter: Any {
-                pub mut k: Int32 = 5
+            pub Counter: Mutable<Any> {
+                pub k: Mutable<Int32> = 5
                 pub multiplier: () Fx<Tuple1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
                     }
                 }
             }
-            pub Plain: Any {
-                pub mut k: Int32 = 5
+            pub Plain: Mutable<Any> {
+                pub k: Mutable<Int32> = 5
                 pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
                     f(x)
                 }
@@ -801,76 +808,78 @@ class CppClassShapeTest {
 
     @Test
     fun thisInsideAnEscapingLambdaIsTheCapturedSelf() {
-        val e = emit(
-            """
-            pub Node: Any {
-                pub later: () Fx<Tuple0, Node> {
-                    () Node {
-                        this
+        DialectGates.stage4(false) {
+            val e = emit(
+                """
+                pub Node: Any {
+                    pub later: () Fx<Tuple0, Node> {
+                        () Node {
+                            this
+                        }
+                    }
+                    pub mut touch: () Fx<Tuple0, Node> {
+                        () Node {
+                            this
+                        }
                     }
                 }
-                pub mut touch: () Fx<Tuple0, Node> {
-                    () Node {
-                        this
+                pub Base: Any {
+                    pub id: () Int32 { 1 }
+                }
+                pub makeBase: () Base {
+                    Base { }
+                }
+                pub Leaf: Base {
+                    pub later: () Fx<Tuple0, Leaf> {
+                        () Leaf {
+                            this
+                        }
                     }
                 }
-            }
-            pub Base: Any {
-                pub id: () Int32 { 1 }
-            }
-            pub makeBase: () Base {
-                Base { }
-            }
-            pub Leaf: Base {
-                pub later: () Fx<Tuple0, Leaf> {
-                    () Leaf {
-                        this
+                pub Cell<T>: Any {
+                    pub value: T
+                    pub mut later: () Fx<Tuple0, Cell<T>> {
+                        () Cell<T> {
+                            this
+                        }
                     }
                 }
+                """
+            )
+            // the lambda escapes and captures the receiver: [self = shared_from_this()] (design 5.6)
+            val h = e.header(uri)
+            assertContains(h, "  class Node final : public kira::Shared<Node>\n", "  class Base : public kira::Shared<Base>\n", "  class Leaf final : public Base\n", "  class Cell final : public kira::Shared<Cell<T>>\n")
+            // W2.3's closure part spells the lambda; here the classes part is asked for the `this` inside it
+            val m = e.program.modules.single { it.uri == uri }
+            val parts = OopTestSupport.parts()
+            val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", parts)
+            fun cls(name: String) = m.members[name] as ClassSymbol
+            fun thisIn(owner: String, method: String): ThisExpr {
+                var found: ThisExpr? = null
+                cls(owner).method(method)!!.body!!.forEach { s -> AstTree.walk(s) { n -> if (n is ThisExpr) found = n } }
+                return found ?: error("no this in $owner.$method")
             }
-            pub Cell<T>: Any {
-                pub value: T
-                pub mut later: () Fx<Tuple0, Cell<T>> {
-                    () Cell<T> {
-                        this
-                    }
-                }
-            }
-            """
-        )
-        // the lambda escapes and captures the receiver: [self = shared_from_this()] (design 5.6)
-        val h = e.header(uri)
-        assertContains(h, "  class Node final : public kira::Shared<Node>\n", "  class Base : public kira::Shared<Base>\n", "  class Leaf final : public Base\n", "  class Cell final : public kira::Shared<Cell<T>>\n")
-        // W2.3's closure part spells the lambda; here the classes part is asked for the `this` inside it
-        val m = e.program.modules.single { it.uri == uri }
-        val parts = OopTestSupport.parts()
-        val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", parts)
-        fun cls(name: String) = m.members[name] as ClassSymbol
-        fun thisIn(owner: String, method: String): ThisExpr {
-            var found: ThisExpr? = null
-            cls(owner).method(method)!!.body!!.forEach { s -> AstTree.walk(s) { n -> if (n is ThisExpr) found = n } }
-            return found ?: error("no this in $owner.$method")
+            fun capture(owner: String, method: String) = parts.classes.selfCapture(ctx, cls(owner), cls(owner).method(method)!!, cls(owner).decl!!)
+            // `self` is shared_from_this(): a shared_ptr to the chain's root, qualified in a class template
+            assertEquals("shared_from_this()", capture("Node", "later"))
+            assertEquals("shared_from_this()", capture("Node", "touch"))
+            assertEquals("shared_from_this()", capture("Leaf", "later"))
+            assertEquals("this->shared_from_this()", capture("Cell", "later"))
+            // so `this` inside the lambda is `self` cast to the class, from const in a non-mut method
+            assertEquals("std::const_pointer_cast<Node>(self)", parts.classes.thisValue(ctx, thisIn("Node", "later")))
+            assertEquals("self", parts.classes.thisValue(ctx, thisIn("Node", "touch")))
+            assertEquals("std::static_pointer_cast<Leaf>(std::const_pointer_cast<Base>(self))", parts.classes.thisValue(ctx, thisIn("Leaf", "later")))
+            assertEquals("self", parts.classes.thisValue(ctx, thisIn("Cell", "later")))
+            assertTrue(ctx.diagnostics.isEmpty(), ctx.diagnostics.toString())
         }
-        fun capture(owner: String, method: String) = parts.classes.selfCapture(ctx, cls(owner), cls(owner).method(method)!!, cls(owner).decl!!)
-        // `self` is shared_from_this(): a shared_ptr to the chain's root, qualified in a class template
-        assertEquals("shared_from_this()", capture("Node", "later"))
-        assertEquals("shared_from_this()", capture("Node", "touch"))
-        assertEquals("shared_from_this()", capture("Leaf", "later"))
-        assertEquals("this->shared_from_this()", capture("Cell", "later"))
-        // so `this` inside the lambda is `self` cast to the class, from const in a non-mut method
-        assertEquals("std::const_pointer_cast<Node>(self)", parts.classes.thisValue(ctx, thisIn("Node", "later")))
-        assertEquals("self", parts.classes.thisValue(ctx, thisIn("Node", "touch")))
-        assertEquals("std::static_pointer_cast<Leaf>(std::const_pointer_cast<Base>(self))", parts.classes.thisValue(ctx, thisIn("Leaf", "later")))
-        assertEquals("self", parts.classes.thisValue(ctx, thisIn("Cell", "later")))
-        assertTrue(ctx.diagnostics.isEmpty(), ctx.diagnostics.toString())
     }
 
     @Test
     fun thisAsAValueInInitiallyIsRefused() {
         val messages = unsupported(
             """
-            pub Node: Any {
-                mut me: Maybe<Node> = null
+            pub Node: Mutable<Any> {
+                me: Mutable<Maybe<Node>> = null
                 initially {
                     keep(this)
                 }
@@ -884,41 +893,43 @@ class CppClassShapeTest {
 
     @Test
     fun aCallFromInitiallyToAMethodASubclassOverridesIsRefused() {
-        // A C++ constructor runs the class's own version; the spec's init block (Kotlin) would
-        // run the override. Reached through the class's own methods too.
-        val program = """
-            pub Base: Any {
-                pub name: Str
-                mut seen: Int32 = 0
-                initially {
-                    setup()
+        DialectGates.stage4(false) {
+            // A C++ constructor runs the class's own version; the spec's init block (Kotlin) would
+            // run the override. Reached through the class's own methods too.
+            val program = """
+                pub Base: Any {
+                    pub name: Str
+                    mut seen: Int32 = 0
+                    initially {
+                        setup()
+                    }
+                    pub greet: () Str {
+                        name
+                    }
+                    pub mut setup: () Void {
+                        seen = 1
+                        greet()
+                    }
                 }
-                pub greet: () Str {
-                    name
+                """
+            val messages = unsupported(
+                program + """
+                pub Leaf: Base {
+                    override pub greet: () Str {
+                        "leaf"
+                    }
                 }
-                pub mut setup: () Void {
-                    seen = 1
-                    greet()
-                }
-            }
-            """
-        val messages = unsupported(
-            program + """
-            pub Leaf: Base {
-                override pub greet: () Str {
-                    "leaf"
-                }
-            }
-            """
-        )
-        assertTrue(
-            messages.any { it.startsWith("the call to setup in the initially block of Base, which reaches Base.greet: Leaf overrides it") },
-            messages.toString(),
-        )
-        // no subclass overrides greet: the calls dispatch the same on both sides
-        val (h, s) = both(program)
-        assertContains(h, "      Base(kira::Str name_, std::int32_t seen_ = 0);", "      void setup();")
-        assertContains(s, "      static_cast<void>(setup());", "      static_cast<void>(greet());")
+                """
+            )
+            assertTrue(
+                messages.any { it.startsWith("the call to setup in the initially block of Base, which reaches Base.greet: Leaf overrides it") },
+                messages.toString(),
+            )
+            // no subclass overrides greet: the calls dispatch the same on both sides
+            val (h, s) = both(program)
+            assertContains(h, "      Base(kira::Str name_, std::int32_t seen_ = 0);", "      void setup();")
+            assertContains(s, "      static_cast<void>(setup());", "      static_cast<void>(greet());")
+        }
     }
 
     // ---- construction ------------------------------------------------------------------------------
@@ -984,7 +995,7 @@ class CppClassShapeTest {
     fun twoImpureArgumentsAreEvaluatedAsWrittenIntoTemporaries() {
         val s = emit(
             """
-            mut calls: Int32 = 0
+            calls: Mutable<Int32> = 0
             first: () Int32 {
                 calls = calls + 1
                 calls
@@ -1009,10 +1020,10 @@ class CppClassShapeTest {
     // ---- construction order: every operand that is not PURE, as W2.3's call hoister orders one (second-class round 2)
 
     private val renaming = """
-        pub Named: Any {
-            pub mut name: Str
+        pub Named: Mutable<Any> {
+            pub name: Mutable<Str>
 
-            pub mut rename: () Int32 {
+            pub rename: () Int32 {
                 name = "new"
                 7
             }
@@ -1067,16 +1078,16 @@ class CppClassShapeTest {
                 pub n: Int32
             }
 
-            pub Tree: Any {
-                pub mut kid: Maybe<Kid> = null
+            pub Tree: Mutable<Any> {
+                pub kid: Mutable<Maybe<Kid>> = null
 
-                pub mut clear: () Int32 {
+                pub clear: () Int32 {
                     kid = null
                     7
                 }
             }
 
-            pub Kid: Any {
+            pub Kid: Mutable<Any> {
                 pub name: Str
                 pub tree: Tree
 
@@ -1114,7 +1125,7 @@ class CppClassShapeTest {
     // ---- field defaults run in Kira's order, inside the constructor (R-D and OQ-2, second-class round 3) -------
 
     private val counting = """
-        pub mut counter: Int32 = 0
+        pub counter: Mutable<Int32> = 0
 
         pub next: () Int32 {
             counter += 1
@@ -1129,7 +1140,7 @@ class CppClassShapeTest {
         // mem-initializer reads seed, after every argument (the given values first, as Kira has it).
         val (h, s) = both(
             """
-            pub mut seed: Int32 = 1
+            pub seed: Mutable<Int32> = 1
 
             pub bumpSeed: () Int32 {
                 seed += 10
@@ -1198,17 +1209,17 @@ class CppClassShapeTest {
             """
             $counting
 
-            pub Base: Any {
-                pub mut seen: Int32 = 0
+            pub Base: Mutable<Any> {
+                pub seen: Mutable<Int32> = 0
 
                 initially {
                     seen = next()
                 }
             }
 
-            pub Kid: Base {
+            pub Kid: Mutable<Base> {
                 pub k: Int32 = next()
-                pub mut after: Int32 = 0
+                pub after: Mutable<Int32> = 0
 
                 initially {
                     after = next()
@@ -1269,8 +1280,8 @@ class CppClassShapeTest {
                 "picked"
             }
 
-            pub Slot: Any {
-                pub mut item: Maybe<Str> = pick()
+            pub Slot: Mutable<Any> {
+                pub item: Mutable<Maybe<Str>> = pick()
             }
 
             pub empty: () Slot {
@@ -1309,14 +1320,14 @@ class CppClassShapeTest {
         // on g++ and zig (MSVC 0xC0000409), since no kira::Rc owns an object under construction.
         val messages = unsupported(
             """
-            pub Reg: Any {
-                pub mut n: Int32 = 0
+            pub Reg: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
             }
 
             pub enroll: (r: Reg, n: Node) Void {
             }
 
-            pub Node: Any {
+            pub Node: Mutable<Any> {
                 pub name: Str
                 pub reg: Reg
 
@@ -1338,11 +1349,11 @@ class CppClassShapeTest {
         // initlam: initially calls hook, and hook stores a lambda capturing self = shared_from_this().
         val messages = unsupported(
             """
-            pub Reg: Any {
-                pub mut hook: Maybe<Fx<Tuple0, Str>> = null
+            pub Reg: Mutable<Any> {
+                pub hook: Mutable<Maybe<Fx<Tuple0, Str>>> = null
             }
 
-            pub Node: Any {
+            pub Node: Mutable<Any> {
                 pub name: Str
                 pub reg: Reg
 
@@ -1402,15 +1413,15 @@ class CppClassShapeTest {
         // Only what those blocks may run is refused: a method reading a field from initially, and this as a value elsewhere.
         val (h, s) = both(
             """
-            pub Node: Any {
+            pub Node: Mutable<Any> {
                 pub name: Str
-                pub mut size: Int32 = 0
+                pub size: Mutable<Int32> = 0
 
                 initially {
                     measure()
                 }
 
-                pub mut measure: () Void {
+                pub measure: () Void {
                     size = 1
                 }
 
@@ -1467,8 +1478,8 @@ class CppClassShapeTest {
             pub Pet: Any {
                 pub name: Str
             }
-            pub Owner: Any {
-                mut pet: Maybe<Pet> = null
+            pub Owner: Mutable<Any> {
+                pet: Mutable<Maybe<Pet>> = null
                 pub get: () Maybe<Pet> {
                     pet
                 }
@@ -1609,65 +1620,67 @@ class CppClassShapeTest {
 
     @Test
     fun theSelfReceiverCastsDownToTheSubclassAndFollowsTheDerivedConst() {
-        // W2.3's selfPointer decides const from the modifier; the part gives it the derived fact
-        // (a plain fx whose lambda writes is not const) and the receiver spelled from it.
-        val e = emit(
-            """
-            pub Base: Any {
-                mut n: Int32 = 0
-                pub get: () Int32 { n }
-            }
-            pub Sub: Base {
-                mut k: Int32 = 0
-                pub mut reset: () Void { k = 100 }
-                pub later: () Fx<Tuple0, Int32> {
-                    () Int32 {
-                        k += 1
-                        k
+        DialectGates.stage4(false) {
+            // W2.3's selfPointer decides const from the modifier; the part gives it the derived fact
+            // (a plain fx whose lambda writes is not const) and the receiver spelled from it.
+            val e = emit(
+                """
+                pub Base: Any {
+                    mut n: Int32 = 0
+                    pub get: () Int32 { n }
+                }
+                pub Sub: Base {
+                    mut k: Int32 = 0
+                    pub mut reset: () Void { k = 100 }
+                    pub later: () Fx<Tuple0, Int32> {
+                        () Int32 {
+                            k += 1
+                            k
+                        }
                     }
-                }
-                pub laterReset: () Fx<Tuple0, Int32> {
-                    () Int32 {
-                        reset()
-                        k
+                    pub laterReset: () Fx<Tuple0, Int32> {
+                        () Int32 {
+                            reset()
+                            k
+                        }
                     }
+                    pub peek: () Fx<Tuple0, Int32> {
+                        () Int32 { k }
+                    }
+                    pub me: () Sub { this }
                 }
-                pub peek: () Fx<Tuple0, Int32> {
-                    () Int32 { k }
-                }
-                pub me: () Sub { this }
-            }
-            """
-        )
-        val m = e.program.modules.single { it.uri == uri }
-        val base = m.members["Base"] as ClassSymbol
-        val sub = m.members["Sub"] as ClassSymbol
-        val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", OopTestSupport.parts())
-        val part = OopTestSupport.parts().classes
-        fun method(c: ClassSymbol, name: String) = c.methods.single { it.name == name }
-        assertEquals(false, part.isConstMethod(ctx, method(sub, "later")))
-        assertEquals(false, part.isConstMethod(ctx, method(sub, "laterReset")))
-        assertEquals(false, part.isConstMethod(ctx, method(sub, "reset")))
-        assertEquals(true, part.isConstMethod(ctx, method(sub, "peek")))
-        assertEquals(true, part.isConstMethod(ctx, method(base, "get")))
-        assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "later")))
-        assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "laterReset")))
-        assertEquals("std::static_pointer_cast<const Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "peek")))
-        assertEquals("self", part.selfReceiver(ctx, base, method(base, "get")))
-        // the default (no classes part) reads the modifier, as W2.3 does on its own
-        val plain = CppEmitParts().classes
-        assertEquals(true, plain.isConstMethod(ctx, method(sub, "later")))
-        assertEquals("std::static_pointer_cast<const Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "later")))
-        assertEquals("std::static_pointer_cast<Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "reset")))
-        assertEquals("self", plain.selfReceiver(ctx, base, method(base, "get")))
-        // the fake closure emitter spells the writes through it, as the real one is to
-        val s = e.source(uri)
-        assertContains(
-            s,
-            "  kira::Fn<std::int32_t()> Sub::later()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->k += 1); return std::static_pointer_cast<Sub>(self)->k; };",
-            "  kira::Fn<std::int32_t()> Sub::laterReset()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->reset()); return std::static_pointer_cast<Sub>(self)->k; };",
-            "  kira::Fn<std::int32_t()> Sub::peek() const\n  {\n      return [self = shared_from_this()]() -> std::int32_t { return std::static_pointer_cast<const Sub>(self)->k; };",
-        )
+                """
+            )
+            val m = e.program.modules.single { it.uri == uri }
+            val base = m.members["Base"] as ClassSymbol
+            val sub = m.members["Sub"] as ClassSymbol
+            val ctx = CppEmitContextImpl(e.program, CppOptions(lineDirectives = false), m.source, e.layout, m, "dev", OopTestSupport.parts())
+            val part = OopTestSupport.parts().classes
+            fun method(c: ClassSymbol, name: String) = c.methods.single { it.name == name }
+            assertEquals(false, part.isConstMethod(ctx, method(sub, "later")))
+            assertEquals(false, part.isConstMethod(ctx, method(sub, "laterReset")))
+            assertEquals(false, part.isConstMethod(ctx, method(sub, "reset")))
+            assertEquals(true, part.isConstMethod(ctx, method(sub, "peek")))
+            assertEquals(true, part.isConstMethod(ctx, method(base, "get")))
+            assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "later")))
+            assertEquals("std::static_pointer_cast<Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "laterReset")))
+            assertEquals("std::static_pointer_cast<const Sub>(self)", part.selfReceiver(ctx, sub, method(sub, "peek")))
+            assertEquals("self", part.selfReceiver(ctx, base, method(base, "get")))
+            // the default (no classes part) reads the modifier, as W2.3 does on its own
+            val plain = CppEmitParts().classes
+            assertEquals(true, plain.isConstMethod(ctx, method(sub, "later")))
+            assertEquals("std::static_pointer_cast<const Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "later")))
+            assertEquals("std::static_pointer_cast<Sub>(self)", plain.selfReceiver(ctx, sub, method(sub, "reset")))
+            assertEquals("self", plain.selfReceiver(ctx, base, method(base, "get")))
+            // the fake closure emitter spells the writes through it, as the real one is to
+            val s = e.source(uri)
+            assertContains(
+                s,
+                "  kira::Fn<std::int32_t()> Sub::later()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->k += 1); return std::static_pointer_cast<Sub>(self)->k; };",
+                "  kira::Fn<std::int32_t()> Sub::laterReset()\n  {\n      return [self = shared_from_this()]() -> std::int32_t { static_cast<void>(std::static_pointer_cast<Sub>(self)->reset()); return std::static_pointer_cast<Sub>(self)->k; };",
+                "  kira::Fn<std::int32_t()> Sub::peek() const\n  {\n      return [self = shared_from_this()]() -> std::int32_t { return std::static_pointer_cast<const Sub>(self)->k; };",
+            )
+        }
     }
 
     // ---- const across an override family with more than one base ------------------------------------
@@ -1679,15 +1692,15 @@ class CppClassShapeTest {
         // (types.override.signature: an override is `mut` exactly when what it overrides is).
         val (h, s) = both(
             """
-            pub A: Any {
-                pub mut id: () Int32;
+            pub A: Mutable<Any> {
+                pub id: () Int32;
             }
-            pub B: Any {
-                pub mut id: () Int32;
+            pub B: Mutable<Any> {
+                pub id: () Int32;
             }
-            pub C: A, B {
-                mut n: Int32 = 0
-                override pub mut id: () Int32 {
+            pub C: Mutable<A>, B {
+                n: Mutable<Int32> = 0
+                override pub id: () Int32 {
                     n += 1
                     n
                 }
@@ -1710,17 +1723,17 @@ class CppClassShapeTest {
         // Tagged's pure virtual follows the family too, or Dog is abstract.
         val h = header(
             """
-            pub Tagged: Any {
-                pub mut tag: () Int32;
+            pub Tagged: Mutable<Any> {
+                pub tag: () Int32;
             }
-            pub Animal: Any {
-                pub mut n: Int32 = 0
-                pub mut tag: () Int32 {
+            pub Animal: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
+                pub tag: () Int32 {
                     1
                 }
             }
-            pub Dog: Animal, Tagged {
-                override pub mut tag: () Int32 {
+            pub Dog: Mutable<Animal>, Tagged {
+                override pub tag: () Int32 {
                     n += 1
                     n
                 }
@@ -1738,86 +1751,90 @@ class CppClassShapeTest {
 
     @Test
     fun aFamilyReachesThroughATraitsParentAndAnUnwritingSiblingStaysConst() {
-        // Base.m implements P.m through T: P; a writing override in Sub takes the whole chain
-        // with it, while an unrelated trait method of another name keeps const.
-        val h = header(
-            """
-            pub P: Any {
-                pub mut m: () Int32;
-                pub other: () Int32;
-            }
-            pub T: P {
-            }
-            pub Base: T {
-                pub mut n: Int32 = 0
-                override pub mut m: () Int32 { n }
-                override pub other: () Int32 { n }
-            }
-            pub Sub: Base {
-                override pub mut m: () Int32 {
-                    n += 1
-                    n
+        DialectGates.stage4(false) {
+            // Base.m implements P.m through T: P; a writing override in Sub takes the whole chain
+            // with it, while an unrelated trait method of another name keeps const.
+            val h = header(
+                """
+                pub P: Any {
+                    pub mut m: () Int32;
+                    pub other: () Int32;
                 }
-            }
-            """
-        )
-        assertContains(
-            h,
-            "      [[nodiscard]] virtual std::int32_t m() = 0;",
-            "      [[nodiscard]] virtual std::int32_t other() const = 0;",
-            "      [[nodiscard]] std::int32_t m() override;",
-            "      [[nodiscard]] std::int32_t other() const override;",
-        )
-        assertLacks(h, "m() const")
+                pub T: P {
+                }
+                pub Base: T {
+                    pub mut n: Int32 = 0
+                    override pub mut m: () Int32 { n }
+                    override pub other: () Int32 { n }
+                }
+                pub Sub: Base {
+                    override pub mut m: () Int32 {
+                        n += 1
+                        n
+                    }
+                }
+                """
+            )
+            assertContains(
+                h,
+                "      [[nodiscard]] virtual std::int32_t m() = 0;",
+                "      [[nodiscard]] virtual std::int32_t other() const = 0;",
+                "      [[nodiscard]] std::int32_t m() override;",
+                "      [[nodiscard]] std::int32_t other() const override;",
+            )
+            assertLacks(h, "m() const")
+        }
     }
 
     // ---- a struct's inherited trait defaults --------------------------------------------------------
 
     @Test
     fun aStructTakesATraitsDefaultBodyAsItsOwnMember() {
-        // Static dispatch (D1): `q.twice()` and `kira::deref(s).twice()` under a generic bound
-        // need a member of the struct, so the default body is one, const as its body allows.
-        val (h, s) = both(
-            """
-            pub Shape: Any {
-                pub area: () Int32;
-                pub twice: () Int32 {
-                    area()
+        DialectGates.stage4(false) {
+            // Static dispatch (D1): `q.twice()` and `kira::deref(s).twice()` under a generic bound
+            // need a member of the struct, so the default body is one, const as its body allows.
+            val (h, s) = both(
+                """
+                pub Shape: Any {
+                    pub area: () Int32;
+                    pub twice: () Int32 {
+                        area()
+                    }
+                    pub mut grow: () Void;
+                    pub growTwice: () Void {
+                        grow()
+                    }
+                    pub mut reset: () Void {
+                        grow()
+                    }
                 }
-                pub mut grow: () Void;
-                pub growTwice: () Void {
-                    grow()
+                pub Square: Struct, Shape {
+                    pub side: Int32 = 3
+                    override pub area: () Int32 {
+                        side
+                    }
+                    override pub mut grow: () Void {
+                        side = 4
+                    }
                 }
-                pub mut reset: () Void {
-                    grow()
+                pub twiceOf<T: Shape>: (s: T) Int32 {
+                    s.twice()
                 }
-            }
-            pub Square: Struct, Shape {
-                pub side: Int32 = 3
-                override pub area: () Int32 {
-                    side
-                }
-                override pub mut grow: () Void {
-                    side = 4
-                }
-            }
-            pub twiceOf<T: Shape>: (s: T) Int32 {
-                s.twice()
-            }
-            """
-        )
-        assertContains(
-            h,
-            "  struct Square\n  {\n      std::int32_t side = 3;\n\n      [[nodiscard]] std::int32_t area() const;\n      void grow();\n      [[nodiscard]] std::int32_t twice() const;\n      void growTwice();\n      void reset();\n  };",
-            "      [[nodiscard]] virtual std::int32_t twice() const;",
-        )
-        assertContains(
-            s,
-            "  std::int32_t Square::twice() const\n  {\n      return area();\n  }",
-            "  void Square::growTwice()\n  {\n      static_cast<void>(grow());\n  }",
-            "  void Square::reset()\n  {\n      static_cast<void>(grow());\n  }",
-            "  std::int32_t Shape::twice() const\n  {\n      return area();\n  }",
-        )
+                """
+            )
+            assertContains(
+                h,
+                "  struct Square\n  {\n      std::int32_t side = 3;\n\n      [[nodiscard]] std::int32_t area() const;\n      void grow();\n      [[nodiscard]] std::int32_t twice() const;\n      void growTwice();\n      void reset();\n  };",
+                "      [[nodiscard]] virtual std::int32_t twice() const;",
+            )
+            assertContains(
+                s,
+                "  std::int32_t Square::twice() const\n  {\n      return area();\n  }",
+                "  void Square::growTwice()\n  {\n      static_cast<void>(grow());\n  }",
+                "  void Square::reset()\n  {\n      static_cast<void>(grow());\n  }",
+                "  std::int32_t Shape::twice() const\n  {\n      return area();\n  }",
+            )
+        }
     }
 
     @Test
@@ -1914,11 +1931,11 @@ class CppClassShapeTest {
         // meets the same default in its base.
         val s = emit(
             """
-            pub Frame: Any {
-                pub mut buf: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
+            pub Frame: Mutable<Any> {
+                pub buf: Mutable<Arr<UInt8, 4>> = @arrOf(1, 2, 3, 4)
                 pub id: Int32
             }
-            pub Tagged: Frame {
+            pub Tagged: Mutable<Frame> {
                 pub tag: Int32
             }
             pub frame: () Frame {
@@ -1969,38 +1986,40 @@ class CppClassShapeTest {
 
     @Test
     fun aSiblingTraitsDefaultSatisfiesAnothersRequirementInAClassByAForwarder() {
-        // C++ ties Abs::f and Def::f to nothing: C would stay abstract and c.f() ambiguous.
-        // C declares f, overriding both at once, and forwards to Def's body; a mut requirement
-        // ties to a mut default the same way, non-const. A default that is not mut does not
-        // satisfy a mut requirement: the two differ in mut-ness, types.member.conflict (1.3.2).
-        val (h, s) = both(
-            siblings + """
-            pub MutAbs: Any {
-                pub mut g: () Int32;
-            }
-            pub MutDef: Any {
-                pub mut g: () Int32 {
-                    8
+        DialectGates.stage4(false) {
+            // C++ ties Abs::f and Def::f to nothing: C would stay abstract and c.f() ambiguous.
+            // C declares f, overriding both at once, and forwards to Def's body; a mut requirement
+            // ties to a mut default the same way, non-const. A default that is not mut does not
+            // satisfy a mut requirement: the two differ in mut-ness, types.member.conflict (1.3.2).
+            val (h, s) = both(
+                siblings + """
+                pub MutAbs: Any {
+                    pub mut g: () Int32;
                 }
-            }
-            pub C: Abs, Def, MutAbs, MutDef {
-            }
-            pub make: () C {
-                C {}
-            }
-            """
-        )
-        assertContains(
-            h,
-            "  class C final : public Abs, public Def, public MutAbs, public MutDef\n  {\n  public:\n      C() = default;\n      C(const C&) = delete;\n      C& operator=(const C&) = delete;\n      [[nodiscard]] std::int32_t f() const override;\n      [[nodiscard]] std::int32_t g() override;\n  };",
-            "  class MutDef\n  {\n  public:\n      virtual ~MutDef() = default;\n      [[nodiscard]] virtual std::int32_t g();\n  };",
-        )
-        assertContains(
-            s,
-            "  std::int32_t C::f() const\n  {\n      return Def::f();\n  }",
-            "  std::int32_t C::g()\n  {\n      return MutDef::g();\n  }",
-            "      return std::make_shared<C>();",
-        )
+                pub MutDef: Any {
+                    pub mut g: () Int32 {
+                        8
+                    }
+                }
+                pub C: Abs, Def, MutAbs, MutDef {
+                }
+                pub make: () C {
+                    C {}
+                }
+                """
+            )
+            assertContains(
+                h,
+                "  class C final : public Abs, public Def, public MutAbs, public MutDef\n  {\n  public:\n      C() = default;\n      C(const C&) = delete;\n      C& operator=(const C&) = delete;\n      [[nodiscard]] std::int32_t f() const override;\n      [[nodiscard]] std::int32_t g() override;\n  };",
+                "  class MutDef\n  {\n  public:\n      virtual ~MutDef() = default;\n      [[nodiscard]] virtual std::int32_t g();\n  };",
+            )
+            assertContains(
+                s,
+                "  std::int32_t C::f() const\n  {\n      return Def::f();\n  }",
+                "  std::int32_t C::g()\n  {\n      return MutDef::g();\n  }",
+                "      return std::make_shared<C>();",
+            )
+        }
     }
 
     @Test
@@ -2247,49 +2266,51 @@ class CppClassShapeTest {
 
     @Test
     fun anOverrideOfAGenericBasesTypeParameterParameterIsSpelledAsTheBaseSpellsIt() {
-        // Source<T> spells v: T as const T&; an override at Int32 spelled std::int32_t
-        // overrides nothing (gcc: "marked override, but does not override"; MSVC C3668; the
-        // class stays abstract), so it says const std::int32_t&. A Bool likewise.
-        val (h, s) = both(
-            """
-            pub Source<T>: Any {
-                pub take: (v: T) T;
-                pub keep: (mut v: T) Void;
-            }
-            pub Five: Source<Int32> {
-                override pub take: (v: Int32) Int32 {
-                    v
+        DialectGates.stage4(false) {
+            // Source<T> spells v: T as const T&; an override at Int32 spelled std::int32_t
+            // overrides nothing (gcc: "marked override, but does not override"; MSVC C3668; the
+            // class stays abstract), so it says const std::int32_t&. A Bool likewise.
+            val (h, s) = both(
+                """
+                pub Source<T>: Any {
+                    pub take: (v: T) T;
+                    pub keep: (mut v: T) Void;
                 }
-                override pub keep: (mut v: Int32) Void {
-                    v = 1
+                pub Five: Source<Int32> {
+                    override pub take: (v: Int32) Int32 {
+                        v
+                    }
+                    override pub keep: (mut v: Int32) Void {
+                        v = 1
+                    }
                 }
-            }
-            pub Flag: Source<Bool> {
-                override pub take: (v: Bool) Bool {
-                    v
+                pub Flag: Source<Bool> {
+                    override pub take: (v: Bool) Bool {
+                        v
+                    }
+                    override pub keep: (mut v: Bool) Void {
+                        v = true
+                    }
                 }
-                override pub keep: (mut v: Bool) Void {
-                    v = true
-                }
-            }
-            """
-        )
-        assertContains(
-            h,
-            "      [[nodiscard]] virtual T take(const T& v) const = 0;\n      virtual void keep(T& v) const = 0;",
-            "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n      void keep(std::int32_t& v) const override;",
-            "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
-        )
-        // The definition reads the reference as it is: its caller copies the argument unless
-        // nothing can write it during the call (50-round4 1.3, invariant I; `f.take(g.n)` with
-        // take writing n is copied at the call, CppClassCopyTest), so no entry copy (vRef_).
-        assertContains(
-            s,
-            "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
-            "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
-            "  bool Flag::take(const bool& v) const\n  {\n      return v;\n  }",
-        )
-        assertLacks(s, "Ref_")
+                """
+            )
+            assertContains(
+                h,
+                "      [[nodiscard]] virtual T take(const T& v) const = 0;\n      virtual void keep(T& v) const = 0;",
+                "      [[nodiscard]] std::int32_t take(const std::int32_t& v) const override;\n      void keep(std::int32_t& v) const override;",
+                "      [[nodiscard]] bool take(const bool& v) const override;\n      void keep(bool& v) const override;",
+            )
+            // The definition reads the reference as it is: its caller copies the argument unless
+            // nothing can write it during the call (50-round4 1.3, invariant I; `f.take(g.n)` with
+            // take writing n is copied at the call, CppClassCopyTest), so no entry copy (vRef_).
+            assertContains(
+                s,
+                "  std::int32_t Five::take(const std::int32_t& v) const\n  {\n      return v;\n  }",
+                "  void Five::keep(std::int32_t& v) const\n  {\n      static_cast<void>(v = 1);\n  }",
+                "  bool Flag::take(const bool& v) const\n  {\n      return v;\n  }",
+            )
+            assertLacks(s, "Ref_")
+        }
     }
 
     @Test

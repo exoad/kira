@@ -52,8 +52,8 @@ pub notAfter: (s: Shape, m: Maybe<Int32>, k: Int32) Int32 {
         trace(0)
     }
     v: Int32 = m                           // @error types.assign.mismatch
-    mut result: Int32 = 0
-    mut found: Bool = false
+    result: Mutable<Int32> = 0
+    found: Mutable<Bool> = false
     if s != Circle {
         if k > 0 {
             result = 0

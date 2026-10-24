@@ -100,9 +100,9 @@ class CppDeclRound3Test {
         """
         $uses
         LIMIT: Int32 = 2
-        mut counter: Int32 = LIMIT
+        counter: Mutable<Int32> = LIMIT
         Pt: Struct { pub y: Int32 = 0 }
-        mut p: Pt = Pt {}
+        p: Mutable<Pt> = Pt {}
         pub get: () Int32;
         """,
     )
@@ -147,7 +147,7 @@ class CppDeclRound3Test {
         // the reverse direction reaches nothing: util uses nobody, so its exported names meet no private one of mid
         val reversed = DeclTestSupport.emit(
             DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub Pt: Struct { pub x: Int32 = 0 }"),
-            DeclTestSupport.module("test:mid", "test.util as util\npub Wrap: Struct { pub at: Pt = Pt {} }\nmut helper: Int32 = 4\npub go: () Void;"),
+            DeclTestSupport.module("test:mid", "test.util as util\npub Wrap: Struct { pub at: Pt = Pt {} }\nhelper: Mutable<Int32> = 4\npub go: () Void;"),
             options = CppOptions(lineDirectives = false, namespaces = shared),
         )
         // util's private helper and mid's private helper are two anonymous namespaces
@@ -159,7 +159,7 @@ class CppDeclRound3Test {
     fun aPrivateNameBesideANestedNamespaceSegmentMeetsItOnlyWhenReached() {
         val inner = DeclTestSupport.module("test:inner", "pub DEPTH: Int32 = 1")
         val outer = { uses: String ->
-            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 = 2\nmut n: Int32 = util\npub go: () Void;")
+            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 = 2\nn: Mutable<Int32> = util\npub go: () Void;")
         }
         val ns = mapOf("test:inner" to "shared::util", "test:outer" to "shared")
         val apart = DeclTestSupport.emit(inner, outer(""), options = CppOptions(lineDirectives = false, namespaces = ns))

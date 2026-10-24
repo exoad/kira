@@ -8,42 +8,45 @@ import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 class ConstEligibilityPassTest {
     // ---- positive ----------------------------------------------------------------------------
 
     @Test
     fun aStructMachineWithLoopsIsConstant() {
-        // hall's shape: a struct's mut @_const fx writing its fields, a global Arr<T, N>, loops.
-        expectClean(
-            snippet(
-                """
-                pub INDEX_OF: Arr<Int8, 4> = @arrOf(-1, 0, 2, 1)
-                pub Decoder: Struct {
-                    pub ticks: Int32 = 0
-                    pub state: UInt8 = 0
-                    pub @_const errors: () Int32 {
-                        ticks
-                    }
-                    pub mut @_const feed: (next: UInt8) Void {
-                        idx: Int8 = INDEX_OF[(next & 3) as Size]
-                        if idx < 0 {
-                            state = next
-                        } else {
-                            ticks += idx as Int32
+        DialectGates.stage4(false) {
+            // hall's shape: a struct's mut @_const fx writing its fields, a global Arr<T, N>, loops.
+            expectClean(
+                snippet(
+                    """
+                    pub INDEX_OF: Arr<Int8, 4> = @arrOf(-1, 0, 2, 1)
+                    pub Decoder: Struct {
+                        pub ticks: Int32 = 0
+                        pub state: UInt8 = 0
+                        pub @_const errors: () Int32 {
+                            ticks
+                        }
+                        pub mut @_const feed: (next: UInt8) Void {
+                            idx: Int8 = INDEX_OF[(next & 3) as Size]
+                            if idx < 0 {
+                                state = next
+                            } else {
+                                ticks += idx as Int32
+                            }
                         }
                     }
-                }
-                pub @_const settle: (steps: Arr<UInt8, 4>) Decoder {
-                    mut d: Decoder = Decoder {}
-                    for s: UInt8 in steps {
-                        d.feed(s)
+                    pub @_const settle: (steps: Arr<UInt8, 4>) Decoder {
+                        mut d: Decoder = Decoder {}
+                        for s: UInt8 in steps {
+                            d.feed(s)
+                        }
+                        d
                     }
-                    d
-                }
-                """,
-            ),
-        )
+                    """,
+                ),
+            )
+        }
     }
 
     @Test
@@ -60,7 +63,7 @@ class ConstEligibilityPassTest {
                     p[0] = (v & 0xFF) as UInt8
                 }
                 pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
-                    mut p: Arr<UInt8, 8> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
+                    p: Mutable<Arr<UInt8, 8>> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
                     for i: Size in 0..MAGIC.size() {
                         p[i] = MAGIC[i]
                     }
@@ -247,7 +250,7 @@ class ConstEligibilityPassTest {
     fun throwsGlobalsAndLambdas() {
         val p = snippet(
             """
-            pub mut SEEN: Int32 = 0
+            pub SEEN: Mutable<Int32> = 0
             pub @_const a: (v: Int32) Int32 {
                 if v < 0 {
                     throw "negative"

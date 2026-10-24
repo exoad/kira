@@ -6,7 +6,7 @@ namespace proto
   namespace
   {
     [[nodiscard]] bool isSpace(char c);
-    void wordAt(const kira::Str& s, kira::Size from, kira::Size& begin, kira::Size& end);
+    [[nodiscard]] kira::Tuple2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from);
     [[nodiscard]] kira::Str tailFrom(const kira::Str& s, kira::Size from);
     [[nodiscard]] kira::Str trimEnd(const kira::Str& s);
     [[nodiscard]] kira::Str fixed3(float value);
@@ -16,19 +16,19 @@ namespace proto
         return c == ' ' || c == '\t';
     }
 
-    void wordAt(const kira::Str& s, kira::Size from, kira::Size& begin, kira::Size& end)
+    kira::Tuple2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from)
     {
         kira::Size at{from};
         while(at < kira::str::length(s) && isSpace(kira::str::at(s, at)))
         {
             at += 1;
         }
-        begin = at;
+        const kira::Size begin{at};
         while(at < kira::str::length(s) && !isSpace(kira::str::at(s, at)))
         {
             at += 1;
         }
-        end = at;
+        return kira::Tuple2<kira::Size, kira::Size>{.first = begin, .second = at};
     }
 
     kira::Str tailFrom(const kira::Str& s, kira::Size from)
@@ -65,57 +65,47 @@ namespace proto
 
   Reply read(const kira::Str& line)
   {
-      Reply out = Reply{.line = trimEnd(line)};
-      kira::Size b{0};
-      kira::Size e{0};
-      wordAt(out.line, 0, b, e);
+      const kira::Str kept = trimEnd(line);
+      const kira::Tuple2<kira::Size, kira::Size> word = wordAt(kept, 0);
+      const kira::Size b{word.first};
+      const kira::Size e{word.second};
       if(b >= e)
       {
-          out.kind = KIND_EMPTY;
-          return out;
+          return Reply{.kind = KIND_EMPTY, .line = kept};
       }
       else
       {
-          const kira::Str head = kira::str::substring(out.line, b, e);
+          const kira::Str head = kira::str::substring(kept, b, e);
           if(head == "ERR")
           {
-              out.kind = KIND_ERR;
-              out.rest = tailFrom(out.line, e);
-              return out;
+              return Reply{.kind = KIND_ERR, .rest = tailFrom(kept, e), .line = kept};
           }
           else if(head == "OK" || head == "INFO")
           {
-              out.kind = head == "OK" ? KIND_OK : KIND_INFO;
-              kira::Size tb{0};
-              kira::Size te{0};
-              wordAt(out.line, e, tb, te);
-              if(tb < te)
-              {
-                  out.topic = kira::Str(kira::str::substring(out.line, tb, te));
-                  out.rest = tailFrom(out.line, te);
-              }
-              return out;
+              const kira::Tuple2<kira::Size, kira::Size> topic = wordAt(kept, e);
+              const kira::Size tb{topic.first};
+              const kira::Size te{topic.second};
+              const bool named{tb < te};
+              return Reply{.kind = head == "OK" ? KIND_OK : KIND_INFO, .topic = named ? kira::str::substring(kept, tb, te) : kira::Str(""), .rest = named ? tailFrom(kept, te) : kira::Str(""), .line = kept};
           }
           else
           {
-              out.kind = KIND_OTHER;
-              out.rest = kira::Str(out.line);
-              return out;
+              return Reply{.kind = KIND_OTHER, .rest = kept, .line = kept};
           }
       }
   }
 
-  bool field(const kira::Str& text, const kira::Str& key, kira::Str& out)
+  kira::Maybe<kira::Str> field(const kira::Str& text, const kira::Str& key)
   {
       if(kira::str::isEmpty(key))
       {
-          return false;
+          return kira::none;
       }
       else
       {
           const kira::Size klen{kira::str::length(key)};
           kira::Size i{0};
-          bool result{false};
+          kira::Maybe<kira::Str> result = kira::none;
           while(i + klen <= kira::str::length(text))
           {
               const bool boundary{i == 0 || isSpace(kira::str::at(text, i - 1))};
@@ -126,8 +116,7 @@ namespace proto
                   {
                       to += 1;
                   }
-                  out = kira::Str(kira::str::substring(text, i + klen, to));
-                  result = true;
+                  result = kira::Str(kira::str::substring(text, i + klen, to));
                   break;
               }
               i += 1;
@@ -136,47 +125,31 @@ namespace proto
       }
   }
 
-  bool fieldInt(const kira::Str& text, const kira::Str& key, std::int32_t& out)
+  kira::Maybe<std::int32_t> fieldInt(const kira::Str& text, const kira::Str& key)
   {
-      kira::Str raw = "";
-      if(!field(text, key, raw))
+      const kira::Maybe<kira::Str> raw = field(text, key);
+      if(!kira::isSome(raw))
       {
-          return false;
+          return kira::none;
       }
       else
       {
-          const kira::Maybe<std::int64_t> v = kira::str::toInt64(raw);
-          if(!kira::isSome(v))
-          {
-              return false;
-          }
-          else
-          {
-              out = static_cast<std::int32_t>(kira::unwrap(v));
-              return true;
-          }
+          const kira::Maybe<std::int64_t> v = kira::str::toInt64(kira::unwrap(raw));
+          return !kira::isSome(v) ? kira::Maybe<std::int32_t>(kira::none) : kira::Maybe<std::int32_t>(static_cast<std::int32_t>(kira::unwrap(v)));
       }
   }
 
-  bool fieldFloat(const kira::Str& text, const kira::Str& key, float& out)
+  kira::Maybe<float> fieldFloat(const kira::Str& text, const kira::Str& key)
   {
-      kira::Str raw = "";
-      if(!field(text, key, raw))
+      const kira::Maybe<kira::Str> raw = field(text, key);
+      if(!kira::isSome(raw))
       {
-          return false;
+          return kira::none;
       }
       else
       {
-          const kira::Maybe<double> v = kira::str::toFloat64(raw);
-          if(!kira::isSome(v))
-          {
-              return false;
-          }
-          else
-          {
-              out = static_cast<float>(kira::unwrap(v));
-              return true;
-          }
+          const kira::Maybe<double> v = kira::str::toFloat64(kira::unwrap(raw));
+          return !kira::isSome(v) ? kira::Maybe<float>(kira::none) : kira::Maybe<float>(static_cast<float>(kira::unwrap(v)));
       }
   }
 

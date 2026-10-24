@@ -7,5 +7,15 @@ namespace order
   {
     [[maybe_unused]] constexpr std::int32_t MODE_B = 1;
   }
+
+  Early::Early(kira::List<Later> xs_)
+      : xs(std::move(xs_))
+  {
+  }
+
+  Queued::Queued(kira::Deque<Later> d_)
+      : d(std::move(d_))
+  {
+  }
 }
 #include "kira/macro_pop.hxx"

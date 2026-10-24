@@ -33,7 +33,7 @@ class CppProfileAndBindingUseTest {
             v
         }
 
-        pub reply: (servo: Int32, mut out: StrBuf<16>) Void {
+        pub reply: (servo: Int32, out: StrBuf<16>) Void {
             out.set("servo=${'$'}{servo}")
         }
         """,

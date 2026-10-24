@@ -1,7 +1,7 @@
 kira.os as os
 
-// kira:os's Datagram and Ready (D84): built with the declaration's defaults, copied where Kira copies a
-// value, compared field by field, as a field, in a List, a Map and a Maybe, and through a mut parameter.
+// kira:os's Datagram and Ready (D84), value types: built with the declaration's defaults, changed only as a new
+// value (`with`), compared field by field, as a field, in a List, a Map and a Maybe, and returned anew.
 
 pub Seen: Struct {
     pub last: Datagram = Datagram { }
@@ -12,8 +12,10 @@ pub made: (size: Size, host: Str) Datagram {
     Datagram { size = size, host = host }
 }
 
-bump: (mut d: Datagram) Void {
-    d.port = d.port + 1
+bumped: (d: Datagram) Datagram {
+    d with {
+        port = port + 1
+    }
 }
 
 show: (d: Datagram) Void {
@@ -22,13 +24,16 @@ show: (d: Datagram) Void {
 
 pub main: () Int32 {
     d: Datagram = Datagram { 3, "10.0.0.2", 9 }
-    mut e: Datagram = d
-    e.port = 10
+    e: Mutable<Datagram> = d with {
+        port = 10
+    }
     show(d)
     show(e)
     trace(d == e)
     trace(d != e)
-    e.port = 9
+    e = e with {
+        port = 9
+    }
     trace(d == e)
 
     r: Ready = Ready { }
@@ -38,32 +43,37 @@ pub main: () Int32 {
     trace(p.handle)
     trace(p.events)
 
-    mut s: Seen = Seen { }
+    s: Mutable<Seen> = Seen { }
     show(s.last)
     trace(s.ready.isNone())
-    s.last = d
-    s.ready = p
-    mut t: Seen = s
-    t.last.port = 1
+    s = s with {
+        last = d
+        ready = p
+    }
+    t: Seen = s with {
+        last = bumped(last) with {
+            port = 1
+        }
+    }
     show(s.last)
     show(t.last)
     trace(s.ready.unwrap() == p)
 
-    mut ds: List<Datagram> = @listOf(d, made(1, "a"))
-    kept: List<Datagram> = ds
+    ds: Mutable<List<Datagram>> = @listOf(d, made(1, "a"))
+    kept: List<Datagram> = List<Datagram> { values = ds.toArr() }
     ds.add(made(2, "b"))
     trace(kept.size())
     trace(ds.contains(Datagram { 1, "a", 0 }))
     trace(ds.contains(Datagram { 1, "a", 1 }))
     show(ds[2])
 
-    mut byHost: Map<Str, Ready> = Map<Str, Ready> { }
+    byHost: Mutable<Map<Str, Ready>> = Map<Str, Ready> { }
     byHost["x"] = p
     trace(byHost.containsValue(Ready { -1, 5 }))
 
-    mut f: Datagram = made(5, "c")
-    bump(mut f)
-    bump(mut f)
+    f: Mutable<Datagram> = made(5, "c")
+    f = bumped(f)
+    f = bumped(f)
     show(f)
     f.port
 }

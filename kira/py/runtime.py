@@ -2560,6 +2560,21 @@ def _k_out(v):
     return v
 
 
+# A Json argument from Python, a new one at every level for Kira (D68): bytes become a List<UInt8> again,
+# which Kira may change once it holds it (stage 4 shares, so no store copies it).
+def _k_in(v):
+    c = _k_builtins.type(v)
+    if c is list:
+        return [_k_in(x) for x in v]
+    if c is bytes or c is bytearray:
+        return bytearray(v)
+    if c is _k_builtins.tuple:
+        return _k_builtins.tuple([_k_in(x) for x in v])
+    if c is dict:
+        return {k: _k_in(x) for k, x in v.items()}
+    return v
+
+
 # What Python hands back (D68), checked against the declared type's spec and rebuilt where Kira holds
 # a value, so a list, dict or bytes the sidecar keeps is never Kira's; an int is a Float64 if exact.
 def _k_check(v, spec, where, declared):
@@ -2746,7 +2761,7 @@ class _k_fx:
         if len(args) != n:
             _k_panic("%s was called with %d argument%s where %d %s declared" % (self.where, len(args), "" if len(args) == 1 else "s", n, "was" if n == 1 else "were"))
         given = [_k_check(a, s, self.where, d) for a, (s, d) in _k_builtins.zip(args, self.specs)]
-        return _k_out(self.f(*[_k_out(v) if j else v for v, j in _k_builtins.zip(given, self.json)]))
+        return _k_out(self.f(*[_k_in(v) if j else v for v, j in _k_builtins.zip(given, self.json)]))
 
 
 def _k_hasjson(spec):

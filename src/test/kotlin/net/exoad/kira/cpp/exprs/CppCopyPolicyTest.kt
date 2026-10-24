@@ -14,6 +14,8 @@ import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * Copy by default (50-round4, the policy W2.3 owns: `CppCopyPolicy`). Every row is a Kira
@@ -24,6 +26,8 @@ import kotlin.test.assertTrue
  * hook in a global `List` of `Fx` that a callee runs (round 4's p3 and p5): no per-shape
  * analysis sees it, and the policy does not need to.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppCopyPolicyTest {
     private val policy = Module(
         "copy:policy",

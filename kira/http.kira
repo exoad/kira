@@ -40,14 +40,14 @@ pub HttpAnswer: Struct {
 }
 
 // A ThreadingHTTPServer, bound and listening: each request a thread of its own, the handler a Kira Fx (D76).
-pub @_magic HttpServer: Any {
+pub @_magic HttpServer: Mutable<Any> {
     // The port bound, port 0's choice included.
     pub port: () Int32;
     // Serves until shutdown() from another thread, then closes: true; false at an error, or on the main thread once an
     // onSignal handler ran, as it ends kira:os's waits (D78), httpError() saying why.
-    pub mut serve: () Bool;
+    pub @_mutates serve: () Bool;
     // Ends serve within half a second, or a serve not yet begun at once.
-    pub mut shutdown: () Void;
+    pub @_mutates shutdown: () Void;
 }
 
 // GET only (any other method is Python's 501); none when the address cannot be bound, httpError() saying why.

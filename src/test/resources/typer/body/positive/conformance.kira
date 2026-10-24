@@ -63,13 +63,13 @@ pub narrowing: (s: Shape, m: Maybe<Int32>) Int32 {
         : s.radius                         // @type Circle place=Param(s) @ s
 }
 
-pub unchanged: (s: Shape, mut q: Shape) Int32 {
-    mut t: Shape = s
+pub unchanged: (s: Shape, q: Shape) Int32 {
+    t: Mutable<Shape> = s
     if t == Circle {
         u: Shape = t                       // @type Shape place=Local(t) @ t
     }
     if q == Circle {
-        r: Shape = q                       // @type Shape place=Param(q) @ q
+        r: Shape = q                       // @type Circle place=Param(q) @ q
     }
     if s == Circle || s == Square {
         z: Shape = s                       // @type Shape place=Param(s) @ s
@@ -83,8 +83,8 @@ pub leaving: (s: Shape, t: Shape, m: Maybe<Int32>, k: Int32) Int32 {
         trace(k)
         throw "none"
     }
-    mut total: Int32 = m                   // @type Int32 place=Param(m) @ m
-    mut i: Int32 = 0
+    total: Mutable<Int32> = m                   // @type Int32 place=Param(m) @ m
+    i: Mutable<Int32> = 0
     while i < k {
         i += 1
         if s != Circle {

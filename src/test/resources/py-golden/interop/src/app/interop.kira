@@ -3,20 +3,20 @@
 // method a method; private members are _name. Maybe is None or the value. A program error
 // (a zero divisor, an overflow, the value of a null Maybe) is a RuntimeError.
 
-pub Account: Any {
+pub Account: Mutable<Any> {
     pub owner: Str
     limit: Int32
-    pub mut balance: Int32 = 0
-    mut history: List<Int32> = List<Int32> { }
-    pub mut note: Maybe<Str> = null
+    pub balance: Mutable<Int32> = 0
+    history: Mutable<List<Int32>> = List<Int32> { }
+    pub note: Mutable<Maybe<Str>> = null
 
-    pub mut deposit: (amount: Int32) Int32 {
+    pub deposit: (amount: Int32) Int32 {
         balance += amount
         history.add(amount)
         balance
     }
 
-    pub mut withdraw: (amount: Int32) Maybe<Int32> {
+    pub withdraw: (amount: Int32) Maybe<Int32> {
         if balance - amount < -limit {
             null
         } else {

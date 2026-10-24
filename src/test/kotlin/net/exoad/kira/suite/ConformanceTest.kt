@@ -172,7 +172,7 @@ class ConformanceTest {
         val p = snippet(
             """
             f: (s: Shape, m: Maybe<Int32>) Int32 {
-                mut t: Shape = s
+                t: Mutable<Shape> = s
                 t == Circle ? 0 : s == Circle && m == Int32 ? s.radius + m : -1
             }
             """,
@@ -180,7 +180,7 @@ class ConformanceTest {
         expectNoErrors(p)
         val narrowed = p.model.narrowings.entries.map { (id, n) -> "${id.value}:${n.from.display()}->${n.to.display()}" }.sorted()
         assertEquals(listOf("m:Maybe<Int32>->Int32", "s:Shape->Circle"), narrowed)
-        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    mut t: Shape = s\n    t == Circle ? t.radius : 0\n}"), "types.member.unknown")
+        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    t: Mutable<Shape> = s\n    t == Circle ? t.radius : 0\n}"), "types.member.unknown")
     }
 
     @Test

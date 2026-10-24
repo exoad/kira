@@ -65,13 +65,13 @@ class FfiDriftCompileTest {
             pub ahead: () Float32;
         }
 
-        pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
-            pub mut arm: () Bool;
+        pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Mutable<Any> {
+            pub @_mutates arm: () Bool;
             pub ok: () Bool;
             pub drivable: () Bool;
-            pub mut scan: () Scan;
-            pub mut drive: (throttle: Float32, steer: Float32) Void;
-            pub mut finish: () $finishReturns;
+            pub @_mutates scan: () Scan;
+            pub @_mutates drive: (throttle: Float32, steer: Float32) Void;
+            pub @_mutates finish: () $finishReturns;
         }
 
         pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") openCar: () Car;
@@ -683,7 +683,8 @@ class FfiDriftCompileTest {
      * "'Cfg' was not declared" instead of building.
      */
     private fun cCallSpellingClean(tc: CppToolchain) {
-        val header = emitHeader("c:cfgcall", cfgCallModule, CppOptions(lineDirectives = false))
+        // A `mut` (out) parameter of an extern is stage 3's text; stage 4 has no spelling for one.
+        val header = net.exoad.kira.compiler.frontend.parser.DialectGates.stage4(false) { emitHeader("c:cfgcall", cfgCallModule, CppOptions(lineDirectives = false)) }
         assertTrue(header.contains("KIRA_EXTERN_CHECK(pt_cfg_get(), PtCfg, \"cfgGet\");"), header)
         assertTrue(header.contains("KIRA_EXTERN_CHECK((pt_cfg_put(kira::ffi::out(std::declval<PtCfg&>())), 0), int, \"cfgPut\");"), header)
         assertTrue(

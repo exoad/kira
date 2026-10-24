@@ -34,4 +34,29 @@ object DialectGates {
             noReturn = saved
         }
     }
+
+    /** Stage 4: `mut` is refused (a binding is `x: Mutable<T>`, a type `T: Mutable<P>`); kira-dialect's reading of old text keeps it. */
+    @Volatile
+    var noMut: Boolean = true
+
+    /**
+     * Stage 4's typing: a Mutable type's value is shared and changes through any binding, a type with Mutable
+     * state says so, and a field changes only when it is Mutable. Off, the old rules, as kira-dialect reads old text.
+     */
+    @Volatile
+    var mutability: Boolean = true
+
+    /** [block] with both of stage 4's gates set to [on], restored after. */
+    fun <T> stage4(on: Boolean, block: () -> T): T {
+        val savedMut = noMut
+        val savedRules = mutability
+        noMut = on
+        mutability = on
+        try {
+            return block()
+        } finally {
+            noMut = savedMut
+            mutability = savedRules
+        }
+    }
 }

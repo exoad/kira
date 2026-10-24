@@ -48,7 +48,7 @@ namespace
       {
           at = forward ? (at + 1) % 6 : (at + 5) % 6;
           nowUs += 1000;
-          d.feed(hall::SEQUENCE[static_cast<kira::Size>(at)], nowUs);
+          d = d.fed(hall::SEQUENCE[static_cast<kira::Size>(at)], nowUs);
       }
       return nowUs;
   }
@@ -78,38 +78,38 @@ namespace
       {
           hall::Decoder d;
           check(d.ticks == 0 && !d.primed, "starts at zero, unprimed");
-          d.feed(hall::SEQUENCE[0], 1000);
+          d = d.fed(hall::SEQUENCE[0], 1000);
           check(d.primed && d.ticks == 0 && d.edges == 0u, "the first valid state primes and counts nothing");
           std::uint64_t t = walk(d, 0, 12, true, 1000);
           check(d.ticks == 12 && d.edges == 12u && d.errors() == 0u, "twelve steps forward: +12, two turns, no error");
           t = walk(d, 0, 5, false, t);
           check(d.ticks == 7 && d.lastDir == -1, "five back: 7, and the direction is remembered");
           check(d.periodUs == 1000u, "the period is the gap between the last two steps");
-          d.feed(d.state, t + 500);
+          d = d.fed(d.state, t + 500);
           check(d.ticks == 7 && d.repeats == 1u && d.errors() == 0u, "an edge that changed nothing is a repeat, not an error");
       }
       section("what is an error");
       {
           hall::Decoder d;
-          d.feed(hall::SEQUENCE[0], 1000);
-          d.feed(hall::SEQUENCE[2], 2000);
+          d = d.fed(hall::SEQUENCE[0], 1000);
+          d = d.fed(hall::SEQUENCE[2], 2000);
           check(d.ticks == 0 && d.skips == 1u && d.errors() == 1u, "two steps at once is a skip, and not a tick");
-          d.feed(hall::SEQUENCE[3], 3000);
+          d = d.fed(hall::SEQUENCE[3], 3000);
           check(d.ticks == 1 && d.errors() == 1u, "and the step after it counts again from the new state");
-          d.feed(0, 4000);
+          d = d.fed(0, 4000);
           check(d.invalid == 1u && d.errors() == 2u && !d.primed, "all three low is invalid and unprimes");
-          d.feed(hall::SEQUENCE[3], 5000);
-          d.feed(hall::SEQUENCE[4], 6000);
+          d = d.fed(hall::SEQUENCE[3], 5000);
+          d = d.fed(hall::SEQUENCE[4], 6000);
           check(d.ticks == 2 && d.errors() == 2u, "after an invalid state the next valid one primes, the one after counts");
-          d.feed(7, 7000);
+          d = d.fed(7, 7000);
           check(d.invalid == 2u, "all three high is invalid too");
-          d.feed(0xF9, 8000);
+          d = d.fed(0xF9, 8000);
           check(d.invalid == 2u && d.primed, "only the low three bits are read");
       }
       section("speed");
       {
           hall::Decoder d;
-          d.feed(hall::SEQUENCE[0], 0);
+          d = d.fed(hall::SEQUENCE[0], 0);
           const std::uint64_t t = walk(d, 0, 30, true, 0);
           hall::Speed s = hall::speed(30, d, t);
           check(s.windowTps == 600, "30 ticks in a 50 ms window is 600 ticks per second");
@@ -118,7 +118,7 @@ namespace
           s = hall::speed(3, d, t);
           check(s.usePeriod, "with 3, the period is");
           hall::Decoder back;
-          back.feed(hall::SEQUENCE[0], 0);
+          back = back.fed(hall::SEQUENCE[0], 0);
           const std::uint64_t tb = walk(back, 0, 4, false, 0);
           s = hall::speed(-4, back, tb);
           check(s.periodTps == -1000 && s.windowTps == -80, "backwards is negative both ways");
@@ -128,8 +128,8 @@ namespace
           s = hall::speed(0, fresh, 5000);
           check(s.stopped, "and so is a decoder that has seen nothing");
           hall::Decoder slow;
-          slow.feed(hall::SEQUENCE[0], 0);
-          slow.feed(hall::SEQUENCE[1], 0x1FFFFFFFFull);
+          slow = slow.fed(hall::SEQUENCE[0], 0);
+          slow = slow.fed(hall::SEQUENCE[1], 0x1FFFFFFFFull);
           check(slow.periodUs == 0xFFFFFFFFu, "a gap past 32 bits saturates the period");
       }
       section("compile time");

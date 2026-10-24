@@ -29,7 +29,7 @@ pub Arr<UInt8, USER_CMD_BYTES> as Frame
 
 // The SDK's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
 pub @_const crc32: (buf: View<UInt8>) UInt32 {
-    mut crc: UInt32 = 0xFFFFFFFF
+    crc: Mutable<UInt32> = 0xFFFFFFFF
     for b: UInt8 in buf {
         crc ^= b as UInt32
         for bit: Int32 in 0..8 {
@@ -52,7 +52,7 @@ pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
 
 // A 32-byte command of either family, little-endian, byte by byte.
 pub @_const command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
-    mut p: Frame = Frame {}
+    p: Mutable<Frame> = Frame {}
     for i: Size in 0..MAGIC.size() {
         p[i] = MAGIC[i]
     }
@@ -92,27 +92,20 @@ pub Header: Struct {
     pub size: UInt32 = 0
 }
 
-// True for ONE PACKET: the magic, and a stated size equal to its own length.
-pub @_const readHeader: (buf: View<UInt8>, mut out: Header) Bool {
+// The header of ONE PACKET: the magic, and a stated size equal to its own length; else none.
+pub @_const readHeader: (buf: View<UInt8>) Maybe<Header> {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
-        false
+        null
     } else {
-        mut result: Bool = false
-        mut found: Bool = false
+        found: Mutable<Bool> = false
         for i: Size in 0..MAGIC.size() {
             if buf[i] != MAGIC[i] {
-                result = false
                 found = true
                 break
             }
         }
-        if found {
-            result
-        } else {
-            out.type = readU32(buf.from(4))
-            out.size = readU32(buf.from(8));
-            (out.size as Size) == buf.size()
-        }
+        h: Header = Header { readU32(buf.from(4)), readU32(buf.from(8)) }
+        found || (h.size as Size) != buf.size() ? null : h
     }
 }
 
@@ -126,8 +119,8 @@ pub @_const packetAt: (buf: View<UInt8>) Size {
     if buf.size() < HEADER_BYTES + TAIL_BYTES {
         0
     } else {
-        mut result: Size = 0
-        mut found: Bool = false
+        result: Mutable<Size> = 0
+        found: Mutable<Bool> = false
         for i: Size in 0..MAGIC.size() {
             if buf[i] != MAGIC[i] {
                 result = 0
@@ -154,17 +147,16 @@ pub Walked: Struct {
 // at the first thing that is not one. `each` does not escape, so it lowers to
 // a template parameter and a lambda costs no heap.
 pub @_const eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Walked {
-    mut w: Walked = Walked {}
-    mut at: Size = 0
+    packets: Mutable<Size> = 0
+    at: Mutable<Size> = 0
     while at < buf.size() {
         n: Size = packetAt(buf.from(at))
         if n == 0 {
             break
         }
         each(buf.slice(at, n))
-        w.packets += 1
+        packets += 1
         at += n
     }
-    w.leftover = buf.size() - at
-    w
+    Walked { packets, buf.size() - at }
 }

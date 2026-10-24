@@ -116,9 +116,11 @@ object Stage3 {
         val hand = (rw.hand.filter { (line, _) -> rw.topUnitAtLine(line)?.id !in rw.excluded } + refused).sortedBy { it.first }
         for ((k, v) in rw.stats) totals[k] = (totals[k] ?: 0) + v
         val changedText = if (next != text) next else null
-        // All of stage 3's dialect: it parses with `return` refused and the ternary rule on.
-        val (ok, err) = DialectGates.stage3(true) {
-            ProjectUnits.read(CompilationUnit(bootstrap = false), path, next, uri, literals = false, returns = false)
+        // All of stage 3's dialect: it parses with `return` refused and the ternary rule on, and stage 4's `mut` kept.
+        val (ok, err) = DialectGates.stage4(false) {
+            DialectGates.stage3(true) {
+                ProjectUnits.read(CompilationUnit(bootstrap = false), path, next, uri, literals = false, returns = false)
+            }
         }
         if (ok == null && hand.isEmpty()) notes += "NOTE $path: not yet stage 3's dialect: $err"
         return Result(changedText, hand, ok != null, null, notes, rw.stats)

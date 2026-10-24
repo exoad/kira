@@ -1,13 +1,13 @@
 // Python's csv module in its excel dialect (a comma, a doubled quote, \r\n after each row); py only.
 
 // A file's rows one at a time, read as UTF-8 with newline="" so a quoted line break stays in its cell.
-pub @_magic CsvReader: Any {
+pub @_magic CsvReader: Mutable<Any> {
     // The next row; none at the end, or at an error, which csvError() names; either closes the file.
-    pub mut next: () Maybe<List<Str>>;
+    pub @_mutates next: () Maybe<List<Str>>;
     // Whether the last next() stopped at a row csv refuses (csv.Error), so a caller can end the program
     // there, as Python's csv ended it: assert(!rows.isMalformed(), "csv.Error: " + csvError()).
     pub isMalformed: () Bool;
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
 }
 
 // None when the file cannot be opened, csvError() saying why.

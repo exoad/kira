@@ -16,7 +16,7 @@
 // happens on the thread itself, which cannot wait for itself: that drop
 // detaches the thread instead, and the body runs to its end with nothing
 // waiting for it. A join() from the body on its own handle is a panic.
-pub @_magic Thread: Any {
+pub @_magic Thread: Mutable<Any> {
     name: Str
     body: Fx<Tuple0, Void>
 
@@ -41,12 +41,13 @@ pub @_magic spawn: (name: Str, body: Fx<Tuple0, Void>) Thread;
 // does. `with` is a keyword to the parser at the W1 gate, so here the method
 // is `lock`; when the parser takes `with` as a member name, this line and
 // the `Mutex.lock` key in sync.bind.yaml are the whole rename.
-pub @_magic Mutex<T>: Any {
+pub @_magic Mutex<T>: Mutable<Any> {
     value: T
 
-    // Runs `body` with the lock held and the value by reference; on return
-    // every waiter in waitUntil is woken to re-check its predicate.
-    pub lock: (body: Fx<Tuple1<mut T>, Void>) Void;
+    // Runs `body` with the lock held and the value, shared when its type is
+    // Mutable (a Ref<T> for a value); on return every waiter in waitUntil is
+    // woken to re-check its predicate.
+    pub lock: (body: Fx<Tuple1<T>, Void>) Void;
     // Waits until `pred(value)` holds, re-checking whenever a `lock` returns.
     // True when it held, false when timeoutMs elapsed first; a negative
     // timeout waits without limit, zero checks once.
@@ -57,33 +58,33 @@ pub @_magic Mutex<T>: Any {
 // class (the C++ runtime refuses any other T by name). load/store/add/swap/
 // compareSwap are sequentially consistent; loadAcquire and storeRelease pair
 // for a flag that publishes data written before the store.
-pub @_magic Atomic<T>: Any {
+pub @_magic Atomic<T>: Mutable<Any> {
     value: T
 
     pub load: () T;
-    pub mut store: (value: T) Void;
+    pub @_mutates store: (value: T) Void;
     // Adds `delta` and returns the value after the add (not the one before):
     // exactly what is stored, so an integer wraps. Not for Atomic<Bool>.
-    pub mut add: (delta: T) T;
+    pub @_mutates add: (delta: T) T;
     // Stores `value` and returns the one it replaced.
-    pub mut swap: (value: T) T;
+    pub @_mutates swap: (value: T) T;
     // Stores `desired` only when the current value equals `expected`; true
     // when it did.
-    pub mut compareSwap: (expected: T, desired: T) Bool;
+    pub @_mutates compareSwap: (expected: T, desired: T) Bool;
     pub loadAcquire: () T;
-    pub mut storeRelease: (value: T) Void;
+    pub @_mutates storeRelease: (value: T) Void;
 }
 
 // An unbounded queue for handing values between threads.
-pub @_magic BlockingQueue<T>: Any {
+pub @_magic BlockingQueue<T>: Mutable<Any> {
     // After close() a push is dropped.
-    pub mut push: (value: T) Void;
+    pub @_mutates push: (value: T) Void;
     // The next value, waiting up to timeoutMs for one (negative: without
     // limit, zero: none if the queue is empty now). None on timeout, and none
     // once the queue is closed and drained: that is how a consumer ends.
-    pub mut pop: (timeoutMs: Int64) Maybe<T>;
+    pub @_mutates pop: (timeoutMs: Int64) Maybe<T>;
     // Wakes every waiting pop; values already queued are still delivered.
-    pub mut close: () Void;
+    pub @_mutates close: () Void;
     pub isClosed: () Bool;
     pub size: () Size;
 }

@@ -13,7 +13,7 @@ NAMES: List<Str> = @listOf(
 )
 
 total: (xs: List<Int64>) Int64 {
-    mut t: Int64 = 0
+    t: Mutable<Int64> = 0
     for x: Int64 in xs {
         t += x
     }
@@ -21,7 +21,7 @@ total: (xs: List<Int64>) Int64 {
 }
 
 join: (xs: Arr<Str>) Str {
-    mut out: Str = ""
+    out: Mutable<Str> = ""
     for s: Str in xs {
         out += s
     }
@@ -37,7 +37,7 @@ main: () Void {
     typed: List<Int64> = @listOf<Int64>()
     println("${empty.size()} ${typed.size()} ${CORNERS[3]} ${NAMES[1]}")
     pts: List<Pt> = @listOf(Pt { 1, 2 }, Pt { 3, 4 })
-    mut moved: List<Pt> = pts
+    moved: Mutable<List<Pt>> = pts.view().toList()
     moved.add(Pt { 5, 6 })
     println("${pts.size()} ${moved.size()} ${pts[1].y}")
     bytes: List<UInt8> = @listOf(0x41, 0x42)

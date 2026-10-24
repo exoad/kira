@@ -7,20 +7,25 @@ kira.test as test
 
 pub N: Int32 = 1000
 
+// What the lock guards: a Mutable value, which the lock's body changes in place.
+pub Count: Mutable<Any> {
+    pub n: Mutable<Int32> = 0
+}
+
 pub main: () Int32 {
     t: Suite = Suite { title = "sys - spawn, Mutex.lock and kira:test" }
-    total: Mutex<Int32> = Mutex<Int32> { value = 0 }
+    total: Mutex<Count> = Mutex<Count> { value = Count { } }
     worker: Thread = spawn("adder", () Void {
         for i: Int32 in 0..N {
-            total.lock((mut v: Int32) Void {
-                v += 1
+            total.lock((c: Count) Void {
+                c.n += 1
             })
         }
     })
     worker.join()
     seen: Ref<Int32> = Ref<Int32> { value = 0 }
-    total.lock((mut v: Int32) Void {
-        seen.value = v
+    total.lock((c: Count) Void {
+        seen.value = c.n
     })
     t.check(seen.value == N, "1000 increments from a worker, counted under the mutex")
     t.checkStr("${seen.value}", "1000", "and the count reads back as text")

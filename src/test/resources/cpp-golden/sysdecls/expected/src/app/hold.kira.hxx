@@ -5,16 +5,20 @@
 #include "kira/macro_push.hxx"
 namespace hold
 {
-  struct Holder;
+  class Holder;
 
   inline kira::Rc<kira::sync::BlockingQueue<kira::Str>> inbox = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();
   inline const kira::Rc<kira::sync::BlockingQueue<std::int32_t>> OUTBOX = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();
 
-  struct Holder
+  class Holder final
   {
-      kira::Rc<kira::sync::BlockingQueue<kira::Str>> q = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();
-      kira::Maybe<kira::Rc<kira::sync::Thread>> worker = kira::none;
-      std::int32_t count = 0;
+  public:
+      Holder(kira::Rc<kira::sync::BlockingQueue<kira::Str>> q_ = std::make_shared<kira::sync::BlockingQueue<kira::Str>>(), kira::Maybe<kira::Rc<kira::sync::Thread>> worker_ = kira::none, std::int32_t count_ = 0);
+      Holder(const Holder&) = delete;
+      Holder& operator=(const Holder&) = delete;
+      kira::Rc<kira::sync::BlockingQueue<kira::Str>> q;
+      kira::Maybe<kira::Rc<kira::sync::Thread>> worker;
+      std::int32_t count;
   };
 
   void wait(const kira::Rc<kira::sync::Thread>& t, const kira::Rc<kira::sync::Mutex<std::int32_t>>& m);

@@ -21,9 +21,9 @@ namespace proto
   };
 
   [[nodiscard]] Reply read(const kira::Str& line);
-  [[nodiscard]] bool field(const kira::Str& text, const kira::Str& key, kira::Str& out);
-  [[nodiscard]] bool fieldInt(const kira::Str& text, const kira::Str& key, std::int32_t& out);
-  [[nodiscard]] bool fieldFloat(const kira::Str& text, const kira::Str& key, float& out);
+  [[nodiscard]] kira::Maybe<kira::Str> field(const kira::Str& text, const kira::Str& key);
+  [[nodiscard]] kira::Maybe<std::int32_t> fieldInt(const kira::Str& text, const kira::Str& key);
+  [[nodiscard]] kira::Maybe<float> fieldFloat(const kira::Str& text, const kira::Str& key);
   [[nodiscard]] kira::Str steer(float fraction);
   [[nodiscard]] kira::Str escUs(std::int32_t us);
   [[nodiscard]] kira::Str stop();
