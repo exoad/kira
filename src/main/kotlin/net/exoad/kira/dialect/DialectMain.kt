@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.kim.DependencyResolver
 import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ProjectFiles
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Files
@@ -197,9 +198,9 @@ object DialectMain {
      */
     fun dependenciesOf(group: String): List<Pair<String, String>> {
         val dir = File(group)
-        val yaml = File(dir, "kira.yaml")
-        val roots = if (yaml.isFile) {
-            val m = runCatching { ManifestLoader.loadFromPath(yaml.toPath()) }.getOrNull() ?: return emptyList()
+        val yaml = ProjectFiles.find(dir.toPath())?.toFile()
+        val roots = if (yaml != null) {
+            val m = runCatching { ProjectFiles.loadFromPath(yaml.toPath()) }.getOrNull() ?: return emptyList()
             m.dependencies.values.mapNotNull { spec -> spec.path?.let { DependencyResolver.resolvePath(dir.absoluteFile.toPath(), it) } }
         } else if (File(dir, "core.kira").isFile) {
             emptyList()
@@ -225,14 +226,14 @@ object DialectMain {
     /** The new URI of [f] and the group its roles are read in: its project, the stdlib, or its directory. */
     fun newUriOf(f: File): Pair<String, String> {
         val dir = f.absoluteFile.parentFile
-        if (File(dir, "core.kira").isFile && !File(dir, "kira.yaml").isFile) {
+        if (File(dir, "core.kira").isFile && !ProjectFiles.isProject(dir.toPath())) {
             return ModuleNames.stdlib(f.path) to dir.path
         }
         var d: File? = dir
         while (d != null) {
-            val yaml = File(d, "kira.yaml")
-            if (yaml.isFile) {
-                val m = runCatching { ManifestLoader.loadFromPath(yaml.toPath()) }.getOrNull()
+            val yaml = ProjectFiles.find(d.toPath())?.toFile()
+            if (yaml != null) {
+                val m = runCatching { ProjectFiles.loadFromPath(yaml.toPath()) }.getOrNull()
                 if (m != null) {
                     val src = d.toPath().resolve(m.srcDir).normalize()
                     if (f.absoluteFile.toPath().normalize().startsWith(src)) {

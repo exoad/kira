@@ -27,13 +27,13 @@ object ModuleNames {
     fun stdlib(file: String): String = "$STDLIB:${stem(Paths.get(file).fileName.toString())}"
 
     /**
-     * A dependency's file: under a dependency with a kira.yaml, that project's name and srcDir;
-     * under one without (the stdlib), `kira` and the path under [depRoot].
+     * A dependency's file: under a dependency with a project file (project.kira or kira.yaml), that
+     * project's name and srcDir; under one without (the stdlib), `kira` and the path under [depRoot].
      */
     fun dependency(depRoot: Path, file: Path): String {
-        val manifest = depRoot.resolve("kira.yaml")
-        if (Files.isRegularFile(manifest)) {
-            runCatching { net.exoad.kira.kim.ManifestLoader.loadFromPath(manifest) }.getOrNull()?.let { m ->
+        val manifest = net.exoad.kira.kim.ProjectFiles.find(depRoot)
+        if (manifest != null) {
+            cached(manifest)?.let { m ->
                 return project(m.project.name, depRoot.resolve(m.srcDir), file)
             }
         }
@@ -60,7 +60,7 @@ object ModuleNames {
 
     /**
      * Each source's URI, by canonical path: [stdlib] under the dependency that holds it, and
-     * [workspace] under the project's srcDir (its `src`, or its root, without a kira.yaml).
+     * [workspace] under the project's srcDir (its `src`, or its root, without a project file).
      */
     fun assign(
         manifest: net.exoad.kira.kim.ProjectManifest?,
@@ -96,24 +96,29 @@ object ModuleNames {
 
     private fun canonical(f: String): String = runCatching { java.io.File(f).canonicalPath }.getOrDefault(f)
 
-    /** Each kira.yaml read, by its path and when it was last written: a rewritten one is read again. */
+    /** Each project file read, by its path and when it was last written: a rewritten one is read again. */
     private val manifests = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<net.exoad.kira.kim.ProjectManifest>>()
 
-    /** [file]'s URI by what holds it: the stdlib's folder, or the nearest kira.yaml whose srcDir has it. */
+    /** The configuration in the project file [file] (project.kira or kira.yaml); null when it does not load. */
+    fun cached(file: Path): net.exoad.kira.kim.ProjectManifest? {
+        val key = "$file|${Files.getLastModifiedTime(file).toMillis()}|${Files.size(file)}"
+        return manifests.computeIfAbsent(key) {
+            java.util.Optional.ofNullable(runCatching { net.exoad.kira.kim.ProjectFiles.loadFromPath(file) }.getOrNull())
+        }.orElse(null)
+    }
+
+    /** [file]'s URI by what holds it: the stdlib's folder, or the nearest project file whose srcDir has it. */
     private fun enclosing(file: Path): String? {
         val abs = file.toAbsolutePath().normalize()
         val dir = abs.parent ?: return null
-        if (Files.isRegularFile(dir.resolve("core.kira")) && !Files.isRegularFile(dir.resolve("kira.yaml"))) {
+        if (Files.isRegularFile(dir.resolve("core.kira")) && !net.exoad.kira.kim.ProjectFiles.isProject(dir)) {
             return stdlib(abs.toString())
         }
         var d: Path? = dir
         while (d != null) {
-            val yaml = d.resolve("kira.yaml")
-            if (Files.isRegularFile(yaml)) {
-                val key = "$yaml|${Files.getLastModifiedTime(yaml).toMillis()}|${Files.size(yaml)}"
-                val m = manifests.computeIfAbsent(key) {
-                    java.util.Optional.ofNullable(runCatching { net.exoad.kira.kim.ManifestLoader.loadFromPath(yaml) }.getOrNull())
-                }.orElse(null) ?: return null
+            val found = net.exoad.kira.kim.ProjectFiles.find(d)
+            if (found != null) {
+                val m = cached(found) ?: return null
                 val src = d.resolve(m.srcDir).normalize()
                 return if (abs.startsWith(src)) project(m.project.name, src, abs) else null
             }

@@ -30,7 +30,7 @@ fi
 run_one() {
   local name="$1"
   local dir="$ROOT/examples/$name"
-  if [[ ! -f "$dir/kira.yaml" ]]; then
+  if [[ ! -f "$dir/project.kira" && ! -f "$dir/kira.yaml" ]]; then
     echo "unknown example: $name" >&2
     exit 1
   fi

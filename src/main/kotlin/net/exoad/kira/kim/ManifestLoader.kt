@@ -47,7 +47,7 @@ object ManifestLoader {
         } ?: emptyMap()
 
         return ProjectManifest(
-            project = ProjectSpec(name = projectName),
+            project = ProjectSpec(name = projectName, author = project.optionalString("author") ?: "", version = project.optionalString("version") ?: ""),
             srcDir = srcDir,
             srcExclude = srcExclude,
             build = BuildOptions(

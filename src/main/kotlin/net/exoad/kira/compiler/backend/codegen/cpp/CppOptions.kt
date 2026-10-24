@@ -24,7 +24,7 @@ enum class CppLayout {
 }
 
 /**
- * The `build.cpp` block of `kira.yaml`, as the C++ backend consumes it. Every
+ * project.kira's `cpp` (kira.yaml's `build.cpp`), as the C++ backend consumes it. Every
  * field has the manifest's default so a project with no `cpp:` block still
  * builds.
  *

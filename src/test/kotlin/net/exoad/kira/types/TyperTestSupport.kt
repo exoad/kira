@@ -80,9 +80,8 @@ object TyperTestSupport {
         require(src.isDirectory) { "no src/ in $dir" }
         val files = src.walkTopDown().filter { it.isFile && it.extension == "kira" }.sortedBy { it.path }.toList()
         require(files.isNotEmpty()) { "no .kira files under $src" }
-        // The project's own naming: its kira.yaml's name and srcDir, as the CLI gives them.
-        val yaml = File(dir, "kira.yaml")
-        val manifest = if (yaml.isFile) net.exoad.kira.kim.ManifestLoader.loadFromPath(yaml.toPath()) else null
+        // The project's own naming: its project file's name and srcDir, as the CLI gives them.
+        val manifest = net.exoad.kira.kim.ProjectFiles.load(dir.toPath())
         val names = net.exoad.kira.compiler.ModuleNames.assign(manifest, dir.toPath(), emptyList(), files.map { it.canonicalPath })
         val sources = files.map { Src(it.canonicalPath, it.readText(), names[it.canonicalPath]) }
         return type(*sources.toTypedArray(), mode = mode, options = options)

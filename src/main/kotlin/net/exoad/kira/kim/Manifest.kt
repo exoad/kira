@@ -3,7 +3,10 @@ package net.exoad.kira.kim
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 
 data class ProjectSpec(
-    val name: String
+    val name: String,
+    /** Who wrote it and its version: read and kept, used by nothing yet. */
+    val author: String = "",
+    val version: String = "",
 )
 
 data class BuildOptions(

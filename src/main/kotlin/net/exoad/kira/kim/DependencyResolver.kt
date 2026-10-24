@@ -188,13 +188,15 @@ object DependencyResolver {
         val excludes = manifest?.srcExclude.orEmpty()
         val absoluteRoot = projectRoot.toAbsolutePath().normalize()
 
-        val primary = scanKiraFiles(root) { isExcluded(it.toString(), absoluteRoot, excludes) }.filterNot { isExcluded(it, absoluteRoot, excludes) }
+        // The root's project.kira configures the project; it is none of its modules.
+        val primary = scanKiraFiles(root) { isExcluded(it.toString(), absoluteRoot, excludes) }
+            .filterNot { isExcluded(it, absoluteRoot, excludes) || ProjectFiles.isProjectKira(Path.of(it), absoluteRoot) }
         if (primary.isNotEmpty()) {
             return primary
         }
 
         if (manifest == null && root != projectRoot) {
-            return scanKiraFiles(projectRoot)
+            return scanKiraFiles(projectRoot).filterNot { ProjectFiles.isProjectKira(Path.of(it), absoluteRoot) }
         }
         return emptyList()
     }

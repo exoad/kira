@@ -197,7 +197,7 @@ js_prelude_seen=""
 for dir in "${DIRS[@]}"; do
   dir="${dir%/}"
   name="$(basename "$dir")"
-  if [[ ! -f "$dir/kira.yaml" ]]; then
+  if [[ ! -f "$dir/project.kira" && ! -f "$dir/kira.yaml" ]]; then
     echo "unknown example: $name" >&2
     exit 1
   fi
@@ -259,11 +259,11 @@ for dir in "${DIRS[@]}"; do
 
       # W1.6 defines `--out <dir>`; with the `tree` layout the generated
       # .kira.cxx files land under it. W2.8 enables the examples and settles
-      # their kira.yaml layout, so this find is where a `beside` layout would
+      # their project file's layout, so this find is where a `beside` layout would
       # need a different root.
       mapfile -t cpp_sources < <(find "$WORK/cpp" -name '*.cxx' | sort)
       if [[ ${#cpp_sources[@]} -eq 0 ]]; then
-        echo "  kira (cpp) emitted no .cxx under $WORK/cpp (is the example's kira.yaml layout tree?)" >&2; exit 1
+        echo "  kira (cpp) emitted no .cxx under $WORK/cpp (is the example's project file layout tree?)" >&2; exit 1
       fi
       "$CXX_BIN" -std=c++20 -O2 -I "$CPP_RUNTIME_INC" -I "$WORK/cpp" -o "$WORK/app-cpp" "${cpp_sources[@]}" ${CPP_LIBS[@]+"${CPP_LIBS[@]}"} 2>"$WORK/cxx.err" || {
         echo "  c++ failed:" >&2; cat "$WORK/cxx.err" >&2; exit 1;
@@ -399,7 +399,7 @@ if [[ ${#SELECTED[@]} -eq 0 ]]; then
   echo "  ran $cpp_legs_run of ${#CPP_LEGS[@]} example(s) listed in examples/cpp-legs.txt"
   if [[ $cpp_legs_run -ne ${#CPP_LEGS[@]} ]]; then
     for legname in ${CPP_LEGS[@]+"${CPP_LEGS[@]}"}; do
-      [[ -f "$ROOT/examples/$legname/kira.yaml" ]] || echo "  '$legname' in examples/cpp-legs.txt is not an example directory" >&2
+      [[ -f "$ROOT/examples/$legname/project.kira" || -f "$ROOT/examples/$legname/kira.yaml" ]] || echo "  '$legname' in examples/cpp-legs.txt is not an example directory" >&2
     done
     echo "  a listed example did not run; check the names in examples/cpp-legs.txt" >&2
     failures=$((failures + 1))

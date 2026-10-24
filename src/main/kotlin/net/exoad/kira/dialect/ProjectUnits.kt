@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ProjectFiles
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Files
@@ -28,10 +28,10 @@ object ProjectUnits {
      */
     fun load(group: File, literals: Boolean, overlay: Map<String, String> = emptyMap(), extra: List<String> = emptyList(), returns: Boolean = literals): Loaded {
         val root = group.absoluteFile.toPath().normalize()
-        val yaml = root.resolve("kira.yaml")
+        val yaml = ProjectFiles.find(root)
         val (deps, workspace, names) = when {
-            Files.isRegularFile(yaml) -> {
-                val m = ManifestLoader.loadFromPath(yaml)
+            yaml != null -> {
+                val m = ProjectFiles.loadFromPath(yaml)
                 val deps = DependencyResolver.resolveDependencySources(m, root)
                 val ws = DependencyResolver.resolveProjectSources(m, root)
                 Triple(deps, ws, ModuleNames.assign(m, root, deps, ws))
