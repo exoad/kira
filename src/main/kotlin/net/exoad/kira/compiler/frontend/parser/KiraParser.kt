@@ -345,10 +345,39 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         val ternary = ternaryThen
         ternaryThen = 0
         try {
-            return parseStatementHere(modifier)
+            return statementAt(peek().canonicalLocation.column) { parseStatementHere(modifier) }
         } finally {
             ternaryThen = ternary
         }
+    }
+
+    /** The column the statement (or type member) being parsed starts at. */
+    private var statementColumn = 0
+
+    private inline fun <T> statementAt(column: Int, block: () -> T): T {
+        val saved = statementColumn
+        statementColumn = column
+        try {
+            return block()
+        } finally {
+            statementColumn = saved
+        }
+    }
+
+    /**
+     * A `-`, `+`, `(` or `[` at the pointer that would go on with the line before as [what]: refused
+     * when it opens a line at or left of its statement's start, where it reads as a statement of its own.
+     */
+    private fun refuseLineThatGoesOn(what: String) {
+        if (!startsOnNewLine() || peek().canonicalLocation.column > statementColumn) return
+        Diagnostics.panic(
+            "parse.line.continues",
+            "This line opens with `${peek().content}` where its statement starts, yet it goes on with the line before as $what. " +
+                "End that line with `;` if this one stands alone; indent this one if it goes on.",
+            location = here(),
+            selectorLength = 1,
+            context = context
+        )
     }
 
     private fun parseStatementHere(modifier: Map<Modifier, SourcePosition>?): Statement {
@@ -1044,6 +1073,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                     continue
                 }
                 refuseRemovedForm()
+                val memberAt = peek().canonicalLocation.column
                 val memberModifiers = parseModifiers()
                 expectModifiers(memberModifiers, WrappingContext.CLASS_MEMBER)
                 refuseRemovedForm()
@@ -1059,7 +1089,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                         context = context
                     )
                 }
-                val member = parseDeclaration(memberModifiers)
+                val member = statementAt(memberAt) { parseDeclaration(memberModifiers) }
                 expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
                 members.add(member as FirstClassDecl)
             }
@@ -1213,6 +1243,9 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             val binaryOpType = BinaryOp.byTokenTypeMaybe(binOpTokens)
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
+            }
+            if (binOpTokens.size == 1 && (binOpTokens[0] == Token.Type.OP_SUB || binOpTokens[0] == Token.Type.OP_ADD)) {
+                refuseLineThatGoesOn(if (binOpTokens[0] == Token.Type.OP_SUB) "a subtraction" else "an addition")
             }
             val opAt = here()
             repeat(binOpTokens.size) {
@@ -1405,6 +1438,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             when {
                 at(Token.Type.S_OPEN_BRACKET) -> {
                     // array index
+                    refuseLineThatGoesOn("an index")
                     expectThenAdvance(Token.Type.S_OPEN_BRACKET)
                     val idx = withNoObjectInit(false) { parseExpr() }
                     expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
@@ -1443,6 +1477,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 // A call's '(' is on the line of what it calls: one that starts a line starts a lambda.
                 at(Token.Type.S_OPEN_PARENTHESIS) && !(startsOnNewLine() && startsLambda()) -> {
                     // function call on arbitrary expression (e.g., p.dist())
+                    refuseLineThatGoesOn("a call")
                     val params = parseFunctionCallParameter()
                     expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
                 }
