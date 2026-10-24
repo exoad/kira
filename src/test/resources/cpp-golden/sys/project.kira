@@ -1,0 +1,11 @@
+PROJECT: Project = Project { } with {
+    name = "golden.sys"
+    srcDir = "src"
+    target = "cpp"
+    cpp = Cpp {
+        layout = "beside",
+        lineDirectives = false
+    }
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

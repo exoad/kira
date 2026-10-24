@@ -1,0 +1,6 @@
+PROJECT: Project = Project { } with {
+    name = "control.flow"
+    srcDir = "src"
+    target = "c"
+    dependencies = @mapOf("kira_stdlib", "../../kira")
+}

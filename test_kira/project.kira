@@ -1,0 +1,6 @@
+PROJECT: Project = Project { } with {
+    name = "test_kira"
+    srcDir = "sub"
+    target = "c"
+    dependencies = @mapOf("kira_stdlib", "../kira")
+}
