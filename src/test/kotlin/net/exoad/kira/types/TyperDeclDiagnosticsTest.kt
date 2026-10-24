@@ -240,10 +240,18 @@ class TyperDeclDiagnosticsTest {
             assertEquals("app:lib", hit.from.uri, name)
         }
         assertEquals("kira:math", (p.graph.lookup(main, "sqrt") as ModuleGraph.Lookup.Found).from.uri)
-        // Without them a bare name is the stdlib's, the project imported or not.
-        val bare = TyperTestSupport.type(lib, module("app:main", "kira.math as math\napp.lib as lib\nf: () Float64 {\n    exp(2.0)\n}\n"))
-        TyperTestSupport.expectNoErrors(bare)
-        assertEquals("kira:math", (bare.graph.lookup(bare.module("app:main")!!, "exp") as ModuleGraph.Lookup.Found).from.uri)
+        // Without them a name both have is neither bare (old text meant the project's); one only the stdlib has is the stdlib's.
+        val bare = TyperTestSupport.type(lib, module("app:main", "kira.math as math\napp.lib as lib\nf: () Float64 {\n    exp(2.0) + sqrt(4.0)\n}\n"))
+        assertTrue(
+            expectDiagnostic(bare, "types.use.bare").message ==
+                "'exp' is not in scope, as app.lib and kira.math both have it: add `app.lib.exp as exp` or write `lib.exp`, or for kira.math's add `kira.math.exp as exp` or write `math.exp`.",
+            TyperTestSupport.render(bare),
+        )
+        val main2 = bare.module("app:main")!!
+        assertEquals(ModuleGraph.Lookup.Missing, bare.graph.lookup(main2, "exp"))
+        assertEquals("kira:math", (bare.graph.lookup(main2, "sqrt") as ModuleGraph.Lookup.Found).from.uri)
+        // Not imported, the project's exp is no one's here: the stdlib's it is.
+        TyperTestSupport.expectNoErrors(TyperTestSupport.type(lib, module("app:main", "kira.math as math\nf: () Float64 {\n    exp(2.0)\n}\n")))
     }
 
     @Test

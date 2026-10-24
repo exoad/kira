@@ -10,9 +10,10 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
  * question every later phase asks: what does a name mean from inside a module?
  *
  * Scope order: a module's own members, then its member aliases (`a.b.Name as Name`), then the
- * `pub` members of the ambient stdlib (every `kira:*` module, by URI). An imported module's
- * names are reached through its alias (`b.Name`); with [DialectGates.aliasOnlyImports] off (old
- * text) they are also seen bare, a project's before the stdlib's, as `use` had them. Type
+ * `pub` members of the ambient stdlib (every `kira:*` module, by URI), unless an imported project
+ * module has that name pub too: old text meant the project's, so bare it is refused. An imported
+ * module's names are reached through its alias (`b.Name`); with [DialectGates.aliasOnlyImports]
+ * off (old text) they are also seen bare, a project's before the stdlib's, as `use` had them. Type
  * parameters come before all of these; TypeResolver handles them.
  */
 class ModuleGraph(private val program: TypedProgram) {
@@ -93,16 +94,16 @@ class ModuleGraph(private val program: TypedProgram) {
     /** Every stdlib module, by URI: their `pub` members are visible everywhere. */
     fun ambient(): List<ModuleSymbol> = program.modules.filter { it.isStdlib }.sortedBy { it.uri }
 
-    /** Every module [m] reaches through `use`, directly or not ([m] itself excluded). */
+    /** Every module [m] reaches through its import lines, member aliases' too, directly or not ([m] itself excluded). */
     fun transitiveUses(m: ModuleSymbol): Set<ModuleSymbol> {
         val seen = LinkedHashSet<ModuleSymbol>()
-        val queue = ArrayDeque(m.imports)
+        val queue = ArrayDeque(m.reached)
         while (queue.isNotEmpty()) {
             val next = queue.removeFirst()
             if (next === m || !seen.add(next)) {
                 continue
             }
-            queue.addAll(next.imports)
+            queue.addAll(next.reached)
         }
         return seen
     }
@@ -118,10 +119,15 @@ class ModuleGraph(private val program: TypedProgram) {
             if (std === module) {
                 continue
             }
-            std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return Lookup.Found(it, std) }
+            // An imported project module's pub name too: old text meant that one, so bare it is neither (outOfScope says why).
+            std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return if (projectExport(module, name, accept) == null) Lookup.Found(it, std) else Lookup.Missing }
         }
         return nested(module, name, accept) ?: Lookup.Missing
     }
+
+    /** The first module [module] imports, not the stdlib, that has [name] pub among what [accept] takes. */
+    fun projectExport(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean): ModuleSymbol? =
+        module.imports.firstOrNull { m -> !m.isStdlib && m.members[name]?.let { accept(it) && isPub(it) } == true }
 
     /**
      * A nested type (`Outer_Inner`, the parser's name for `Outer.Inner`) through its outermost
@@ -170,15 +176,25 @@ class ModuleGraph(private val program: TypedProgram) {
 
     /**
      * Why [name] means nothing bare in [module] though an import has it: the message naming both
-     * fixes, a member alias or the qualified name; null when no imported module has it pub.
+     * fixes, a member alias or the qualified name, and the stdlib's when it has the name too; null
+     * when no imported module has it.
      */
     fun outOfScope(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): String? {
-        val used = module.imports.firstOrNull { m -> m.members[name]?.let { accept(it) && isPub(it) } == true }
+        val used = projectExport(module, name, accept) ?: module.imports.firstOrNull { m -> m.members[name]?.let { accept(it) && isPub(it) } == true }
             ?: module.imports.firstOrNull { m -> m.members[name]?.let(accept) == true } ?: return null
-        val alias = module.importAliases.entries.firstOrNull { it.value === used }?.key
+        fun fixes(m: ModuleSymbol): String {
+            val alias = module.importAliases.entries.firstOrNull { it.value === m }?.key
+            return "add `${ModuleNames.dotted(m.uri)}.$name as $name`" + (alias?.let { " or write `$it.$name`" } ?: "")
+        }
         val dotted = ModuleNames.dotted(used.uri)
         val pub = if (isPub(used.members.getValue(name))) "" else " (it is not pub there: mark it `pub` first)"
-        return "'$name' is not in scope: add `$dotted.$name as $name`" + (alias?.let { " or write `$it.$name`" } ?: "") + "$pub."
+        // The stdlib's same name, which lookup refused for the project's.
+        val std = if (used.isStdlib) null else ambient().firstOrNull { it !== module && it.members[name]?.let { s -> accept(s) && isPub(s) } == true }
+        if (std != null) {
+            val stdDotted = ModuleNames.dotted(std.uri)
+            return "'$name' is not in scope, as $dotted and $stdDotted both have it: ${fixes(used)}, or for $stdDotted's ${fixes(std)}."
+        }
+        return "'$name' is not in scope: ${fixes(used)}$pub."
     }
 
     companion object {

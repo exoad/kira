@@ -686,7 +686,7 @@ internal class ExprTyper(private val c: PhaseC) {
         }
         val name = OperatorIntrinsics.binaryName(e.operator) ?: return null
         val candidates = LinkedHashSet<FnSymbol>()
-        (listOf(ctx.module) + ctx.module.imports + listOf(lt.sym.module)).forEach { m -> candidates.addAll(m.operators) }
+        (listOf(ctx.module) + ctx.module.reached + listOf(lt.sym.module)).forEach { m -> candidates.addAll(m.operators) }
         val free = candidates.firstOrNull { f ->
             f.name == name && f.params.size == 2 && f.params[0].type == lt && f.params[1].type == rt
         }

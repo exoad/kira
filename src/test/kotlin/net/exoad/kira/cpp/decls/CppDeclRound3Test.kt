@@ -128,6 +128,17 @@ class CppDeclRound3Test {
         assertEquals(listOf("LIMIT", "Pt"), inUtil.map(::named).sorted(), emitted.render(inUtil))
     }
 
+    // A member alias's line includes its module's header as a module alias's does.
+    @Test
+    fun aPrivateNameMeetsAnExportedOneReachedOnlyThroughAMemberAlias() {
+        val viaMember = DeclTestSupport.module("test:other", "test.util.Pt as Point\nLIMIT: Int32 = 2\nmut counter: Int32 = LIMIT\nmut at: Point = Point {}\npub get: () Int32;")
+        val emitted = DeclTestSupport.emit(util, viaMember, options = CppOptions(lineDirectives = false, namespaces = shared))
+        val inOther = emitted.diagnostics("test:other").filter { it.code == CppNamespaceCollisions.CODE }
+        val inUtil = emitted.diagnostics("test:util").filter { it.code == CppNamespaceCollisions.CODE }
+        assertEquals(listOf("LIMIT"), inOther.map(::named), emitted.render(inOther))
+        assertEquals(listOf("LIMIT"), inUtil.map(::named), emitted.render(inUtil))
+    }
+
     @Test
     fun aPrivateNameMeetsAnExportedOneReachedThroughAnotherModulesUse() {
         // other uses mid, mid uses util: other's .cxx includes mid's header, which includes util's

@@ -177,4 +177,20 @@ class ProfilePassTest {
         assertEquals(listOf("rules.profile.type", "rules.profile.type"), errors(p), TyperTestSupport.render(p))
         assertTrue(p.diagnostics.all { it.source?.file?.endsWith("util.kira") == true }, TyperTestSupport.render(p))
     }
+
+    // A member alias names its module as a module alias does: what that module does is checked too.
+    @Test
+    fun aModuleReachedOnlyThroughAMemberAliasIsCheckedToo() {
+        val util = "test:util" to """
+            kira.os as os
+            pub greet: () Int32 {
+                s: Str = "a" + "b"
+                s.length() as Int32
+            }
+        """
+        for (line in listOf("test.util as util", "test.util.greet as greet")) {
+            val p = modules(util, "test:main" to "$line\npub f: () Int32 {\n    1\n}\n", options = pico)
+            assertEquals(listOf("rules.profile.module", "rules.profile.type", "rules.profile.type"), errors(p).sorted(), "$line\n" + TyperTestSupport.render(p))
+        }
+    }
 }

@@ -192,8 +192,8 @@ internal class CallResolver(private val c: PhaseC) {
             }
             else -> {}
         }
-        // 6. The print family.
-        if (name in printNames) {
+        // 6. The print family, unless an imported project module has the name pub (refused below, as lookup refused it).
+        if (name in printNames && c.program.graph.projectExport(ctx.module, name) { it is FnSymbol || it is GlobalSymbol } == null) {
             return print(e, null, ctx, scope)
         }
         argsOnly(e, ctx, scope)

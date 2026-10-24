@@ -134,6 +134,9 @@ class ModuleSymbol(
     /** `a.b.Name as Alias`: each name imported alone, by the name it is seen by here. */
     val memberImports: MutableMap<String, Symbol> = linkedMapOf()
 
+    /** Every module an import line here names: [imports], then each member alias's module. */
+    val reached: List<ModuleSymbol> get() = (imports + memberImports.values.map { it.module }).distinct()
+
     /** Top-level statements that declare nothing, such as a module-level `@_static_assert(...)`. */
     val statements: MutableList<Statement> = mutableListOf()
 

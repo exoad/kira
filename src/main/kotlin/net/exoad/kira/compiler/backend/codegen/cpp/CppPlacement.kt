@@ -874,7 +874,7 @@ class CppUsage private constructor(
  * ambiguous"). That needs the two in one translation unit: the private module's `.cxx`,
  * which sees another module's header only through the modules it `use`s, directly or
  * through their headers. So a private name meets an exported one only when the exporting
- * module is in the private module's transitive `use` closure ([ModuleSymbol.imports]); two
+ * module is in the private module's transitive `use` closure ([ModuleSymbol.reached]); two
  * modules of one namespace that never reach each other keep their names. A module's
  * namespace nested under another's (`bibo::text` beside `bibo`)
  * collides with a declaration of that name (`pub struct text` in `bibo`) the same way, since
@@ -961,11 +961,11 @@ class CppNamespaceCollisions private constructor(private val byModule: Map<Modul
         /** Every module [m]'s `.cxx` can include a header of: what it `use`s, and what those use, and so on; never [m] itself. */
         private fun reachableFrom(m: ModuleSymbol): Set<ModuleSymbol> {
             val seen = Collections.newSetFromMap(IdentityHashMap<ModuleSymbol, Boolean>())
-            val todo = ArrayDeque(m.imports)
+            val todo = ArrayDeque(m.reached)
             while (todo.isNotEmpty()) {
                 val next = todo.removeFirst()
                 if (next !== m && seen.add(next)) {
-                    todo.addAll(next.imports)
+                    todo.addAll(next.reached)
                 }
             }
             return seen

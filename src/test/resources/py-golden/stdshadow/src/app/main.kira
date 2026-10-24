@@ -1,0 +1,19 @@
+// Through its member alias each name is pylib's; the stdlib's is reached through its module's alias.
+
+golden.py.stdshadow.lib.pylib as pylib
+golden.py.stdshadow.lib.pylib.joinPath as joinPath
+golden.py.stdshadow.lib.pylib.floorMod as floorMod
+golden.py.stdshadow.lib.pylib.Ran as Ran
+kira.math as math
+kira.os as os
+kira.path as path
+
+pub main: () Void {
+    println(joinPath("a", "b"))
+    println(pylib.joinPath("c", "d"))
+    println("stdlib's joinPath: ${path.joinPath("a", "b").length()} characters")
+    println("${floorMod(-7.0, 3.0)} against the stdlib's ${math.floorMod(-7.0, 3.0)}")
+    mine: Ran = Ran { }
+    theirs: os.Ran = os.Ran { }
+    println("${mine.code} ${mine.out}, the stdlib's ${theirs.code}")
+}
