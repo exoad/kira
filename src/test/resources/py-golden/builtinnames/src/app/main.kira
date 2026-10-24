@@ -1,4 +1,5 @@
 golden.py.builtinnames.app.other as other
+golden.py.builtinnames.app.other.twice as twice
 
 pub globals: Int32 = 5
 pub mut type: Int32 = 3

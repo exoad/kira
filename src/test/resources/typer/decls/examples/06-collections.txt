@@ -4,5 +4,5 @@ module collections:app.main  profile=HOSTED ns=main_ imports=[collections:app.ar
   fn main: () Void  body
 module collections:app.maps  profile=HOSTED ns=maps imports=[]
   fn hasAny: (values: Map<Str, Int32>) Bool  body
-diag error rules.visibility.module collections/app/main.kira:6:19  Function 'first' is declared in collections:app.arrays but is not pub, so collections:app.main cannot use it. Mark it `pub`.
-diag error rules.visibility.module collections/app/main.kira:9:21  Function 'hasAny' is declared in collections:app.maps but is not pub, so collections:app.main cannot use it. Mark it `pub`.
+diag error types.use.bare collections/app/main.kira:6:19  'first' is not in scope: add `collections.app.arrays.first as first` or write `arrays.first` (it is not pub there: mark it `pub` first).
+diag error types.use.bare collections/app/main.kira:9:21  'hasAny' is not in scope: add `collections.app.maps.hasAny as hasAny` or write `maps.hasAny` (it is not pub there: mark it `pub` first).

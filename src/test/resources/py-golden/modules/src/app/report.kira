@@ -3,8 +3,23 @@
 
 kira.os as os
 golden.py.modules.lib.units as units
+golden.py.modules.lib.units.Meter as Meter
+golden.py.modules.lib.units.NAME as NAME
+golden.py.modules.lib.units.SCALE as SCALE
+golden.py.modules.lib.units.TABLE as TABLE
+golden.py.modules.lib.units.bounded as bounded
+golden.py.modules.lib.units.bump as bump
+golden.py.modules.lib.units.calls as calls
+golden.py.modules.lib.units.seen as seen
+golden.py.modules.lib.units.shown as shown
 golden.py.modules.lib.tally as tally
+golden.py.modules.lib.tally.fresh as fresh
+golden.py.modules.lib.tally.record as record
+golden.py.modules.lib.tally.start as start
+golden.py.modules.lib.tally.total as total
 golden.py.modules.app.ring as ring
+golden.py.modules.app.ring.HOPS as HOPS
+golden.py.modules.app.ring.isOdd as isOdd
 
 pub mut steps: Int32 = 0
 

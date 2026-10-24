@@ -182,12 +182,18 @@ class TyperDeclDiagnosticsTest {
     fun nonPubTypeOfAUsedModuleIsNotVisible() {
         val p = TyperTestSupport.type(
             module("app:lib", "Hidden: Any { pub n: Int32 = 0 }\npub Shown: Any { pub n: Int32 = 0 }"),
-            module("app:main", "app.lib as lib\na: Shown = Shown { }\nb: Hidden = Hidden { }"),
+            module("app:main", "app.lib as lib\napp.lib.Shown as Shown\na: Shown = Shown { }\nb: lib.Hidden = lib.Hidden { }"),
         )
         assertEquals(2, count(p, "types.type.not-visible"), TyperTestSupport.render(p))
         val main = p.module("app:main")!!
         assertEquals("Hidden", (main.members["b"] as GlobalSymbol).type.toString(), "still resolved, so later phases see the type")
         assertEquals(0, count(p, "types.type.unknown"))
+        // A member alias of a name that is not pub is refused where it is written.
+        val alias = TyperTestSupport.type(
+            module("app:lib", "Hidden: Any { pub n: Int32 = 0 }"),
+            module("app:main", "app.lib.Hidden as Hidden\nb: Hidden = Hidden { }"),
+        )
+        assertTrue(expectDiagnostic(alias, "types.use.not-visible").message.contains("'Hidden' is not pub in module 'app.lib'"), TyperTestSupport.render(alias))
     }
 
     @Test
@@ -205,26 +211,27 @@ class TyperDeclDiagnosticsTest {
         expectDiagnostic(p, "types.use.unknown-module")
     }
 
+    // Stage 5: two imports with one name leave it out of scope bare; a member alias chooses.
     @Test
     fun ambiguousExport() {
-        val p = TyperTestSupport.type(
-            module("app:one", "pub Thing: Any { pub n: Int32 = 0 }"),
-            module("app:two", "pub Thing: Any { pub n: Int32 = 0 }"),
-            module("app:main", "app.one as one\napp.two as two\nt: Thing = Thing { }"),
-        )
-        assertTrue(count(p, "types.type.ambiguous") >= 1, TyperTestSupport.render(p))
+        val one = module("app:one", "pub Thing: Any { pub n: Int32 = 0 }")
+        val two = module("app:two", "pub Thing: Any { pub n: Int32 = 0 }")
+        val p = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\nt: Thing = Thing { }"))
+        assertTrue(expectDiagnostic(p, "types.use.bare").message.contains("add `app.one.Thing as Thing` or write `one.Thing`"), TyperTestSupport.render(p))
+        val chosen = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\napp.two.Thing as Thing\nt: Thing = Thing { }"))
+        TyperTestSupport.expectNoErrors(chosen)
+        assertEquals("app:two", (chosen.graph.lookup(chosen.module("app:main")!!, "Thing") as ModuleGraph.Lookup.Found).from.uri)
     }
 
     // bibo's tools/npu uses kira:math and its own pylib, whose hypot, atan2 and exp K5's kira:math gained.
     @Test
     fun aUsedProjectModuleBeatsAUsedStdlibModule() {
+        val lib = module("app:lib", "pub exp: (x: Float64) Float64 {\n    x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7")
+        val body = "f: () Float64 {\n    r: Regex = Regex { }\n    exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n"
+        // Each name the project means is its member alias, which beats the ambient stdlib.
         val p = TyperTestSupport.type(
-            module("app:lib", "pub exp: (x: Float64) Float64 {\n    x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7"),
-            module(
-                "app:main",
-                "kira.math as math\nkira.regex as regex\napp.lib as lib\n" +
-                    "f: () Float64 {\n    r: Regex = Regex { }\n    exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n",
-            ),
+            lib,
+            module("app:main", "kira.math as math\nkira.regex as regex\napp.lib as lib\napp.lib.exp as exp\napp.lib.Regex as Regex\napp.lib.IGNORE_CASE as IGNORE_CASE\n$body"),
         )
         TyperTestSupport.expectNoErrors(p)
         val main = p.module("app:main")!!
@@ -233,17 +240,19 @@ class TyperDeclDiagnosticsTest {
             assertEquals("app:lib", hit.from.uri, name)
         }
         assertEquals("kira:math", (p.graph.lookup(main, "sqrt") as ModuleGraph.Lookup.Found).from.uri)
+        // Without them a bare name is the stdlib's, the project imported or not.
+        val bare = TyperTestSupport.type(lib, module("app:main", "kira.math as math\napp.lib as lib\nf: () Float64 {\n    exp(2.0)\n}\n"))
+        TyperTestSupport.expectNoErrors(bare)
+        assertEquals("kira:math", (bare.graph.lookup(bare.module("app:main")!!, "exp") as ModuleGraph.Lookup.Found).from.uri)
     }
 
     @Test
     fun twoUsedProjectModulesBesideAStdlibOneAreStillAmbiguous() {
-        val p = TyperTestSupport.type(
-            module("app:one", "pub exp: (x: Float64) Float64 {\n    x\n}"),
-            module("app:two", "pub exp: (x: Float64) Float64 {\n    x\n}"),
-            module("app:main", "kira.math as math\napp.one as one\napp.two as two\nf: () Float64 {\n    exp(2.0)\n}\n"),
-        )
-        val d = expectDiagnostic(p, "types.call.ambiguous")
-        assertTrue(d.message.endsWith("module: app:one, app:two."), d.message)
+        val one = module("app:one", "pub exp: (x: Float64) Float64 {\n    x\n}")
+        val two = module("app:two", "pub exp: (x: Float64) Float64 {\n    x\n}")
+        // One alias names one thing: two member aliases spelled exp are refused.
+        val p = TyperTestSupport.type(one, two, module("app:main", "app.one.exp as exp\napp.two.exp as exp\nf: () Float64 {\n    exp(2.0)\n}\n"))
+        assertTrue(expectDiagnostic(p, "types.use.alias-taken").message.contains("'exp' already names app.one.exp"), TyperTestSupport.render(p))
     }
 
     // ---- type shapes ---------------------------------------------------------------------

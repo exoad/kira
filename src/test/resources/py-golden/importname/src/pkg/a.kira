@@ -1,4 +1,5 @@
 golden.py.importname.pkg.b as b
+golden.py.importname.pkg.b.tick as tick
 
 pub twice: () Int32 {
     tick() + tick()

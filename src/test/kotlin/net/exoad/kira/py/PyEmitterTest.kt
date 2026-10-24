@@ -1390,6 +1390,7 @@ class PyEmitterTest {
         val (py, errors) = PyTestSupport.emitProgram(
             "app:main" to """
                 app.other as other
+                app.other.o as o
 
                 pub globals: Int32 = 5
                 pub mut type: Int32 = 3
@@ -2347,6 +2348,7 @@ class PyEmitterTest {
                 """,
             "app:main" to """
                 lib.span as span
+                lib.span.g as g
 
                 pub count: () Int32 {
                     1
@@ -2434,6 +2436,10 @@ class PyEmitterTest {
                 """,
             "app:main" to """
                 lib.units as units
+                lib.units.Meter as Meter
+                lib.units.SCALE as SCALE
+                lib.units.bump as bump
+                lib.units.calls as calls
 
                 f: () Int32 {
                     m: Meter = Meter { "a" }
@@ -2463,6 +2469,7 @@ class PyEmitterTest {
         val (py, errors) = PyTestSupport.emitProgram(
             "app:even" to """
                 app.odd as odd
+                app.odd.isOdd as isOdd
 
                 pub K: Int32 = 2
 
@@ -2472,6 +2479,7 @@ class PyEmitterTest {
                 """,
             "app:odd" to """
                 app.even as even
+                app.even.isEven as isEven
 
                 pub isOdd: (n: Int32) Bool {
                     n != 0 && isEven(n - 1)

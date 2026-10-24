@@ -1,4 +1,7 @@
 crossmodule.lib as xlib
+crossmodule.lib.Meter as Meter
+crossmodule.lib.SCALE as SCALE
+crossmodule.lib.percent as percent
 
 // Names from a used module: its pub functions, constants, enums and classes, and the module's
 // own name as a qualifier.

@@ -26,6 +26,8 @@ class VisibilityPassTest {
                 """,
                 "test:main" to """
                     test.lib as lib
+                    test.lib.percent as percent
+                    test.lib.SCALE as SCALE
                     pub f: () Int32 {
                         percent(3) + lib.percent(SCALE)
                     }
@@ -104,13 +106,16 @@ class VisibilityPassTest {
             """,
             "test:main" to """
                 test.lib as lib
+                test.lib.ok as ok
                 pub f: () Int32 {
                     helper() + LIMIT + lib.helper() + ok()
                 }
             """,
         )
-        expectExactly(p, "rules.visibility.module", "rules.visibility.module", "rules.visibility.module")
+        // Bare, a private name is out of scope (stage 5); qualified, the visibility rule refuses it.
+        expectExactly(p, "types.use.bare", "types.use.bare", "rules.visibility.module")
         assertTrue(message(p, "rules.visibility.module").contains("'helper' is declared in test:lib but is not pub"))
+        assertTrue(message(p, "types.use.bare").contains("it is not pub there"), message(p, "types.use.bare"))
     }
 
     @Test

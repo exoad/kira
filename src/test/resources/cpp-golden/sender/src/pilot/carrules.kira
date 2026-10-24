@@ -1,4 +1,6 @@
 golden.sender.pilot.carlink as carlink
+golden.sender.pilot.carlink.LINK_OK as LINK_OK
+golden.sender.pilot.carlink.WRITE_WAIT_MS as WRITE_WAIT_MS
 
 // carrules' Sender: one line to the Pico at a time, timed by a clock it is
 // handed. Its two Fx fields are stored, so they lower to std::function, and a

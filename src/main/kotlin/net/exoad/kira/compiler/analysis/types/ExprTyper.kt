@@ -326,8 +326,11 @@ internal class ExprTyper(private val c: PhaseC) {
             }
             ModuleGraph.Lookup.Missing -> {
                 val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol || it is AliasSymbol }
+                val bare = c.program.graph.outOfScope(ctx.module, name)
                 if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
                     c.report("types.name.type-as-value", "'$name' is a type, not a value.", id)
+                } else if (bare != null) {
+                    c.report("types.use.bare", bare, id)
                 } else {
                     c.report("types.name.unknown", "Unknown name '$name'.", id)
                 }

@@ -2117,6 +2117,7 @@ class CppClassShapeTest {
             uri,
             """
             test.shapes as shapes
+            test.shapes.Shape as Shape
 
             pub Square: Struct, Shape {
                 pub side: Int32 = 4
@@ -2165,6 +2166,7 @@ class CppClassShapeTest {
             uri,
             """
             test.shapes as shapes
+            test.shapes.Shape as Shape
 
             pub Square: Struct, Shape {
                 pub side: Int32 = 4
@@ -2228,6 +2230,7 @@ class CppClassShapeTest {
             uri,
             """
             test.shapes as shapes
+            test.shapes.Named as Named
 
             pub Cat: Struct, Named {
                 pub v: Int32 = 1

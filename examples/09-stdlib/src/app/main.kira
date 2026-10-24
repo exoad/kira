@@ -1,4 +1,6 @@
 stdlib.tour.app.text as text
+stdlib.tour.app.text.initials as initials
+stdlib.tour.app.text.shout as shout
 
 main: () Void {
     // --- Str ---------------------------------------------------------

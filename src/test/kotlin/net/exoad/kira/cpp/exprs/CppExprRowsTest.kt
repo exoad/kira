@@ -161,6 +161,9 @@ class CppExprRowsTest {
                 "rows:r4",
                 """
                 rows.shapes as shapes
+                rows.shapes.Pt as Pt
+                rows.shapes.SCALE as SCALE
+                rows.shapes.origin as origin
 
                 pub sumOf: (p: Pt) Int32 {
                     p.x + p.y

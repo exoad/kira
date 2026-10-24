@@ -3,6 +3,7 @@ package net.exoad.kira.dialect
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.DialectLink
 import net.exoad.kira.compiler.ModuleNames
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
@@ -23,8 +24,9 @@ import kotlin.system.exitProcess
  * the clean one, in place, each proved by its tree; `kt [--check] PATH...` does the same for the
  * Kira in Kotlin string literals (`--force-wrong`: also the old Kira a test means to be wrong, by
  * its words; `kt --stage2`: stage 1's Kira in them to stage 2's; `kt --stage3`: stage 2's to stage 3's); `stage2 [--check] PATH...` takes
- * stage 1's text to stage 2's ([Stage2]), `stage3` stage 2's to stage 3's ([Stage3]). `--check`
- * writes nothing and exits 1 when anything would change or cannot be converted.
+ * stage 1's text to stage 2's ([Stage2]), `stage3` stage 2's to stage 3's ([Stage3]), `stage5` stage 3's to
+ * stage 5's ([Stage5]: member aliases, project.kira). `--check` writes nothing and exits 1 when anything
+ * would change or cannot be converted.
  */
 object DialectMain {
     @JvmStatic
@@ -39,21 +41,29 @@ object DialectMain {
             println(if (nc == null) "NEW-PARSE: $err" else "parsed")
             return
         }
-        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2", "stage3")) {
-            println("usage: kira-dialect convert|kt|yaml|stage2|stage3 [--check] PATH...")
+        if (args.isEmpty() || args[0] !in setOf("convert", "kt", "yaml", "stage2", "stage3", "stage5")) {
+            println("usage: kira-dialect convert|kt|yaml|stage2|stage3|stage5 [--check] PATH...")
             exitProcess(2)
         }
         val check = "--check" in args
         KotlinStrings.forceWrong = "--force-wrong" in args
         val stage2 = "--stage2" in args
         val stage3 = "--stage3" in args
-        val paths = args.drop(1).filter { it != "--check" && it != "--force-wrong" && it != "--stage2" && it != "--stage3" }
-        val code = when (args[0]) {
-            "convert" -> convertKira(paths, check)
-            "yaml" -> YamlGlobs.convertAll(paths, check)
-            "stage2" -> Stage2.convertAll(paths, check)
-            "stage3" -> Stage3.convertAll(paths, check)
-            else -> KotlinStrings.convertAll(paths, check, stage2, stage3)
+        val flags = setOf("--check", "--force-wrong", "--stage2", "--stage3", "--keep-yaml")
+        val paths = args.drop(1).filter { it !in flags }
+        // The verbs before stage 5 read text from before it: imports' names bare, as `use` had them.
+        val code = if (args[0] == "stage5") {
+            Stage5.convertAll(paths, check, keepYaml = "--keep-yaml" in args)
+        } else {
+            DialectGates.aliasOnlyImports(false) {
+                when (args[0]) {
+                    "convert" -> convertKira(paths, check)
+                    "yaml" -> YamlGlobs.convertAll(paths, check)
+                    "stage2" -> Stage2.convertAll(paths, check)
+                    "stage3" -> Stage3.convertAll(paths, check)
+                    else -> KotlinStrings.convertAll(paths, check, stage2, stage3)
+                }
+            }
         }
         exitProcess(code)
     }
@@ -61,7 +71,10 @@ object DialectMain {
     /** One .kira file: its old text, its module's old URI and the new one. */
     class Unit(val file: File, val text: String, val old: SourceContext?, val oldUri: String?, val newUri: String, val group: String, val oldError: String? = null)
 
-    fun convertKira(paths: List<String>, check: Boolean): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertKira(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertKiraAsWritten(paths, check) }
+
+    private fun convertKiraAsWritten(paths: List<String>, check: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
         val units = files.map { f ->
             val text = f.readText()

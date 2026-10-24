@@ -1,5 +1,6 @@
 package net.exoad.kira.dialect
 
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TyperMode
@@ -22,7 +23,11 @@ object KotlinStrings {
     private const val SNIPPET = "module \"kt:snippet\"\n"
 
     /** [stage2]: stage 1's Kira to stage 2's ([Stage2]) instead of the old dialect to stage 1's; [stage3]: stage 2's to stage 3's ([Stage3]). */
-    fun convertAll(paths: List<String>, check: Boolean, stage2: Boolean = false, stage3: Boolean = false): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertAll(paths: List<String>, check: Boolean, stage2: Boolean = false, stage3: Boolean = false): Int =
+        DialectGates.aliasOnlyImports(false) { convertAllAsWritten(paths, check, stage2, stage3) }
+
+    private fun convertAllAsWritten(paths: List<String>, check: Boolean, stage2: Boolean, stage3: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }.distinct().sorted()
         var changedFiles = 0
         var converted = 0

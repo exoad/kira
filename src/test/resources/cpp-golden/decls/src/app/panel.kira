@@ -1,4 +1,9 @@
 golden.decls.lib.shapes as shapes
+golden.decls.lib.shapes.KIND_DOT as KIND_DOT
+golden.decls.lib.shapes.MAX_POINTS as MAX_POINTS
+golden.decls.lib.shapes.Point as Point
+golden.decls.lib.shapes.SCALE as SCALE
+golden.decls.lib.shapes.TAG as TAG
 
 // A module in another directory that uses lib:shapes: the header includes it
 // by relative path, and every name taken from it is fully qualified. It is

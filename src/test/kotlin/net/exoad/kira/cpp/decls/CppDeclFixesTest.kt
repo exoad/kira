@@ -568,7 +568,7 @@ class CppDeclFixesTest {
         // lib:z's diagnostics all the same, or `kira --target cpp` writes a header C++ rejects
         // and exits 0.
         val z = DeclTestSupport.module("lib:z", "pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
-        val a = DeclTestSupport.module("app:a", "lib.z as z\n\npub H: Struct { pub a: A = A {} }")
+        val a = DeclTestSupport.module("app:a", "lib.z as z\nlib.z.A as A\n\npub H: Struct { pub a: A = A {} }")
         val emitted = DeclTestSupport.emit(a, z, parts = fakeBodies)
         assertTrue(!emitted.module("app:a").hasErrors, emitted.render(emitted.diagnostics("app:a")))
         val cycle = emitted.diagnostics("lib:z").filter { it.code == CppPlacement.DECL_CYCLE_CODE }

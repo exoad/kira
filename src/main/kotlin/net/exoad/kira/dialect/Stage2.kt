@@ -1,5 +1,6 @@
 package net.exoad.kira.dialect
 
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TypedProgram
@@ -31,7 +32,10 @@ import java.util.IdentityHashMap
  * gives each builder the type its literal had.
  */
 object Stage2 {
-    fun convertAll(paths: List<String>, check: Boolean): Int {
+    /** Read as text from before stage 5 is: an import's pub names bare, as `use` had them. */
+    fun convertAll(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertAllAsWritten(paths, check) }
+
+    private fun convertAllAsWritten(paths: List<String>, check: Boolean): Int {
         val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
         var changed = 0
         var proved = 0

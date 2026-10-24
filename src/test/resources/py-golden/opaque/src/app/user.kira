@@ -1,7 +1,13 @@
 // A module that uses opaque.kira's handles: each call goes through opaque.kira's checked wrapper.
 
 golden.py.opaque.app.conn as conn
+golden.py.opaque.app.conn.Conn as Conn
 golden.py.opaque.app.opaque as opaque
+golden.py.opaque.app.opaque.Counter as Counter
+golden.py.opaque.app.opaque.counter as counter
+golden.py.opaque.app.opaque.dialer as dialer
+golden.py.opaque.app.opaque.maybeCounter as maybeCounter
+golden.py.opaque.app.opaque.sameObject as sameObject
 
 Pair: Any {
     pub left: Counter

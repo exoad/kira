@@ -135,6 +135,7 @@ class CppDeclRound3Test {
             "test:mid",
             """
             test.util as util
+            test.util.Pt as Pt
             pub Wrap: Struct { pub at: Pt = Pt {} }
             """,
         )
@@ -147,7 +148,7 @@ class CppDeclRound3Test {
         // the reverse direction reaches nothing: util uses nobody, so its exported names meet no private one of mid
         val reversed = DeclTestSupport.emit(
             DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub Pt: Struct { pub x: Int32 = 0 }"),
-            DeclTestSupport.module("test:mid", "test.util as util\npub Wrap: Struct { pub at: Pt = Pt {} }\nmut helper: Int32 = 4\npub go: () Void;"),
+            DeclTestSupport.module("test:mid", "test.util as util\ntest.util.Pt as Pt\npub Wrap: Struct { pub at: Pt = Pt {} }\nmut helper: Int32 = 4\npub go: () Void;"),
             options = CppOptions(lineDirectives = false, namespaces = shared),
         )
         // util's private helper and mid's private helper are two anonymous namespaces

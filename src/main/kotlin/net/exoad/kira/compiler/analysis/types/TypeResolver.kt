@@ -126,6 +126,12 @@ class TypeResolver(private val program: TypedProgram) {
             program.report("types.type.not-a-type", "'$name' is a ${kindOf(value.symbol)}, not a type.", t)
             return KType.Error
         }
+        program.graph.outOfScope(scope.module, name, ::isTypeLike)?.let {
+            program.report("types.use.bare", it, t)
+            // Its arguments still resolve, so every type of the module is known past the error.
+            t.children.forEach { arg -> if (arg !is ConstTypeArg) resolve(arg, scope) }
+            return KType.Error
+        }
         program.report("types.type.unknown", "Unknown type '$name'.", t)
         return KType.Error
     }

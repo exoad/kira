@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.ModuleNames
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 
 /**
@@ -8,10 +9,11 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
  * the [TyperOptions] globs (profile, header-only, C++ namespace), and answers the scope
  * question every later phase asks: what does a name mean from inside a module?
  *
- * Scope order (design 3.2): a module's own members, then the `pub` members of the project
- * modules it `use`s, then of the stdlib modules it `use`s (each in `use` order), then the
- * `pub` members of the ambient stdlib (every `kira:*` module, by URI). Type parameters come
- * before all of these; TypeResolver handles them.
+ * Scope order: a module's own members, then its member aliases (`a.b.Name as Name`), then the
+ * `pub` members of the ambient stdlib (every `kira:*` module, by URI). An imported module's
+ * names are reached through its alias (`b.Name`); with [DialectGates.aliasOnlyImports] off (old
+ * text) they are also seen bare, a project's before the stdlib's, as `use` had them. Type
+ * parameters come before all of these; TypeResolver handles them.
  */
 class ModuleGraph(private val program: TypedProgram) {
     /** The result of a name lookup. */
@@ -109,6 +111,24 @@ class ModuleGraph(private val program: TypedProgram) {
     fun lookup(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): Lookup {
         module.members[name]?.takeIf(accept)?.let { return Lookup.Found(it, module) }
         module.memberImports[name]?.takeIf(accept)?.let { return Lookup.Found(it, it.module) }
+        if (!DialectGates.aliasOnlyImports) {
+            return bareImports(module, name, accept)
+        }
+        for (std in ambient()) {
+            if (std === module) {
+                continue
+            }
+            std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return Lookup.Found(it, std) }
+        }
+        return Lookup.Missing
+    }
+
+    /**
+     * Old text's rule (`use`): after a module's own names, every pub name of the modules it
+     * imports, a project's before the stdlib's, then the ambient stdlib. Each answer the imports
+     * give goes to [importTierHits].
+     */
+    private fun bareImports(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean): Lookup {
         val exported = mutableListOf<Lookup.Found>()
         for (used in module.imports) {
             val s = used.members[name]?.takeIf { accept(it) && isPub(it) } ?: continue
@@ -119,9 +139,9 @@ class ModuleGraph(private val program: TypedProgram) {
         // A used project module's name beats a used stdlib module's, as it beats the ambient stdlib's: the stdlib grows under a project.
         val tier = exported.filter { !it.from.isStdlib }.ifEmpty { exported }
         if (tier.size > 1) {
-            return Lookup.Ambiguous(tier.first(), tier.drop(1))
+            return Lookup.Ambiguous(tier.first(), tier.drop(1)).also { importTierHits?.invoke(module, name, it) }
         }
-        tier.firstOrNull()?.let { return it }
+        tier.firstOrNull()?.let { found -> return found.also { importTierHits?.invoke(module, name, it) } }
         for (std in ambient()) {
             if (std === module) {
                 continue
@@ -129,12 +149,29 @@ class ModuleGraph(private val program: TypedProgram) {
             std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return Lookup.Found(it, std) }
         }
         for (used in module.imports) {
-            used.members[name]?.takeIf(accept)?.let { return Lookup.NotVisible(it, used) }
+            used.members[name]?.takeIf(accept)?.let { return Lookup.NotVisible(it, used).also { hit -> importTierHits?.invoke(module, name, hit) } }
         }
         return Lookup.Missing
     }
 
+    /**
+     * Why [name] means nothing bare in [module] though an import has it: the message naming both
+     * fixes, a member alias or the qualified name; null when no imported module has it pub.
+     */
+    fun outOfScope(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): String? {
+        val used = module.imports.firstOrNull { m -> m.members[name]?.let { accept(it) && isPub(it) } == true }
+            ?: module.imports.firstOrNull { m -> m.members[name]?.let(accept) == true } ?: return null
+        val alias = module.importAliases.entries.firstOrNull { it.value === used }?.key
+        val dotted = ModuleNames.dotted(used.uri)
+        val pub = if (isPub(used.members.getValue(name))) "" else " (it is not pub there: mark it `pub` first)"
+        return "'$name' is not in scope: add `$dotted.$name as $name`" + (alias?.let { " or write `$it.$name`" } ?: "") + "$pub."
+    }
+
     companion object {
+        /** kira-dialect's ear on old text: each bare name an import answered, in its module, with the answer. */
+        @Volatile
+        var importTierHits: ((ModuleSymbol, String, Lookup) -> Unit)? = null
+
         /** Whether a top-level symbol is `pub`. */
         fun isPub(symbol: Symbol): Boolean = when (symbol) {
             is ClassSymbol -> symbol.isPub

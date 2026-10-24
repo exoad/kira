@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.analysis.types.AstTree
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
@@ -80,8 +81,8 @@ object DialectLink {
 
     /**
      * What a type name means from inside each module, as the typer's scope reads it: the
-     * module's own types, a name imported alone, the pub types of the modules it imports
-     * (a project's before the stdlib's), then the stdlib's; `alias.Name` through an import.
+     * module's own types, a name imported alone, then the stdlib's; `alias.Name` through an
+     * import (old text also sees its imports' pub types bare, as ModuleGraph has it).
      */
     private class Scopes(sources: List<SourceContext>) {
         class Module(val uri: String) {
@@ -140,9 +141,12 @@ object DialectLink {
                 val owner = modules[uri] ?: return null
                 return owner.types[member]?.takeIf(::isPub)?.let { follow(owner, it, depth) }
             }
-            val found = m.imports.mapNotNull { modules[it] }.mapNotNull { u -> u.types[id.value]?.takeIf(::isPub)?.let { u to it } }
-            (found.firstOrNull { !it.first.uri.startsWith("${ModuleNames.STDLIB}:") } ?: found.firstOrNull())?.let { (u, d) ->
-                return follow(u, d, depth)
+            // Old text (`use`) also sees its imports' pub types bare, a project's first.
+            if (!DialectGates.aliasOnlyImports) {
+                val found = m.imports.mapNotNull { modules[it] }.mapNotNull { u -> u.types[id.value]?.takeIf(::isPub)?.let { u to it } }
+                (found.firstOrNull { !it.first.uri.startsWith("${ModuleNames.STDLIB}:") } ?: found.firstOrNull())?.let { (u, d) ->
+                    return follow(u, d, depth)
+                }
             }
             for (std in stdlib) {
                 if (std === m) continue

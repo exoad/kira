@@ -1,4 +1,5 @@
 golden.py.externload.app.missing as missing
+golden.py.externload.app.missing.present as present
 
 // A use of a module whose import failed raises that import's error again, never the half-loaded module (D85).
 
