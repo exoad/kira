@@ -17,7 +17,7 @@ internal class MutableTypes(private val program: TypedProgram, private val class
     fun run() {
         classes.filter { user(it) }.forEach { check(it) }
         traits.filter { !it.module.isStdlib }.forEach { t ->
-            t.parents.firstOrNull { it.sym.isMutable() }?.takeIf { !t.isMutableType }?.let { p -> restate(t.name, t.decl, p, "Mutable") }
+            t.parents.firstOrNull { it.sym.isMutable() }?.takeIf { !t.isMutableType }?.let { p -> restate(spelled(t.name), t.decl, p, "Mutable") }
         }
     }
 
@@ -28,25 +28,27 @@ internal class MutableTypes(private val program: TypedProgram, private val class
     private fun check(c: ClassSymbol) {
         if (c.isMutableType) return
         val parent = c.superclass?.takeIf { it.sym.isMutable() } ?: c.traits.firstOrNull { it.sym.isMutable() }
+        // A nested type is named as the program does (Outer.Inner) and declared by its own name.
+        val name = spelled(c.name)
         if (parent != null) {
-            restate(c.name, c.decl, parent, if (c.kind == ClassKind.STRUCT) "Struct" else "Mutable")
+            restate(name, c.decl, parent, if (c.kind == ClassKind.STRUCT) "Struct" else "Mutable")
             return
         }
         val fix = if (c.kind == ClassKind.STRUCT) {
-            "a value type (Struct) never changes: make it '${c.name}: Mutable<Any>', held by reference"
+            "a value type (Struct) never changes: make it '${declared(name)}: Mutable<Any>', held by reference"
         } else {
-            "declare '${c.name}: Mutable<${c.superclass?.display() ?: "Any"}>'"
+            "declare '${declared(name)}: Mutable<${c.superclass?.display() ?: "Any"}>'"
         }
         for (f in c.fields) {
             when {
                 f.isMut -> program.report(
                     "types.mutable.field",
-                    "'${c.name}' has the Mutable field '${f.name}', so its values change: $fix.",
+                    "'$name' has the Mutable field '${f.name}', so its values change: $fix.",
                     f.decl ?: c.decl,
                 )
                 facts.carriesMutable(f.type) -> program.report(
                     "types.mutable.contagion",
-                    "'${c.name}' holds '${f.name}', ${article(f.type.display())} whose value changes, so its own values change with it: $fix.",
+                    "'$name' holds '${f.name}', ${article(f.type.display())} whose value changes, so its own values change with it: $fix.",
                     f.decl ?: c.decl,
                 )
                 else -> continue
@@ -56,13 +58,16 @@ internal class MutableTypes(private val program: TypedProgram, private val class
     }
 
     private fun restate(name: String, decl: net.exoad.kira.compiler.frontend.parser.ast.ASTNode?, parent: KType.Nominal, kind: String) {
-        val fix = if (kind == "Struct") "'$name: Mutable<Any>', held by reference" else "'$name: Mutable<${parent.display()}>'"
+        val fix = if (kind == "Struct") "'${declared(name)}: Mutable<Any>', held by reference" else "'${declared(name)}: Mutable<${parent.display()}>'"
         program.report(
             "types.mutable.restate",
             "'$name' is a subtype of the Mutable ${parent.display()}, so its values change too, and it says so: $fix.",
             decl,
         )
     }
+
+    /** The name a type's declaration writes: a nested one's own (`Inner` of `Outer.Inner`). */
+    private fun declared(name: String): String = name.substringAfterLast('.')
 
     private fun article(name: String): String = (if (name.first().lowercaseChar() in "aeiou") "an " else "a ") + name
 }

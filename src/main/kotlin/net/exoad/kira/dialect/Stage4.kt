@@ -28,6 +28,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallPosit
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDefExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+import net.exoad.kira.kim.ProjectFiles
+import net.exoad.kira.kim.ProjectKira
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.util.IdentityHashMap
@@ -49,11 +51,12 @@ object Stage4 {
     fun convertAll(paths: List<String>, check: Boolean): Int = DialectGates.aliasOnlyImports(false) { convertAllAsWritten(paths, check) }
 
     private fun convertAllAsWritten(paths: List<String>, check: Boolean): Int {
-        val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" }.toList() }.distinct().sorted()
+        // A project.kira is stage 5's configuration, never a module to convert.
+        val files = paths.flatMap { p -> File(p).walkTopDown().filter { it.isFile && it.extension == "kira" && it.name != ProjectKira.FILE }.toList() }.distinct().sorted()
         totals.clear()
         val groups = files.groupBy { DialectMain.newUriOf(it).second }
         // The stdlib first: every other group reads its types, so it is decided with them, from its old text.
-        val order = groups.keys.sortedBy { if (File(it, "core.kira").isFile && !File(it, "kira.yaml").isFile) 0 else 1 }
+        val order = groups.keys.sortedBy { if (File(it, "core.kira").isFile && !ProjectFiles.isProject(File(it).toPath())) 0 else 1 }
         val facts = Stage4Facts()
         val loaded = LinkedHashMap<String, Pair<ProjectUnits.Loaded, TypedProgram>>()
         for (g in order) {

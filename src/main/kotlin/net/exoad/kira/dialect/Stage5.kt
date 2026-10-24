@@ -19,7 +19,7 @@ import net.exoad.kira.kim.ProjectKira
 import java.io.File
 
 /**
- * `kira-dialect stage5 [--check] [--keep-yaml] PATH...`: stage 3's text to stage 5's. Each bare
+ * `kira-dialect stage5 [--check] [--keep-yaml] PATH...`: stage 4's text to stage 5's. Each bare
  * name a file took from an imported module gets a member alias (`a.b.Decoder as Decoder`), or is
  * written qualified where it is also a module alias, proved by the typed tree; each kira.yaml
  * becomes the project.kira beside it, proved field by field.
@@ -96,14 +96,15 @@ object Stage5 {
             val lines = mutableMapOf<Int, MutableList<String>>()
             // (line, column, alias) of each use written qualified: its name is a module alias here too.
             val qualify = mutableListOf<Triple<Int, Int, String>>()
-            for ((name, answer) in names) {
+            for ((heardName, answer) in names) {
+                // A nested type's name (Outer_Inner) is reached through its outer: the alias is the outer's.
+                val name = if ('_' in heardName && heardName.any { it.isLowerCase() }) heardName.substringBefore('_') else heardName
+                if (name != heardName && uses.any { it.member != null && it.alias?.value == name }) continue
                 val found = answer as? ModuleGraph.Lookup.Found
                 if (found == null) {
                     hand += "$file: '$name' is ${if (answer is ModuleGraph.Lookup.Ambiguous) "exported by more than one import" else "not pub in the import that has it"}: name it by its module"
                     continue
                 }
-                // A nested type's name (Outer_Inner) is reached through its outer, whatever reaches that.
-                if ('_' in name && name.any { it.isLowerCase() }) continue
                 // The stdlib is ambient: a name only one stdlib module has means the same bare.
                 if (found.from.isStdlib && p1.graph.ambient().filter { it !== m && it.members[name]?.let(ModuleGraph::isPub) == true }.singleOrNull() === found.from) continue
                 val use = uses.firstOrNull { it.member == null && it.moduleUri == found.from.uri && it.alias != null }
