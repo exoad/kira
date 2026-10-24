@@ -48,12 +48,12 @@ internal class ConformanceTyper(private val c: PhaseC) {
 
     // ---- test blocks (stage 3b) --------------------------------------------------------------
 
+    /** Numbers a held subject, `_k_s0`: a prefix apart from the py frame's `_k_t` temporaries. */
     private var temps = 0
 
     /**
-     * `value == T { check, ... }`: each check a Bool that names a member of T bare (with's scope
-     * rule: locals and parameters, then T's members, then the outer scope; a clash refused), typed
-     * where the test has passed, so the subject reads as T. TestBlockPass refuses a check's effect.
+     * `value == T { check, ... }`: each check a Bool naming a member of T bare (with's scope rule),
+     * typed where the test passed, so the subject reads as T; TestBlockPass refuses an effect.
      */
     private fun block(e: TypeCheckExpr, checks: List<Expr>, v: Conformance, identity: KType, ctx: BodyContext, scope: Scope) {
         val t = identity as? KType.Nominal
@@ -91,7 +91,7 @@ internal class ConformanceTyper(private val c: PhaseC) {
             c.model.tests[e] = TestInfo(self, null, path = true)
             WithFrame(e, t, null, self, members, ctx.lambda, place, named)
         } else {
-            val temp = LocalSymbol("_k_t${temps++}", ctx.module, e, seen, fn = ctx.fn)
+            val temp = LocalSymbol("_k_s${temps++}", ctx.module, e, seen, fn = ctx.fn)
             ctx.lambda?.let { c.declaredIn[temp] = it }
             val self = Identifier(temp.name)
             c.model.refs[self] = temp

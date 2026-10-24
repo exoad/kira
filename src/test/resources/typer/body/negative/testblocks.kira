@@ -1,6 +1,5 @@
-// Test blocks (stage 3b) that are refused: a check that names no member, a value by position,
-// a name both a parameter and a member, an effect, an identity with no members, a nested block
-// whose type shares a member name.
+// Test blocks (stage 3b) refused: a check naming no member (after one that does too), a value by position,
+// a parameter that is a member, an effect, an identity with no members, a nested block sharing a name.
 
 pub Pt: Struct {
     pub x: Int32 = 0
@@ -23,6 +22,7 @@ loud: () Int32 {
 
 pub refused: (p: Pt, t: Tree, k: Int32, x: Int32, f: (v: Int32) Int32, xs: List<Int32>) Void {
     a: Bool = p == Pt { k > 0 }                                    // @error types.test.unnamed
+    o: Bool = p == Pt { y == 1, k > 0 }                            // @error types.test.unnamed
     b: Bool = p == Pt { y }                                        // @error types.test.check
     c: Bool = p == Pt { x == 1 }                                   // @error types.test.clash
     d: Bool = p == Pt { y == loud() }                              // @error types.test.effect

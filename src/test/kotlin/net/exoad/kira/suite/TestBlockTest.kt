@@ -38,6 +38,10 @@ class TestBlockTest {
         Flags: Struct {
             pub lit: Bool = false
         }
+
+        Seg: Struct {
+            pub tip: Maybe<Pt>
+        }
     """.trimIndent()
 
     private fun text(body: String) = "$types\n\n${body.trimIndent()}"
@@ -163,6 +167,22 @@ class TestBlockTest {
             }
             return 0
         }
+
+        paths: (line: Line, s: Seg) Bool {
+            a: Bool = line.start == Pt { x == 0 }
+            return a && s.tip == Pt { y == 2 }
+        }
+
+        hoisted: (k: Int32) Bool {
+            return probe() == Pt {
+                (if x > k {
+                    t: Int32 = x * 2
+                    t
+                } else {
+                    0
+                }) > 2
+            }
+        }
     """
 
     @Test
@@ -173,8 +193,13 @@ class TestBlockTest {
         assertTrue(py.contains("    c = not (m is not None and m.x == 1)\n"), py)
         // A field read again as the nested block's subject; a call held once.
         assertTrue(py.contains("    d = line.start.x == 0 and line.end.x > 1\n"), py)
-        assertTrue(py.contains("    e = (lambda _k_t1: _k_t1.y == 2)(_probe())\n"), py)
+        assertTrue(py.contains("    e = (lambda _k_s1: _k_s1.y == 2)(_probe())\n"), py)
         assertTrue(py.contains("    if m is not None and m.x > 0 and a:\n        return m.x\n"), py)
+        // A subject written as a field path is read again, a Maybe field's too.
+        assertTrue(py.contains("    a = line.start.x == 0\n    return a and (s.tip is not None and s.tip.y == 2)\n"), py)
+        // A def a check needs is written before the statement, so it takes the held subject, the lambda's parameter.
+        assertTrue(py.contains("    def _k_t0(_k_s4):\n        if _k_s4.x > k:\n            t = _k_i32(_k_s4.x * 2)\n"), py)
+        assertTrue(py.contains("    return (lambda _k_s4: _k_t0(_k_s4) > 2)(_probe())\n"), py)
     }
 
     @Test
@@ -194,12 +219,20 @@ class TestBlockTest {
         """.trimIndent()
         val src = DeclTestSupport.module(
             "app:main",
-            text("$shapes\n\npub f: (s: Shape, m: Maybe<Pt>, line: Line) Int32 {\n    if s == Circle { radius > 1 } && m == Pt { x == 2 } {\n        return s.radius + m.x\n    }\n    a: Bool = line == Line { start == Pt { x == 0 } }\n    return a ? 1 : 0\n}"),
+            text(
+                "$shapes\n\npub f: (s: Shape, m: Maybe<Pt>, line: Line, g: Seg) Int32 {\n    if s == Circle { radius > 1 } && m == Pt { x == 2 } {\n        return s.radius + m.x\n    }\n" +
+                    "    a: Bool = line == Line { start == Pt { x == 0 } }\n    b: Bool = line.end == Pt { y == 3 } && g.tip == Pt { x == 4 }\n    return a && b ? 1 : 0\n}",
+            ),
         )
-        val out = DeclTestSupport.emit(src).source("app:main") ?: ""
+        val emitted = DeclTestSupport.emit(src)
+        val out = emitted.source("app:main") ?: ""
+        assertTrue(emitted.diagnostics("app:main").isEmpty(), emitted.render(emitted.diagnostics("app:main")))
         assertTrue(out.contains("(dynamic_cast<const Circle*>(s.get()) != nullptr) && std::dynamic_pointer_cast<Circle>(s)->radius > 1"), out)
         assertTrue(out.contains("kira::isSome(m) && kira::unwrap(m).x == 2"), out)
         assertTrue(out.contains("line.start.x == 0"), out)
+        // A subject written as a field path is no held value: read again, a Maybe field's as its value.
+        assertTrue(out.contains("line.end.y == 3"), out)
+        assertTrue(out.contains("kira::isSome(g.tip) && kira::unwrap(g.tip).x == 4"), out)
         val held = DeclTestSupport.emit(DeclTestSupport.module("app:main", text("probe: () Pt {\n    return Pt { 1, 2 }\n}\n\npub f: () Bool {\n    return probe() == Pt { y == 2 }\n}")))
         assertTrue(
             held.diagnostics("app:main").any { it.code == "cpp.unsupported" && it.message.contains("bind it to a local first") },

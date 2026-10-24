@@ -689,6 +689,9 @@ class PyModuleEmitter(
 
         /** The lines that run before the statement being written: each `with` in it. Null outside a statement. */
         var pre: MutableList<String>? = null
+
+        /** The held test-block subjects (lambda parameters) around the expression: a def before the statement takes them. */
+        val held = mutableListOf<String>()
     }
 
     private fun block(statements: List<Statement>, f: Frame): List<String> {
@@ -1830,9 +1833,8 @@ class PyModuleEmitter(
     }
 
     /**
-     * `value == T { checks }` (stage 3b): the identity test the types leave (isinstance, `is not
-     * None`, or none), then each check, joined by `and`. A subject that is no name or field is
-     * held once, as the parameter of a lambda called on it.
+     * `value == T { checks }` (stage 3b): the identity test the types leave, then each check, by `and`;
+     * a subject that is no name or field is held once, the parameter of a lambda called on it.
      */
     private fun testBlock(e: TypeCheckExpr, v: Conformance, f: Frame): Py {
         val info = model.tests[e] ?: return refusePy(e, "a test block the typer did not resolve")
@@ -1840,6 +1842,7 @@ class PyModuleEmitter(
         val held = temp != null && !info.path
         val subject = if (held) Py(local(temp!!.name), PyPrec.ATOM) else expr(e.value, f)
         if (temp != null && !held) testSubjects[temp] = subject
+        if (held) f.held += subject.text
         val parts = mutableListOf<Py>()
         when {
             v.always -> {}
@@ -1847,6 +1850,7 @@ class PyModuleEmitter(
             else -> parts += Py("${wrap(subject, PyPrec.CMP + 1)} is not None", PyPrec.CMP)
         }
         e.checks.orEmpty().forEach { parts += expr(it, f) }
+        if (held) f.held.removeLast()
         temp?.let { testSubjects.remove(it) }
         var test = if (parts.size == 1) parts[0] else Py(parts.joinToString(" and ") { wrap(it, PyPrec.AND) }, PyPrec.AND)
         if (held) {
@@ -2071,8 +2075,9 @@ class PyModuleEmitter(
         } finally {
             statementCall = statement
         }
-        pre += listOf("def $name():") + indent(body)
-        return Py("$name()", PyPrec.POSTFIX)
+        val held = f.held.joinToString(", ")
+        pre += listOf("def $name($held):") + indent(body)
+        return Py("$name($held)", PyPrec.POSTFIX)
     }
 
     /** An if-expression Python cannot write as `a if c else b`: an arm holds statements. */

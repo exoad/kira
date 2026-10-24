@@ -1,6 +1,5 @@
-// Test blocks (stage 3b): `value == T { check, ... }`, the identity test and then each named check,
-// ANDed and short-circuited, the members bare, the subject narrowed inside and after the block.
-// The expected output was worked out by hand.
+// Test blocks (stage 3b): `value == T { check, ... }`, the identity test then each named check, ANDed,
+// the members bare, the subject narrowed inside and after the block. The output was worked out by hand.
 
 Pt: Struct {
     pub x: Int32 = 0
@@ -44,6 +43,31 @@ make: (k: Int32) Pt {
 
 at: (k: Int32) Maybe<Pt> {
     k > 0 ? Pt { k, k * 2 } : null
+}
+
+// A held value whose checks need statements, a nested block's too: each check's def is handed the held values.
+// The first held block, so its held value and its def are both number 0, and their names must still differ.
+hoisted: (k: Int32) Str {
+    a: Bool = make(k) == Pt {
+        (if x > 1 {
+            t: Int32 = x * 2
+            t
+        } else {
+            0
+        }) == 6
+    }
+    b: Bool = Line { Pt { k, 0 }, make(k) } == Line {
+        closed == false,
+        end == Pt {
+            (try {
+                n: Int32 = x + y + start.x
+                n
+            } on e: Str {
+                0
+            }) > 6
+        }
+    }
+    "${a} ${b}"
 }
 
 // Fields, a method, `||` inside a check, and a Bool member alone.
@@ -107,4 +131,7 @@ main: () Void {
     g: Grid = Grid { }
     trace(g.inside(Pt { 1, 2 }))
     trace(g.inside(Pt { 1, 3 }))
+    trace(hoisted(3))
+    trace(hoisted(2))
+    trace(made)
 }

@@ -1353,9 +1353,8 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         if (at(Token.Type.S_OPEN_PARENTHESIS)) parseFunctionType(namesOptional = true) else parseType()
 
     /**
-     * The test block after an identity (stage 3b), `{ status == 200, body.size() > 0 }`: named
-     * checks, comma-separated, ANDed; null when no brace follows. In a bare condition a brace is
-     * the body's unless what follows its block goes on with the condition: `if r == Reply { ok } { ... }`.
+     * The test block after an identity (stage 3b), `{ status == 200, ok }`, its checks ANDed; null with no brace.
+     * In a bare condition the brace is the body's unless the condition goes on after it: `if r == Reply { ok } { ... }`.
      */
     private fun parseTestBlock(): List<Expr>? {
         if (!at(Token.Type.S_OPEN_BRACE) || (noObjectInit && !conditionGoesOn())) return null

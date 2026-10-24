@@ -509,9 +509,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * `value == T { checks }` (stage 3b): the identity test the types leave, then each check,
-     * joined by `&&`. The subject is read again by the checks, as the identity, so it is a
-     * name or a field of one; any other value is refused here (bind it to a local first).
+     * `value == T { checks }` (stage 3b): the identity test the types leave, then each check, by `&&`;
+     * the checks read the subject again, so it is a name or a field of one, any other value refused.
      */
     private fun testBlock(e: TypeCheckExpr, v: Conformance): CppEx {
         val info = model.tests[e] ?: return internal(e, "no test block was recorded")

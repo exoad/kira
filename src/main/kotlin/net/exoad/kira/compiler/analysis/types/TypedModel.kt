@@ -89,9 +89,8 @@ data class Conformance(val value: KType, val always: Boolean, val subtype: Symbo
 data class Narrowing(val from: KType, val to: KType)
 
 /**
- * A test block (stage 3b): [self] is the receiver its bare members are read through, the
- * subject itself when it is a local or parameter, else [temp], the subject held once; [path]:
- * the subject is a field or a name a backend may read again in place of the temporary.
+ * A test block (stage 3b): [self] reads its bare members, the subject if a local or parameter, else
+ * [temp], the subject held once; [path]: a field or name a backend may read again in place of [temp].
  */
 data class TestInfo(val self: Identifier, val temp: LocalSymbol?, val path: Boolean)
 
