@@ -103,6 +103,14 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
     private val returnMemo = IdentityHashMap<Any, Boolean>()
     private var current: Unit? = null
 
+    /** The `{` of each test block (stage 3b), `x == T { check }`: a brace in a condition that opens no body. */
+    private val testBraces: Set<Int> by lazy {
+        AstWalk.all(ctx.ast).filterIsInstance<TypeCheckExpr>().mapNotNull { e ->
+            val at = e.checks?.firstOrNull()?.let { ctx.astOrigins[it] } ?: return@mapNotNull null
+            indexAt[at.lineNumber to at.column]?.minus(1)?.takeIf { it >= 0 && toks[it].type == Token.Type.S_OPEN_BRACE }
+        }.toSet()
+    }
+
     fun collect() {
         // The preprocessor only cuts each line's `//` comment, so the tokens' lines and columns are the text's.
         val cut = ctx.content.lines()
@@ -283,17 +291,19 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
     private fun tok(node: ASTNode): Int = ctx.astOrigins[node]?.let { indexAt[it.lineNumber to it.column] }
         ?: throw Refuse("a ${node.javaClass.simpleName} with no token", node)
 
-    /** The first `{` from token [from] on, outside any parentheses or brackets. */
+    /** The first `{` from token [from] on, outside any parentheses or brackets, a test block's passed over. */
     private fun braceAfter(from: Int): Int {
         var depth = 0
-        for (j in from until toks.size) {
+        var j = from
+        while (j < toks.size) {
             when (toks[j].type) {
                 Token.Type.S_OPEN_PARENTHESIS, Token.Type.S_OPEN_BRACKET -> depth++
                 Token.Type.S_CLOSE_PARENTHESIS, Token.Type.S_CLOSE_BRACKET -> depth--
-                Token.Type.S_OPEN_BRACE -> if (depth == 0) return j
+                Token.Type.S_OPEN_BRACE -> if (j in testBraces) j = match(j) else if (depth == 0) return j
                 Token.Type.S_EOF -> break
                 else -> {}
             }
+            j++
         }
         throw Refuse("no block after ${toks[from].content}", null)
     }
@@ -798,7 +808,7 @@ class ReturnRewrite(private val text: String, private val ctx: SourceContext) {
                 val op = topLevelToken(first, last) { it == Token.Type.OP_CMP_EQL || it == Token.Type.OP_CMP_NEQ }
                     ?: throw Refuse("a type test whose operator is not found", cond)
                 edit(off(op), end(op), if (cond.negated) "==" else "!=")
-                return TypeCheckExpr(cond.value, cond.type, !cond.negated)
+                return TypeCheckExpr(cond.value, cond.type, !cond.negated, cond.checks)
             }
             !paren && cond is UnaryExpr && cond.operator == UnaryOp.NOT -> {
                 edit(off(first), off(first + 1), "")
