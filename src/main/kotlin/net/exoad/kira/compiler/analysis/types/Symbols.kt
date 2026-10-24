@@ -50,6 +50,13 @@ sealed interface TypeSymbol {
     val isPub: Boolean
 }
 
+/** Whether the class or trait is declared `Mutable<P>` (stage 4). */
+val TypeSymbol.isMutable: Boolean
+    get() = when (this) {
+        is ClassSymbol -> isMutableType
+        is TraitSymbol -> isMutableType
+    }
+
 enum class Profile { HOSTED, FREESTANDING }
 
 /**
@@ -191,6 +198,9 @@ class ClassSymbol(
     override var isPub: Boolean = false
     val markers: MutableList<Marker> = mutableListOf()
 
+    /** `C: Mutable<P>` (stage 4): its values change, so they are held by reference and shared. */
+    var isMutableType: Boolean = false
+
     val isStruct: Boolean get() = kind == ClassKind.STRUCT
 
     /** This class as a type over its own type parameters: `Box<T>` inside `class Box<T>`. */
@@ -217,6 +227,9 @@ class TraitSymbol(
 
     /** `pub final Shape: Any { ... }`: no type may list it as a parent, whatever its role. */
     var isFinal: Boolean = false
+
+    /** `T: Mutable<P>` (stage 4): a type listing it is Mutable too, and its functions may change the value. */
+    var isMutableType: Boolean = false
 
     /**
      * Every method a class implementing this trait must provide or inherit, parents first,
@@ -263,8 +276,8 @@ class FnSymbol(
     var ret: KType = KType.Error,
     /** The class, struct or trait that declares this method; null for a free function. */
     val owner: TypeSymbol? = null,
-    /** `mut fx`: the method may mutate its receiver. */
-    val isMutMethod: Boolean = false,
+    /** The method may change its receiver: `mut fx` in old text; a function of a Mutable type, or a `@_mutates` one. */
+    var isMutMethod: Boolean = false,
     var foreign: Foreign? = null,
     val hasBody: Boolean = false,
     /** Declared with the `override` modifier. */
@@ -310,8 +323,8 @@ class ParamSymbol(
     override val module: ModuleSymbol,
     override val decl: ASTNode?,
     var type: KType = KType.Error,
-    /** `mut p: T` (D4): passed by reference, with a call-site `mut`. */
-    val byRef: Boolean = false,
+    /** `mut p: T` (D4) in old text; from stage 4, a value-held Mutable one its function changes (WrittenParams). */
+    var byRef: Boolean = false,
     /** The default value, kept as the expression (D48: a literal or a pub constant). */
     val default: Expr? = null,
     val index: Int = 0,

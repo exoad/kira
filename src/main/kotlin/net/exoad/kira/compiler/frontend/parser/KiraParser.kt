@@ -31,8 +31,14 @@ import kotlin.properties.Delegates
  * [Builder.INFER] builders, and stage 2's `x is T`; the clean dialect refuses both.
  * [returns]: kira-dialect reads stage 2's text, its `return`s and its if values of one
  * expression an arm, which the clean dialect refuses.
+ * [muts]: kira-dialect reads stage 3's text, its `mut`s, which stage 4 refuses ([DialectGates.noMut]).
  */
-class KiraParser(private val context: SourceContext, private val literals: Boolean = false, private val returns: Boolean = literals) {
+class KiraParser(
+    private val context: SourceContext,
+    private val literals: Boolean = false,
+    private val returns: Boolean = literals,
+    private val muts: Boolean = returns,
+) {
     private val buffer = TokenBuffer(context.tokens)
 
     init {
@@ -697,6 +703,56 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         )
     }
 
+    // ---- stage 4: Mutable<> -------------------------------------------------------------------
+
+    /** Whether `mut` is refused: stage 4 spells it `Mutable<>`; kira-dialect's reading of old text keeps it. */
+    private fun mutRefused(): Boolean = !muts && DialectGates.noMut
+
+    /** `mut` at [at] refused, with what replaces it there ([help]), once stage 4's gate is on. */
+    private fun refuseMut(at: SourcePosition?, help: String) {
+        if (at == null || !mutRefused()) return
+        Diagnostics.panic("parse.removed", "'mut' is not part of Kira any more: $help.", location = at, selectorLength = 3, context = context)
+    }
+
+    /** The `T` of a `Mutable<T>` as written (never qualified), or null; a `Mutable` of no or two types is refused. */
+    private fun mutableInner(t: Type): Type? {
+        val id = t.identifier as? Identifier ?: return null
+        if (id is QualifiedIdentifier || id is IntrinsicExpr || id.value != MUTABLE_AXIOM) return null
+        if (t.children.size != 1 || t.constraint != null) {
+            Diagnostics.panic(
+                "parse.mutable.shape",
+                "'Mutable' wraps one type: 'Mutable<T>'.",
+                location = context.astOrigins[t] ?: here(),
+                selectorLength = MUTABLE_AXIOM.length,
+                context = context
+            )
+        }
+        val inner = t.children[0]
+        if (mutableInner(inner) != null) {
+            Diagnostics.panic(
+                "parse.mutable.shape",
+                "'Mutable<Mutable<T>>' says it twice: 'Mutable<T>'.",
+                location = context.astOrigins[inner] ?: here(),
+                selectorLength = MUTABLE_AXIOM.length,
+                context = context
+            )
+        }
+        return inner
+    }
+
+    /** A parameter's `Mutable<T>` at [at], refused: a parameter is never Mutable. */
+    private fun refuseMutableParam(t: Type, at: SourcePosition) {
+        if (mutableInner(t) == null) return
+        Diagnostics.panic(
+            "parse.mutable.param",
+            "A parameter is never Mutable: write '${net.exoad.kira.compiler.analysis.types.KiraUnparser.type(t.children[0])}'. " +
+                "A value of a Mutable type is shared, so the function's changes reach its caller.",
+            location = context.astOrigins[t] ?: at,
+            selectorLength = MUTABLE_AXIOM.length,
+            context = context
+        )
+    }
+
     /** `fx(x: T) R { }` or `fx() R { }` at the pointer: the old lambda. */
     private fun startsOldLambda(): Boolean {
         if (peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return false
@@ -861,13 +917,19 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             return parseFunctionRest(origin, name, generics, modifiers, marks)
         }
         val ident = name as Identifier
-        val first = parseType()
+        val written = parseType()
         if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL)) {
-            return parseTypeDecl(origin, ident, generics, first, modifiers, marks)
+            refuseMut(modifiers?.get(Modifier.MUTABLE), MUT_TYPE)
+            return parseTypeDecl(origin, ident, generics, written, modifiers, marks)
         }
         if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE)) {
-            refuseValueShapedType(ident, first, origin)
+            refuseValueShapedType(ident, written, origin)
         }
+        refuseMut(modifiers?.get(Modifier.MUTABLE), MUT_BINDING)
+        // `x: Mutable<T>` is a binding that changes: the tree `mut x: T` was.
+        val inner = mutableInner(written)
+        val first = inner ?: written
+        val modifiers = if (inner == null) modifiers else LinkedHashMap(modifiers.orEmpty()).also { it.putIfAbsent(Modifier.MUTABLE, originOf(written)) }
         if (generics.isNotEmpty()) {
             Diagnostics.panic(
                 "parse.variable.generic",
@@ -901,6 +963,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         val returnType = parseType()
         if (at(Token.Type.S_EQUAL) && name is Identifier && name !is IntrinsicExpr) {
             // `cb: (x: Int32) Void = value`: a variable whose type is the function type.
+            refuseMut(modifier?.get(Modifier.MUTABLE), "$MUT_BINDING, here 'name: Mutable<(...) R> = value'")
             expectModifiers(modifier, WrappingContext.VARIABLE)
             val type = functionTypeOf(params, returnType, signatureAt)
             advancePointer()
@@ -908,6 +971,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             attachIntrinsics(decl)
             return putOrigin(decl, origin)
         }
+        refuseMut(modifier?.get(Modifier.MUTABLE), MUT_FUNCTION)
         expectModifiers(modifier, WrappingContext.FUNCTION)
         if (modifier?.containsKey(Modifier.OVERRIDE) == true && typeBodyDepth == 0) {
             Diagnostics.panic(
@@ -956,13 +1020,18 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 expectThenAdvance(Token.Type.S_COMMA)
             }
             val isMut = at(Token.Type.K_MODIFIER_MUTABLE)
-            if (isMut) advancePointer()
+            if (isMut) {
+                refuseMut(here(), MUT_PARAM)
+                advancePointer()
+            }
             // A function shape after `==` may leave its parameters unnamed: `(Int32) Int32`.
             if (!namesOptional || peek(1).type == Token.Type.S_COLON) {
                 parseIdentifier()
                 expectThenAdvance(Token.Type.S_COLON)
             }
+            val paramAt = here()
             val t = parseType()
+            refuseMutableParam(t, paramAt)
             args += if (isMut) putOrigin(Type(t.identifier, t.constraint, t.children, true), context.astOrigins[t] ?: at) else t
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
@@ -995,11 +1064,41 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         }
         expectModifiers(modifier, WrappingContext.CLASS)
         expectConventionalName(name.value, origin, "Type", "PascalCase")
+        if (name.value == MUTABLE_AXIOM) {
+            Diagnostics.panic(
+                "parse.mutable.axiom",
+                "'Mutable' is the language's own wrapper and names no other type.",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
+        }
         val nameType = putOrigin(Type(name, null, generics), origin)
-        val parents = mutableListOf(first)
+        val written = mutableListOf(first)
         while (at(Token.Type.S_COMMA)) {
             advancePointer()
-            parents.add(parseType())
+            written.add(parseType())
+        }
+        // `Name: Mutable<P>`: a type whose values change, held by reference; P is its parent.
+        val wrapped = written.filter { mutableInner(it) != null }
+        if (wrapped.size > 1) {
+            Diagnostics.panic(
+                "parse.mutable.shape",
+                "'${name.value}' says Mutable twice: one parent is 'Mutable<P>', and the type is Mutable.",
+                location = originOf(wrapped[1]),
+                selectorLength = MUTABLE_AXIOM.length,
+                context = context
+            )
+        }
+        val parents = written.map { mutableInner(it) ?: it }.toMutableList()
+        if (wrapped.isNotEmpty() && parents.any { isRoot(it, STRUCT_ROOT) }) {
+            Diagnostics.panic(
+                "parse.mutable.struct",
+                "'${name.value}' is a value type (Struct) and Mutable: a Mutable type is held by reference, so drop 'Struct' ('${name.value}: Mutable<Any>').",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
         }
         val typeIntrinsics = marks ?: pendingIntrinsicExprs
         pendingIntrinsicExprs = null
@@ -1017,7 +1116,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 context = context
             )
         }
-        val mods = modifier?.keys?.toList() ?: emptyList()
+        val mods = (modifier?.keys?.toList() ?: emptyList()).let { if (wrapped.isNotEmpty() && Modifier.MUTABLE !in it) it + Modifier.MUTABLE else it }
         val decl: Decl = if (isStruct) {
             StructDecl(nameType, mods, body.members, named, body.initially)
         } else {
@@ -1034,8 +1133,17 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         /** The root every type has; as a parent it names none. */
         const val ANY_ROOT = "Any"
 
-        /** The parent that makes a type a value type, a struct (until Mutable<> decides it). */
+        /** The parent that makes a type a value type, a struct: immutable, never Mutable. */
         const val STRUCT_ROOT = "Struct"
+
+        /** The one wrapper (stage 4): `x: Mutable<T>` a binding that changes, `T: Mutable<P>` a type whose values do. */
+        const val MUTABLE_AXIOM = "Mutable"
+
+        const val MUT_BINDING = "a binding that changes is 'name: Mutable<T>'"
+        const val MUT_FUNCTION = "any function of a Mutable type may change it: declare the type 'Name: Mutable<Parent>'"
+        const val MUT_PARAM = "a parameter is never Mutable, and a Mutable type's value is shared, so its changes reach the caller"
+        const val MUT_ARG = "pass the value itself: a Mutable type's value is shared with the callee"
+        const val MUT_TYPE = "a type whose values change is 'Name: Mutable<Parent>'"
     }
 
     private class TypeBody(
@@ -1149,6 +1257,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
         val forExpr = if (at(Token.Type.K_MODIFIER_MUTABLE)) {
             // Legacy `for mut i: a..b { }`: an untyped variable over an
             // inclusive range (design 2.2); it keeps its meaning.
+            refuseMut(here(), "a loop variable is never Mutable: 'for i: Int32 in a..(b + 1)' is this loop, whose range excludes its end")
             advancePointer()
             val identifier = parseIdentifier()
             expectThenAdvance(Token.Type.S_COLON)
@@ -1773,7 +1882,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
             // Loops stay statements (stage 3): their answer goes through a local.
             Token.Type.K_WHILE, Token.Type.K_FOR -> Diagnostics.panic(
                 "parse.loop.value",
-                "A loop is a statement, not a value: put its answer in a `mut` local before the loop, assign it inside, then `break`.",
+                "A loop is a statement, not a value: put its answer in a ${if (mutRefused()) "Mutable" else "`mut`"} local before the loop, assign it inside, then `break`.",
                 location = here(),
                 selectorLength = peek().content.length,
                 context = context
@@ -1989,11 +2098,13 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 expectThenAdvance(Token.Type.S_COMMA)
             }
             val modifiers = parseModifiers()
+            refuseMut(modifiers[Modifier.MUTABLE], MUT_PARAM)
             val origin = here()
             val name = parseIdentifier()
             expectConventionalName(name.value, origin, "Parameter", "camelCase")
             expectThenAdvance(Token.Type.S_COLON)
             val type = parseType()
+            refuseMutableParam(type, origin)
             // Default parameter (spec Default Parameters): `name: Type = expr`.
             // Whether the expression is constant is the typer's check (D48).
             var defaultValue: Expr? = null
@@ -2041,6 +2152,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                 // (`f(out = mut y)`); `f(mut out = y)` is accepted as well.
                 var isMut = false
                 if (at(Token.Type.K_MODIFIER_MUTABLE)) {
+                    refuseMut(here(), MUT_ARG)
                     advancePointer()
                     isMut = true
                 }
@@ -2050,6 +2162,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                     val identifier = parseIdentifier()
                     expectThenAdvance(Token.Type.S_EQUAL)
                     if (at(Token.Type.K_MODIFIER_MUTABLE)) {
+                        refuseMut(here(), MUT_ARG)
                         advancePointer()
                         isMut = true
                     }
@@ -2486,6 +2599,7 @@ class KiraParser(private val context: SourceContext, private val literals: Boole
                     context = context
                 )
             }
+            refuseMut(baseLocation, MUT_PARAM)
             advancePointer()
             isMutParam = true
         }

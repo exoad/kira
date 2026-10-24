@@ -198,10 +198,22 @@ internal class DeclarationCollector(
             is Foreign.Extern -> Foreign.Extern(emptyMap())
             null -> null
         }
+        // Stage 4: a host's function (a @_magic, @_opaque or @_extern type's) that changes its receiver says so with
+        // @_mutates; a body-less one of a Mutable type, and any of a Mutable trait (its implementers' may), may change
+        // it; another with a body says so by it, read after phase C.
+        val changes = when (owner) {
+            null -> false
+            is ClassSymbol -> if (owner.kind == ClassKind.MAGIC || owner.kind == ClassKind.OPAQUE || owner.foreign != null) {
+                hasMarker(markers, MUTATES)
+            } else {
+                owner.isMutableType && decl.def.body == null
+            }
+            is TraitSymbol -> owner.isMutableType
+        }
         val fn = FnSymbol(
             name, module, decl, typeParams, params,
             owner = owner,
-            isMutMethod = owner != null && Modifier.MUTABLE in decl.modifiers,
+            isMutMethod = owner != null && (Modifier.MUTABLE in decl.modifiers || changes),
             foreign = foreign,
             hasBody = decl.def.body != null,
             isOverride = Modifier.OVERRIDE in decl.modifiers,
@@ -294,6 +306,7 @@ internal class DeclarationCollector(
         val markers = markersOf(source, decl)
         val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.CLASS), markers, Modifier.PUBLIC in decl.modifiers)
         cls.isFinal = Modifier.FINAL in decl.modifiers
+        cls.isMutableType = Modifier.MUTABLE in decl.modifiers
         cls.initially = decl.initially
         members(module, source, cls, decl.members)
         return cls
@@ -302,6 +315,7 @@ internal class DeclarationCollector(
     private fun struct(module: ModuleSymbol, source: SourceContext, decl: StructDecl): ClassSymbol {
         val markers = markersOf(source, decl)
         val cls = newClass(module, decl, decl.name, classKind(markers, ClassKind.STRUCT), markers, Modifier.PUBLIC in decl.modifiers)
+        cls.isMutableType = Modifier.MUTABLE in decl.modifiers
         cls.initially = decl.initially
         members(module, source, cls, decl.members)
         return cls
@@ -368,6 +382,7 @@ internal class DeclarationCollector(
         val t = TraitSymbol(id?.value ?: decl.name.toString(), module, decl, typeParams)
         t.isPub = Modifier.PUBLIC in decl.modifiers
         t.isFinal = Modifier.FINAL in decl.modifiers
+        t.isMutableType = Modifier.MUTABLE in decl.modifiers
         t.markers.addAll(markers)
         t.foreign = foreignOf(markers, t.name)
         typeParams.forEach { it.owner = t }
@@ -409,6 +424,7 @@ internal class DeclarationCollector(
         const val EXTERN = "_extern"
         const val OPAQUE = "_opaque"
         const val CONST = "_const"
+        const val MUTATES = "_mutates"
 
         /**
          * The marker invocations (arguments included) the parser recorded for [node]: an

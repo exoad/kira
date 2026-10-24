@@ -4,11 +4,14 @@ import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
+import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.display
+import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
@@ -67,12 +70,79 @@ internal class MutabilityPass : RulePass {
         if (place is Place.Index && (place.kind == IndexKind.VIEW || place.kind == IndexKind.STR)) {
             return
         }
+        if (DialectGates.mutability) {
+            stage4Write(r, b, target, place, lambdas)
+            return
+        }
         if (r.isMutablePlace(place, thisMutable(b, lambdas)) || isCaptureWrite(r, place, b, lambdas)) {
             return
         }
         val text = KiraUnparser.text(target)
         val (code, message) = explain(r, b, place, text)
         r.report("rules.mutability.$code", message, target)
+    }
+
+    /**
+     * Stage 4: a Mutable field or an element of a shared container changes through any binding (the value is
+     * shared); a local or global is reassigned only when Mutable; a parameter never; a value type's field never.
+     */
+    private fun stage4Write(r: Rules, b: Body, target: Expr, place: Place, lambdas: List<LambdaExpr>) {
+        val ok = when (place) {
+            // A `with`'s copy: its block may assign every field of it.
+            // `initially` still builds the value: it writes its own fields.
+            is Place.Field -> (place.receiver as? Place.Local)?.sym?.builds == true || place.sym.isMut ||
+                (b.kind == BodyKind.INITIALLY && place.receiver is Place.This)
+            is Place.Index -> r.facts.shares(typeOf(r, place.container)) || r.isMutablePlace(place, thisMutable(b, lambdas))
+            else -> r.isMutablePlace(place, thisMutable(b, lambdas))
+        }
+        if (ok && place is Place.Index && !oldRulesWrite(r, b, place, lambdas)) {
+            shared(r, b, target, "a change to an element of ${typeOf(r, place.container)?.display()} that is not held in a Mutable binding (a shared value the py target lowers)")
+        }
+        if (ok || isCaptureWrite(r, place, b, lambdas)) {
+            return
+        }
+        val text = KiraUnparser.text(target)
+        val (code, message) = when (place) {
+            is Place.Local -> "local" to "'${place.sym.name}' is not Mutable, so $text cannot be assigned; declare it '${place.sym.name}: Mutable<${place.sym.type.display()}>'."
+            is Place.Param -> "param" to "Parameter '${place.sym.name}' cannot be assigned: a parameter is never Mutable. Copy it into a Mutable local."
+            is Place.Global -> "global" to "'${place.sym.name}' is a module constant; a module-level binding that changes is '${place.sym.name}: Mutable<${place.sym.type.display()}>'."
+            is Place.Field -> "field" to "Field '${place.sym.name}' of ${place.sym.owner.name} is not Mutable, so $text cannot be written; " +
+                "declare it '${place.sym.name}: Mutable<${place.sym.type.display()}>' in a Mutable type, or build a new value with `with`."
+            is Place.Index -> "element" to "$text is an element of ${typeOf(r, place.container)?.display() ?: "a value"}, which does not change; hold a Mutable one."
+            is Place.This -> "this" to "${b.what} cannot write its receiver: ${b.owner?.name} is not Mutable."
+        }
+        r.report("rules.mutability.$code", message, target)
+    }
+
+    /** Whether the rules before stage 4 let this write through: a mutable place, not a lambda's capture. */
+    private fun oldRulesWrite(r: Rules, b: Body, place: Place, lambdas: List<LambdaExpr>): Boolean =
+        r.isMutablePlace(place, thisMutable(b, lambdas)) && !capturedRoot(r, place, lambdas)
+
+    /** [place] starts at a variable the innermost lambda captured by value (C++ copies it in). */
+    private fun capturedRoot(r: Rules, place: Place, lambdas: List<LambdaExpr>): Boolean {
+        val lambda = lambdas.lastOrNull() ?: return false
+        val captures = r.model.captures[lambda] ?: return false
+        val root = place.root()
+        val sym = (root as? Place.Local)?.sym ?: (root as? Place.Param)?.sym ?: return false
+        return captures.any { it is Capture.Value && it.symbol === sym }
+    }
+
+    /** Records [node] as a change only stage 4's sharing allows, which the cpp target refuses. */
+    private fun shared(r: Rules, b: Body, node: ASTNode, what: String) {
+        r.model.sharedWrites.putIfAbsent(node, b.module to what)
+    }
+
+    /** The declared type of the value at [p], as far as a write needs it. */
+    private fun typeOf(r: Rules, p: Place): KType? = when (p) {
+        is Place.Local -> p.sym.type
+        is Place.Param -> p.sym.type
+        is Place.Global -> p.sym.type
+        is Place.Field -> p.sym.type
+        is Place.This -> (p.owner as? ClassSymbol)?.selfType
+        is Place.Index -> typeOf(r, p.container)?.let { t ->
+            val args = (t as? KType.Nominal)?.typeArgs().orEmpty()
+            if (r.facts.isMap(t)) args.getOrNull(1) else args.firstOrNull()
+        }
     }
 
     /** The reason a place is immutable: the first immutable step from the root. */
@@ -138,6 +208,14 @@ internal class MutabilityPass : RulePass {
             else -> r.model.types[rc.receiver ?: return] ?: return
         }
         val place = if (rc.implicitThis) b.owner?.let { Place.This(it) } else r.model.places[rc.receiver!!]
+        // Stage 4: a Mutable type's value is shared, so its functions change it through any binding.
+        if (r.facts.shares(receiverType)) {
+            val lent = place == null && rc.receiver?.let { r.model.lentPlaces[it] } != null
+            if (!r.isReference(receiverType) && (lent || (place != null && !oldRulesWrite(r, b, place, lambdas)))) {
+                shared(r, b, rc.receiver ?: e, "'${fn.name}' changing ${receiverType.display()} through a binding that is not Mutable (a shared value the py target lowers)")
+            }
+            return
+        }
         val thisMutable = thisMutable(b, lambdas)
         if (!r.needsMutablePlace(receiverType)) {
             // A class's `mut fx` is callable through any reference (D29), but a plain `fx` of the class calling
@@ -150,7 +228,14 @@ internal class MutabilityPass : RulePass {
             // A lent result (R-A: `ys.get(0)` is `ys[0]`, and C++'s `kira::at` hands back a reference into ys) is no
             // temporary: a `mut fx` on it would write ys through an accessor, a write capability R-A never grants.
             val lent = rc.receiver?.let { r.model.lentPlaces[it] }
-            if (lent != null) {
+            if (lent != null && DialectGates.mutability) {
+                r.report(
+                    "rules.mutability.method",
+                    "'${fn.name}' changes its receiver '${KiraUnparser.text(rc.receiver!!)}', which is '${r.describe(lent)}' lent by an accessor, not a place " +
+                        "to change (R-A). Change the place itself (`${r.describe(lent)}.${fn.name}(...)` on a Mutable binding).",
+                    rc.receiver,
+                )
+            } else if (lent != null) {
                 r.report(
                     "rules.mutability.method",
                     "'${fn.name}' is a `mut fx` and writes its receiver '${KiraUnparser.text(rc.receiver!!)}', which is '${r.describe(lent)}' lent by an " +
@@ -166,6 +251,11 @@ internal class MutabilityPass : RulePass {
         }
         val at: ASTNode = rc.receiver ?: (e.name as? MemberAccessExpr)?.member ?: e.name
         val receiverText = rc.receiver?.let { KiraUnparser.text(it) } ?: "the receiver"
+        if (DialectGates.mutability) {
+            // Stage 4: only a value's own changing function (an Arr's `set`) reaches here; it needs a Mutable binding.
+            r.report("rules.mutability.method", "'${fn.name}' changes its ${receiverType.display()}, a value, so it runs on a Mutable binding only, which $receiverText is not.", at)
+            return
+        }
         val (code, why) = explain(r, b, place, receiverText)
         val message = if (code == "this") {
             "'${fn.name}' is a `mut fx` and writes its receiver, but ${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}; declare it `mut fx`."

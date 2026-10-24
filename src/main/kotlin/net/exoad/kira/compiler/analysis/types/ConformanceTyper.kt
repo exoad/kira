@@ -34,13 +34,15 @@ internal class ConformanceTyper(private val c: PhaseC) {
         if (value.containsError() || identity.containsError()) {
             return KType.BOOL
         }
-        val v = verdict(value, identity, e) ?: return KType.BOOL
+        val asked = verdict(value, identity, e) ?: return KType.BOOL
+        val v = if (e in c.model.mutableTests) mutable(asked, value, identity, e) ?: return KType.BOOL else asked
         c.model.conformances[e] = v
         val checks = e.checks
         if (checks != null) {
             block(e, checks, v, identity, ctx, scope)
         } else if (v.always) {
-            val what = "${article(value)} always conforms to ${identity.display()}: the test is always ${!e.negated}."
+            val shown = if (e in c.model.mutableTests) "Mutable<${identity.display()}>" else identity.display()
+            val what = "${article(value)} always conforms to $shown: the test is always ${!e.negated}."
             c.report("types.conform.always", what, e, Severity.WARNING)
         }
         return KType.BOOL
@@ -159,6 +161,27 @@ internal class ConformanceTyper(private val c: PhaseC) {
             return null
         }
         return Conformance(value, always = false, subtype = sub, narrowed = identity)
+    }
+
+    /**
+     * `value == Mutable<P>` (stage 4): [v] is the test of P; the value must also be of a Mutable type. Its own type
+     * decides it, or a run-time test that the object is one of the Mutable types that could be it.
+     */
+    private fun mutable(v: Conformance, value: KType, identity: KType, e: TypeCheckExpr): Conformance? {
+        val seen = v.narrowed ?: facts.maybeInner(value) ?: value
+        val shown = "Mutable<${identity.display()}>"
+        if (facts.isMutableType(seen)) {
+            return v.copy(subtype = v.subtype)
+        }
+        val n = seen as? KType.Nominal
+        val candidates = if (n == null || !refLike(n)) emptyList() else types.filter { t ->
+            (t.sym as? TypeSymbol)?.isMutable == true && facts.isSubtype(t, n) && (identity !is KType.Nominal || facts.isSubtype(t, bare(identity)))
+        }
+        if (candidates.isEmpty()) {
+            c.report("types.conform.never", "${article(value)} never conforms to $shown: the test is always ${e.negated}.", e)
+            return null
+        }
+        return Conformance(value, always = false, subtype = null, narrowed = v.narrowed ?: seen.takeIf { it != value }, mutables = candidates.map { it.sym as Symbol })
     }
 
     /** What no conformance test can ask, in words; null when the test is a question. */

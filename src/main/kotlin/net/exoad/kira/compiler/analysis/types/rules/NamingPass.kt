@@ -56,7 +56,7 @@ internal class NamingPass : RulePass {
             is GlobalSymbol -> if (s.foreign == null) {
                 if (s.isConstant) {
                     if (!upper.matches(s.name)) {
-                        warn(r, "constant", "Constant '${s.name}' does not conform to UPPER_SNAKE_CASE (a module-level binding without `mut` is a constant); did you mean '${toUpperSnake(s.name)}'?", s.decl)
+                        warn(r, "constant", "Constant '${s.name}' does not conform to UPPER_SNAKE_CASE (a module-level binding that is not ${if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "Mutable" else "`mut`"} is a constant); did you mean '${toUpperSnake(s.name)}'?", s.decl)
                     }
                 } else if (!camel.matches(s.name) && !upper.matches(s.name)) {
                     warn(r, "variable", "Variable '${s.name}' does not conform to camelCase; did you mean '${toCamel(s.name)}'?", s.decl)

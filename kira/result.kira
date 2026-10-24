@@ -30,8 +30,8 @@ pub @_magic Exception: Any {
 
 // A shared, mutable cell (the spec's `Ref<T>`, D46): every copy of a `Ref`
 // names the same `value`.
-pub @_magic Ref<T>: Any {
-    pub mut value: T
+pub @_magic Ref<T>: Mutable<Any> {
+    pub value: Mutable<T>
 }
 
 // A non-owning reference to a class instance. `upgrade` yields the live

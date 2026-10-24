@@ -137,15 +137,15 @@ pub @_magic bitCast<T>: (value: Any) T;
 // take a view of text; an interpolation passed to them (`buf.set("servo=${s}")`)
 // never becomes a Str: it is appended piece by piece, `set` clearing first.
 // `addFixed` rounds as FloatNum.fixed does (D50).
-pub @_magic StrBuf: Any {
+pub @_magic StrBuf: Mutable<Any> {
     pub size: () Size;
     pub isEmpty: () Bool;
     pub view: () View<Char>;
-    pub mut clear: () Void;
-    pub mut add: (text: View<Char>) Void;
-    pub mut addChar: (c: Char) Void;
-    pub mut addInt: (value: Int64) Void;
-    pub mut addUInt: (value: UInt64) Void;
-    pub mut addFixed: (value: Float64, places: Int32) Void;
-    pub mut set: (text: View<Char>) Void;
+    pub @_mutates clear: () Void;
+    pub @_mutates add: (text: View<Char>) Void;
+    pub @_mutates addChar: (c: Char) Void;
+    pub @_mutates addInt: (value: Int64) Void;
+    pub @_mutates addUInt: (value: UInt64) Void;
+    pub @_mutates addFixed: (value: Float64, places: Int32) Void;
+    pub @_mutates set: (text: View<Char>) Void;
 }

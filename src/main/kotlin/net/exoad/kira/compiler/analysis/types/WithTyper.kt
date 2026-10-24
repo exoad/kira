@@ -75,9 +75,9 @@ internal class WithFrame(
  *   block, after the block's and the function's locals and parameters, before the outer
  *   scope. A local or parameter named like a member is an error where it is declared or read
  *   ([clash], [declares]), and so are nested receivers that share a member name.
- * - A class with a `mut` field is edited in place. A value type, or a class with no `mut`
- *   field, is copied into a temporary whose every field the block may assign; the copy re-runs
- *   `initially` at the block's end. The value is the receiver (the copy), never the block's.
+ * - A Mutable value is edited in place (its Mutable fields assigned). Any other value is copied
+ *   into a temporary whose every field the block may assign; the copy re-runs `initially` at the
+ *   block's end. The value is the receiver (the copy), never the block's.
  * - It lowers inline before the statement it is in, so `break` and `continue` act on the
  *   enclosing loop. [placement] refuses a position where running it first would reorder
  *   evaluation (D33); a module constant's `with` folds into the construction it amounts to ([fold]).
@@ -119,7 +119,12 @@ internal class WithTyper(private val c: PhaseC) {
             }
         }
         val chain = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.take(64).toList()
-        val copy = cls.kind == ClassKind.STRUCT || chain.none { k -> k.fields.any { it.isMut } }
+        // Stage 4: a Mutable value is edited in place, any other value copied.
+        val copy = if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) {
+            !cls.isMutableType
+        } else {
+            cls.kind == ClassKind.STRUCT || chain.none { k -> k.fields.any { it.isMut } }
+        }
         val temp = LocalSymbol("_k_w${temps++}", ctx.module, e, t, isMut = copy, fn = ctx.fn, builds = copy)
         ctx.lambda?.let { c.declaredIn[temp] = it }
         val self = Identifier(temp.name)

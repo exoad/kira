@@ -88,6 +88,8 @@ class TypedCppModuleEmitter(
                 listOf(CppDiagnostic(CppModuleEmitterFactory.INTERNAL_CODE, "the typer collected no module for ${source.file}", file = source.file)),
             )
         val ctx = contextOf(module)
+        // Stage 4 shares a List; C++ holds one by value, so a change only sharing allows is not lowered.
+        program.model.sharedWrites.forEach { (node, at) -> if (at.first === module) ctx.unsupported(node, at.second) }
         return try {
             val emitted = CppDeclEmitter(ctx, usage).emit()
             val duplicates = collisions().of(module)

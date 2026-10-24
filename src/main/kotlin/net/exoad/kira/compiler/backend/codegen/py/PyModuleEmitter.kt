@@ -401,11 +401,15 @@ class PyModuleEmitter(
             body += indent(init)
         }
         if (c.kind == ClassKind.STRUCT) {
-            // A struct is a value (D1): the emitter copies it where a second name could see a write.
-            val copied = c.fields.map { "c.${pyName(it)} = ${copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+            // A struct is a value (D1): until stage 4 the emitter copies it where a second name could see a write;
+            // from stage 4 no value changes in Kira, so a `with`, a lambda's `this` and a sidecar (D68) copy one.
+            // From stage 4 a field's value never changes in place, so the copy shares it.
+            val copied = c.fields.map { "c.${pyName(it)} = ${if (shares) "self.${pyName(it)}" else copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
             body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
-            val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
-            body += listOf("", "def _k_set(self, o):") + indent(set)
+            if (!shares) {
+                val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
+                body += listOf("", "def _k_set(self, o):") + indent(set)
+            }
             if (usage.needsEquality(c)) {
                 val same = c.fields.joinToString(" and ") { "self.${pyName(it)} == o.${pyName(it)}" }.ifEmpty { "True" }
                 body += listOf("", "def __eq__(self, o):") + indent(listOf("return $same"))
@@ -414,7 +418,7 @@ class PyModuleEmitter(
         if (c in model.withCopied) {
             // A `with` copies it (a struct has its _k_clone already) and re-runs its initially on the copy.
             if (c.kind == ClassKind.CLASS) {
-                val copied = c.fields.map { "c.${pyName(it)} = ${copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+                val copied = c.fields.map { "c.${pyName(it)} = ${if (shares) "self.${pyName(it)}" else copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
                 body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
             }
             c.initially?.let { body += listOf("", "def _k_initially(self):") + indent(block(it, Frame(c, null))) }
@@ -906,7 +910,8 @@ class PyModuleEmitter(
         val lhs = placeText(target, f, spill, pre) ?: return emptyList()
         if (op == null) {
             val tt = model.typeOrNull(target)
-            if (tt != null && (isValue(tt) || isStruct(tt)) && target !is ArrayIndexExpr && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
+            // Stage 4 binds the name to the value: a shared value is never written over in place.
+            if (!shares && tt != null && (isValue(tt) || isStruct(tt)) && target !is ArrayIndexExpr && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
                 // A field, global or mut parameter keeps its object: a mut parameter may be bound to it (C++'s T&).
                 val v = if (isStruct(tt) || holdsValue(elementOf(tt))) asValue(value, f, Use.STORE) else expr(value, f)
                 return pre + when {
@@ -1829,6 +1834,11 @@ class PyModuleEmitter(
             val test = Py("isinstance(${wrap(value, PyPrec.TERNARY)}, ${ref(sub, e) ?: "None"})", PyPrec.POSTFIX)
             return if (e.negated) Py("not ${wrap(test, PyPrec.NOT)}", PyPrec.NOT) else test
         }
+        v.mutables?.let { types ->
+            // `value == Mutable<P>` (stage 4): the object is one of the Mutable types that could be it.
+            val test = Py("isinstance(${wrap(value, PyPrec.TERNARY)}, (${types.joinToString(", ") { ref(it, e) ?: "None" }},))", PyPrec.POSTFIX)
+            return if (e.negated) Py("not ${wrap(test, PyPrec.NOT)}", PyPrec.NOT) else test
+        }
         return Py("${wrap(value, PyPrec.CMP + 1)} ${if (e.negated) "is" else "is not"} None", PyPrec.CMP)
     }
 
@@ -1847,6 +1857,7 @@ class PyModuleEmitter(
         when {
             v.always -> {}
             v.subtype != null -> parts += Py("isinstance(${wrap(subject, PyPrec.TERNARY)}, ${ref(v.subtype, e) ?: "None"})", PyPrec.POSTFIX)
+            v.mutables != null -> parts += Py("isinstance(${wrap(subject, PyPrec.TERNARY)}, (${v.mutables.joinToString(", ") { ref(it, e) ?: "None" }},))", PyPrec.POSTFIX)
             else -> parts += Py("${wrap(subject, PyPrec.CMP + 1)} is not None", PyPrec.CMP)
         }
         e.checks.orEmpty().forEach { parts += expr(it, f) }
@@ -2322,9 +2333,27 @@ class PyModuleEmitter(
         it.kind == ClassKind.OPAQUE && it.foreign == null && !it.module.isStdlib && it.typeParams.isEmpty()
     } == true
 
-    /** A value Python would share where Kira copies it: a container, a struct, a Maybe of one. */
+    /**
+     * Whether a value of [t] is copied where a second name could see a write: a container, a struct, a Maybe of one
+     * (D44). Stage 4 shares every Mutable value; of the rest, an Arr changes in place, and a stdlib struct holding a
+     * container (a user's is Mutable once it holds one) holds it by value on C++, so those two are still copied.
+     */
     private fun holdsValue(t: KType?): Boolean =
-        t != null && (isValue(t) || isStruct(t) || (isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())))
+        t != null && (if (shares) magicName(t) == "Arr" || holdsContainer(t, HashSet()) else isValue(t) || isStruct(t)) ||
+            t != null && isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())
+
+    /** A struct with a container among its fields, at any depth of structs and Maybes. */
+    private fun holdsContainer(t: KType, seen: MutableSet<ClassSymbol>): Boolean {
+        val c = (t as? KType.Nominal)?.sym as? ClassSymbol ?: return false
+        if (!isStruct(t) || !seen.add(c)) return false
+        return c.fields.any { f ->
+            val ft = f.type
+            isValue(ft) || holdsContainer(ft, seen) || (isMaybe(ft) && (ft as KType.Nominal).typeArgs().firstOrNull()?.let { isValue(it) || holdsContainer(it, seen) } == true)
+        }
+    }
+
+    /** Stage 4's rule (its gate on): a List, a Map, a Set and a Mutable type are shared, never copied. */
+    private val shares: Boolean = net.exoad.kira.compiler.frontend.parser.DialectGates.mutability
 
     private fun elementOf(t: KType): KType? = (t as? KType.Nominal)?.typeArgs()?.let { if (isMap(t)) it.getOrNull(1) else it.firstOrNull() }
 

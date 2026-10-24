@@ -51,7 +51,7 @@ internal class LambdaTyper(private val c: PhaseC) {
             c.report(
                 "types.lambda.mismatch",
                 "This lambda is ${own.display()}, but its context expects ${expected.display()}: " +
-                    "a lambda's parameter types, their `mut`, and its return type must match exactly.",
+                    "a lambda's parameter types${if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "" else ", their `mut`,"} and its return type must match exactly.",
                 e,
             )
             return KType.Error

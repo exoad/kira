@@ -83,7 +83,14 @@ data class WithInfo(
  * `value == Identity`: [always] when the types decide it, else a run-time test, that the object is [subtype]
  * (a class or trait; an empty Maybe is none) or, with none, that a Maybe holds a value; [narrowed] is what passing makes it.
  */
-data class Conformance(val value: KType, val always: Boolean, val subtype: Symbol?, val narrowed: KType?)
+data class Conformance(
+    val value: KType,
+    val always: Boolean,
+    val subtype: Symbol?,
+    val narrowed: KType?,
+    /** `value == Mutable<P>` (stage 4) tested at run time: the object is one of these Mutable types. */
+    val mutables: List<Symbol>? = null,
+)
 
 /** A read of a local or parameter that a passing conformance test narrowed from [from] to [to]. */
 data class Narrowing(val from: KType, val to: KType)
@@ -248,6 +255,16 @@ class TypedModel {
 
     /** Each conformance test, `value == Identity` (stage 3), keyed by its node. */
     val conformances: IdentityHashMap<TypeCheckExpr, Conformance> = IdentityHashMap()
+
+    /**
+     * Each change stage 4's sharing allows that the old rules did not (a List changed through a binding that is not
+     * Mutable, or through a lambda's capture), with its module and what it does: the cpp target, which holds a List
+     * by value, refuses each.
+     */
+    val sharedWrites: IdentityHashMap<net.exoad.kira.compiler.frontend.parser.ast.ASTNode, Pair<ModuleSymbol, String>> = IdentityHashMap()
+
+    /** The tests whose identity is `Mutable<P>` (stage 4): the value conforms to P and is Mutable. */
+    val mutableTests: MutableSet<TypeCheckExpr> = java.util.Collections.newSetFromMap(IdentityHashMap())
 
     /** Each read of a local or parameter that a conformance test around it narrowed. */
     val narrowings: IdentityHashMap<Identifier, Narrowing> = IdentityHashMap()

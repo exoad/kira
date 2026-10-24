@@ -410,7 +410,8 @@ internal class CallResolver(private val c: PhaseC) {
      * receiver outside a lambda, whose mutability the rule passes check (W2.5).
      */
     private fun mutReceiver(receiver: Expr?, recv: KType, fn: FnSymbol, nameNode: Identifier, implicitThis: Boolean, ctx: BodyContext) {
-        if (ctx.lambda == null || facts.isReference(recv)) {
+        // Stage 4: a Mutable type's value is shared, so a lambda that captured one changes the one value.
+        if (ctx.lambda == null || facts.isReference(recv) || facts.shares(recv)) {
             return
         }
         val place = if (implicitThis) ctx.owner?.let { Place.This(it) } else receiver?.let { model.places[it] }
@@ -420,8 +421,8 @@ internal class CallResolver(private val c: PhaseC) {
         val what = if (implicitThis) "the receiver of ${ctx.owner!!.name}.${fn.name}" else "'${KiraUnparser.text(receiver!!)}'"
         c.report(
             "types.lambda.assign-capture",
-            "$what is captured by this lambda, and a capture is an immutable copy (spec): '${fn.name}' is a `mut fx`, " +
-                "which writes its receiver. Share mutable state through a Ref<T> instead.",
+            "$what is captured by this lambda, and a capture is an immutable copy (spec): '${fn.name}' " +
+                (if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "changes its receiver, a value. Share state that changes through a Mutable type instead." else "is a `mut fx`, which writes its receiver. Share mutable state through a Ref<T> instead."),
             receiver ?: nameNode,
         )
     }

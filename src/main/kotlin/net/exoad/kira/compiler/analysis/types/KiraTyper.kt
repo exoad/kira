@@ -81,6 +81,14 @@ object KiraTyper {
         guard(program, "body typing") {
             bodyTyper.type(program)
         }
+        if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) {
+            guard(program, "changing functions") {
+                ChangingFunctions(program).run()
+            }
+            guard(program, "written parameters") {
+                WrittenParams(program).run()
+            }
+        }
         guard(program, "key check") {
             KeyCheck(program).run()
         }
