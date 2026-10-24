@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.analysis.types.rules
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
@@ -58,7 +59,10 @@ internal class MutabilityPass : RulePass {
                     is AssignmentExpr -> write(r, b, n.target, lambdas)
                     is CompoundAssignmentExpr -> write(r, b, n.left, lambdas)
                     is PlaceAssignmentExpr -> write(r, b, n.target, lambdas)
-                    is FunctionCallExpr -> mutMethod(r, b, n, lambdas)
+                    is FunctionCallExpr -> {
+                        mutMethod(r, b, n, lambdas)
+                        if (DialectGates.mutability) byRef(r, b, n, lambdas)
+                    }
                     else -> {}
                 }
             }
@@ -125,6 +129,22 @@ internal class MutabilityPass : RulePass {
         val root = place.root()
         val sym = (root as? Place.Local)?.sym ?: (root as? Place.Param)?.sym ?: return false
         return captures.any { it is Capture.Value && it.symbol === sym }
+    }
+
+    /**
+     * Stage 4: a List the callee changes is passed by reference (WrittenParams, C++ `T&`); from a binding that is not
+     * Mutable, or as a temporary, only sharing lets the change through.
+     */
+    private fun byRef(r: Rules, b: Body, e: FunctionCallExpr, lambdas: List<LambdaExpr>) {
+        val rc = r.model.calls[e] ?: return
+        for (a in rc.args) {
+            if (a !is ArgBinding.Given || !a.byRef) continue
+            val place = r.model.places[a.expr]
+            when {
+                place == null -> shared(r, b, a.expr, "'${KiraUnparser.text(a.expr)}', no place of its own, passed to '${rc.fn?.name}', which changes it in place (C++ takes it by reference)")
+                !oldRulesWrite(r, b, place, lambdas) -> shared(r, b, a.expr, "'${KiraUnparser.text(a.expr)}' passed to '${rc.fn?.name}', which changes it, from a binding that is not Mutable (a shared value the py target lowers)")
+            }
+        }
     }
 
     /** Records [node] as a change only stage 4's sharing allows, which the cpp target refuses. */

@@ -402,9 +402,8 @@ class PyModuleEmitter(
         }
         if (c.kind == ClassKind.STRUCT) {
             // A struct is a value (D1): until stage 4 the emitter copies it where a second name could see a write;
-            // from stage 4 no value changes in Kira, so a `with`, a lambda's `this` and a sidecar (D68) copy one.
-            // From stage 4 a field's value never changes in place, so the copy shares it.
-            val copied = c.fields.map { "c.${pyName(it)} = ${if (shares) "self.${pyName(it)}" else copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+            // from stage 4 a `with`, a lambda's `this` and a sidecar (D68) copy one, sharing all but an Arr ([cloneField]).
+            val copied = c.fields.map { cloneField(it) }
             body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
             if (!shares) {
                 val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
@@ -418,7 +417,7 @@ class PyModuleEmitter(
         if (c in model.withCopied) {
             // A `with` copies it (a struct has its _k_clone already) and re-runs its initially on the copy.
             if (c.kind == ClassKind.CLASS) {
-                val copied = c.fields.map { "c.${pyName(it)} = ${if (shares) "self.${pyName(it)}" else copyOf(Py("self.${pyName(it)}", PyPrec.POSTFIX), it.type).text}" }
+                val copied = c.fields.map { cloneField(it) }
                 body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
             }
             c.initially?.let { body += listOf("", "def _k_initially(self):") + indent(block(it, Frame(c, null))) }
@@ -428,6 +427,12 @@ class PyModuleEmitter(
             body += function(m, c)
         }
         return out + indent(body)
+    }
+
+    /** A `_k_clone`'s copy of the field [f]: a copy, or from stage 4 the value itself, but for an Arr (`set` changes one in place) or what holds one. */
+    private fun cloneField(f: FieldSymbol): String {
+        val self = Py("self.${pyName(f)}", PyPrec.POSTFIX)
+        return "c.${pyName(f)} = ${if (shares && !holdsValue(f.type)) self.text else copyOf(self, f.type).text}"
     }
 
     /** The def's own default when it and every later one fold to a literal; a call names any other. */

@@ -307,6 +307,109 @@ class MutabilityTest {
     }
 
     @Test
+    fun aWithCopyOfAValueTypeKeepsItsOwnArrOnPy() {
+        // `initially` re-run on the copy, and the block itself, change the copy's Arr, never the original's.
+        val out = runPy(
+            """
+            P: Struct {
+                pub n: Int32
+                pub a: Arr<Int32> = @arrOf(0, 0)
+
+                initially {
+                    a.set(0, n)
+                }
+            }
+
+            main: () Void {
+                p: P = P { 1 }
+                q: P = p with {
+                    n = 2
+                }
+                r: P = p with {
+                    a.set(1, 9)
+                }
+                trace(p.a.get(0))
+                trace(q.a.get(0))
+                trace(p.a.get(1))
+                trace(r.a.get(1))
+            }
+            """,
+        )
+        assertEquals("1\n2\n0\n9\n", out)
+    }
+
+    /** The cpp.unsupported messages of [body], emitted as the module test:copies. */
+    private fun cppRefusals(body: String): List<String> {
+        val e = DeclTestSupport.emit(DeclTestSupport.module("test:copies", body))
+        return e.diagnostics("test:copies").filter { it.code == "cpp.unsupported" }.map { it.message }
+    }
+
+    @Test
+    fun cppRefusesACopyThatSharingMakesOneValue() {
+        val refused = cppRefusals(
+            """
+            Bag: Mutable<Any> {
+                pub items: Mutable<List<Int32>> = List<Int32> { }
+            }
+
+            pub f: () Int32 {
+                a: Mutable<List<Int32>> = @listOf(1, 2)
+                b: Mutable<List<Int32>> = a
+                b.add(3)
+                bag: Bag = Bag { }
+                bag.items = a
+                bag.items.add(4)
+                rows: Mutable<List<List<Int32>>> = List<List<Int32>> { }
+                rows.add(a)
+                rows[0].add(5)
+                g: () Size = () Size {
+                    a.size()
+                }
+                a.add(6)
+                total: Size = a.size() + b.size() + g()
+                total as Int32
+            }
+            """,
+        )
+        assertTrue(refused.any { it.contains("copied from 'a' into 'b'") }, refused.toString())
+        assertTrue(refused.any { it.contains("copied from 'a' into bag.items") }, refused.toString())
+        assertTrue(refused.any { it.contains("copied from 'a' into rows") }, refused.toString())
+        assertTrue(refused.any { it.contains("a lambda captures 'a'") }, refused.toString())
+        // An explicit copy is a new value, and a local built up and stored, never used again, is moved: both lower.
+        val ok = cppRefusals(
+            """
+            Bag: Mutable<Any> {
+                pub items: Mutable<List<Int32>> = List<Int32> { }
+            }
+
+            pub f: () Int32 {
+                a: Mutable<List<Int32>> = @listOf(1, 2)
+                b: Mutable<List<Int32>> = a.view().toList()
+                b.add(3)
+                built: Mutable<List<Int32>> = List<Int32> { }
+                built.add(4)
+                bag: Bag = Bag { }
+                bag.items = built
+                bag.items.add(5)
+                total: Size = a.size() + b.size() + bag.items.size()
+                total as Int32
+            }
+            """,
+        )
+        assertEquals(emptyList(), ok)
+    }
+
+    @Test
+    fun cppRefusesAListPassedByReferenceFromAPlainBindingOrATemporary() {
+        val grow = "grow: (xs: List<Int32>) Void {\n    xs.add(9)\n}\n\n"
+        val plain = cppRefusals(grow + "pub f: () Int32 {\n    a: List<Int32> = @listOf(1, 2)\n    grow(a)\n    a.size() as Int32\n}\n")
+        assertTrue(plain.any { it.contains("'a' passed to 'grow', which changes it, from a binding that is not Mutable") }, plain.toString())
+        val temp = cppRefusals(grow + "pub f: () Void {\n    grow(@listOf(1, 2))\n}\n")
+        assertTrue(temp.any { it.contains("no place of its own, passed to 'grow'") }, temp.toString())
+        assertEquals(emptyList(), cppRefusals(grow + "pub f: () Int32 {\n    a: Mutable<List<Int32>> = @listOf(1, 2)\n    grow(a)\n    a.size() as Int32\n}\n"))
+    }
+
+    @Test
     fun cppTakesAChangedListParameterByReferenceAndAReaderConst() {
         val e = DeclTestSupport.emit(
             DeclTestSupport.module(
