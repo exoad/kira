@@ -65,8 +65,30 @@ object Stage4 {
         var handFiles = 0
         val outs = LinkedHashMap<File, Rewrite>()
         val groupOf = HashMap<File, String>()
+        val rewrites = HashMap<String, Rewrite>()
         for (g in order) {
             val (l, p) = loaded.getValue(g)
+            for (f in groups.getValue(g)) {
+                val path = ProjectUnits.canonical(f.path)
+                val ctx = l.sources[path] ?: continue
+                rewrites[path] = Rewrite(f.readText(), ctx, p, facts).also { it.collect() }
+            }
+        }
+        val edited = rewrites.filterValues { it.edits.isNotEmpty() }.keys
+        for (g in order) {
+            val (l, p) = loaded.getValue(g)
+            // A group reads as old text when the run edits a file of its unit (its own, or its stdlib); then its copies
+            // are checked, each body of the unit read, so a callee or a field's changes in another file count.
+            val copyHand = IdentityHashMap<net.exoad.kira.source.SourceContext, MutableList<Pair<Int, String>>>()
+            if (l.sources.keys.any { it in edited }) {
+                val mine = groups.getValue(g).mapNotNull { l.sources[ProjectUnits.canonical(it.path)] }.toSet()
+                val copies = Stage4Copies(p, facts, mine)
+                copies.run()
+                for ((n, why) in copies.hand) {
+                    val (ctx, at) = p.locate(n) ?: continue
+                    copyHand.getOrPut(ctx) { mutableListOf() } += (ctx.astOrigins[n]?.lineNumber ?: at.lineNumber) to why
+                }
+            }
             for (f in groups.getValue(g)) {
                 val path = ProjectUnits.canonical(f.path)
                 val ctx = l.sources[path]
@@ -75,19 +97,16 @@ object Stage4 {
                     println("NOT-READ $f: ${l.failures[path] ?: "not in its group's unit"}")
                     continue
                 }
-                val rw = Rewrite(f.readText(), ctx, p, facts)
-                rw.collect()
-                // Only old text has copies to check: a file stage 4 leaves as it is reads as it did.
-                val copies = Stage4Copies(p, facts, setOf(ctx))
-                if (rw.edits.isNotEmpty()) copies.run()
-                val hand = (rw.hand + copies.hand.map { (n, why) -> line(ctx, n) to why }).sortedBy { it.first }
+                val rw = rewrites.getValue(path)
+                val copies = copyHand[ctx].orEmpty()
+                val hand = (rw.hand + copies).sortedBy { it.first }
                 if (hand.isNotEmpty()) {
                     handFiles++
                     hands += hand.size
                     hand.forEach { (ln, why) -> println("HAND $f:$ln: $why") }
                 }
                 rw.stats.forEach { (k, v) -> totals[k] = (totals[k] ?: 0) + v }
-                if (copies.hand.isNotEmpty()) totals["copy-then-change to check"] = (totals["copy-then-change to check"] ?: 0) + copies.hand.size
+                if (copies.isNotEmpty()) totals["copy-then-change to check"] = (totals["copy-then-change to check"] ?: 0) + copies.size
                 if (rw.edits.isEmpty()) {
                     proved++
                     continue

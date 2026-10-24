@@ -183,24 +183,6 @@ class Stage4Facts {
 
     companion object {
         /** Every body of [p] a write can be in: functions, methods, initially blocks, field defaults, globals. */
-        fun bodies(p: TypedProgram): List<ASTNode> {
-            val out = mutableListOf<ASTNode>()
-            for (m in p.modules) {
-                for (s in m.declarations) {
-                    when (s) {
-                        is net.exoad.kira.compiler.analysis.types.FnSymbol -> s.decl?.let { out += it }
-                        is ClassSymbol -> {
-                            s.methods.forEach { f -> f.decl?.let { out += it } }
-                            s.initially?.let { out.addAll(it) }
-                            s.fields.forEach { f -> f.default?.let { out += it } }
-                        }
-                        is TraitSymbol -> s.methods.forEach { f -> f.decl?.let { out += it } }
-                        is net.exoad.kira.compiler.analysis.types.GlobalSymbol -> s.init?.let { out += it }
-                        else -> {}
-                    }
-                }
-            }
-            return out
-        }
+        fun bodies(p: TypedProgram): List<ASTNode> = net.exoad.kira.compiler.analysis.types.CopyFlows.bodies(p)
     }
 }
