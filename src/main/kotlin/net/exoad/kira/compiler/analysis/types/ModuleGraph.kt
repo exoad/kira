@@ -120,7 +120,21 @@ class ModuleGraph(private val program: TypedProgram) {
             }
             std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return Lookup.Found(it, std) }
         }
-        return Lookup.Missing
+        return nested(module, name, accept) ?: Lookup.Missing
+    }
+
+    /**
+     * A nested type (`Outer_Inner`, the parser's name for `Outer.Inner`) through its outermost
+     * type, wherever that is seen from here: `Shape.Corner` with Shape a member alias.
+     */
+    private fun nested(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean): Lookup? {
+        val cut = name.indexOf('_')
+        if (cut <= 0 || name.none { it.isLowerCase() }) return null
+        val outer = lookup(module, name.substring(0, cut)) { it is ClassSymbol || it is TraitSymbol } as? Lookup.Found ?: return null
+        val home = outer.symbol.module
+        if (home === module) return null
+        val sym = home.members[name]?.takeIf(accept) ?: return null
+        return if (isPub(sym)) Lookup.Found(sym, home) else Lookup.NotVisible(sym, home)
     }
 
     /**

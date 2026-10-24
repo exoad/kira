@@ -152,7 +152,23 @@ object DialectLink {
                 if (std === m) continue
                 std.types[id.value]?.takeIf(::isPub)?.let { return follow(std, it, depth) }
             }
+            // A nested type (Outer_Inner) through its outermost type's module, as ModuleGraph has it.
+            val cut = id.value.indexOf('_')
+            if (cut > 0 && id.value.any { it.isLowerCase() }) {
+                val home = homeOf(m, id.value.substring(0, cut))?.takeIf { it !== m } ?: return null
+                return home.types[id.value]?.takeIf(::isPub)?.let { follow(home, it, depth) }
+            }
             return null
+        }
+
+        /** The module whose type [name] names from inside [m]: its own, a member alias's, an import's (old text), the stdlib's. */
+        private fun homeOf(m: Module, name: String): Module? {
+            if (name in m.types) return m
+            m.named[name]?.let { (uri, member) -> return modules[uri]?.takeIf { member in it.types } }
+            if (!DialectGates.aliasOnlyImports) {
+                m.imports.mapNotNull { modules[it] }.firstOrNull { name in it.types }?.let { return it }
+            }
+            return stdlib.firstOrNull { it !== m && name in it.types }
         }
 
         private fun follow(m: Module, d: Decl, depth: Int): Decl? = if (d is TypeAliasDecl) lookup(m, d.target, depth + 1) else d

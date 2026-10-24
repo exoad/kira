@@ -1,0 +1,8 @@
+// Types inside type bodies, reached as Outer.Inner, through a member alias and a module alias.
+PROJECT: Project = Project { } with {
+    name = "golden.py.nestedtypes"
+    srcDir = "src"
+    target = "py"
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

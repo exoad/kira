@@ -156,9 +156,12 @@ fun KType.display(): String = when (this) {
     KType.NullT -> "Null"
     KType.Error -> "<error>"
     is KType.Param -> sym.name
-    is KType.Nominal -> if (args.isEmpty()) sym.name else "${sym.name}<${args.joinToString(", ")}>"
+    is KType.Nominal -> spelled(sym.name).let { n -> if (args.isEmpty()) n else "$n<${args.joinToString(", ")}>" }
     is KType.Fn -> "Fx<Tuple${params.size}${if (params.isEmpty()) "" else "<${params.joinToString(", ")}>"}, ${ret.display()}>"
 }
+
+/** A type's name as written: a nested type's `Outer_Inner` (the parser's) is `Outer.Inner`. */
+fun spelled(name: String): String = if ('_' in name && name.any { it.isLowerCase() }) name.replace('_', '.') else name
 
 /** True when this type is, or contains, [KType.Error]. */
 fun KType.containsError(): Boolean = when (this) {
