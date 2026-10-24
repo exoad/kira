@@ -26,7 +26,7 @@ class ExternLiteralRunTest {
         """
         LIM: Int64 = 5
 
-        mut gc: Bool = true
+        gc: Mutable<Bool> = true
 
         pub @_extern(cpp = "q::w", header = "q.hxx") w: (x: Int64) Int32;
 

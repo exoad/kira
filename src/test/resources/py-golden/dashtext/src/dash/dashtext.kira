@@ -9,11 +9,11 @@
 
 LIDAR: Int64 = 255
 
-pub Scan: Any {
-    pub mut rotMhz: Int64 = 0
-    pub mut angles: List<UInt16> = List<UInt16> { }
-    pub mut dists: List<UInt16> = List<UInt16> { }
-    pub mut quals: List<UInt8> = List<UInt8> { }
+pub Scan: Mutable<Any> {
+    pub rotMhz: Mutable<Int64> = 0
+    pub angles: Mutable<List<UInt16>> = List<UInt16> { }
+    pub dists: Mutable<List<UInt16>> = List<UInt16> { }
+    pub quals: Mutable<List<UInt8>> = List<UInt8> { }
 }
 
 space: (c: Char) Bool {
@@ -22,8 +22,8 @@ space: (c: Char) Bool {
 
 // text.strip() over ASCII.
 strip: (s: Str) Str {
-    mut a: Size = 0
-    mut b: Size = s.length()
+    a: Mutable<Size> = 0
+    b: Mutable<Size> = s.length()
     while a < b && space(s[a]) {
         a += 1
     }
@@ -38,8 +38,8 @@ isDigits: (s: Str) Bool {
     if s.isEmpty() {
         false
     } else {
-        mut i: Size = 0
-        mut result: Bool = true
+        i: Mutable<Size> = 0
+        result: Mutable<Bool> = true
         while i < s.length() {
             if s[i] < '0' || s[i] > '9' {
                 result = false
@@ -53,8 +53,8 @@ isDigits: (s: Str) Bool {
 
 // int(s) % m for digits of any length, digit by digit.
 digitsMod: (s: Str, m: Int64) Int64 {
-    mut v: Int64 = 0
-    mut i: Size = 0
+    v: Mutable<Int64> = 0
+    i: Mutable<Size> = 0
     while i < s.length() {
         v = (v * 10 + ((s[i] as Int64) - 48)) % m
         i += 1
@@ -64,10 +64,10 @@ digitsMod: (s: Str, m: Int64) Int64 {
 
 // min(int(s), cap) for digits of any length.
 digitsCapped: (s: Str, cap: Int64) Int64 {
-    mut v: Int64 = 0
-    mut i: Size = 0
-    mut result: Int64 = 0
-    mut found: Bool = false
+    v: Mutable<Int64> = 0
+    i: Mutable<Size> = 0
+    result: Mutable<Int64> = 0
+    found: Mutable<Bool> = false
     while i < s.length() {
         v = v * 10 + ((s[i] as Int64) - 48)
         if v > cap {
@@ -91,7 +91,7 @@ pub scan: (line: Str) Scan {
     if words.size() > 2 && isDigits(words[2]) {
         out.rotMhz = words[2].toInt64().unwrapOr(0)
     }
-    mut k: Size = 3
+    k: Mutable<Size> = 3
     while k < words.size() {
         f: List<Str> = words[k].split(",")
         k += 1
@@ -140,8 +140,8 @@ wsCommand: (words: List<Str>) Str {
     } else if w0 == "h264" && n == 3 && number(words[1]).isSome() {
         "h264 ${number(words[1]).value} " + flag(words[2])
     } else if w0 == "mask" && n >= 2 {
-        mut out: Str = "mask"
-        mut k: Size = 1
+        out: Mutable<Str> = "mask"
+        k: Mutable<Size> = 1
         while k < n {
             out = out + " [" + words[k] + "]"
             k += 1
@@ -168,8 +168,8 @@ pub command: (text: Str, ctrl: Bool) Str {
     } else if w0 == "a" && n == 2 && number(words[1]).isSome() {
         "ack ${number(words[1]).value}"
     } else if w0 == "p" && (n == 2 || n == 3) {
-        mut result: Str = ""
-        mut found: Bool = false
+        result: Mutable<Str> = ""
+        found: Mutable<Bool> = false
         if n == 3 {
             rtt: Maybe<Float64> = words[2].toFloat64()
             if rtt.isSome() {
@@ -194,8 +194,8 @@ scanText: (line: Str) Str {
         "not a scan"
     } else {
         s: Scan = scan(line)
-        mut out: Str = "rot ${s.rotMhz}:"
-        mut i: Size = 0
+        out: Mutable<Str> = "rot ${s.rotMhz}:"
+        i: Mutable<Size> = 0
         while i < s.angles.size() {
             out = out + " ${s.angles[i]},${s.dists[i]},${s.quals[i]}"
             i += 1

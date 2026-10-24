@@ -11,8 +11,8 @@ space: (c: Char) Bool {
 
 // s.split()
 pub words: (s: Str) List<Str> {
-    mut out: List<Str> = List<Str> { }
-    mut i: Size = 0
+    out: Mutable<List<Str>> = List<Str> { }
+    i: Mutable<Size> = 0
     while i < s.length() {
         while i < s.length() && space(s[i]) {
             i += 1
@@ -20,7 +20,7 @@ pub words: (s: Str) List<Str> {
         if i == s.length() {
             break
         }
-        mut j: Size = i
+        j: Mutable<Size> = i
         while j < s.length() && !space(s[j]) {
             j += 1
         }
@@ -32,10 +32,10 @@ pub words: (s: Str) List<Str> {
 
 // words[1:7] as ints, joined by spaces, or none when one is not an int.
 sixInts: (w: List<Str>) Maybe<Str> {
-    mut out: Str = ""
-    mut k: Size = 1
-    mut result: Maybe<Str> = null
-    mut found: Bool = false
+    out: Mutable<Str> = ""
+    k: Mutable<Size> = 1
+    result: Mutable<Maybe<Str>> = null
+    found: Mutable<Bool> = false
     while k < 7 {
         v: Maybe<Int64> = w[k].toInt64()
         if v.isNone() {

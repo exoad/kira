@@ -1,18 +1,18 @@
 // D33: a container a call gives is located before the key and the value, and once.
 
-Holder: Any {
-    pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
-    pub mut xs: List<Int32> = List<Int32> { }
-    pub mut n: Int32 = 0
-    pub mut tag: Int32 = 0
+Holder: Mutable<Any> {
+    pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    pub xs: Mutable<List<Int32>> = List<Int32> { }
+    pub n: Mutable<Int32> = 0
+    pub tag: Mutable<Int32> = 0
 }
 
-Shelf: Any {
-    pub mut bags: List<Holder> = List<Holder> { }
-    pub mut swaps: Int32 = 0
+Shelf: Mutable<Any> {
+    pub bags: Mutable<List<Holder>> = List<Holder> { }
+    pub swaps: Mutable<Int32> = 0
 
-    pub mut swapFirst: () Int32 {
-        mut b: Holder = Holder { }
+    pub swapFirst: () Int32 {
+        b: Mutable<Holder> = Holder { }
         swaps += 1
         b.tag = swaps
         bags[0] = b
@@ -24,8 +24,8 @@ Shelf: Any {
     }
 }
 
-mut gm: Map<Str, Int32> = Map<Str, Int32> { }
-mut gxs: List<Int32> = List<Int32> { }
+gm: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+gxs: Mutable<List<Int32>> = List<Int32> { }
 
 holderOf: (h: Holder) Holder {
     trace("holder")
@@ -58,8 +58,8 @@ swapGlobals: () Int32 {
 
 show: (b: Holder) Str {
     ks: Arr<Str> = b.items.keys()
-    mut s: Str = "holder${b.tag} {"
-    mut i: Size = 0
+    s: Mutable<Str> = "holder${b.tag} {"
+    i: Mutable<Size> = 0
     while i < ks.size() {
         s = s + " ${ks[i]}"
         i += 1
@@ -68,7 +68,7 @@ show: (b: Holder) Str {
 }
 
 main: () Void {
-    mut h: Holder = Holder { }
+    h: Mutable<Holder> = Holder { }
     h.xs.add(0)
     trace("-- map, impure key and value")
     holderOf(h).items[key()] = val()
@@ -83,8 +83,8 @@ main: () Void {
     trace(h.items.size())
 
     trace("-- the container is the one the call gave before the value replaced it")
-    mut sh: Shelf = Shelf { }
-    mut b0: Holder = Holder { }
+    sh: Mutable<Shelf> = Shelf { }
+    b0: Mutable<Holder> = Holder { }
     sh.bags.add(b0)
     sh.first().items["k"] = sh.swapFirst()
     trace(show(b0))

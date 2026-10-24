@@ -54,6 +54,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * Every syntax form design section 2 adds (W1.1, step 3), parsed into the
@@ -172,31 +173,27 @@ class ParserGrowthTest {
     // --- for ... in ---------------------------------------------------------
 
     @Test
-    fun forInParsesAsTheSpecFormBesideTheLegacyForm() {
+    fun forInParsesAsTheSpecForm() {
         val fn = parse(
             """
             f: (names: Arr<Str>) Void {
                 for i: Int32 in 0..8 { trace(i) }
-                for mut j: 0..8 { trace(j) }
                 for b: Str in names { trace(b) }
                 for (k: Size in 0..n) { trace(k) }
             }
             """
         ).single<FunctionDecl>()
         val loops = body(fn).map { assertIs<ForIterationStatement>(it).forIterationExpr }
-        assertEquals(4, loops.size)
+        assertEquals(3, loops.size)
         assertFalse(loops[0].isLegacy)
         assertEquals("Int32", typeName(loops[0].declaredType))
         assertEquals("i", loops[0].initializer.value)
         assertIs<RangeExpr>(loops[0].target)
-        assertTrue(loops[1].isLegacy)
-        assertNull(loops[1].declaredType)
-        assertIs<RangeExpr>(loops[1].target)
+        assertFalse(loops[1].isLegacy)
+        assertEquals("Str", typeName(loops[1].declaredType))
+        assertEquals("names", (loops[1].target as Identifier).value)
         assertFalse(loops[2].isLegacy)
-        assertEquals("Str", typeName(loops[2].declaredType))
-        assertEquals("names", (loops[2].target as Identifier).value)
-        assertFalse(loops[3].isLegacy)
-        assertEquals("Size", typeName(loops[3].declaredType))
+        assertEquals("Size", typeName(loops[2].declaredType))
     }
 
     @Test
@@ -397,10 +394,10 @@ class ParserGrowthTest {
     fun thisIsAPrimaryAndAFreshNodePerUse() {
         val cls = parse(
             """
-            pub Node: Any {
+            pub Node: Mutable<Any> {
                 pub label: Str
                 pub get: () Str { this.label }
-                pub mut set: (v: Str) Void { this.label = v }
+                pub set: (v: Str) Void { this.label = v }
             }
             """
         ).single<ClassDecl>()
@@ -416,25 +413,27 @@ class ParserGrowthTest {
 
     @Test
     fun callSiteMutMarksArguments() {
-        val fn = parse(
-            """
-            f: (line: Str) Void {
-                wordAt(line, 0, mut b, mut e)
-                field(text, key, out = mut raw)
-                field(text, key, mut out = raw)
-                if !field(text, key, mut raw) { }
-            }
-            """
-        ).single<FunctionDecl>()
-        val stmts = body(fn)
-        val c1 = assertIs<FunctionCallExpr>(stmts[0].expr)
-        assertEquals(listOf(false, false, true, true), c1.positionalParameters.map { it.isMut })
-        val c2 = assertIs<FunctionCallExpr>(stmts[1].expr)
-        assertEquals("out", c2.namedParameters.single().name.value)
-        assertTrue(c2.namedParameters.single().isMut)
-        assertTrue(assertIs<FunctionCallExpr>(stmts[2].expr).namedParameters.single().isMut)
-        val cond = assertIs<UnaryExpr>(assertIs<IfSelectionStatement>(stmts[3]).expr)
-        assertTrue(assertIs<FunctionCallExpr>(cond.operand).positionalParameters[2].isMut)
+        DialectGates.stage4(false) {
+            val fn = parse(
+                """
+                f: (line: Str) Void {
+                    wordAt(line, 0, mut b, mut e)
+                    field(text, key, out = mut raw)
+                    field(text, key, mut out = raw)
+                    if !field(text, key, mut raw) { }
+                }
+                """
+            ).single<FunctionDecl>()
+            val stmts = body(fn)
+            val c1 = assertIs<FunctionCallExpr>(stmts[0].expr)
+            assertEquals(listOf(false, false, true, true), c1.positionalParameters.map { it.isMut })
+            val c2 = assertIs<FunctionCallExpr>(stmts[1].expr)
+            assertEquals("out", c2.namedParameters.single().name.value)
+            assertTrue(c2.namedParameters.single().isMut)
+            assertTrue(assertIs<FunctionCallExpr>(stmts[2].expr).namedParameters.single().isMut)
+            val cond = assertIs<UnaryExpr>(assertIs<IfSelectionStatement>(stmts[3]).expr)
+            assertTrue(assertIs<FunctionCallExpr>(cond.operand).positionalParameters[2].isMut)
+        }
     }
 
     // --- initially, finally, override -----------------------------------------
@@ -443,8 +442,8 @@ class ParserGrowthTest {
     fun classInitiallyAndOverrideParse() {
         val cls = parse(
             """
-            Stop: Behaviour {
-                mut count: Int32 = 0
+            Stop: Mutable<Behaviour> {
+                count: Mutable<Int32> = 0
                 initially { count = 1 }
                 override pub id: () Str { "stop" }
             }
@@ -492,22 +491,24 @@ class ParserGrowthTest {
 
     @Test
     fun mutInsideTupleTypeArgumentsSetsIsMutParam() {
-        val fn = parse("f: (each: Fx<Tuple2<mut Str, Int32>, Void>) Void { }").single<FunctionDecl>()
-        val fx = fn.def.parameters.single().typeSpecifier
-        val tuple = fx.children[0]
-        assertEquals("Tuple2", typeName(tuple))
-        assertTrue(tuple.children[0].isMutParam)
-        assertFalse(tuple.children[1].isMutParam)
-        assertFalse(fx.isMutParam)
-        refusedAs("f: (xs: Arr<mut Str>) Void { }", "KiraParser::parseTypeParameter", "'mut' in a type argument is only meaningful inside a Tuple")
+        DialectGates.stage4(false) {
+            val fn = parse("f: (each: Fx<Tuple2<mut Str, Int32>, Void>) Void { }").single<FunctionDecl>()
+            val fx = fn.def.parameters.single().typeSpecifier
+            val tuple = fx.children[0]
+            assertEquals("Tuple2", typeName(tuple))
+            assertTrue(tuple.children[0].isMutParam)
+            assertFalse(tuple.children[1].isMutParam)
+            assertFalse(fx.isMutParam)
+            refusedAs("f: (xs: Arr<mut Str>) Void { }", "KiraParser::parseTypeParameter", "'mut' in a type argument is only meaningful inside a Tuple")
+        }
     }
 
     @Test
     fun declaredGenericsKeepThePascalCaseRule() {
-        // The UPPER_SNAKE constant, the integer and `mut` are argument-list
-        // forms (`Arr<UInt8, N>`, `Arr<UInt8, 32>`, `Tuple1<mut T>`); a
-        // declaration's own generics are PascalCase names, as before this
-        // package. Measured before: `class Box<T_X> { }` parsed.
+        // The UPPER_SNAKE constant and the integer are argument-list forms
+        // (`Arr<UInt8, N>`, `Arr<UInt8, 32>`); a declaration's own generics
+        // are PascalCase names, as before this package. Measured before:
+        // `class Box<T_X> { }` parsed.
         for (decl in listOf(
             "Box<T_X>: Any { }",
             "Pair<T_X>: Struct { }",
@@ -518,10 +519,9 @@ class ParserGrowthTest {
             assertTrue(e.message.contains("Type parameter 'T_X' does not conform to PascalCase"), e.message)
         }
         refusedAs("Box<4>: Any { }", "KiraParser::expect", "Expected an identifier but got an Integer Literal")
-        refusedAs("Box<mut T>: Any { }", "KiraParser::expect", "Expected an identifier but got a 'mut'")
         parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { x }")
         // ...and the argument-list forms still parse where they belong.
-        parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<mut Str>, Void>) Void { }")
+        parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<Str>, Void>) Void { }")
     }
 
     // --- intrinsic markers and calls ---------------------------------------------
@@ -688,10 +688,10 @@ class ParserGrowthTest {
         // design 5.9 chain: `pub mut fx onLoad: () Void { }` inside a trait.
         val p = parse(
             """
-            pub Behaviour: Any {
+            pub Behaviour: Mutable<Any> {
                 pub id: () Str;
-                pub mut onLoad: () Void { }
-                pub mut step: (p: Pass) Reply;
+                pub onLoad: () Void { }
+                pub step: (p: Pass) Reply;
             }
             """
         )
@@ -774,7 +774,7 @@ class ParserGrowthTest {
         val fn = parse(
             """
             f: () Void {
-                for mut i: 0..3 { trace(i) }
+                for i: Int32 in 0..4 { trace(i) }
                 p: Point = Point { 1, 2 }
                 x = 1
                 x += 1
@@ -784,7 +784,7 @@ class ParserGrowthTest {
             """
         ).single<FunctionDecl>()
         val stmts = body(fn)
-        assertTrue(assertIs<ForIterationStatement>(stmts[0]).forIterationExpr.isLegacy)
+        assertFalse(assertIs<ForIterationStatement>(stmts[0]).forIterationExpr.isLegacy)
         val init = assertIs<ObjectInitExpr>(assertIs<VariableDecl>(stmts[1].expr).value)
         assertEquals(2, init.positionalArgs.size)
         assertTrue(init.namedArgs.isEmpty())
@@ -802,21 +802,18 @@ class ParserGrowthTest {
         // A returned ternary is the if/else of returns on C and JS; one held in a local is not lowered.
         "if-expression" to "f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }",
         "lambda expression" to "f: () Void { g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x } }",
-        "member or index place" to "P: Any { mut x: Int32 = 0 }\nf: (p: P) Void { p.x = 1 }",
-        "'this' expression" to "P: Any { mut x: Int32 = 0\n pub get: () Int32 { this.x } }",
+        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: (p: P) Void { p.x = 1 }",
+        "'this' expression" to "P: Mutable<Any> { x: Mutable<Int32> = 0\n pub get: () Int32 { this.x } }",
         "char literal" to "f: () Void { c: Char = 'a' }",
         "interpolated string literal" to "f: (n: Int32) Str { \"n=\${n}\" }",
-        "an 'initially' block" to "P: Any { mut x: Int32 = 0\n initially { x = 1 } }",
-        "named construction" to "P: Any { mut x: Int32 = 0 }\nf: () Void { p: P = P { x = 1 } }",
-        "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nf: () Void { mut y: Int32 = 0\n g(mut y) }",
+        "an 'initially' block" to "P: Mutable<Any> { x: Mutable<Int32> = 0\n initially { x = 1 } }",
+        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: () Void { p: P = P { x = 1 } }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nf: () Int32 { g(1) }",
         // Measured before: only the trailing positions were inspected, and this
         // one ended in an IllegalStateException from the argument binder.
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nf: () Int32 { g(1, c = 3) }",
-        "over a container" to "f: (xs: Arr<Int32>) Void { for x: Int32 in xs { trace(x) } }",
         "@_static_assert" to "f: () Void { @_static_assert(1 == 1, \"ok\") }",
         "const type argument" to "f: () Void { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4) }",
-        "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }",
     )
 
     @Test
@@ -852,23 +849,20 @@ class ParserGrowthTest {
 
     @Test
     fun theOldFormsStillCompileOnTheCTarget() {
-        // A default parameter that every call supplies, an exclusive spec range
-        // and the legacy inclusive range all lower; only the omitted default,
-        // the container for-in and the new nodes are refused.
+        // A default parameter that every call supplies and an exclusive spec
+        // range lower; only the omitted default and the new nodes are refused.
         val c = emitC(
             """
             g: (a: Int32, b: Int32 = 2) Int32 { a + b }
             f: () Int32 {
-                mut n: Int32 = 0
+                n: Mutable<Int32> = 0
                 for i: Int32 in 0..3 { n += i }
-                for mut j: 0..3 { n += j }
                 n = g(n, b = 5)
                 g(n, 1)
             }
             """.trimIndent()
         )
         assertTrue(c.contains("i < 3"), c)
-        assertTrue(c.contains("j <= 3"), c)
         assertTrue(c.contains("g(n, 5)"), c)
         assertTrue(c.contains("g(n, 1)"), c)
     }
@@ -928,20 +922,17 @@ class ParserGrowthTest {
         "if-expression" to "main: () Int32 { x: Int32 = 1\n y: Int32 = x > 0 ? 1 : 2\n y }",
         "a try used as a value" to "main: () Int32 { x: Int32 = try { 1 } on e: Str { 2 }\n x }",
         "lambda expression" to "main: () Int32 { trace((x: Int32) Int32 { x })\n 0 }",
-        "member or index place" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n p.x }",
-        "'this' expression" to "P: Any {\n mut x: Int32 = 0\n pub get: () Int32 { this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n p.get() }",
+        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n p.x }",
+        "'this' expression" to "P: Mutable<Any> {\n x: Mutable<Int32> = 0\n pub get: () Int32 { this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n p.get() }",
         "char literal" to "main: () Int32 { trace('a')\n 0 }",
         "interpolated string literal" to "main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n 0 }",
-        "an 'initially' block" to "P: Any {\n mut x: Int32 = 0\n initially { x = 1 }\n}\nmain: () Int32 { p: P = P { 0 }\n p.x }",
-        "named construction" to "P: Any { mut x: Int32 = 0 }\nmain: () Int32 { p: P = P { x = 1 }\n p.x }",
-        "call-site 'mut'" to "g: (mut x: Int32) Void { x = 1 }\nmain: () Int32 { mut y: Int32 = 0\n g(mut y)\n y }",
+        "an 'initially' block" to "P: Mutable<Any> {\n x: Mutable<Int32> = 0\n initially { x = 1 }\n}\nmain: () Int32 { p: P = P { 0 }\n p.x }",
+        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nmain: () Int32 { p: P = P { x = 1 }\n p.x }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nmain: () Int32 { g(1) }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nmain: () Int32 { g(1, c = 3) }",
-        "over a container" to "main: () Int32 { xs: Arr<Int32> = @arrOf(1, 2)\n for x: Int32 in xs { trace(x) }\n 0 }",
         "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nmain: () Int32 { 0 }",
         "@_static_assert" to "main: () Int32 { @_static_assert(1 == 1, \"ok\")\n 0 }",
         "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n 0 }",
-        "'mut' in an Fx parameter type" to "g: (f: Fx<Tuple1<mut Int32>, Void>) Void { }\nmain: () Int32 { 0 }",
     )
 
     private fun assertRefusedByTheBackend(target: String, backend: String) {

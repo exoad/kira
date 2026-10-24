@@ -1,6 +1,6 @@
 sumTo: (limit: Int32) Int32 {
-    mut total: Int32 = 0
-    for mut i: 0..limit {
+    total: Mutable<Int32> = 0
+    for i: Int32 in 0..(limit + 1) {
         total = total + i
     }
     total

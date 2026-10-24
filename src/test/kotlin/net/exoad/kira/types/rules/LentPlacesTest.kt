@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * R-A (40-round3 2): a lent result is a place. An accessor whose binding returns a reference into
@@ -21,6 +23,8 @@ import kotlin.test.assertTrue
  * spellings one verdict. Round 2's w2-5 #0 (q11, q13a, q13b, q14a), w2-6 #2 (c2, c2b, c2c) and #3
  * (c4, c4b), each a silent use-after-free on the trial, are refused here.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class LentPlacesTest {
     private fun errors(p: TypedProgram): List<String> = p.diagnostics.filter { it.isError }.map { it.code }.sorted()
 

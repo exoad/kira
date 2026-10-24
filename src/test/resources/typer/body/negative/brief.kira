@@ -13,25 +13,19 @@ id<T>: (value: T) T {
     value
 }
 
-setTo: (mut out: Int32, v: Int32) Void {
-    out = v
-}
-
 pair: (a: Int32, b: Int32) Int32 {
     a + b
 }
 
 pub NAME: Str = makeName()                 // @error types.const.str-literal
-pub mut state: Int32 = compute()           // @error types.global.mut-init
+pub state: Mutable<Int32> = compute()           // @error types.global.mut-init
 pub SMALL: UInt8 = 256                     // @error types.literal.range
 
 pub negatives: (s: Str, i: Int32, f: Float32, m: Maybe<Str>) Void {
     x: Float32 = i + f                     // @error types.op.mismatch
     y: UInt8 = 256                         // @error types.literal.range
     b: Bool = i < s.length()               // @error types.op.mismatch
-    setTo(mut i + 1, 2)                    // @error types.call.mut-not-place
-    mut t: Int32 = 0
-    setTo(t, 2)                            // @error types.call.mut-missing
+    t: Mutable<Int32> = 0
     n: Int32 = null                        // @error types.null.not-maybe
     l: Size = m.length()                   // @error types.maybe.member
     v: Int32 = id(3)                       // @error types.call.type-args
@@ -43,7 +37,7 @@ pub fieldThroughMaybe: (m: Maybe<Str>) Bool {
 }
 
 pub captures: () Void {
-    mut k: Int32 = 0
+    k: Mutable<Int32> = 0
     f: Fx<Tuple0, Void> = () Void {
         k = 1                              // @error types.lambda.assign-capture
     }

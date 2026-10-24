@@ -9,9 +9,9 @@ pub Speaker: Any {
     }
 }
 
-pub Animal: Any {
+pub Animal: Mutable<Any> {
     pub name: Str
-    pub mut age: Int32 = 0
+    pub age: Mutable<Int32> = 0
 
     pub describe: () Str {
         name                        // @type Str place=Field(This(Animal).name) sym=Animal.name
@@ -21,13 +21,13 @@ pub Animal: Any {
         "..."                       // @type Str
     }
 
-    pub mut birthday: () Void {
+    pub birthday: () Void {
         age += 1                           // @type Int32 place=Field(This(Animal).age) @ age
     }
 }
 
-pub Dog: Animal, Speaker {
-    pub mut tricks: Int32 = 0
+pub Dog: Mutable<Animal>, Speaker {
+    pub tricks: Mutable<Int32> = 0
 
     override pub sound: () Str {
         "woof"                      // @type Str
@@ -50,15 +50,15 @@ pub Dog: Animal, Speaker {
     }
 }
 
-pub Point: Struct {
-    pub x: Int32 = 0
+pub Point: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
     pub y: Int32 = 0
 
     pub sum: () Int32 {
         x + y                       // @type Int32
     }
 
-    pub mut shift: (dx: Int32) Void {
+    pub shift: (dx: Int32) Void {
         x += dx                            // @type Int32 place=Field(This(Point).x) @ x
     }
 }
@@ -82,7 +82,7 @@ pub classes: () Void {
     u: Str = a.sound()                     // @type Str call=VIRTUAL(Animal.sound)
     v: Str = a.describe()                  // @type Str call=METHOD(Animal.describe)
     w: Str = d.speak()                     // @type Str call=VIRTUAL(Dog.speak)
-    mut p: Point = Point { 1, 2 }          // @type Point
+    p: Mutable<Point> = Point { 1, 2 }          // @type Point
     q: Point = Point { y = 5 }             // @type Point
     total: Int32 = p.sum()                 // @type Int32 call=METHOD(Point.sum)
     p.shift(3)                             // @type Void call=METHOD(Point.shift)

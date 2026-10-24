@@ -5,7 +5,7 @@ kira.test as test
 // moduleDir, with lastError's category and readText's strict UTF-8.
 
 slashed: (paths: List<Str>, root: Str) Str {
-    mut out: List<Str> = @listOf()
+    out: Mutable<List<Str>> = @listOf()
     for p: Str in paths {
         out.add(p.replace("\\", "/").replace(root.replace("\\", "/") + "/", ""))
     }

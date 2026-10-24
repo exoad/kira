@@ -19,6 +19,8 @@ import org.junit.jupiter.api.TestFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * R19 and D33 on the emitted text: which calls and reads are copied into typed temporaries,
@@ -33,6 +35,8 @@ import kotlin.test.assertTrue
  * here keeps a view only as an argument, a receiver or a return, and a view of a temporary is
  * formed inside the lambda that holds its owner (E2, E3).
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppHoisterTest {
     private val module = Module(
         "hoist:cases",
@@ -1221,7 +1225,7 @@ class CppHoisterTest {
         }
 
         lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
-            m.lock((mut l: Ref<List<Int32>>) Void {
+            m.lock((l: Ref<List<Int32>>) Void {
                 gv = l.value.view()
             })
         }
@@ -1233,7 +1237,7 @@ class CppHoisterTest {
         }
 
         pub keptByATemporaryMutex: () Void {
-            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1) } } }.lock((mut l: Ref<List<Int32>>) Void {
+            Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(1) } } }.lock((l: Ref<List<Int32>>) Void {
                 gv = l.value.view()
             })
         }

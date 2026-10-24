@@ -48,7 +48,7 @@ pub cleanBox: (box: Json) Json {
         out
     } else {
         sides: List<Str> = @listOf("front", "back", "left", "right")
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < sides.size() {
             f: Maybe<Float64> = pyFloat(box.get(sides[i]))
             if box.has(sides[i]) && f.isSome() {
@@ -62,7 +62,7 @@ pub cleanBox: (box: Json) Json {
 
 pub cleanWedges: (wedges: Json) Json {
     out: Json = Json.arr()
-    mut i: Size = 0
+    i: Mutable<Size> = 0
     while wedges.isArr() && i < wedges.size() {
         w: Json = wedges.at(i)
         a0: Maybe<Float64> = pyFloat(w.get("a0"))
@@ -89,17 +89,17 @@ pub cleanWedges: (wedges: Json) Json {
 
 // A Mask on lidar-mask.json holding text: save()'s text, or what its constructor raises.
 pub reload: (text: Str) Str {
-    mut enabled: Bool = true
-    mut box: Json = defaultBox()
-    mut wedges: Json = Json.arr()
+    enabled: Mutable<Bool> = true
+    box: Mutable<Json> = defaultBox()
+    wedges: Mutable<Json> = Json.arr()
     cfg: Json = Json.parse(text)
-    mut result: Str = ""
-    mut found: Bool = false
+    result: Mutable<Str> = ""
+    found: Mutable<Bool> = false
     if Json.error() == "" && cfg.isObj() {
         enabled = !cfg.has("on") || truthy(cfg.get("on"))
         box = cleanBox(cfg.get("box"))
         wedges = cleanWedges(cfg.get("wedges"))
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < wedges.size() {
             a0: Float64 = wedges.at(i).get("a0").asFloat64().unwrap()
             a1: Float64 = wedges.at(i).get("a1").asFloat64().unwrap()

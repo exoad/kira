@@ -24,7 +24,7 @@ shown: (got: Maybe<List<UInt8>>) Str {
     if got.isNone() {
         "none"
     } else {
-        mut parts: List<Str> = @listOf()
+        parts: Mutable<List<Str>> = @listOf()
         for b: UInt8 in got.value {
             parts.add(b.toHex())
         }
@@ -34,7 +34,7 @@ shown: (got: Maybe<List<UInt8>>) Str {
 
 // Each text's fromHex shown, one call at a time, joined by spaces.
 hexes: (texts: List<Str>) Str {
-    mut parts: List<Str> = @listOf()
+    parts: Mutable<List<Str>> = @listOf()
     for text: Str in texts {
         parts.add(shown(fromHex(text)))
     }

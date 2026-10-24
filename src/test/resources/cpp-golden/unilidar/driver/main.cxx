@@ -75,8 +75,8 @@ namespace
   static_assert(unilidar::eachPacket(DATAGRAM, [](kira::View<std::uint8_t>) {}).leftover == 3,
                 "and three bytes that are not one");
   static_assert([] {
-      unilidar::Header h;
-      return unilidar::readHeader(GOLDEN_STANDBY, h) && h.type == unilidar::TYPE_USER_CMD && h.size == 32u;
+      const auto h = unilidar::readHeader(GOLDEN_STANDBY);
+      return h.has_value() && h->type == unilidar::TYPE_USER_CMD && h->size == 32u;
   }(), "readHeader reads the standby frame");
   static_assert(kira::unwrap(unilidar::autoStandbyFrame(1))[16] == 1 && !unilidar::autoStandbyFrame(2).has_value());
 }
@@ -97,10 +97,10 @@ int main()
         check(w[0] == 0xD4 && w[3] == 0xA1 && unilidar::readU32(w) == 0xA1B2C3D4u, "writeU32 and readU32 are little-endian");
     }
     {
-        unilidar::Header h;
-        check(unilidar::readHeader(s, h) && h.type == unilidar::TYPE_USER_CMD && h.size == 32u, "readHeader of one frame");
-        check(!unilidar::readHeader(DATAGRAM, h), "but not of a datagram holding two");
-        check(!unilidar::readHeader(kira::view(s).slice(0, 20), h), "nor of a short buffer");
+        const auto h = unilidar::readHeader(s);
+        check(h.has_value() && h->type == unilidar::TYPE_USER_CMD && h->size == 32u, "readHeader of one frame");
+        check(!unilidar::readHeader(DATAGRAM).has_value(), "but not of a datagram holding two");
+        check(!unilidar::readHeader(kira::view(s).slice(0, 20)).has_value(), "nor of a short buffer");
     }
     check(unilidar::tailClosed(s) && !unilidar::tailClosed(kira::view(s).slice(0, 31)), "tailClosed");
     check(unilidar::packetAt(DATAGRAM) == 32 && unilidar::packetAt(kira::view(DATAGRAM).from(64)) == 0,

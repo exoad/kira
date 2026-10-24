@@ -18,8 +18,8 @@ floatText: (m: Maybe<Float64>) Str {
 
 // The pieces between bars, and how many.
 joined: (xs: List<Str>) Str {
-    mut out: Str = "${xs.size()} ["
-    mut i: Size = 0
+    out: Mutable<Str> = "${xs.size()} ["
+    i: Mutable<Size> = 0
     while i < xs.size() {
         if i > 0 {
             out = out + "|"

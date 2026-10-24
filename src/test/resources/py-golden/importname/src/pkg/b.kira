@@ -1,4 +1,4 @@
-pub mut ticks: Int32 = 0
+pub ticks: Mutable<Int32> = 0
 
 pub tick: () Int32 {
     ticks += 1

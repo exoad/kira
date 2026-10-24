@@ -80,7 +80,7 @@ class TestBlockTest {
             parsed(
                 """
                 f: (p: Pt, k: Int32) Int32 {
-                    mut r: Int32 = 0
+                    r: Mutable<Int32> = 0
                     if p == Pt { x > 0 } {
                         r = 1
                     }

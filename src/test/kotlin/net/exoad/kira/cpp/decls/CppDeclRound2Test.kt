@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * What the second fix round pinned: a system module's `@_magic` class built empty is
@@ -35,89 +36,93 @@ class CppDeclRound2Test {
 
     @Test
     fun aSystemClassBuiltEmptyIsMakeSharedEverywhereItIsDeclared() {
-        val emitted = DeclTestSupport.emit(
-            DeclTestSupport.module(
-                "test:hold",
-                """
-                kira.sync as sync
-                kira.os as os
+        DialectGates.stage4(false) {
+            val emitted = DeclTestSupport.emit(
+                DeclTestSupport.module(
+                    "test:hold",
+                    """
+                    kira.sync as sync
+                    kira.os as os
 
-                pub Holder: Struct {
-                    pub q: BlockingQueue<Str> = BlockingQueue<Str> {}
-                    pub xs: List<Str> = List<Str> {}
-                    pub poll: Poller = Poller {}
-                    pub sock: UdpSocket = UdpSocket {}
-                }
-                pub mut inbox: BlockingQueue<Str> = BlockingQueue<Str> {}
-                pub OUTBOX: BlockingQueue<Int32> = BlockingQueue<Int32> {}
-                mut backlog: BlockingQueue<Int32> = BlockingQueue<Int32> {}
-                pub go: () Void;
-                """,
-            ),
-        )
-        val h = emitted.header("test:hold")
-        assertContains(
-            h,
-            "kira::Rc<kira::sync::BlockingQueue<kira::Str>> q = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();",
-            "kira::List<kira::Str> xs{};",
-            "kira::Rc<kira::os::Poller> poll = std::make_shared<kira::os::Poller>();",
-            "kira::Rc<kira::os::UdpSocket> sock = std::make_shared<kira::os::UdpSocket>();",
-            "inline kira::Rc<kira::sync::BlockingQueue<kira::Str>> inbox = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();",
-            "inline const kira::Rc<kira::sync::BlockingQueue<std::int32_t>> OUTBOX = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();",
-        )
-        // never the null-pointer forms this round's first version wrote
-        assertLacks(h, "> q{};", "> poll{};", "> sock{};", "BlockingQueue<kira::Str>>{}")
-        val s = emitted.source("test:hold")
-        assertNotNull(s, "a private mut gives the module a .cxx")
-        assertContains(s, "kira::Rc<kira::sync::BlockingQueue<std::int32_t>> backlog = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();")
+                    pub Holder: Struct {
+                        pub q: BlockingQueue<Str> = BlockingQueue<Str> {}
+                        pub xs: List<Str> = List<Str> {}
+                        pub poll: Poller = Poller {}
+                        pub sock: UdpSocket = UdpSocket {}
+                    }
+                    pub mut inbox: BlockingQueue<Str> = BlockingQueue<Str> {}
+                    pub OUTBOX: BlockingQueue<Int32> = BlockingQueue<Int32> {}
+                    mut backlog: BlockingQueue<Int32> = BlockingQueue<Int32> {}
+                    pub go: () Void;
+                    """,
+                ),
+            )
+            val h = emitted.header("test:hold")
+            assertContains(
+                h,
+                "kira::Rc<kira::sync::BlockingQueue<kira::Str>> q = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();",
+                "kira::List<kira::Str> xs{};",
+                "kira::Rc<kira::os::Poller> poll = std::make_shared<kira::os::Poller>();",
+                "kira::Rc<kira::os::UdpSocket> sock = std::make_shared<kira::os::UdpSocket>();",
+                "inline kira::Rc<kira::sync::BlockingQueue<kira::Str>> inbox = std::make_shared<kira::sync::BlockingQueue<kira::Str>>();",
+                "inline const kira::Rc<kira::sync::BlockingQueue<std::int32_t>> OUTBOX = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();",
+            )
+            // never the null-pointer forms this round's first version wrote
+            assertLacks(h, "> q{};", "> poll{};", "> sock{};", "BlockingQueue<kira::Str>>{}")
+            val s = emitted.source("test:hold")
+            assertNotNull(s, "a private mut gives the module a .cxx")
+            assertContains(s, "kira::Rc<kira::sync::BlockingQueue<std::int32_t>> backlog = std::make_shared<kira::sync::BlockingQueue<std::int32_t>>();")
+        }
     }
 
     // ---- issue 2: a system module is its runtime header alone -------------------------------------------
 
     @Test
     fun aSystemModuleIsIncludedAsItsRuntimeHeaderAloneAndNeverEmitted() {
-        val net = DeclTestSupport.module(
-            "test:net",
-            """
-            kira.os as os
+        DialectGates.stage4(false) {
+            val net = DeclTestSupport.module(
+                "test:net",
+                """
+                kira.os as os
 
-            pub Link: Struct {
-                pub last: Datagram
-                pub sock: Maybe<UdpSocket> = null
-                pub events: Int32 = POLL_READ
+                pub Link: Struct {
+                    pub last: Datagram
+                    pub sock: Maybe<UdpSocket> = null
+                    pub events: Int32 = POLL_READ
+                }
+                pub send: (s: UdpSocket, d: Datagram) Bool;
+                pub ready: (r: Ready) Bool;
+                """,
+            )
+            val emitted = DeclTestSupport.emit(net)
+            val h = emitted.header("test:net")
+            assertContains(
+                h,
+                "#include \"kira/os.hxx\"",
+                "::kira::os::Datagram last{};",
+                "kira::Maybe<kira::Rc<kira::os::UdpSocket>> sock = kira::none;",
+                "std::int32_t events = ::kira::os::POLL_READ;",
+                "[[nodiscard]] bool send(const kira::Rc<kira::os::UdpSocket>& s, const ::kira::os::Datagram& d);",
+            )
+            // kira/os.hxx defines Datagram, Ready and POLL_* by hand: the emitted twin would redefine them
+            assertLacks(h, "kira/std/os.kira.hxx")
+            assertEquals(1, h.lines().count { it.contains("kira/os.hxx") }, "included once:\n$h")
+
+            // The CLI's path: the workspace module, then the stdlib modules it reaches; a system module is not one of them.
+            val (unit, _) = DeclTestSupport.unitOf(listOf(net))
+            val options = CppOptions(lineDirectives = false)
+            val emitter = CppModuleEmitterFactory.create(unit, options)
+            val sources = unit.allSources().mapNotNull { src ->
+                val uri = runCatching { src.getModuleUri() }.getOrNull() ?: return@mapNotNull null
+                if (uri.startsWith("(unknown)")) null else CppModuleRef(uri, Path.of(src.file)) to src
             }
-            pub send: (s: UdpSocket, d: Datagram) Bool;
-            pub ready: (r: Ready) Bool;
-            """,
-        )
-        val emitted = DeclTestSupport.emit(net)
-        val h = emitted.header("test:net")
-        assertContains(
-            h,
-            "#include \"kira/os.hxx\"",
-            "::kira::os::Datagram last{};",
-            "kira::Maybe<kira::Rc<kira::os::UdpSocket>> sock = kira::none;",
-            "std::int32_t events = ::kira::os::POLL_READ;",
-            "[[nodiscard]] bool send(const kira::Rc<kira::os::UdpSocket>& s, const ::kira::os::Datagram& d);",
-        )
-        // kira/os.hxx defines Datagram, Ready and POLL_* by hand: the emitted twin would redefine them
-        assertLacks(h, "kira/std/os.kira.hxx")
-        assertEquals(1, h.lines().count { it.contains("kira/os.hxx") }, "included once:\n$h")
-
-        // The CLI's path: the workspace module, then the stdlib modules it reaches; a system module is not one of them.
-        val (unit, _) = DeclTestSupport.unitOf(listOf(net))
-        val options = CppOptions(lineDirectives = false)
-        val emitter = CppModuleEmitterFactory.create(unit, options)
-        val sources = unit.allSources().mapNotNull { src ->
-            val uri = runCatching { src.getModuleUri() }.getOrNull() ?: return@mapNotNull null
-            if (uri.startsWith("(unknown)")) null else CppModuleRef(uri, Path.of(src.file)) to src
+            emitter.prepare(CppModuleLayout(options, DeclTestSupport.root, sources.map { it.first }), "dev")
+            val all = KiraCppBackend.emitModules(emitter, sources)
+            val uris = all.map { it.ref.uri }
+            assertTrue("test:net" in uris, uris.toString())
+            assertTrue(all.first { it.ref.uri == "test:net" }.emitted.uses.contains("kira:os"), "the module reaches kira:os")
+            assertTrue(uris.none { it == "kira:os" || it == "kira:sync" || it == "kira:test" || it == "kira:time" }, "no system module is emitted: $uris")
         }
-        emitter.prepare(CppModuleLayout(options, DeclTestSupport.root, sources.map { it.first }), "dev")
-        val all = KiraCppBackend.emitModules(emitter, sources)
-        val uris = all.map { it.ref.uri }
-        assertTrue("test:net" in uris, uris.toString())
-        assertTrue(all.first { it.ref.uri == "test:net" }.emitted.uses.contains("kira:os"), "the module reaches kira:os")
-        assertTrue(uris.none { it == "kira:os" || it == "kira:sync" || it == "kira:test" || it == "kira:time" }, "no system module is emitted: $uris")
     }
 
     // ---- issue 3: a private name against an exported one in a shared namespace ------------------------
@@ -138,7 +143,7 @@ class CppDeclRound2Test {
             test.util as util
 
             LIMIT: Int32 = 2
-            mut counter: Int32 = LIMIT
+            counter: Mutable<Int32> = LIMIT
             hidden: Int32 = 5
             pub get: (p: Pt) Int32;
             """,

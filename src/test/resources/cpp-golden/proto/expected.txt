@@ -24,7 +24,6 @@ proto - the car's line protocol
   ok    a missing key is false
   ok    an empty key is false
   ok    a non-numeric value is refused, not defaulted to 0
-  ok    and the out parameter is left alone
   ok    though it can still be read as text
   ok    a trailing tail is refused
   ok    and so is an empty value
@@ -38,7 +37,6 @@ proto - the car's line protocol
   ok    hbad= is its own key at the end of the line
   ok    slew= is not slew_esc=
   ok    a key missing its = is refused, not silently empty
-  ok    and it leaves the out parameter alone
   ok    a float field
   ok    a negative float field
   ok    a comma decimal is refused
@@ -58,4 +56,4 @@ proto - the car's line protocol
   ok    no comma survives into a command
   ok    and 2.50 still reads as 2.5
 
-55 checks, 0 failed
+53 checks, 0 failed

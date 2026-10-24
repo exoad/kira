@@ -34,7 +34,7 @@ Grid: Struct {
     }
 }
 
-mut made: Int32 = 0
+made: Mutable<Int32> = 0
 
 make: (k: Int32) Pt {
     made += 1
@@ -103,8 +103,8 @@ held: (k: Int32) Bool {
 
 // In a while condition, a ternary's condition and the rest of an `&&`.
 loops: (k: Int32) Int32 {
-    mut i: Int32 = 0
-    mut p: Pt = Pt { 0, 0 }
+    i: Mutable<Int32> = 0
+    p: Mutable<Pt> = Pt { 0, 0 }
     while p == Pt { x < k } && i < 10 {
         p = Pt { p.x + 1, p.y }
         i += 1

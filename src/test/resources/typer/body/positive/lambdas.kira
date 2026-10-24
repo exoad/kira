@@ -1,21 +1,10 @@
-// Lambdas (design 3.3, 5.6, D24): checked against the expected Fx, mut parameters included;
+// Lambdas (design 3.3, 5.6, D24): checked against the expected Fx;
 // captures by value (TyperBodyModelTest checks the capture lists).
 
 pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
     (x: Int32) Int32 {            // @type Fx<Tuple1<Int32>, Int32>
         x * k                       // @type Int32 place=Param(k) @ k
     }
-}
-
-pub run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
-    f(mut x)                               // @type Void call=FN_VALUE
-}
-
-pub mutLambda: () Void {
-    mut n: Int32 = 0
-    run((mut v: Int32) Void {            // @type Fx<Tuple1<mut Int32>, Void> @ (mut v: Int32) Void { ... }
-        v += 1                             // @type Int32 place=Param(v) @ v
-    }, mut n)
 }
 
 pub shared: () Fx<Tuple0, Int32> {

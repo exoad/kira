@@ -8,7 +8,7 @@ kira.bytes as bytes
 // it alone gives it, and the reads and writes against struct's ">H", ">I", ">Q" and ">d".
 
 ramp: (n: Size) List<UInt8> {
-    mut out: List<UInt8> = List<UInt8> { }
+    out: Mutable<List<UInt8>> = List<UInt8> { }
     while out.size() < n {
         out.add(out.size() as UInt8)
     }
@@ -16,8 +16,8 @@ ramp: (n: Size) List<UInt8> {
 }
 
 hex: (v: View<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < v.size() {
         if i > 0 {
             s = s + " "
@@ -45,39 +45,39 @@ pub readF64: (n: Size, at: Size) Float64 {
 }
 
 pub write16: (n: Size, at: Size) Str {
-    mut buf: List<UInt8> = ramp(n)
+    buf: Mutable<List<UInt8>> = ramp(n)
     writeU16Be(buf.view(), at, 0xBEEF)
     hex(buf)
 }
 
 pub write32: (n: Size, at: Size) Str {
-    mut buf: List<UInt8> = ramp(n)
+    buf: Mutable<List<UInt8>> = ramp(n)
     writeU32Be(buf.view(), at, 0xA1B2C3D4)
     hex(buf)
 }
 
 pub write64: (n: Size, at: Size) Str {
-    mut buf: List<UInt8> = ramp(n)
+    buf: Mutable<List<UInt8>> = ramp(n)
     writeU64Be(buf.view(), at, 0x1122334455667788)
     hex(buf)
 }
 
 pub writeF64: (n: Size, at: Size) Str {
-    mut buf: List<UInt8> = ramp(n)
+    buf: Mutable<List<UInt8>> = ramp(n)
     writeF64Be(buf.view(), at, -1.5)
     hex(buf)
 }
 
 // A write through a MutView lent from part of the List: its own end is the bound.
 pub writeInside: (n: Size, at: Size, k: Size, off: Size) Str {
-    mut buf: List<UInt8> = ramp(n)
+    buf: Mutable<List<UInt8>> = ramp(n)
     writeU32Be(buf.slice(at, k), off, 0xCAFEF00D)
     hex(buf)
 }
 
 // The round trips the driver holds against struct.
 pub put: (v16: UInt16, v32: UInt32, v64: UInt64, f: Float64) List<UInt8> {
-    mut out: List<UInt8> = List<UInt8> { }
+    out: Mutable<List<UInt8>> = List<UInt8> { }
     while out.size() < 22 {
         out.add(0)
     }

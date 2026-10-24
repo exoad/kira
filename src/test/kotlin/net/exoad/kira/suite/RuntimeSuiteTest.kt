@@ -116,7 +116,7 @@ class RuntimeSuiteTest {
         assertStdout("0\n1\n2\n3\n4\n") {
             """
             main: () Void {
-                mut i: Int32 = 0
+                i: Mutable<Int32> = 0
                 while i < 5 {
                     trace(i)
                     i = i + 1
@@ -131,7 +131,7 @@ class RuntimeSuiteTest {
         assertStdout("0\n1\n2\n3\n") {
             """
             main: () Void {
-                for mut i: 0..3 {
+                for i: Int32 in 0..4 {
                     trace(i)
                 }
             }
@@ -144,7 +144,7 @@ class RuntimeSuiteTest {
         assertStdout("1\n2\n3\n") {
             """
             main: () Void {
-                for mut i: 0..10 {
+                for i: Int32 in 0..11 {
                     if i == 0 {
                         continue
                     }

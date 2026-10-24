@@ -45,7 +45,7 @@ pub Dog: Animal {
     }
 }
 
-pub mut made: Int32 = 0
+pub made: Mutable<Int32> = 0
 
 pub make: (r: Int32) Shape {
     made += 1
@@ -95,7 +95,7 @@ pub tricks: (a: Maybe<Animal>) Int32 {
 
 // In a loop, after a `continue`.
 pub radii: (xs: List<Shape>) Int32 {
-    mut total: Int32 = 0
+    total: Mutable<Int32> = 0
     for s: Shape in xs {
         if s != Circle {
             continue

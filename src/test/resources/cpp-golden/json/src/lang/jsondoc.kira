@@ -9,8 +9,8 @@ FNV_PRIME: UInt64 = 0x100000001B3
 // UTF-8 past ASCII, and the controls but a newline, as <xx>: Python's piped stdout may be cp1252.
 shown: (s: Str) Str {
     b: List<UInt8> = s.bytes()
-    mut out: Str = ""
-    mut i: Size = 0
+    out: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < b.size() {
         if b[i] == 0x0A || (b[i] >= 0x20 && b[i] < 0x7F) {
             out = out + "${b[i] as Char}"
@@ -22,14 +22,14 @@ shown: (s: Str) Str {
     out
 }
 
-pub Digest: Any {
-    pub mut h: UInt64 = FNV_BASIS
-    pub mut count: Int64 = 0
-    pub mut total: Int64 = 0
+pub Digest: Mutable<Any> {
+    pub h: Mutable<UInt64> = FNV_BASIS
+    pub count: Mutable<Int64> = 0
+    pub total: Mutable<Int64> = 0
 
-    pub mut add: (s: Str) Void {
+    pub add: (s: Str) Void {
         b: List<UInt8> = s.bytes()
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < b.size() {
             h = (h ^ (b[i] as UInt64)) * FNV_PRIME
             i += 1
@@ -44,24 +44,24 @@ pub Digest: Any {
     }
 }
 
-pub Rng: Any {
-    pub mut s: UInt64 = 20261005
+pub Rng: Mutable<Any> {
+    pub s: Mutable<UInt64> = 20261005
 
-    pub mut next: () UInt64 {
+    pub next: () UInt64 {
         s = s ^ (s << 13)
         s = s ^ (s >> 7)
         s = s ^ (s << 17)
         s
     }
 
-    pub mut below: (n: UInt64) UInt64 {
+    pub below: (n: UInt64) UInt64 {
         next() % n
     }
 }
 
-pub Holder: Any {
+pub Holder: Mutable<Any> {
     pub doc: Json
-    pub mut seen: List<Json> = @listOf()
+    pub seen: Mutable<List<Json>> = @listOf()
 }
 
 pieces: () List<Str> {
@@ -77,8 +77,8 @@ piece: (r: Rng) Str {
 
 words: (r: Rng) Str {
     n: UInt64 = r.below(6)
-    mut s: Str = ""
-    mut i: UInt64 = 0
+    s: Mutable<Str> = ""
+    i: Mutable<UInt64> = 0
     while i < n {
         s = s + piece(r)
         i += 1
@@ -89,7 +89,7 @@ words: (r: Rng) Str {
 aFloat: (r: Rng) Float64 {
     k: UInt64 = r.below(10)
     if k < 4 {
-        mut buf: List<UInt8> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
+        buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
         writeU64Le(buf.view(), 0, r.next())
         readF64Le(buf, 0)
     } else if k < 7 {
@@ -136,7 +136,7 @@ value: (r: Rng, depth: Int32) Json {
             : c < 6 ? Json.of(aFloat(r)) : Json.of(words(r))
     } else {
         n: UInt64 = r.below(6)
-        mut i: UInt64 = 0
+        i: Mutable<UInt64> = 0
         if k < 8 {
             a: Json = Json.arr()
             while i < n {
@@ -165,13 +165,13 @@ junk: () List<UInt8> {
 }
 
 mutated: (r: Rng, doc: Str) Str {
-    mut b: List<UInt8> = doc.bytes()
-    mut times: UInt64 = r.below(3) + 1
+    b: Mutable<List<UInt8>> = doc.bytes()
+    times: Mutable<UInt64> = r.below(3) + 1
     while times > 0 {
         at: Size = r.below((b.size() as UInt64) + 1) as Size
         k: UInt64 = r.below(3)
-        mut out: List<UInt8> = List<UInt8> { }
-        mut i: Size = 0
+        out: Mutable<List<UInt8>> = List<UInt8> { }
+        i: Mutable<Size> = 0
         while i < b.size() {
             if i == at && k == 2 {
                 j: List<UInt8> = junk()
@@ -194,8 +194,8 @@ reason: (text: Str) Str {
 }
 
 deep: (n: Int32, inner: Str) Str {
-    mut s: Str = ""
-    mut i: Int32 = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Int32> = 0
     while i < n {
         s = "[" + s + "]"
         i += 1
@@ -228,8 +228,8 @@ pub tooDeep: () Str {
 }
 
 nested: (n: Int32) Json {
-    mut v: Json = Json.arr()
-    mut i: Int32 = 1
+    v: Mutable<Json> = Json.arr()
+    i: Mutable<Int32> = 1
     while i < n {
         outer: Json = Json.arr()
         outer.add(v)
@@ -259,7 +259,7 @@ main: () Void {
 
     floats: Json = Json.arr()
     fs: List<Float64> = floatEdges(0.0)
-    mut i: Size = 0
+    i: Mutable<Size> = 0
     while i < fs.size() {
         floats.add(Json.of(fs[i]))
         i += 1
@@ -292,7 +292,7 @@ main: () Void {
     trace(q.at(0).asStr().unwrap() + q.at(9).dump() + Json.parse("null").dump() + Json.error())
 
     bads: List<Str> = @listOf("[1,]", "{\"a\" 1}", "[1] x", "", "  ", "nul", "9223372036854775808", "-9223372036854775809", "[\"\\x\"]", "\"\\u12\"", "{\"a\":1,}", "[01]", "\"abc", "[1 2]", "{1: 2}", "[\"a\nb\"]", "\n\n  [1,\n  ]", "[\"é\", x]", "[1] // c", "'a'", "[-]", "[1.]", "[.5]", "[1e]", "{\"a\": }", "NaN1", "[Infinity, -Inf]")
-    mut k: Size = 0
+    k: Mutable<Size> = 0
     while k < bads.size() {
         trace(reason(bads[k]))
         k += 1
@@ -309,7 +309,7 @@ main: () Void {
     other: Json = shared
     other.put("x", Json.of(1))
     xs: List<Json> = @listOf(shared)
-    mut ys: List<Json> = xs
+    ys: Mutable<List<Json>> = xs.view().toList()
     ys.add(Json.null())
     ys[0].put("y", Json.of(2))
     h: Holder = Holder { doc = shared }
@@ -321,9 +321,9 @@ main: () Void {
     r: Rng = Rng { }
     forms: Digest = Digest { }
     docs: Digest = Digest { }
-    mut roundTrips: Int32 = 0
-    mut refused: Int32 = 0
-    mut n: Int32 = 0
+    roundTrips: Mutable<Int32> = 0
+    refused: Mutable<Int32> = 0
+    n: Mutable<Int32> = 0
     while n < 2500 {
         v: Json = value(r, 0)
         d: Str = v.dump()

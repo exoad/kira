@@ -33,13 +33,13 @@ pub shrByMinusOne: (v: Int64) Int64 {
 }
 
 pub shlInPlace: (v: Int16, n: Int32) Int16 {
-    mut x: Int16 = v
+    x: Mutable<Int16> = v
     x <<= n
     x
 }
 
 pub ushrInPlace: (v: Int64, n: Int32) Int64 {
-    mut x: Int64 = v
+    x: Mutable<Int64> = v
     x >>>= n
     x
 }

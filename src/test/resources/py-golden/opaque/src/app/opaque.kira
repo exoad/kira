@@ -3,8 +3,8 @@
 
 golden.py.opaque.app.conn as conn
 
-pub @_opaque Counter: Any {
-    pub mut bump: (by: Int32) Int32
+pub @_opaque Counter: Mutable<Any> {
+    pub @_mutates bump: (by: Int32) Int32
     pub total: () Int32
     pub @_extern(raises = "ValueError") label: () Str
     pub wrong: () Str

@@ -12,6 +12,8 @@ import org.junit.jupiter.api.TestFactory
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * Classes under copy by default (50-round4, W2.4's half). A class body never guards: no
@@ -27,6 +29,8 @@ import kotlin.test.assertTrue
  * msvc, with the copy where the design says. What W2.4 used to refuse for a `mut` argument is
  * W2.5's rule M (`rules.exclusivity.mut`); what stays refused, stays refused by the rules.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppClassCopyTest {
     private val uri = "test:main"
 
@@ -1140,10 +1144,13 @@ class CppClassCopyTest {
         val files = File("src/test/resources").walkTopDown().filter { it.isFile && (it.name.endsWith(".kira.cxx") || it.name.endsWith(".kira.hxx")) }.toList()
         assertTrue(files.size > 30, "found only ${files.size} generated files")
         assertEquals(emptyList(), files.filter { f -> patterns.any { f.readText().contains(it) } }.map { it.path })
-        for (name in listOf("chain", "sender", "classes")) {
-            val emitted = OopTestSupport.emitCase(OopTestSupport.case(name), CppEmitParts.standard())
-            assertTrue(emitted.any { it.relative.endsWith(".kira.cxx") } && emitted.any { it.relative.endsWith(".kira.hxx") }, "$name emitted ${emitted.map { it.relative }}")
-            emitted.forEach { f -> assertLacks(f.text, *patterns.toTypedArray()) }
+        // The goldens are stage 4's text.
+        net.exoad.kira.compiler.frontend.parser.DialectGates.stage4(true) {
+            for (name in listOf("chain", "sender", "classes")) {
+                val emitted = OopTestSupport.emitCase(OopTestSupport.case(name), CppEmitParts.standard())
+                assertTrue(emitted.any { it.relative.endsWith(".kira.cxx") } && emitted.any { it.relative.endsWith(".kira.hxx") }, "$name emitted ${emitted.map { it.relative }}")
+                emitted.forEach { f -> assertLacks(f.text, *patterns.toTypedArray()) }
+            }
         }
     }
 }

@@ -2,9 +2,9 @@ helperCreateMap: () Map<Str, Int32> {
     Map<Str, Int32> { }
 }
 
-pub Point: Any {
-    pub mut x: Int32
-    pub mut y: Int32
+pub Point: Mutable<Any> {
+    pub x: Mutable<Int32>
+    pub y: Mutable<Int32>
 
     pub dist: () Float64 {
         (x * x + y * y) as Float64
@@ -15,9 +15,9 @@ Printable: Any {
     toStr: () Str
 }
 
-pub Circle: Any {
+pub Circle: Mutable<Any> {
     pub center: Point
-    pub mut radius: Int32
+    pub radius: Mutable<Int32>
 
     pub area: () Float64 {
         3.14159 * (radius as Float64) * (radius as Float64)
@@ -29,15 +29,15 @@ GREEN: Str = "green"
 BLUE: Str = "blue"
 
 compute: (values: List<Int32>) Int32 {
-    mut acc: Int32 = 0
-    for mut i: 0..(values.size() - 1) {
+    acc: Mutable<Int32> = 0
+    for i: Size in 0..values.size() {
         acc = acc + values[i]
     }
     acc
 }
 
 main: () Void {
-    mut nums: List<Int32> = @listOf(1, 2, 3, 4, 5)
+    nums: Mutable<List<Int32>> = @listOf(1, 2, 3, 4, 5)
     arr: Arr<Int32> = @arrOf( 10, 20, 30 )
     total: Int32 = compute(nums)
     p: Point = Point { 3, 4 }
@@ -50,14 +50,14 @@ main: () Void {
     } else {
         // other
     }
-    mut i: Int32 = 0
+    i: Mutable<Int32> = 0
     while i < 3 {
         i = i + 1
     }
-    for mut k: 0..2 {
+    for k: Int32 in 0..3 {
         // loop k
     }
-    for mut idx: 0..(arr.size() - 1) {
+    for idx: Size in 0..arr.size() {
         // access arr[idx]
     }
     fxSum: Int32 = ((a: Int32, b: Int32) Int32 { a + b })(1, 2)
@@ -72,7 +72,7 @@ pub Box<T>: Any {
     pub value: T
 }
 
-pub Container<K, V>: Any {
+pub Container<K, V>: Mutable<Any> {
     pub mapping: Map<K, List<Arr<V>>>
 }
 

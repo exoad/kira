@@ -75,7 +75,7 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                mut v: Int32 = sum(3, 4)
+                v: Mutable<Int32> = sum(3, 4)
                 trace("syntax-ok\\n")
             }
             """

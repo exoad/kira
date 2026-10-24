@@ -11,8 +11,8 @@ pub SPACE: Char = ' '
 pub KIND_OK: Int32 = 0
 pub KIND_ERR: Int32 = 1
 
-pub Reply: Struct {
-    pub kind: Int32 = KIND_OK
+pub Reply: Mutable<Any> {
+    pub kind: Mutable<Int32> = KIND_OK
     pub line: Str = ""
     pub code: Int32
 
@@ -20,7 +20,7 @@ pub Reply: Struct {
         kind == KIND_OK
     }
 
-    pub mut reset: () Void {
+    pub reset: () Void {
         kind = KIND_OK
     }
 }
@@ -38,15 +38,15 @@ pub Band: Struct, Measured {
     }
 }
 
-pub Behaviour: Any {
+pub Behaviour: Mutable<Any> {
     pub id: () Str;
     pub mayDrive: () Bool {
         false
     }
-    pub mut step: (r: Reply) Reply;
+    pub step: (r: Reply) Reply;
 }
 
-pub Stop: Behaviour {
+pub Stop: Mutable<Behaviour> {
     pub reason: Str
 
     initially {
@@ -57,17 +57,13 @@ pub Stop: Behaviour {
         "stop"
     }
 
-    override pub mut step: (r: Reply) Reply {
+    override pub step: (r: Reply) Reply {
         r
     }
 }
 
 pub command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
     verb
-}
-
-pub apply: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
-    f(mut x)
 }
 
 pub isSpace: (c: Char) Bool {

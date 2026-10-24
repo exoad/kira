@@ -20,7 +20,7 @@ pub keys: () Void {
     d: Set<Char> = Set<Char> { }
     e: Map<Id, Bool> = Map<Id, Bool> { }
     f: Set<Float64> = Set<Float64> { }
-    mut g: Map<Holder, Int32> = Map<Holder, Int32> { }             // @error types.type.key ; @error types.type.key
+    g: Mutable<Map<Holder, Int32>> = Map<Holder, Int32> { }             // @error types.type.key ; @error types.type.key
     i: Map<Point, Int32> = Map<Point, Int32> { }                   // @error types.type.key ; @error types.type.key
     j: Set<Holder> = Set<Holder> { }                               // @error types.type.key ; @error types.type.key
     k: Map<Maybe<Int32>, Int32> = Map<Maybe<Int32>, Int32> { }     // @error types.type.key ; @error types.type.key

@@ -39,12 +39,12 @@ class VisibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub Counter: Any {
-                    mut n: Int32 = 0
+                pub Counter: Mutable<Any> {
+                    n: Mutable<Int32> = 0
                     step: () Int32 {
                         1
                     }
-                    pub mut bump: () Int32 {
+                    pub bump: () Int32 {
                         n += step()
                         this.n
                     }
@@ -117,12 +117,12 @@ class VisibilityPassTest {
     fun aPrivateMemberOutsideItsClass() {
         val p = snippet(
             """
-            pub Counter: Any {
-                mut n: Int32 = 0
+            pub Counter: Mutable<Any> {
+                n: Mutable<Int32> = 0
                 step: () Int32 {
                     1
                 }
-                pub mut bump: () Void {
+                pub bump: () Void {
                     n += 1
                 }
             }
@@ -141,13 +141,13 @@ class VisibilityPassTest {
     fun aSubclassIsOutsideItsParent() {
         val p = snippet(
             """
-            pub Base: Any {
-                mut n: Int32 = 0
+            pub Base: Mutable<Any> {
+                n: Mutable<Int32> = 0
                 secret: () Int32 {
                     n
                 }
             }
-            pub Derived: Base {
+            pub Derived: Mutable<Base> {
                 pub peek: () Int32 {
                     n + secret()
                 }

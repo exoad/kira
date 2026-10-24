@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * `w2-9-1-parse`: the member operator form takes part in phase A's collection and phase B's
@@ -582,43 +583,47 @@ class OperatorMemberCollectTest {
 
     @Test
     fun mutMethodMismatchIsAConflictRegardlessOfParentOrder() {
-        // w2-9-1-parse round 5, significant issue #1: `sameSignature` ignored `isMutMethod`, so
-        // two inherited declarations differing only in `mut fx` compared as "the same" and never
-        // reached `types.member.conflict` -- the class's own diagnostic then depended entirely on
-        // `checkOverride`'s first-found target (`base ?: viaTraits.firstOrNull()`), which flipped
-        // with parent order. Measured: `class C: A, B {}` (bodies in the traits, no override at
-        // all) gave 0 diagnostics in both orders even though one `m` is `mut` and the other is
-        // not. Both orders must now conflict.
-        val bodies = """
-            pub A: Any {
-                pub m: () Int32 { 1 }
-            }
-            pub B: Any {
-                pub mut m: () Int32 { 2 }
-            }
-        """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
-        expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
-        expectDiagnostic(ba, "types.member.conflict")
+        DialectGates.stage4(false) {
+            // w2-9-1-parse round 5, significant issue #1: `sameSignature` ignored `isMutMethod`, so
+            // two inherited declarations differing only in `mut fx` compared as "the same" and never
+            // reached `types.member.conflict` -- the class's own diagnostic then depended entirely on
+            // `checkOverride`'s first-found target (`base ?: viaTraits.firstOrNull()`), which flipped
+            // with parent order. Measured: `class C: A, B {}` (bodies in the traits, no override at
+            // all) gave 0 diagnostics in both orders even though one `m` is `mut` and the other is
+            // not. Both orders must now conflict.
+            val bodies = """
+                pub A: Any {
+                    pub m: () Int32 { 1 }
+                }
+                pub B: Any {
+                    pub mut m: () Int32 { 2 }
+                }
+            """.trimIndent()
+            val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
+            expectDiagnostic(ab, "types.member.conflict")
+            val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
+            expectDiagnostic(ba, "types.member.conflict")
+        }
     }
 
     @Test
     fun mutMethodMismatchOnAMemberOperatorConflictsRegardlessOfParentOrder() {
-        // Same shape as above, for the operator form the brief calls out specifically ("It
-        // matters most for @_op_set_, whose mut-ness 1.3.2 says varies by class").
-        val ops = """
-            pub Sa: Any {
-                pub @_op_set_: (i: Int32, v: Int32) Void { }
-            }
-            pub Sb: Any {
-                pub mut @_op_set_: (i: Int32, v: Int32) Void { }
-            }
-        """.trimIndent()
-        val ab = phasesAAndB { snippet("$ops\npub C: Sa, Sb {\n}") }
-        expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$ops\npub C: Sb, Sa {\n}") }
-        expectDiagnostic(ba, "types.member.conflict")
+        DialectGates.stage4(false) {
+            // Same shape as above, for the operator form the brief calls out specifically ("It
+            // matters most for @_op_set_, whose mut-ness 1.3.2 says varies by class").
+            val ops = """
+                pub Sa: Any {
+                    pub @_op_set_: (i: Int32, v: Int32) Void { }
+                }
+                pub Sb: Any {
+                    pub mut @_op_set_: (i: Int32, v: Int32) Void { }
+                }
+            """.trimIndent()
+            val ab = phasesAAndB { snippet("$ops\npub C: Sa, Sb {\n}") }
+            expectDiagnostic(ab, "types.member.conflict")
+            val ba = phasesAAndB { snippet("$ops\npub C: Sb, Sa {\n}") }
+            expectDiagnostic(ba, "types.member.conflict")
+        }
     }
 
     @Test
@@ -669,23 +674,25 @@ class OperatorMemberCollectTest {
 
     @Test
     fun byRefMismatchIsAConflictRegardlessOfParentOrder() {
-        // w2-9-1-parse round 6, significant issue #1: `sameSignature`'s byRef comparison
-        // (SignatureResolver.kt:750) has no test either. Mutant R6 drops
-        // `|| a.params[i].byRef != b.params[i].byRef`, and the suite still passes 932/0: `A`'s
-        // `m: (a: Int32)` and `B`'s `m: (mut a: Int32)` (same type, same arity; only the
-        // parameter's byRef-ness disagrees) would then compare equal. Both orders must conflict.
-        val bodies = """
-            pub A: Any {
-                pub m: (a: Int32) Int32;
-            }
-            pub B: Any {
-                pub m: (mut a: Int32) Int32;
-            }
-        """.trimIndent()
-        val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
-        expectDiagnostic(ab, "types.member.conflict")
-        val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
-        expectDiagnostic(ba, "types.member.conflict")
+        DialectGates.stage4(false) {
+            // w2-9-1-parse round 6, significant issue #1: `sameSignature`'s byRef comparison
+            // (SignatureResolver.kt:750) has no test either. Mutant R6 drops
+            // `|| a.params[i].byRef != b.params[i].byRef`, and the suite still passes 932/0: `A`'s
+            // `m: (a: Int32)` and `B`'s `m: (mut a: Int32)` (same type, same arity; only the
+            // parameter's byRef-ness disagrees) would then compare equal. Both orders must conflict.
+            val bodies = """
+                pub A: Any {
+                    pub m: (a: Int32) Int32;
+                }
+                pub B: Any {
+                    pub m: (mut a: Int32) Int32;
+                }
+            """.trimIndent()
+            val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
+            expectDiagnostic(ab, "types.member.conflict")
+            val ba = phasesAAndB { snippet("$bodies\npub C: B, A {\n}") }
+            expectDiagnostic(ba, "types.member.conflict")
+        }
     }
 
     @Test

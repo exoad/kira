@@ -273,8 +273,8 @@ class TyperPhaseTest {
     fun membersOfMagicAndExternClassesInheritTheirForeignness() {
         val p = snippet(
             """
-            pub @_extern Car: Any {
-                pub mut arm: () Bool;
+            pub @_extern Car: Mutable<Any> {
+                pub @_mutates arm: () Bool;
             }
             pub Plain: Any {
                 pub run: () Void { }
@@ -590,7 +590,7 @@ class TyperPhaseTest {
 
     @Test
     fun fieldsKnowTheirOwnerAndIndex() {
-        val p = snippet("pub P: Any {\n    pub x: Int32\n    pub mut y: Int32 = 2\n}")
+        val p = snippet("pub P: Mutable<Any> {\n    pub x: Int32\n    pub y: Mutable<Int32> = 2\n}")
         val cls = p.member("test:main", "P") as ClassSymbol
         val y: FieldSymbol = cls.field("y")!!
         assertSame(cls, y.owner)

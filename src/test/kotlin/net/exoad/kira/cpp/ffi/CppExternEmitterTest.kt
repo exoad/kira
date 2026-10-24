@@ -24,12 +24,16 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * CppExternEmitter over small modules (design 7.2, 7.3): the checks an extern declaration
  * states, the includes it needs, what it refuses, and the text of a call or a constant
  * read that the expression part asks it for.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppExternEmitterTest {
     private fun emit(body: String, uri: String = "test:ext", options: CppOptions = CppOptions(lineDirectives = false)): Pair<EmittedModule, CppEmitContextImpl> =
         DeclTestSupport.emitWith(DeclTestSupport.module(uri, body), uri = uri, options = options)

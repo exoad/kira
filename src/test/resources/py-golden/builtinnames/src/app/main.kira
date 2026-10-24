@@ -1,10 +1,10 @@
 golden.py.builtinnames.app.other as other
 
 pub globals: Int32 = 5
-pub mut type: Int32 = 3
+pub type: Mutable<Int32> = 3
 
-pub Pt: Struct {
-    pub x: Int32 = 0
+pub Pt: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
     pub tags: List<Int32> = List<Int32> { }
 }
 
@@ -16,8 +16,8 @@ check: (n: Int32) Int32 {
 }
 
 pub main: () Int32 {
-    mut a: Pt = Pt { 1 }
-    mut b: Pt = a
+    a: Mutable<Pt> = Pt { 1 }
+    b: Mutable<Pt> = a
     b.x = 2
     b.tags.add(type)
     trace("${a.x} ${a.tags.size()} ${b.x} ${b.tags.size()}")

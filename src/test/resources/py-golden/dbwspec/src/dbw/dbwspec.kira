@@ -9,20 +9,20 @@ pub Field: Any {
     pub count: Size
 }
 
-pub Message: Any {
+pub Message: Mutable<Any> {
     pub name: Str
     pub id: Int64
     pub dir: Str
     pub size: Size
-    pub mut fields: List<Field> = List<Field> { }
+    pub fields: Mutable<List<Field>> = List<Field> { }
 
-    pub mut addField: (fieldName: Str, fieldKind: Str, n: Size) Void {
+    pub addField: (fieldName: Str, fieldKind: Str, n: Size) Void {
         fields.add(Field { fieldName, fieldKind, n })
     }
 
     pub packedSize: () Size {
-        mut total: Size = 0
-        mut i: Size = 0
+        total: Mutable<Size> = 0
+        i: Mutable<Size> = 0
         while i < fields.size() {
             total += width(fields[i])
             i += 1
@@ -31,33 +31,33 @@ pub Message: Any {
     }
 }
 
-pub Table: Any {
-    pub mut byName: Map<Str, Int64> = Map<Str, Int64> { }
-    pub mut byValue: Map<Int64, Str> = Map<Int64, Str> { }
+pub Table: Mutable<Any> {
+    pub byName: Mutable<Map<Str, Int64>> = Map<Str, Int64> { }
+    pub byValue: Mutable<Map<Int64, Str>> = Map<Int64, Str> { }
 
-    pub mut add: (n: Str, v: Int64) Void {
+    pub add: (n: Str, v: Int64) Void {
         byName[n] = v
         byValue[v] = n
     }
 }
 
-pub Spec: Any {
-    pub mut messages: Map<Str, Message> = Map<Str, Message> { }
-    pub mut byId: Map<Int64, Message> = Map<Int64, Message> { }
-    pub mut faultBits: Table = Table { }
-    pub mut infoBits: Table = Table { }
-    pub mut reasons: Table = Table { }
-    pub mut nacks: Table = Table { }
-    pub mut enums: Map<Str, Table> = Map<Str, Table> { }
+pub Spec: Mutable<Any> {
+    pub messages: Mutable<Map<Str, Message>> = Map<Str, Message> { }
+    pub byId: Mutable<Map<Int64, Message>> = Map<Int64, Message> { }
+    pub faultBits: Mutable<Table> = Table { }
+    pub infoBits: Mutable<Table> = Table { }
+    pub reasons: Mutable<Table> = Table { }
+    pub nacks: Mutable<Table> = Table { }
+    pub enums: Mutable<Map<Str, Table>> = Map<Str, Table> { }
 
-    pub mut addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
+    pub addMessage: (n: Str, msgId: Int64, msgDir: Str, msgSize: Size) Message {
         m: Message = Message { n, msgId, msgDir, msgSize }
         messages[n] = m
         byId[msgId] = m
         m
     }
 
-    pub mut enumTable: (n: Str) Table {
+    pub enumTable: (n: Str) Table {
         if !enums.containsKey(n) {
             enums[n] = Table { }
         }
@@ -65,15 +65,15 @@ pub Spec: Any {
     }
 }
 
-pub Packed: Any {
-    pub mut error: Str = ""
-    pub mut payload: List<UInt8> = List<UInt8> { }
+pub Packed: Mutable<Any> {
+    pub error: Mutable<Str> = ""
+    pub payload: Mutable<List<UInt8>> = List<UInt8> { }
 }
 
-pub Unpacked: Any {
-    pub mut error: Str = ""
-    pub mut ints: Map<Str, Int64> = Map<Str, Int64> { }
-    pub mut hex: Map<Str, Str> = Map<Str, Str> { }
+pub Unpacked: Mutable<Any> {
+    pub error: Mutable<Str> = ""
+    pub ints: Mutable<Map<Str, Int64>> = Map<Str, Int64> { }
+    pub hex: Mutable<Map<Str, Str>> = Map<Str, Str> { }
 }
 
 width: (f: Field) Size {
@@ -109,9 +109,9 @@ digit: (c: Char) Int32 {
         : -1
 }
 
-pub fromHex: (text: Str, mut out: List<UInt8>) Bool {
-    mut i: Size = 0
-    mut result: Bool = true
+pub fromHex: (text: Str, out: List<UInt8>) Bool {
+    i: Mutable<Size> = 0
+    result: Mutable<Bool> = true
     while i < text.size() {
         if space(text.at(i)) {
             i += 1
@@ -134,8 +134,8 @@ pub fromHex: (text: Str, mut out: List<UInt8>) Bool {
 }
 
 pub hexOf: (b: View<UInt8>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < b.size() {
         s = s + b[i].toHex().padStart(2, '0')
         i += 1
@@ -144,8 +144,8 @@ pub hexOf: (b: View<UInt8>) Str {
 }
 
 listText: (names: List<Str>) Str {
-    mut s: Str = "["
-    mut i: Size = 0
+    s: Mutable<Str> = "["
+    i: Mutable<Size> = 0
     while i < names.size() {
         if i > 0 {
             s = s + ", "
@@ -157,8 +157,8 @@ listText: (names: List<Str>) Str {
 }
 
 isField: (m: Message, n: Str) Bool {
-    mut i: Size = 0
-    mut result: Bool = false
+    i: Mutable<Size> = 0
+    result: Mutable<Bool> = false
     while i < m.fields.size() {
         if m.fields[i].name == n {
             result = true
@@ -169,8 +169,8 @@ isField: (m: Message, n: Str) Bool {
     result
 }
 
-collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
-    mut i: Size = 0
+collectExtra: (m: Message, keys: Arr<Str>, extra: List<Str>) Void {
+    i: Mutable<Size> = 0
     while i < keys.size() {
         if !isField(m, keys[i]) {
             extra.add(keys[i])
@@ -181,9 +181,9 @@ collectExtra: (m: Message, keys: Arr<Str>, mut extra: List<Str>) Void {
 
 // Kira's Str has no <: code point order, as sorted() puts ASCII names.
 before: (a: Str, b: Str) Bool {
-    mut i: Size = 0
-    mut result: Bool = false
-    mut found: Bool = false
+    i: Mutable<Size> = 0
+    result: Mutable<Bool> = false
+    found: Mutable<Bool> = false
     while i < a.size() && i < b.size() {
         if a.at(i) != b.at(i) {
             result = a.at(i) < b.at(i)
@@ -195,11 +195,11 @@ before: (a: Str, b: Str) Bool {
     found ? result : a.size() < b.size()
 }
 
-sortNames: (mut names: List<Str>) Void {
-    mut i: Size = 1
+sortNames: (names: List<Str>) Void {
+    i: Mutable<Size> = 1
     while i < names.size() {
         v: Str = names[i]
-        mut j: Size = i
+        j: Mutable<Size> = i
         while j > 0 && before(v, names[j - 1]) {
             names[j] = names[j - 1]
             j -= 1
@@ -209,8 +209,8 @@ sortNames: (mut names: List<Str>) Void {
     }
 }
 
-addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
-    mut k: Size = 0
+addLe: (out: List<UInt8>, v: Int64, n: Size) Void {
+    k: Mutable<Size> = 0
     while k < n {
         out.add(((v >> ((k * 8) as Int64)) & 0xFF) as UInt8)
         k += 1
@@ -219,23 +219,23 @@ addLe: (mut out: List<UInt8>, v: Int64, n: Size) Void {
 
 // Bytes fields are checked before any integer, as pack builds its values before struct.pack.
 pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Packed {
-    mut out: Packed = Packed { }
+    out: Mutable<Packed> = Packed { }
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
         out.error = "unknown message '${name}'"
         out
     } else {
         m: Message = found.unwrap()
-        mut extra: List<Str> = List<Str> { }
-        collectExtra(m, ints.keys(), mut extra)
-        collectExtra(m, hex.keys(), mut extra)
+        extra: Mutable<List<Str>> = List<Str> { }
+        collectExtra(m, ints.keys(), extra)
+        collectExtra(m, hex.keys(), extra)
         if !extra.isEmpty() {
-            sortNames(mut extra)
+            sortNames(extra)
             out.error = "${m.name}: unknown field(s) ${listText(extra)}"
             out
         } else {
-            mut missing: List<Str> = List<Str> { }
-            mut i: Size = 0
+            missing: Mutable<List<Str>> = List<Str> { }
+            i: Mutable<Size> = 0
             while i < m.fields.size() {
                 n: Str = m.fields[i].name
                 if !ints.containsKey(n) && !hex.containsKey(n) {
@@ -247,10 +247,10 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
                 out.error = "${m.name}: missing field(s) ${listText(missing)}"
                 out
             } else {
-                mut raw: List<UInt8> = List<UInt8> { }
+                raw: Mutable<List<UInt8>> = List<UInt8> { }
                 i = 0
-                mut result: Maybe<Packed> = null
-                mut found2: Bool = false
+                result: Mutable<Maybe<Packed>> = null
+                found2: Mutable<Bool> = false
                 while i < m.fields.size() {
                     f: Field = m.fields[i]
                     if f.kind == "bytes" {
@@ -261,8 +261,8 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
                             found2 = true
                             break
                         }
-                        mut b: List<UInt8> = List<UInt8> { }
-                        if !fromHex(given.value, mut b) {
+                        b: Mutable<List<UInt8>> = List<UInt8> { }
+                        if !fromHex(given.value, b) {
                             out.error = "${f.name}: not hex"
                             result = out
                             found2 = true
@@ -281,15 +281,15 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
                 if found2 {
                     result.value
                 } else {
-                    mut payload: List<UInt8> = List<UInt8> { }
-                    mut at: Size = 0
+                    payload: Mutable<List<UInt8>> = List<UInt8> { }
+                    at: Mutable<Size> = 0
                     i = 0
-                    mut result2: Maybe<Packed> = null
-                    mut found3: Bool = false
+                    result2: Mutable<Maybe<Packed>> = null
+                    found3: Mutable<Bool> = false
                     while i < m.fields.size() {
                         f: Field = m.fields[i]
                         if f.kind == "bytes" {
-                            mut j: Size = 0
+                            j: Mutable<Size> = 0
                             while j < f.count {
                                 payload.add(raw[at + j])
                                 j += 1
@@ -309,7 +309,7 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
                                 found3 = true
                                 break
                             }
-                            addLe(mut payload, v.value, width(f))
+                            addLe(payload, v.value, width(f))
                         }
                         i += 1
                     }
@@ -326,7 +326,7 @@ pub pack: (spec: Spec, name: Str, ints: Map<Str, Int64>, hex: Map<Str, Str>) Pac
 }
 
 pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
-    mut out: Unpacked = Unpacked { }
+    out: Mutable<Unpacked> = Unpacked { }
     found: Maybe<Message> = spec.messages.get(name)
     if found.isNone() {
         out.error = "unknown message '${name}'"
@@ -337,8 +337,8 @@ pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
             out.error = "${m.name}: ${payload.size()} payload bytes, the message is ${m.size}"
             out
         } else {
-            mut at: Size = 0
-            mut i: Size = 0
+            at: Mutable<Size> = 0
+            i: Mutable<Size> = 0
             while i < m.fields.size() {
                 f: Field = m.fields[i]
                 k: Str = f.kind
@@ -366,15 +366,15 @@ pub unpack: (spec: Spec, name: Str, payload: View<UInt8>) Unpacked {
 }
 
 pub bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
-    mut inv: Map<Int64, Str> = Map<Int64, Str> { }
+    inv: Mutable<Map<Int64, Str>> = Map<Int64, Str> { }
     names: Arr<Str> = table.keys()
-    mut i: Size = 0
+    i: Mutable<Size> = 0
     while i < names.size() {
         inv[table.get(names[i]).value] = names[i]
         i += 1
     }
-    mut out: List<Str> = List<Str> { }
-    mut b: Int64 = 0
+    out: Mutable<List<Str>> = List<Str> { }
+    b: Mutable<Int64> = 0
     while b < 16 {
         if ((value >> b) & 1) != 0 {
             out.add(inv.get(b).unwrapOr("BIT${b}"))
@@ -386,10 +386,10 @@ pub bitNames: (table: Map<Str, Int64>, value: Int64) List<Str> {
 
 // none where Python raises KeyError.
 pub bitsMask: (table: Map<Str, Int64>, names: List<Str>) Maybe<Int64> {
-    mut m: Int64 = 0
-    mut i: Size = 0
-    mut result: Maybe<Int64> = null
-    mut found: Bool = false
+    m: Mutable<Int64> = 0
+    i: Mutable<Size> = 0
+    result: Mutable<Maybe<Int64>> = null
+    found: Mutable<Bool> = false
     while i < names.size() {
         bit: Maybe<Int64> = table.get(names[i])
         if bit.isNone() {
@@ -433,9 +433,9 @@ pub Ev: Any {
 }
 
 pub rttSamples: (events: List<Ev>, sentHb: Map<Int64, Int64>) List<Float64> {
-    mut pending: Map<Int64, Int64> = sentHb
-    mut out: List<Float64> = List<Float64> { }
-    mut i: Size = 0
+    pending: Mutable<Map<Int64, Int64>> = Map<Int64, Int64> { values = sentHb.entries() }
+    out: Mutable<List<Float64>> = List<Float64> { }
+    i: Mutable<Size> = 0
     while i < events.size() {
         e: Ev = events[i]
         i += 1
@@ -454,8 +454,8 @@ show: (u: Unpacked, m: Message) Str {
     if u.error != "" {
         u.error
     } else {
-        mut s: Str = ""
-        mut i: Size = 0
+        s: Mutable<Str> = ""
+        i: Mutable<Size> = 0
         while i < m.fields.size() {
             n: Str = m.fields[i].name
             if m.fields[i].kind == "bytes" {
@@ -470,8 +470,8 @@ show: (u: Unpacked, m: Message) Str {
 }
 
 joined: (names: List<Str>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < names.size() {
         if i > 0 {
             s = s + "|"
@@ -483,21 +483,21 @@ joined: (names: List<Str>) Str {
 }
 
 main: () Void {
-    mut spec: Spec = Spec { }
-    mut hb: Message = spec.addMessage("HEARTBEAT", 1, "host_to_vcu", 5)
+    spec: Mutable<Spec> = Spec { }
+    hb: Mutable<Message> = spec.addMessage("HEARTBEAT", 1, "host_to_vcu", 5)
     hb.addField("host_ms", "u32", 0)
     hb.addField("mode", "u8", 0)
-    mut ds: Message = spec.addMessage("DRIVE_SETPOINT", 257, "host_to_vcu", 6)
+    ds: Mutable<Message> = spec.addMessage("DRIVE_SETPOINT", 257, "host_to_vcu", 6)
     ds.addField("throttle_us", "u16", 0)
     ds.addField("steer_us", "u16", 0)
     ds.addField("duration_ms", "u16", 0)
-    mut tel: Message = spec.addMessage("TELEMETRY", 32769, "vcu_to_host", 13)
+    tel: Mutable<Message> = spec.addMessage("TELEMETRY", 32769, "vcu_to_host", 13)
     tel.addField("t_us", "u32", 0)
     tel.addField("ticks", "i32", 0)
     tel.addField("tps", "i16", 0)
     tel.addField("hall", "i8", 0)
     tel.addField("hb_seq", "u16", 0)
-    mut hello: Message = spec.addMessage("VCU_HELLO", 32768, "vcu_to_host", 6)
+    hello: Mutable<Message> = spec.addMessage("VCU_HELLO", 32768, "vcu_to_host", 6)
     hello.addField("proto_major", "u8", 0)
     hello.addField("board", "u8", 0)
     hello.addField("serial", "bytes", 4)
@@ -511,7 +511,7 @@ main: () Void {
     spec.faultBits.add("ESTOP", 5)
     trace(joined(bitNames(spec.faultBits.byName, 0x0027)))
     trace(joined(bitNames(spec.faultBits.byName, 0)))
-    mut names: List<Str> = List<Str> { }
+    names: Mutable<List<Str>> = List<Str> { }
     names.add("BUMPER")
     names.add("ESTOP")
     trace(bitsMask(spec.faultBits.byName, names).unwrapOr(-1))
@@ -525,8 +525,8 @@ main: () Void {
     trace(reasonName(spec, 1) + " " + reasonName(spec, 0x1A2) + " " + nackName(spec, 1) + " " + nackName(spec, 9))
     trace(stateName(spec, 4) + " " + stateName(spec, 7))
 
-    mut ints: Map<Str, Int64> = Map<Str, Int64> { }
-    mut hex: Map<Str, Str> = Map<Str, Str> { }
+    ints: Mutable<Map<Str, Int64>> = Map<Str, Int64> { }
+    hex: Mutable<Map<Str, Str>> = Map<Str, Str> { }
     ints["steer_us"] = 1500
     ints["throttle_us"] = 1650
     ints["duration_ms"] = 100
@@ -545,7 +545,7 @@ main: () Void {
     trace(pack(spec, "DRIVE_SETPOINT", ints, hex).error)
     trace(pack(spec, "NOPE", ints, hex).error)
 
-    mut ti: Map<Str, Int64> = Map<Str, Int64> { }
+    ti: Mutable<Map<Str, Int64>> = Map<Str, Int64> { }
     ti["t_us"] = 4000000000
     ti["ticks"] = -5
     ti["tps"] = -300
@@ -557,10 +557,10 @@ main: () Void {
     trace(show(unpack(spec, "TELEMETRY", tp), tel))
     trace(show(unpack(spec, "TELEMETRY", tp.slice(0, 12)), tel))
 
-    mut hi: Map<Str, Int64> = Map<Str, Int64> { }
+    hi: Mutable<Map<Str, Int64>> = Map<Str, Int64> { }
     hi["proto_major"] = 1
     hi["board"] = 3
-    mut hh: Map<Str, Str> = Map<Str, Str> { }
+    hh: Mutable<Map<Str, Str>> = Map<Str, Str> { }
     hh["serial"] = "DE AD be ef"
     ph: Packed = pack(spec, "VCU_HELLO", hi, hh)
     trace(ph.error + hexOf(ph.payload))
@@ -571,11 +571,11 @@ main: () Void {
     hh["serial"] = "d ead"
     trace(pack(spec, "VCU_HELLO", hi, hh).error)
 
-    mut sent: Map<Int64, Int64> = Map<Int64, Int64> { }
+    sent: Mutable<Map<Int64, Int64>> = Map<Int64, Int64> { }
     sent[1] = 1000000
     sent[2] = 1020000
     sent[3] = 1040000
-    mut evs: List<Ev> = List<Ev> { }
+    evs: Mutable<List<Ev>> = List<Ev> { }
     evs.add(Ev { 1008000, "TELEMETRY", true, 1, 3 })
     evs.add(Ev { 1030000, "SAFETY_STATE", true, 2, 0 })
     evs.add(Ev { 1031000, "TELEMETRY", false, 2, 0 })
@@ -583,8 +583,8 @@ main: () Void {
     evs.add(Ev { 1033000, "TELEMETRY", true, 2, 1 })
     evs.add(Ev { 1050000, "TELEMETRY", true, 9, 0 })
     rs: List<Float64> = rttSamples(evs, sent)
-    mut line: Str = ""
-    mut i: Size = 0
+    line: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < rs.size() {
         line = line + " ${rs[i]}"
         i += 1

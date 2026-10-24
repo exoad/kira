@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * The predicates one package writes and the others read (40-round3 R-C, R-G; 50-round4 2.3): which
@@ -35,7 +36,7 @@ class SharedPredicatesTest {
                 pub a: Int32 = 0
                 pub f: Maybe<Fx<Tuple0, Void>> = null
             }
-            pub Deep: Struct {
+            pub Deep: Mutable<Any> {
                 pub w: List<WithFx> = List<WithFx> { }
             }
             pub Gen<T>: Struct {
@@ -93,7 +94,7 @@ class SharedPredicatesTest {
         val p = snippet(
             callees + """
             pub caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
-                mut ys: List<Int32> = List<Int32> { values = @arrOf(1) }
+                ys: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1) }
                 ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
             }
             """,
@@ -163,112 +164,114 @@ class SharedPredicatesTest {
 
     @Test
     fun confinedOverOneCalleeOfEachKindBothAnswers() {
-        // 50-round4 2.3's table, each kind with both answers where it has two: an Fx argument (a lambda literal or a
-        // function named as a value, CONFINED or not; a variable never), a Kira body (EffectsPass's fixpoint, mutual
-        // recursion included, a call of its own Fx parameter charged at its call site), a stdlib binding (a mutator on a
-        // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing; a lambda, CONFINED or not,
-        // which C++ may call with what it chooses; a class that may hold an Fx), and the dispatched kinds, which never are.
-        val p = snippet(
-            """
-            pub mut G: Int32 = 0
-            pub K: Any {
-                pub n: Int32 = 0
-                pub get: () Int32 {
-                    n
+        DialectGates.stage4(false) {
+            // 50-round4 2.3's table, each kind with both answers where it has two: an Fx argument (a lambda literal or a
+            // function named as a value, CONFINED or not; a variable never), a Kira body (EffectsPass's fixpoint, mutual
+            // recursion included, a call of its own Fx parameter charged at its call site), a stdlib binding (a mutator on a
+            // local; RUNS_OPERATORS over a user class), trace, what C++ supplies (given nothing; a lambda, CONFINED or not,
+            // which C++ may call with what it chooses; a class that may hold an Fx), and the dispatched kinds, which never are.
+            val p = snippet(
+                """
+                pub mut G: Int32 = 0
+                pub K: Any {
+                    pub n: Int32 = 0
+                    pub get: () Int32 {
+                        n
+                    }
                 }
-            }
-            pub Base: Any {
-                pub act: () Int32 {
-                    0
+                pub Base: Any {
+                    pub act: () Int32 {
+                        0
+                    }
                 }
-            }
-            pub Sub: Base {
-                override pub act: () Int32 {
+                pub Sub: Base {
+                    override pub act: () Int32 {
+                        G += 1
+                        1
+                    }
+                }
+                pub T: Any {
+                    pub m: () Int32;
+                }
+                pub pure: () Int32 {
+                    1
+                }
+                pub writesG: () Int32 {
                     G += 1
                     1
                 }
+                pub writesOwn: (mut x: Int32) Int32 {
+                    x += 1
+                    x
+                }
+                pub apply: (f: Fx<Tuple0, Int32>) Int32 {
+                    f()
+                }
+                pub swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
+                    f = writesG
+                    f()
+                }
+                pub ping: (n: Int32) Int32 {
+                    n > 0 ? pong(n - 1) : 0
+                }
+                pub pong: (n: Int32) Int32 {
+                    mut k: Int32 = n
+                    k += 1
+                    ping(k - 2)
+                }
+                pub virt: (b: Base) Int32 {
+                    b.act()
+                }
+                pub ext: (n: Int32, s: Str) Int32;
+                pub extFx: (f: Fx<Tuple0, Int32>) Int32;
+                pub extK: (k: K) Int32;
+                pub caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
+                    mut x: Int32 = 0
+                    mut xs: List<Int32> = List<Int32> { values = @arrOf(1) }
+                    ks: List<K> = List<K> { values = @arrOf(k) }
+                    a: Int32 = pure() + writesG() + writesOwn(mut x)
+                    c: Int32 = apply(() Int32 {
+                        1
+                    }) + apply(() Int32 {
+                        G += 1
+                        1
+                    }) + apply(pure) + apply(writesG) + apply(f)
+                    d: Int32 = f() + t.m() + virt(b) + ping(3) + k.get()
+                    xs.add(1)
+                    e: Bool = ks.contains(k) || xs.contains(1)
+                    trace(a)
+                    g: Int32 = ext(1, "s") + extFx(() Int32 {
+                        1
+                    }) + extFx(() Int32 {
+                        G += 1
+                        1
+                    }) + extK(k)
+                    a + c + d + g
+                }
+                """,
+            )
+            assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
+            val want = mapOf(
+                "pure" to listOf(true), "writesG" to listOf(false), "writesOwn" to listOf(true),
+                "apply" to listOf(true, false, true, false, false),
+                "m" to listOf(false), "act" to listOf(false), "virt" to listOf(false), "ping" to listOf(true, true), "pong" to listOf(true), "get" to listOf(true),
+                "add" to listOf(true), "contains" to listOf(false, true), "trace" to emptyList(),
+                "ext" to listOf(true), "extFx" to listOf(false, false), "extK" to listOf(false),
+            )
+            assertEquals(want, confined(p, *want.keys.toTypedArray()))
+            // trace has no FnSymbol (PRINT), and f() none either (FN_VALUE): judged by kind. apply's own f() is never
+            // CONFINED at a call site either; only apply's fixpoint counts it, charged where apply is handed its Fx.
+            val byKind = BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
+                val rc = p.model.calls[call]?.takeIf { it.fn == null } ?: return@mapNotNull null
+                rc.kind.name to CallReach.confined(rc, p.model)
             }
-            pub T: Any {
-                pub m: () Int32;
-            }
-            pub pure: () Int32 {
-                1
-            }
-            pub writesG: () Int32 {
-                G += 1
-                1
-            }
-            pub writesOwn: (mut x: Int32) Int32 {
-                x += 1
-                x
-            }
-            pub apply: (f: Fx<Tuple0, Int32>) Int32 {
-                f()
-            }
-            pub swapRun: (mut f: Fx<Tuple0, Int32>) Int32 {
-                f = writesG
-                f()
-            }
-            pub ping: (n: Int32) Int32 {
-                n > 0 ? pong(n - 1) : 0
-            }
-            pub pong: (n: Int32) Int32 {
-                mut k: Int32 = n
-                k += 1
-                ping(k - 2)
-            }
-            pub virt: (b: Base) Int32 {
-                b.act()
-            }
-            pub ext: (n: Int32, s: Str) Int32;
-            pub extFx: (f: Fx<Tuple0, Int32>) Int32;
-            pub extK: (k: K) Int32;
-            pub caller: (f: Fx<Tuple0, Int32>, t: T, k: K, b: Base) Int32 {
-                mut x: Int32 = 0
-                mut xs: List<Int32> = List<Int32> { values = @arrOf(1) }
-                ks: List<K> = List<K> { values = @arrOf(k) }
-                a: Int32 = pure() + writesG() + writesOwn(mut x)
-                c: Int32 = apply(() Int32 {
-                    1
-                }) + apply(() Int32 {
-                    G += 1
-                    1
-                }) + apply(pure) + apply(writesG) + apply(f)
-                d: Int32 = f() + t.m() + virt(b) + ping(3) + k.get()
-                xs.add(1)
-                e: Bool = ks.contains(k) || xs.contains(1)
-                trace(a)
-                g: Int32 = ext(1, "s") + extFx(() Int32 {
-                    1
-                }) + extFx(() Int32 {
-                    G += 1
-                    1
-                }) + extK(k)
-                a + c + d + g
-            }
-            """,
-        )
-        assertTrue(p.diagnostics.none { it.isError }, TyperTestSupport.render(p))
-        val want = mapOf(
-            "pure" to listOf(true), "writesG" to listOf(false), "writesOwn" to listOf(true),
-            "apply" to listOf(true, false, true, false, false),
-            "m" to listOf(false), "act" to listOf(false), "virt" to listOf(false), "ping" to listOf(true, true), "pong" to listOf(true), "get" to listOf(true),
-            "add" to listOf(true), "contains" to listOf(false, true), "trace" to emptyList(),
-            "ext" to listOf(true), "extFx" to listOf(false, false), "extK" to listOf(false),
-        )
-        assertEquals(want, confined(p, *want.keys.toTypedArray()))
-        // trace has no FnSymbol (PRINT), and f() none either (FN_VALUE): judged by kind. apply's own f() is never
-        // CONFINED at a call site either; only apply's fixpoint counts it, charged where apply is handed its Fx.
-        val byKind = BodyTestSupport.every<FunctionCallExpr>(p).mapNotNull { call ->
-            val rc = p.model.calls[call]?.takeIf { it.fn == null } ?: return@mapNotNull null
-            rc.kind.name to CallReach.confined(rc, p.model)
+            assertEquals(listOf("FN_VALUE" to false, "FN_VALUE" to false, "FN_VALUE" to false, "PRINT" to true), byKind)
+            // A mut Fx parameter is no charge of the call site's: swapRun reassigns it before it runs it.
+            assertEquals(
+                mapOf("apply" to true, "writesOwn" to true, "writesG" to false, "virt" to false, "swapRun" to false),
+                listOf("apply", "writesOwn", "writesG", "virt", "swapRun").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
+            )
         }
-        assertEquals(listOf("FN_VALUE" to false, "FN_VALUE" to false, "FN_VALUE" to false, "PRINT" to true), byKind)
-        // A mut Fx parameter is no charge of the call site's: swapRun reassigns it before it runs it.
-        assertEquals(
-            mapOf("apply" to true, "writesOwn" to true, "writesG" to false, "virt" to false, "swapRun" to false),
-            listOf("apply", "writesOwn", "writesG", "virt", "swapRun").associateWith { p.model.fnConfined[RulesTestSupport.fn(p, it)] },
-        )
     }
 
     @Test
@@ -280,11 +283,11 @@ class SharedPredicatesTest {
         // stays CONFINED.
         val p = snippet(
             """
-            pub mut G: Int32 = 0
+            pub G: Mutable<Int32> = 0
             pub pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
                 f(x)
             }
-            pub keepG<T>: (mut xs: List<T>, x: T) Void {
+            pub keepG<T>: (xs: List<T>, x: T) Void {
                 xs.add(x)
             }
             pub Box<T>: Any {
@@ -294,15 +297,15 @@ class SharedPredicatesTest {
                 }
             }
             pub drive: () Void {
-                mut fs: List<Fx<Tuple0, Void>> = @listOf()
-                mut ns: List<Int32> = @listOf()
-                keepG<Fx<Tuple0, Void>>(mut fs, () Void {
+                fs: Mutable<List<Fx<Tuple0, Void>>> = @listOf()
+                ns: Mutable<List<Int32>> = @listOf()
+                keepG<Fx<Tuple0, Void>>(fs, () Void {
                     G += 1
                 })
-                keepG<Fx<Tuple0, Void>>(mut fs, () Void {
+                keepG<Fx<Tuple0, Void>>(fs, () Void {
                     trace(1)
                 })
-                keepG<Int32>(mut ns, 1)
+                keepG<Int32>(ns, 1)
                 fs.add(() Void {
                     G += 1
                 })
@@ -333,7 +336,7 @@ class SharedPredicatesTest {
         // A class construction runs its chain's initially and the defaults it leaves out, which may write anything.
         val p = snippet(
             """
-            pub mut G: Int32 = 0
+            pub G: Mutable<Int32> = 0
             pub Init: Any {
                 pub n: Int32 = 0
                 initially {
@@ -353,7 +356,7 @@ class SharedPredicatesTest {
             pub Defaulted: Any {
                 pub n: Int32 = bumped()
             }
-            pub count: (mut xs: List<Int32>) Void {
+            pub count: (xs: List<Int32>) Void {
                 xs.add(1)
             }
             """,
@@ -388,8 +391,8 @@ class SharedPredicatesTest {
                 pub f: Fx<Tuple0, Void>
                 pub n: Int32 = 0
             }
-            pub Counted: Any {
-                pub mut n: Int32 = 0
+            pub Counted: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
                 initially {
                     n = 1
                 }
@@ -412,8 +415,8 @@ class SharedPredicatesTest {
         val t = snippet(
             """
             kira.sync as sync
-            pub mut G: Int32 = 0
-            pub mut hooks: List<Fx<Tuple0, Void>> = @listOf()
+            pub G: Mutable<Int32> = 0
+            pub hooks: Mutable<List<Fx<Tuple0, Void>>> = @listOf()
             pub quiet: () Void {
             }
             pub loud: () Void {

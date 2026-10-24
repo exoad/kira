@@ -50,7 +50,7 @@ pub namedOf: (m: Match, name: Str) Maybe<Str> {
 }
 
 pub span: (m: Match) List<Size> {
-    mut out: List<Size> = @listOf()
+    out: Mutable<List<Size>> = @listOf()
     out.add(m.start())
     out.add(m.end())
     out

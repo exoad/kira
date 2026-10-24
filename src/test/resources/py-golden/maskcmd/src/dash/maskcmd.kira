@@ -10,7 +10,7 @@ BOX_LIMIT_M: Float64 = 1.5
 
 // min(max(v, 0.0), 1.5) as Python takes them (-0.0 stays itself), then round(v, 3).
 clean: (v: Float64) Float64 {
-    mut c: Float64 = v
+    c: Mutable<Float64> = v
     if c < 0.0 {
         c = 0.0
     }
@@ -32,10 +32,10 @@ pub command: (words: List<Str>) Str {
     } else if words.size() != 5 || words[0] != "box" {
         "refused"
     } else {
-        mut out: Str = "box"
-        mut i: Size = 1
-        mut result: Str = ""
-        mut found: Bool = false
+        out: Mutable<Str> = "box"
+        i: Mutable<Size> = 1
+        result: Mutable<Str> = ""
+        found: Mutable<Bool> = false
         while i < 5 {
             v: Maybe<Float64> = words[i].toFloat64()
             if v.isNone() || !finite(v.value) {

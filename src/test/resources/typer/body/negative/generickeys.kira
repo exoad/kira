@@ -5,15 +5,15 @@ pub Holder: Any {
     pub n: Int32
 }
 
-pub Index<K>: Any {
-    pub mut m: Map<K, Int32> = Map<K, Int32> { }
+pub Index<K>: Mutable<Any> {
+    pub m: Mutable<Map<K, Int32>> = Map<K, Int32> { }
 }
 
-pub Bag<T>: Any {
+pub Bag<T>: Mutable<Any> {
     pub s: Set<T> = Set<T> { }
 }
 
-pub Outer<T>: Any {
+pub Outer<T>: Mutable<Any> {
     pub ix: Index<T> = Index<T> { }
 }
 

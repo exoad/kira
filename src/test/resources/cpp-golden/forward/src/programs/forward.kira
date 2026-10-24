@@ -12,7 +12,7 @@ main: () Int32 {
     if !car.arm() {
         car.finish()
     } else {
-        mut blocked: Bool = true
+        blocked: Mutable<Bool> = true
         while car.ok() {
             if !car.drivable() && !car.arm() {
                 continue

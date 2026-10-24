@@ -6,7 +6,7 @@ pub N: Size = 4
 pub Arr<UInt8, 8> as Frame
 
 pub sum: (buf: View<UInt8>) UInt32 {
-    mut s: UInt32 = 0
+    s: Mutable<UInt32> = 0
     for b: UInt8 in buf {
         s += b as UInt32
     }
@@ -23,7 +23,7 @@ pub words: (text: View<Char>) Size {
 }
 
 pub views: (text: View<Char>) Void {
-    mut f: Frame = Frame { }               // @type Arr<UInt8, 8>
+    f: Mutable<Frame> = Frame { }               // @type Arr<UInt8, 8>
     f[1] = 3                               // @type UInt8 place=Index(Local(f), ARR) @ f[1]
     fill(f.from(2), 9)                     // @type MutView<UInt8> call=MAGIC(Arr.from) @ f.from(2)
     t: UInt32 = sum(f.slice(0, 4))         // @type MutView<UInt8> coerce=ToView(MutView<UInt8>) @ f.slice(0, 4)
@@ -40,11 +40,11 @@ pub views: (text: View<Char>) Void {
     sized: Arr<Int32, N> = @arrOf(1, 2, 3, 4)    // @type Arr<Int32, 4>
     size: Size = sized.size()              // @type Size call=MAGIC(Arr.size)
     dyn: Arr<Int32> = @arrOf(5, 6)               // @type Arr<Int32>
-    mut buf: Arr<UInt8, 2> = Arr<UInt8, 2> { } // @type Arr<UInt8, 2>
+    buf: Mutable<Arr<UInt8, 2>> = Arr<UInt8, 2> { } // @type Arr<UInt8, 2>
     fill(buf.view(), 1)                    // @type MutView<UInt8> call=MAGIC(Arr.view) @ buf.view()
 }
 
-pub texts: (mut out: StrBuf<16>, x: Int32) Void {
+pub texts: (out: StrBuf<16>, x: Int32) Void {
     out.set("x=${x}")                      // @type View<Char> @ "x=${x}"
     out.add("!")                           // @type Str coerce=ToView(Str) @ "!"
     out.addChar('.')                       // @type Void call=MAGIC(StrBuf.addChar)

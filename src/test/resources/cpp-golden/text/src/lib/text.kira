@@ -20,7 +20,7 @@ pub wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
     } else if s.size() > n && s[n] != ' ' {
         null
     } else {
-        mut at: Size = n
+        at: Mutable<Size> = n
         while at < s.size() && s[at] == ' ' {
             at += 1
         }
@@ -31,42 +31,37 @@ pub wordEnd: (s: View<Char>, w: View<Char>) Maybe<Size> {
 // The length without trailing CR, LF, space and tab. A terminal picks its own
 // line ending, and "PING\r" is not "PING".
 pub trimEnd: (s: View<Char>) Size {
-    mut n: Size = s.size()
+    n: Mutable<Size> = s.size()
     while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isBlank(s[n - 1])) {
         n -= 1
     }
     n
 }
 
-// STRICT: surrounding space is allowed and anything else is a refusal, where
-// atoi("12abc") is 12. out is untouched on failure.
-pub toInt: (s: View<Char>, mut out: Int32) Bool {
-    mut from: Size = 0
+// STRICT: surrounding space is allowed and anything else is a refusal (none), where
+// atoi("12abc") is 12.
+pub toInt: (s: View<Char>) Maybe<Int32> {
+    from: Mutable<Size> = 0
     while from < s.size() && isBlank(s[from]) {
         from += 1
     }
     end: Size = trimEnd(s)
     if from >= end {
-        false
+        null
     } else {
         v: Maybe<Int64> = parseInt64(s.slice(from, end - from))
-        if v.isNone() {
-            false
-        } else {
-            out = v.unwrap() as Int32
-            true
-        }
+        v.isNone() ? null : v.unwrap() as Int32
     }
 }
 
 // The drive reply into a caller's buffer. Interpolation into a StrBuf appends
 // in place: no Str, so no heap.
-pub driveReply: (servo: Int32, esc: Int32, mut out: StrBuf<32>) Void {
+pub driveReply: (servo: Int32, esc: Int32, out: StrBuf<32>) Void {
     out.set("OK drive servo=${servo} esc=${esc}")
 }
 
 // A reading into a caller's buffer: addFixed rounds as FloatNum.fixed (D50).
-pub speedReply: (mps: Float64, places: Int32, mut out: StrBuf<32>) Void {
+pub speedReply: (mps: Float64, places: Int32, out: StrBuf<32>) Void {
     out.set("SPEED ")
     out.addFixed(mps, places)
 }

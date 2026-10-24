@@ -18,10 +18,10 @@ closures - captures by value, Ref for shared state
 fxvalues
 named 12
 loop variable copied: 0 10 20
-captured local after a write: 2 of 3
-a returned capture is a copy: 3 then 4
-a captured parameter: 1 of 2
-struct copies: 3 1 100 now 13
+captured local after a write: 3 of 3
+a returned capture is the List itself: 4 then 4
+a captured parameter: 2 of 2
+a Mutable type's captures share it: 13 11 1100 now 13
 nested 111
 an Fx field: 1001 1002 1005
 a List of Fx: 29

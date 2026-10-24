@@ -47,7 +47,7 @@ namespace unilidar
   [[nodiscard]] constexpr Frame start();
   [[nodiscard]] constexpr Frame versionRequest();
   [[nodiscard]] constexpr kira::Maybe<Frame> autoStandbyFrame(std::uint32_t value);
-  [[nodiscard]] constexpr bool readHeader(kira::View<std::uint8_t> buf, Header& out);
+  [[nodiscard]] constexpr kira::Maybe<Header> readHeader(kira::View<std::uint8_t> buf);
   [[nodiscard]] constexpr bool tailClosed(kira::View<std::uint8_t> buf);
   [[nodiscard]] constexpr kira::Size packetAt(kira::View<std::uint8_t> buf);
   template<typename F_each>
@@ -123,35 +123,25 @@ namespace unilidar
       return value > 1u ? kira::Maybe<std::array<std::uint8_t, 32>>(kira::none) : kira::Maybe<std::array<std::uint8_t, 32>>(userCmd(USER_CMD_CONFIG_AUTO_STANDBY, value));
   }
 
-  constexpr bool readHeader(kira::View<std::uint8_t> buf, Header& out)
+  constexpr kira::Maybe<Header> readHeader(kira::View<std::uint8_t> buf)
   {
       if(buf.size() < HEADER_BYTES + TAIL_BYTES)
       {
-          return false;
+          return kira::none;
       }
       else
       {
-          bool result{false};
           bool found{false};
           for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
           {
               if(kira::at(buf, i) != kira::at(MAGIC, i))
               {
-                  result = false;
                   found = true;
                   break;
               }
           }
-          if(found)
-          {
-              return result;
-          }
-          else
-          {
-              out.type = readU32(buf.from(4));
-              out.size = readU32(buf.from(8));
-              return static_cast<kira::Size>(out.size) == buf.size();
-          }
+          const Header h = Header{.type = readU32(buf.from(4)), .size = readU32(buf.from(8))};
+          return found || static_cast<kira::Size>(h.size) != buf.size() ? kira::Maybe<Header>(kira::none) : kira::Maybe<Header>(h);
       }
   }
 
@@ -196,7 +186,7 @@ namespace unilidar
     requires kira::Callable<F_each, void, kira::View<std::uint8_t>>
   constexpr Walked eachPacket(kira::View<std::uint8_t> buf, F_each&& each)
   {
-      Walked w = Walked{};
+      kira::Size packets{0};
       kira::Size at{0};
       while(at < buf.size())
       {
@@ -206,11 +196,10 @@ namespace unilidar
               break;
           }
           each(buf.slice(at, n));
-          w.packets += 1;
+          packets += 1;
           at += n;
       }
-      w.leftover = buf.size() - at;
-      return w;
+      return Walked{.packets = packets, .leftover = buf.size() - at};
   }
 }
 #include "kira/macro_pop.hxx"

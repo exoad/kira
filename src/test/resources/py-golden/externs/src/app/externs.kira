@@ -10,11 +10,11 @@ pub Pt: Struct {
     pub y: Int32 = 0
 }
 
-pub Box: Any {
-    pub mut items: List<Str> = List<Str> { }
+pub Box: Mutable<Any> {
+    pub items: Mutable<List<Str>> = List<Str> { }
 }
 
-pub Holder: Struct {
+pub Holder: Mutable<Any> {
     pub t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { @listOf(1), 0 }
     pub raw: List<UInt8> = @listOf(1)
 }
@@ -75,19 +75,21 @@ pub @_extern giveVoid: (k: Str) Void
 pub run: () Void {
     top: UInt64 = 0
     trace(seenScalars(-5, top - 1, 3, 2.5, true, "hi", LEVEL_HIGH))
-    mut m: Map<Str, Int32> = Map<Str, Int32> { }
+    m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
     m.put("a", 1)
     trace(seenValues(@listOf(1, 2), @listOf(7, 8), m, Tuple2<Str, Int32> { "t", 2 }, "s", null))
-    mut box: Box = Box { }
+    box: Mutable<Box> = Box { }
     box.items.add("first")
     trace(seenObjects(Pt { 1, 2 }, box, Json.parse("{\"k\": [1, 2.5, null]}")))
 
     // The sidecar keeps a copy of a List and a struct, and the Box itself.
-    mut xs: List<Int32> = @listOf(1, 2, 3)
-    mut p: Pt = Pt { 1, 2 }
+    xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
+    p: Mutable<Pt> = Pt { 1, 2 }
     keep(xs, p, box)
     xs.add(4)
-    p.x = 9
+    p = p with {
+        x = 9
+    }
     box.items.add("later")
     trace(kept())
 
@@ -97,7 +99,7 @@ pub run: () Void {
     trace(s.size())
 
     // A view is lent for the call: written through, released after, and the List grows again.
-    mut buf: List<UInt8> = @listOf(0, 0, 0, 0)
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0)
     trace(fillInto(buf.from(0)))
     trace(Str.of(buf.slice(0, 3)))
     trace(useKept())
@@ -105,7 +107,8 @@ pub run: () Void {
     trace(buf.size())
     trace(tryWrite(buf))
 
-    // Python writes into every List it is handed, at any depth, a tuple's included: Kira's stay as they were.
+    // Python writes into every List it is handed, at any depth, a tuple's included: Kira's stay as they were,
+    // but for a Mutable object's own (the Holder's), which the sidecar shares.
     t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { @listOf(1), 0 }
     h: Holder = Holder { }
     ts: List<Tuple2<List<Int32>, Int32>> = @listOf(Tuple2<List<Int32>, Int32> { @listOf(1), 0 })
@@ -117,12 +120,12 @@ pub run: () Void {
     d: List<Int32> = mt.value.first
     trace("${a.size()} ${b.size()} ${c.size()} ${d.size()}")
     x: List<UInt8> = @listOf(1)
-    mut bm: Map<Str, List<UInt8>> = Map<Str, List<UInt8>> { }
+    bm: Mutable<Map<Str, List<UInt8>>> = Map<Str, List<UInt8>> { }
     bm.put("k", x)
     trace(bytesKinds(x, x, @listOf(x), bm, Tuple2<List<UInt8>, Int32> { x, 0 }, h))
 
     // A Json goes as itself: what the sidecar writes into it, Kira reads.
-    mut j: Json = Json.parse("{}")
+    j: Mutable<Json> = Json.parse("{}")
     annotate(j, "note")
     trace(j.has("note"))
 }

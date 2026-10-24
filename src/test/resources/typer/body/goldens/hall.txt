@@ -33,197 +33,218 @@ hall.kira:24:28  0  UInt32  const=0:UInt32
 hall.kira:27:9  skips + invalid  UInt32
 hall.kira:27:9  skips  UInt32  place=Field(This(Decoder).skips)  sym=Decoder.skips
 hall.kira:27:17  invalid  UInt32  place=Field(This(Decoder).invalid)  sym=Decoder.invalid
-hall.kira:31:23  next & 7  UInt8
-hall.kira:31:23  next  UInt8  place=Param(next)  sym=Decoder.feed(next)
-hall.kira:31:30  7  UInt8  const=7:UInt8
-hall.kira:32:21  INDEX_OF[bits as Size]  Int8  place=Index(Global(INDEX_OF), ARR)
-hall.kira:32:21  INDEX_OF  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]  place=Global(INDEX_OF)  sym=golden.hall:pico.hall.INDEX_OF
-hall.kira:32:30  bits as Size  Size  conv=INT_WRAP
-hall.kira:32:30  bits  UInt8  place=Local(bits)  sym=Decoder.feed::bits
-hall.kira:33:12  idx < 0  Bool
-hall.kira:33:12  idx  Int8  place=Local(idx)  sym=Decoder.feed::idx
-hall.kira:33:18  0  Int8  const=0:Int8
-hall.kira:34:13  invalid += 1  Void
-hall.kira:34:13  invalid  UInt32  place=Field(This(Decoder).invalid)  sym=Decoder.invalid
-hall.kira:34:24  1  UInt32  const=1:UInt32
-hall.kira:35:13  state = bits  Void
-hall.kira:35:13  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:35:21  bits  UInt8  place=Local(bits)  sym=Decoder.feed::bits
-hall.kira:36:13  primed = false  Void
-hall.kira:36:13  primed  Bool  place=Field(This(Decoder).primed)  sym=Decoder.primed
-hall.kira:36:22  false  Bool  const=false  sym=kira:core.false
-hall.kira:37:19  primed && bits == state  Bool
-hall.kira:37:19  primed  Bool  place=Field(This(Decoder).primed)  sym=Decoder.primed
-hall.kira:37:29  bits == state  Bool
-hall.kira:37:29  bits  UInt8  place=Local(bits)  sym=Decoder.feed::bits
-hall.kira:37:37  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:38:13  repeats += 1  Void
-hall.kira:38:13  repeats  UInt32  place=Field(This(Decoder).repeats)  sym=Decoder.repeats
-hall.kira:38:24  1  UInt32  const=1:UInt32
-hall.kira:39:19  !primed  Bool
-hall.kira:39:20  primed  Bool  place=Field(This(Decoder).primed)  sym=Decoder.primed
-hall.kira:40:13  primed = true  Void
-hall.kira:40:13  primed  Bool  place=Field(This(Decoder).primed)  sym=Decoder.primed
-hall.kira:40:22  true  Bool  const=true  sym=kira:core.true
-hall.kira:41:13  state = bits  Void
-hall.kira:41:13  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:41:21  bits  UInt8  place=Local(bits)  sym=Decoder.feed::bits
-hall.kira:42:13  lastEdgeUs = nowUs  Void
-hall.kira:42:13  lastEdgeUs  UInt64  place=Field(This(Decoder).lastEdgeUs)  sym=Decoder.lastEdgeUs
-hall.kira:42:26  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.feed(nowUs)
-hall.kira:44:26  INDEX_OF[state as Size] as Int32  Int32  conv=INT_WRAP
-hall.kira:44:26  INDEX_OF[state as Size]  Int8  place=Index(Global(INDEX_OF), ARR)
-hall.kira:44:26  INDEX_OF  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]  place=Global(INDEX_OF)  sym=golden.hall:pico.hall.INDEX_OF
-hall.kira:44:35  state as Size  Size  conv=INT_WRAP
-hall.kira:44:35  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:45:27  (idx as Int32 - was + 6) % 6  Int32
-hall.kira:45:28  idx as Int32 - was + 6  Int32
-hall.kira:45:29  idx as Int32 - was  Int32
-hall.kira:45:30  idx as Int32  Int32  conv=INT_WRAP
-hall.kira:45:30  idx  Int8  place=Local(idx)  sym=Decoder.feed::idx
-hall.kira:45:46  was  Int32  place=Local(was)  sym=Decoder.feed::was
-hall.kira:45:53  6  Int32  const=6:Int32
-hall.kira:45:58  6  Int32  const=6:Int32
+hall.kira:32:33  this.ticks  Int32  member=Field(Decoder.ticks: Int32)  place=Field(This(Decoder).ticks)
+hall.kira:32:33  this  Decoder  place=This(Decoder)
+hall.kira:33:34  this.edges  UInt32  member=Field(Decoder.edges: UInt32)  place=Field(This(Decoder).edges)
+hall.kira:33:34  this  Decoder  place=This(Decoder)
+hall.kira:34:34  this.skips  UInt32  member=Field(Decoder.skips: UInt32)  place=Field(This(Decoder).skips)
+hall.kira:34:34  this  Decoder  place=This(Decoder)
+hall.kira:35:36  this.invalid  UInt32  member=Field(Decoder.invalid: UInt32)  place=Field(This(Decoder).invalid)
+hall.kira:35:36  this  Decoder  place=This(Decoder)
+hall.kira:36:36  this.repeats  UInt32  member=Field(Decoder.repeats: UInt32)  place=Field(This(Decoder).repeats)
+hall.kira:36:36  this  Decoder  place=This(Decoder)
+hall.kira:37:33  this.state  UInt8  member=Field(Decoder.state: UInt8)  place=Field(This(Decoder).state)
+hall.kira:37:33  this  Decoder  place=This(Decoder)
+hall.kira:38:33  this.primed  Bool  member=Field(Decoder.primed: Bool)  place=Field(This(Decoder).primed)
+hall.kira:38:33  this  Decoder  place=This(Decoder)
+hall.kira:39:34  this.lastDir  Int8  member=Field(Decoder.lastDir: Int8)  place=Field(This(Decoder).lastDir)
+hall.kira:39:34  this  Decoder  place=This(Decoder)
+hall.kira:40:39  this.lastEdgeUs  UInt64  member=Field(Decoder.lastEdgeUs: UInt64)  place=Field(This(Decoder).lastEdgeUs)
+hall.kira:40:39  this  Decoder  place=This(Decoder)
+hall.kira:41:37  this.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(This(Decoder).periodUs)
+hall.kira:41:37  this  Decoder  place=This(Decoder)
+hall.kira:42:23  next & 7  UInt8
+hall.kira:42:23  next  UInt8  place=Param(next)  sym=Decoder.fed(next)
+hall.kira:42:30  7  UInt8  const=7:UInt8
+hall.kira:43:21  INDEX_OF[bits as Size]  Int8  place=Index(Global(INDEX_OF), ARR)
+hall.kira:43:21  INDEX_OF  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]  place=Global(INDEX_OF)  sym=golden.hall:pico.hall.INDEX_OF
+hall.kira:43:30  bits as Size  Size  conv=INT_WRAP
+hall.kira:43:30  bits  UInt8  place=Local(bits)  sym=Decoder.fed::bits
+hall.kira:44:12  idx < 0  Bool
+hall.kira:44:12  idx  Int8  place=Local(idx)  sym=Decoder.fed::idx
+hall.kira:44:18  0  Int8  const=0:Int8
+hall.kira:45:13  invalid += 1  Void
+hall.kira:45:13  invalid  UInt32  place=Local(invalid)  sym=Decoder.fed::invalid
+hall.kira:45:24  1  UInt32  const=1:UInt32
 hall.kira:46:13  state = bits  Void
-hall.kira:46:13  state  UInt8  place=Field(This(Decoder).state)  sym=Decoder.state
-hall.kira:46:21  bits  UInt8  place=Local(bits)  sym=Decoder.feed::bits
-hall.kira:47:16  step == 1 || step == 5  Bool
-hall.kira:47:16  step == 1  Bool
-hall.kira:47:16  step  Int32  place=Local(step)  sym=Decoder.feed::step
-hall.kira:47:24  1  Int32  const=1:Int32
-hall.kira:47:29  step == 5  Bool
-hall.kira:47:29  step  Int32  place=Local(step)  sym=Decoder.feed::step
-hall.kira:47:37  5  Int32  const=5:Int32
-hall.kira:48:29  step == 1 == FORWARD_ASCENDING ? 1 : -1  Int8
-hall.kira:48:29  step == 1 == FORWARD_ASCENDING  Bool
-hall.kira:48:30  step == 1  Bool
-hall.kira:48:30  step  Int32  place=Local(step)  sym=Decoder.feed::step
-hall.kira:48:38  1  Int32  const=1:Int32
-hall.kira:48:44  FORWARD_ASCENDING  Bool  const=true  place=Global(FORWARD_ASCENDING)  sym=golden.hall:pico.hall.FORWARD_ASCENDING
-hall.kira:48:64  1  Int8  const=1:Int8
-hall.kira:48:68  -1  Int8  const=-1:Int8
-hall.kira:48:69  1  Int8
-hall.kira:49:17  ticks += dir as Int32  Void
-hall.kira:49:17  ticks  Int32  place=Field(This(Decoder).ticks)  sym=Decoder.ticks
-hall.kira:49:26  dir as Int32  Int32  conv=INT_WRAP
-hall.kira:49:26  dir  Int8  place=Local(dir)  sym=Decoder.feed::dir
-hall.kira:50:17  lastDir = dir  Void
-hall.kira:50:17  lastDir  Int8  place=Field(This(Decoder).lastDir)  sym=Decoder.lastDir
-hall.kira:50:27  dir  Int8  place=Local(dir)  sym=Decoder.feed::dir
-hall.kira:51:17  edges += 1  Void
-hall.kira:51:17  edges  UInt32  place=Field(This(Decoder).edges)  sym=Decoder.edges
-hall.kira:51:26  1  UInt32  const=1:UInt32
-hall.kira:52:31  nowUs - lastEdgeUs  UInt64
-hall.kira:52:31  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.feed(nowUs)
-hall.kira:52:39  lastEdgeUs  UInt64  place=Field(This(Decoder).lastEdgeUs)  sym=Decoder.lastEdgeUs
-hall.kira:53:17  periodUs = gap > 4294967295 ? 4294967295 : gap as UInt32  Void
-hall.kira:53:17  periodUs  UInt32  place=Field(This(Decoder).periodUs)  sym=Decoder.periodUs
-hall.kira:53:28  gap > 4294967295 ? 4294967295 : gap as UInt32  UInt32
-hall.kira:53:28  gap > 4294967295  Bool
-hall.kira:53:28  gap  UInt64  place=Local(gap)  sym=Decoder.feed::gap
-hall.kira:53:34  4294967295  UInt64  const=4294967295:UInt64
-hall.kira:53:47  4294967295  UInt32  const=4294967295:UInt32
-hall.kira:53:60  gap as UInt32  UInt32  conv=INT_WRAP
-hall.kira:53:60  gap  UInt64  place=Local(gap)  sym=Decoder.feed::gap
-hall.kira:54:17  lastEdgeUs = nowUs  Void
-hall.kira:54:17  lastEdgeUs  UInt64  place=Field(This(Decoder).lastEdgeUs)  sym=Decoder.lastEdgeUs
-hall.kira:54:30  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.feed(nowUs)
-hall.kira:56:17  skips += 1  Void
-hall.kira:56:17  skips  UInt32  place=Field(This(Decoder).skips)  sym=Decoder.skips
-hall.kira:56:26  1  UInt32  const=1:UInt32
-hall.kira:57:17  lastEdgeUs = nowUs  Void
-hall.kira:57:17  lastEdgeUs  UInt64  place=Field(This(Decoder).lastEdgeUs)  sym=Decoder.lastEdgeUs
-hall.kira:57:30  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.feed(nowUs)
-hall.kira:64:28  0  Int32  const=0:Int32
-hall.kira:65:28  0  Int32  const=0:Int32
-hall.kira:66:25  false  Bool  const=false  sym=kira:core.false
-hall.kira:67:27  false  Bool  const=false  sym=kira:core.false
-hall.kira:71:20  Speed { }  Speed
-hall.kira:72:5  s.windowTps = windowTicks * (1000 / WINDOW_MS) as Int32  Void
-hall.kira:72:5  s.windowTps  Int32  member=Field(Speed.windowTps: Int32)  place=Field(Local(s).windowTps)
-hall.kira:72:5  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:72:19  windowTicks * (1000 / WINDOW_MS) as Int32  Int32
-hall.kira:72:19  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
-hall.kira:72:33  (1000 / WINDOW_MS) as Int32  Int32  conv=INT_WRAP  const=20:Int32
-hall.kira:72:35  1000 / WINDOW_MS  UInt32  const=20:UInt32
-hall.kira:72:35  1000  UInt32  const=1000:UInt32
-hall.kira:72:42  WINDOW_MS  UInt32  const=50:UInt32  place=Global(WINDOW_MS)  sym=golden.hall:pico.hall.WINDOW_MS
-hall.kira:73:25  nowUs - d.lastEdgeUs  UInt64
-hall.kira:73:25  nowUs  UInt64  place=Param(nowUs)  sym=golden.hall:pico.hall.speed(nowUs)
-hall.kira:73:33  d.lastEdgeUs  UInt64  member=Field(Decoder.lastEdgeUs: UInt64)  place=Field(Param(d).lastEdgeUs)
-hall.kira:73:33  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:74:5  s.stopped = !d.primed || sinceEdge > STOPPED_US as UInt64  Void
-hall.kira:74:5  s.stopped  Bool  member=Field(Speed.stopped: Bool)  place=Field(Local(s).stopped)
-hall.kira:74:5  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:74:17  !d.primed || sinceEdge > STOPPED_US as UInt64  Bool
-hall.kira:74:17  !d.primed  Bool
-hall.kira:74:18  d.primed  Bool  member=Field(Decoder.primed: Bool)  place=Field(Param(d).primed)
-hall.kira:74:18  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:74:30  sinceEdge > STOPPED_US as UInt64  Bool
-hall.kira:74:30  sinceEdge  UInt64  place=Local(sinceEdge)  sym=golden.hall:pico.hall.speed::sinceEdge
-hall.kira:74:42  STOPPED_US as UInt64  UInt64  conv=INT_WRAP  const=250000:UInt64
-hall.kira:74:43  STOPPED_US  UInt32  const=250000:UInt32  place=Global(STOPPED_US)  sym=golden.hall:pico.hall.STOPPED_US
-hall.kira:75:8  !s.stopped && d.periodUs > 0  Bool
-hall.kira:75:8  !s.stopped  Bool
-hall.kira:75:9  s.stopped  Bool  member=Field(Speed.stopped: Bool)  place=Field(Local(s).stopped)
-hall.kira:75:9  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:75:22  d.periodUs > 0  Bool
-hall.kira:75:22  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
-hall.kira:75:22  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:75:35  0  UInt32  const=0:UInt32
-hall.kira:76:9  s.periodTps = (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Void
-hall.kira:76:9  s.periodTps  Int32  member=Field(Speed.periodTps: Int32)  place=Field(Local(s).periodTps)
-hall.kira:76:9  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:76:23  (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Int32
-hall.kira:76:24  (1000000 / d.periodUs) as Int32  Int32  conv=INT_WRAP
-hall.kira:76:25  1000000 / d.periodUs  UInt32
-hall.kira:76:25  1000000  UInt32  const=1000000:UInt32
-hall.kira:76:35  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
-hall.kira:76:35  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:76:59  d.lastDir as Int32  Int32  conv=INT_WRAP
-hall.kira:76:60  d.lastDir  Int8  member=Field(Decoder.lastDir: Int8)  place=Field(Param(d).lastDir)
-hall.kira:76:60  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:78:8  s.stopped  Bool  member=Field(Speed.stopped: Bool)  place=Field(Local(s).stopped)
-hall.kira:78:8  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:79:9  s.periodTps = 0  Void
-hall.kira:79:9  s.periodTps  Int32  member=Field(Speed.periodTps: Int32)  place=Field(Local(s).periodTps)
-hall.kira:79:9  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:79:23  0  Int32  const=0:Int32
-hall.kira:80:9  s.windowTps = 0  Void
-hall.kira:80:9  s.windowTps  Int32  member=Field(Speed.windowTps: Int32)  place=Field(Local(s).windowTps)
-hall.kira:80:9  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:80:23  0  Int32  const=0:Int32
-hall.kira:82:24  windowTicks < 0 ? -windowTicks : windowTicks  Int32
-hall.kira:82:24  windowTicks < 0  Bool
-hall.kira:82:24  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
-hall.kira:82:38  0  Int32  const=0:Int32
-hall.kira:82:42  -windowTicks  Int32
-hall.kira:82:43  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
-hall.kira:82:57  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
-hall.kira:83:5  s.usePeriod = !s.stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0  Void
-hall.kira:83:5  s.usePeriod  Bool  member=Field(Speed.usePeriod: Bool)  place=Field(Local(s).usePeriod)
-hall.kira:83:5  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:83:19  !s.stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0  Bool
-hall.kira:83:19  !s.stopped && magnitude < PERIOD_BELOW_TICKS  Bool
-hall.kira:83:19  !s.stopped  Bool
-hall.kira:83:20  s.stopped  Bool  member=Field(Speed.stopped: Bool)  place=Field(Local(s).stopped)
-hall.kira:83:20  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:83:33  magnitude < PERIOD_BELOW_TICKS  Bool
-hall.kira:83:33  magnitude  Int32  place=Local(magnitude)  sym=golden.hall:pico.hall.speed::magnitude
-hall.kira:83:45  PERIOD_BELOW_TICKS  Int32  const=10:Int32  place=Global(PERIOD_BELOW_TICKS)  sym=golden.hall:pico.hall.PERIOD_BELOW_TICKS
-hall.kira:83:67  d.periodUs > 0  Bool
-hall.kira:83:67  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
-hall.kira:83:67  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
-hall.kira:83:80  0  UInt32  const=0:UInt32
-hall.kira:84:5  s  Speed  place=Local(s)  sym=golden.hall:pico.hall.speed::s
-hall.kira:90:22  Decoder { }  Decoder
-hall.kira:91:21  t0  UInt64  place=Param(t0)  sym=golden.hall:pico.hall.settle(t0)
-hall.kira:92:21  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
-hall.kira:93:9  d.feed(s, t)  Void  call=METHOD(Decoder.feed)
-hall.kira:93:9  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
-hall.kira:93:16  s  UInt8  place=Local(s)  sym=golden.hall:pico.hall.settle::s
-hall.kira:93:19  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
-hall.kira:94:9  t += 1000  Void
-hall.kira:94:9  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
-hall.kira:94:14  1000  UInt64  const=1000:UInt64
-hall.kira:96:5  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:46:13  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:46:21  bits  UInt8  place=Local(bits)  sym=Decoder.fed::bits
+hall.kira:47:13  primed = false  Void
+hall.kira:47:13  primed  Bool  place=Local(primed)  sym=Decoder.fed::primed
+hall.kira:47:22  false  Bool  const=false  sym=kira:core.false
+hall.kira:48:19  primed && bits == state  Bool
+hall.kira:48:19  primed  Bool  place=Local(primed)  sym=Decoder.fed::primed
+hall.kira:48:29  bits == state  Bool
+hall.kira:48:29  bits  UInt8  place=Local(bits)  sym=Decoder.fed::bits
+hall.kira:48:37  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:49:13  repeats += 1  Void
+hall.kira:49:13  repeats  UInt32  place=Local(repeats)  sym=Decoder.fed::repeats
+hall.kira:49:24  1  UInt32  const=1:UInt32
+hall.kira:50:19  !primed  Bool
+hall.kira:50:20  primed  Bool  place=Local(primed)  sym=Decoder.fed::primed
+hall.kira:51:13  primed = true  Void
+hall.kira:51:13  primed  Bool  place=Local(primed)  sym=Decoder.fed::primed
+hall.kira:51:22  true  Bool  const=true  sym=kira:core.true
+hall.kira:52:13  state = bits  Void
+hall.kira:52:13  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:52:21  bits  UInt8  place=Local(bits)  sym=Decoder.fed::bits
+hall.kira:53:13  lastEdgeUs = nowUs  Void
+hall.kira:53:13  lastEdgeUs  UInt64  place=Local(lastEdgeUs)  sym=Decoder.fed::lastEdgeUs
+hall.kira:53:26  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.fed(nowUs)
+hall.kira:55:26  INDEX_OF[state as Size] as Int32  Int32  conv=INT_WRAP
+hall.kira:55:26  INDEX_OF[state as Size]  Int8  place=Index(Global(INDEX_OF), ARR)
+hall.kira:55:26  INDEX_OF  Arr<Int8, 8>  const=[-1:Int8, 0:Int8, 2:Int8, 1:Int8, 4:Int8, 5:Int8, 3:Int8, -1:Int8]  place=Global(INDEX_OF)  sym=golden.hall:pico.hall.INDEX_OF
+hall.kira:55:35  state as Size  Size  conv=INT_WRAP
+hall.kira:55:35  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:56:27  (idx as Int32 - was + 6) % 6  Int32
+hall.kira:56:28  idx as Int32 - was + 6  Int32
+hall.kira:56:29  idx as Int32 - was  Int32
+hall.kira:56:30  idx as Int32  Int32  conv=INT_WRAP
+hall.kira:56:30  idx  Int8  place=Local(idx)  sym=Decoder.fed::idx
+hall.kira:56:46  was  Int32  place=Local(was)  sym=Decoder.fed::was
+hall.kira:56:53  6  Int32  const=6:Int32
+hall.kira:56:58  6  Int32  const=6:Int32
+hall.kira:57:13  state = bits  Void
+hall.kira:57:13  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:57:21  bits  UInt8  place=Local(bits)  sym=Decoder.fed::bits
+hall.kira:58:16  step == 1 || step == 5  Bool
+hall.kira:58:16  step == 1  Bool
+hall.kira:58:16  step  Int32  place=Local(step)  sym=Decoder.fed::step
+hall.kira:58:24  1  Int32  const=1:Int32
+hall.kira:58:29  step == 5  Bool
+hall.kira:58:29  step  Int32  place=Local(step)  sym=Decoder.fed::step
+hall.kira:58:37  5  Int32  const=5:Int32
+hall.kira:59:29  step == 1 == FORWARD_ASCENDING ? 1 : -1  Int8
+hall.kira:59:29  step == 1 == FORWARD_ASCENDING  Bool
+hall.kira:59:30  step == 1  Bool
+hall.kira:59:30  step  Int32  place=Local(step)  sym=Decoder.fed::step
+hall.kira:59:38  1  Int32  const=1:Int32
+hall.kira:59:44  FORWARD_ASCENDING  Bool  const=true  place=Global(FORWARD_ASCENDING)  sym=golden.hall:pico.hall.FORWARD_ASCENDING
+hall.kira:59:64  1  Int8  const=1:Int8
+hall.kira:59:68  -1  Int8  const=-1:Int8
+hall.kira:59:69  1  Int8
+hall.kira:60:17  ticks += dir as Int32  Void
+hall.kira:60:17  ticks  Int32  place=Local(ticks)  sym=Decoder.fed::ticks
+hall.kira:60:26  dir as Int32  Int32  conv=INT_WRAP
+hall.kira:60:26  dir  Int8  place=Local(dir)  sym=Decoder.fed::dir
+hall.kira:61:17  lastDir = dir  Void
+hall.kira:61:17  lastDir  Int8  place=Local(lastDir)  sym=Decoder.fed::lastDir
+hall.kira:61:27  dir  Int8  place=Local(dir)  sym=Decoder.fed::dir
+hall.kira:62:17  edges += 1  Void
+hall.kira:62:17  edges  UInt32  place=Local(edges)  sym=Decoder.fed::edges
+hall.kira:62:26  1  UInt32  const=1:UInt32
+hall.kira:63:31  nowUs - lastEdgeUs  UInt64
+hall.kira:63:31  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.fed(nowUs)
+hall.kira:63:39  lastEdgeUs  UInt64  place=Local(lastEdgeUs)  sym=Decoder.fed::lastEdgeUs
+hall.kira:64:17  periodUs = gap > 4294967295 ? 4294967295 : gap as UInt32  Void
+hall.kira:64:17  periodUs  UInt32  place=Local(periodUs)  sym=Decoder.fed::periodUs
+hall.kira:64:28  gap > 4294967295 ? 4294967295 : gap as UInt32  UInt32
+hall.kira:64:28  gap > 4294967295  Bool
+hall.kira:64:28  gap  UInt64  place=Local(gap)  sym=Decoder.fed::gap
+hall.kira:64:34  4294967295  UInt64  const=4294967295:UInt64
+hall.kira:64:47  4294967295  UInt32  const=4294967295:UInt32
+hall.kira:64:60  gap as UInt32  UInt32  conv=INT_WRAP
+hall.kira:64:60  gap  UInt64  place=Local(gap)  sym=Decoder.fed::gap
+hall.kira:65:17  lastEdgeUs = nowUs  Void
+hall.kira:65:17  lastEdgeUs  UInt64  place=Local(lastEdgeUs)  sym=Decoder.fed::lastEdgeUs
+hall.kira:65:30  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.fed(nowUs)
+hall.kira:67:17  skips += 1  Void
+hall.kira:67:17  skips  UInt32  place=Local(skips)  sym=Decoder.fed::skips
+hall.kira:67:26  1  UInt32  const=1:UInt32
+hall.kira:68:17  lastEdgeUs = nowUs  Void
+hall.kira:68:17  lastEdgeUs  UInt64  place=Local(lastEdgeUs)  sym=Decoder.fed::lastEdgeUs
+hall.kira:68:30  nowUs  UInt64  place=Param(nowUs)  sym=Decoder.fed(nowUs)
+hall.kira:71:9  Decoder { ticks, edges, skips, invalid, repeats, state, primed, lastDir, lastEdgeUs, periodUs }  Decoder
+hall.kira:71:19  ticks  Int32  place=Local(ticks)  sym=Decoder.fed::ticks
+hall.kira:71:26  edges  UInt32  place=Local(edges)  sym=Decoder.fed::edges
+hall.kira:71:33  skips  UInt32  place=Local(skips)  sym=Decoder.fed::skips
+hall.kira:71:40  invalid  UInt32  place=Local(invalid)  sym=Decoder.fed::invalid
+hall.kira:71:49  repeats  UInt32  place=Local(repeats)  sym=Decoder.fed::repeats
+hall.kira:71:58  state  UInt8  place=Local(state)  sym=Decoder.fed::state
+hall.kira:71:65  primed  Bool  place=Local(primed)  sym=Decoder.fed::primed
+hall.kira:71:73  lastDir  Int8  place=Local(lastDir)  sym=Decoder.fed::lastDir
+hall.kira:71:82  lastEdgeUs  UInt64  place=Local(lastEdgeUs)  sym=Decoder.fed::lastEdgeUs
+hall.kira:71:94  periodUs  UInt32  place=Local(periodUs)  sym=Decoder.fed::periodUs
+hall.kira:76:28  0  Int32  const=0:Int32
+hall.kira:77:28  0  Int32  const=0:Int32
+hall.kira:78:25  false  Bool  const=false  sym=kira:core.false
+hall.kira:79:27  false  Bool  const=false  sym=kira:core.false
+hall.kira:83:33  windowTicks * (1000 / WINDOW_MS) as Int32  Int32
+hall.kira:83:33  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
+hall.kira:83:47  (1000 / WINDOW_MS) as Int32  Int32  conv=INT_WRAP  const=20:Int32
+hall.kira:83:49  1000 / WINDOW_MS  UInt32  const=20:UInt32
+hall.kira:83:49  1000  UInt32  const=1000:UInt32
+hall.kira:83:56  WINDOW_MS  UInt32  const=50:UInt32  place=Global(WINDOW_MS)  sym=golden.hall:pico.hall.WINDOW_MS
+hall.kira:84:25  nowUs - d.lastEdgeUs  UInt64
+hall.kira:84:25  nowUs  UInt64  place=Param(nowUs)  sym=golden.hall:pico.hall.speed(nowUs)
+hall.kira:84:33  d.lastEdgeUs  UInt64  member=Field(Decoder.lastEdgeUs: UInt64)  place=Field(Param(d).lastEdgeUs)
+hall.kira:84:33  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:85:21  !d.primed || sinceEdge > STOPPED_US as UInt64  Bool
+hall.kira:85:21  !d.primed  Bool
+hall.kira:85:22  d.primed  Bool  member=Field(Decoder.primed: Bool)  place=Field(Param(d).primed)
+hall.kira:85:22  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:85:34  sinceEdge > STOPPED_US as UInt64  Bool
+hall.kira:85:34  sinceEdge  UInt64  place=Local(sinceEdge)  sym=golden.hall:pico.hall.speed::sinceEdge
+hall.kira:85:46  STOPPED_US as UInt64  UInt64  conv=INT_WRAP  const=250000:UInt64
+hall.kira:85:47  STOPPED_US  UInt32  const=250000:UInt32  place=Global(STOPPED_US)  sym=golden.hall:pico.hall.STOPPED_US
+hall.kira:86:33  0  Int32  const=0:Int32
+hall.kira:87:8  !stopped && d.periodUs > 0  Bool
+hall.kira:87:8  !stopped  Bool
+hall.kira:87:9  stopped  Bool  place=Local(stopped)  sym=golden.hall:pico.hall.speed::stopped
+hall.kira:87:20  d.periodUs > 0  Bool
+hall.kira:87:20  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
+hall.kira:87:20  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:87:33  0  UInt32  const=0:UInt32
+hall.kira:88:9  periodTps = (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Void
+hall.kira:88:9  periodTps  Int32  place=Local(periodTps)  sym=golden.hall:pico.hall.speed::periodTps
+hall.kira:88:21  (1000000 / d.periodUs) as Int32 * d.lastDir as Int32  Int32
+hall.kira:88:22  (1000000 / d.periodUs) as Int32  Int32  conv=INT_WRAP
+hall.kira:88:23  1000000 / d.periodUs  UInt32
+hall.kira:88:23  1000000  UInt32  const=1000000:UInt32
+hall.kira:88:33  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
+hall.kira:88:33  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:88:57  d.lastDir as Int32  Int32  conv=INT_WRAP
+hall.kira:88:58  d.lastDir  Int8  member=Field(Decoder.lastDir: Int8)  place=Field(Param(d).lastDir)
+hall.kira:88:58  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:90:8  stopped  Bool  place=Local(stopped)  sym=golden.hall:pico.hall.speed::stopped
+hall.kira:91:9  periodTps = 0  Void
+hall.kira:91:9  periodTps  Int32  place=Local(periodTps)  sym=golden.hall:pico.hall.speed::periodTps
+hall.kira:91:21  0  Int32  const=0:Int32
+hall.kira:92:9  windowTps = 0  Void
+hall.kira:92:9  windowTps  Int32  place=Local(windowTps)  sym=golden.hall:pico.hall.speed::windowTps
+hall.kira:92:21  0  Int32  const=0:Int32
+hall.kira:94:24  windowTicks < 0 ? -windowTicks : windowTicks  Int32
+hall.kira:94:24  windowTicks < 0  Bool
+hall.kira:94:24  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
+hall.kira:94:38  0  Int32  const=0:Int32
+hall.kira:94:42  -windowTicks  Int32
+hall.kira:94:43  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
+hall.kira:94:57  windowTicks  Int32  place=Param(windowTicks)  sym=golden.hall:pico.hall.speed(windowTicks)
+hall.kira:95:5  Speed { windowTps, periodTps, stopped, !stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0 }  Speed
+hall.kira:95:13  windowTps  Int32  place=Local(windowTps)  sym=golden.hall:pico.hall.speed::windowTps
+hall.kira:95:24  periodTps  Int32  place=Local(periodTps)  sym=golden.hall:pico.hall.speed::periodTps
+hall.kira:95:35  stopped  Bool  place=Local(stopped)  sym=golden.hall:pico.hall.speed::stopped
+hall.kira:95:44  !stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0  Bool
+hall.kira:95:44  !stopped && magnitude < PERIOD_BELOW_TICKS  Bool
+hall.kira:95:44  !stopped  Bool
+hall.kira:95:45  stopped  Bool  place=Local(stopped)  sym=golden.hall:pico.hall.speed::stopped
+hall.kira:95:56  magnitude < PERIOD_BELOW_TICKS  Bool
+hall.kira:95:56  magnitude  Int32  place=Local(magnitude)  sym=golden.hall:pico.hall.speed::magnitude
+hall.kira:95:68  PERIOD_BELOW_TICKS  Int32  const=10:Int32  place=Global(PERIOD_BELOW_TICKS)  sym=golden.hall:pico.hall.PERIOD_BELOW_TICKS
+hall.kira:95:90  d.periodUs > 0  Bool
+hall.kira:95:90  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
+hall.kira:95:90  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
+hall.kira:95:103  0  UInt32  const=0:UInt32
+hall.kira:101:27  Decoder { }  Decoder
+hall.kira:102:26  t0  UInt64  place=Param(t0)  sym=golden.hall:pico.hall.settle(t0)
+hall.kira:103:21  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
+hall.kira:104:9  d = d.fed(s, t)  Void
+hall.kira:104:9  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:104:13  d.fed(s, t)  Decoder  call=METHOD(Decoder.fed)
+hall.kira:104:13  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:104:19  s  UInt8  place=Local(s)  sym=golden.hall:pico.hall.settle::s
+hall.kira:104:22  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
+hall.kira:105:9  t += 1000  Void
+hall.kira:105:9  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
+hall.kira:105:14  1000  UInt64  const=1000:UInt64
+hall.kira:107:5  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d

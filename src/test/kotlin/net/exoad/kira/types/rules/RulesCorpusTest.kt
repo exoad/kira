@@ -89,22 +89,22 @@ class RulesCorpusTest {
 
     @Test
     fun unilidarPurityAndEachPacketIsATemplate() {
-        // D33 over the golden: crc32, readU32, tailClosed and packetAt only read the storage their View borrows,
-        // so they are READS, and `(p[0] as UInt32) | ((p[1] as UInt32) << 8)` (two READS) and
-        // `(out.size as Size) == buf.size()` (two READS) are emitted bare, as the expected C++ has them.
-        // writeU32 and readHeader write through a MutView or to a mut parameter, command and the frames built
-        // on it call writeU32, and eachPacket calls through an Fx value: IMPURE.
+        // D33 over the golden: crc32, readU32, readHeader, tailClosed and packetAt only read the storage their View
+        // borrows, so they are READS, and `(p[0] as UInt32) | ((p[1] as UInt32) << 8)` (two READS) and
+        // `(h.size as Size) != buf.size()` (two READS) are emitted bare, as the expected C++ has them.
+        // writeU32 writes through a MutView, command and the frames built on it call writeU32, and eachPacket calls
+        // through an Fx value: IMPURE.
         val p = TyperTestSupport.project(File(corpus, "unilidar"), TyperMode.STRICT)
         val m = p.module("golden.unilidar:pilot.unilidar")!!
         val fns = m.declarations.filterIsInstance<FnSymbol>().associateBy { it.name }
         assertTrue(fns.size >= 12, fns.keys.toString())
-        val reads = setOf("crc32", "readU32", "tailClosed", "packetAt")
+        val reads = setOf("crc32", "readU32", "readHeader", "tailClosed", "packetAt")
         for ((name, fn) in fns) {
             assertEquals(if (name in reads) Effect.READS else Effect.IMPURE, p.model.effect(fn), name)
         }
         val model = p.model
         assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "p[0] as UInt32 | p[1] as UInt32 << 8", "golden.unilidar:pilot.unilidar")))
-        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "out.size as Size == buf.size()", "golden.unilidar:pilot.unilidar")))
+        assertEquals(Effect.READS, model.effect(BodyTestSupport.node<BinaryExpr>(p, "h.size as Size != buf.size()", "golden.unilidar:pilot.unilidar")))
         assertFalse(p.model.fxEscapes(RulesTestSupport.fn(p, "eachPacket", "golden.unilidar:pilot.unilidar").params[1]))
     }
 

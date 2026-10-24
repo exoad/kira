@@ -15,6 +15,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * The py emitter's lowering, in memory: the shapes Python needs where its operators differ from
@@ -254,7 +255,7 @@ class PyEmitterTest {
         val py = python(
             """
             pub f: (v: Int32, n: Int32) Int32 {
-                mut x: Int32 = v
+                x: Mutable<Int32> = v
                 x &= 0x0F
                 x |= 0x30
                 x ^= v
@@ -280,8 +281,8 @@ class PyEmitterTest {
     fun anIndexedOrFieldCompoundAssignmentLocatesItsTargetBeforeTheValue() {
         val py = python(
             """
-            mut at: Size = 0
-            mut xs: List<UInt8> = List<UInt8> { }
+            at: Mutable<Size> = 0
+            xs: Mutable<List<UInt8>> = List<UInt8> { }
 
             next: () Size {
                 at += 1
@@ -292,10 +293,10 @@ class PyEmitterTest {
                 3
             }
 
-            Flags: Any {
-                pub mut bits: UInt8 = 0
+            Flags: Mutable<Any> {
+                pub bits: Mutable<UInt8> = 0
 
-                pub mut set: (n: Int32) Void {
+                pub set: (n: Int32) Void {
                     bits |= 1 << n
                 }
             }
@@ -319,9 +320,9 @@ class PyEmitterTest {
     fun aContainerReachedThroughACallIsLocatedBeforeTheKeyAndTheValueAndOnce() {
         val py = python(
             """
-            Holder: Any {
-                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
-                pub mut xs: List<Int32> = List<Int32> { }
+            Holder: Mutable<Any> {
+                pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+                pub xs: Mutable<List<Int32>> = List<Int32> { }
             }
 
             holderOf: (h: Holder) Holder {
@@ -564,18 +565,18 @@ class PyEmitterTest {
     fun aListsSortSumMinAndMaxNameTheirElementType() {
         val py = python(
             """
-            Bag: Any {
-                pub mut fs: List<Float64> = List<Float64> { }
-                pub mut bs: List<UInt8> = List<UInt8> { }
+            Bag: Mutable<Any> {
+                pub fs: Mutable<List<Float64>> = List<Float64> { }
+                pub bs: Mutable<List<UInt8>> = List<UInt8> { }
 
-                pub mut tidy: () Float64 {
+                pub tidy: () Float64 {
                     fs.sort()
                     bs.sort()
                     fs.sum() + (bs.sum() as Float64)
                 }
             }
 
-            f: (mut xs: List<Int32>, names: List<Str>) Int32 {
+            f: (xs: List<Int32>, names: List<Str>) Int32 {
                 xs.sort()
                 xs.sum() + xs.minOrNull().unwrapOr(0) + (names.maxOrNull().unwrapOr("").length() as Int32)
             }
@@ -606,9 +607,9 @@ class PyEmitterTest {
             """
             kira.json as json
 
-            pub Doc: Any {
+            pub Doc: Mutable<Any> {
                 pub body: Json
-                pub mut items: List<Json> = @listOf()
+                pub items: Mutable<List<Json>> = @listOf()
             }
 
             pub build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
@@ -644,9 +645,9 @@ class PyEmitterTest {
             """
             SEP: Char = ':'
 
-            Cursor: Any {
-                pub mut last: Char = 'x'
-                pub mut none: Char = '\0'
+            Cursor: Mutable<Any> {
+                pub last: Mutable<Char> = 'x'
+                pub none: Mutable<Char> = '\0'
             }
 
             pub digit: (s: Str, i: Size) Bool {
@@ -722,13 +723,13 @@ class PyEmitterTest {
     fun pubNamesStayAndPrivateOnesTakeAnUnderscore() {
         val py = python(
             """
-            pub Meter: Any {
+            pub Meter: Mutable<Any> {
                 pub start: Int32
                 scale: Int32
-                pub mut reading: Int32 = 0
-                mut ticks: Int32 = 0
+                pub reading: Mutable<Int32> = 0
+                ticks: Mutable<Int32> = 0
 
-                pub mut tick: () Int32 {
+                pub tick: () Int32 {
                     ticks += 1
                     reading = start + ticks * scale
                     reading
@@ -779,8 +780,8 @@ class PyEmitterTest {
     fun anAssignmentWhoseValueHasAnEffectComputesItsIndexFirst() {
         val py = python(
             """
-            mut at: Size = 0
-            mut xs: List<Int32> = List<Int32> { }
+            at: Mutable<Size> = 0
+            xs: Mutable<List<Int32>> = List<Int32> { }
 
             bump: () Int32 {
                 at += 1
@@ -806,10 +807,10 @@ class PyEmitterTest {
     fun aGlobalAssignedInInitiallyIsDeclaredGlobalInInit() {
         val py = python(
             """
-            mut made: Int32 = 0
+            made: Mutable<Int32> = 0
 
-            Thing: Any {
-                pub mut id: Int32 = 0
+            Thing: Mutable<Any> {
+                pub id: Mutable<Int32> = 0
 
                 initially {
                     made += 1
@@ -823,150 +824,156 @@ class PyEmitterTest {
 
     @Test
     fun aListIsCopiedWhereASecondNameCouldSeeAWrite() {
-        val py = python(
-            """
-            mut seed: List<Int32> = List<Int32> { }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                mut seed: List<Int32> = List<Int32> { }
 
-            Holder: Any {
-                pub mut items: List<Int32>
+                Holder: Any {
+                    pub mut items: List<Int32>
 
-                pub snapshot: () List<Int32> {
-                    items
+                    pub snapshot: () List<Int32> {
+                        items
+                    }
+
+                    pub mut grow: () Int32 {
+                        items.add(0)
+                        1
+                    }
                 }
 
-                pub mut grow: () Int32 {
-                    items.add(0)
+                size: (xs: List<Int32>) Size {
+                    xs.size()
+                }
+
+                count: (xs: List<Int32>) Size {
+                    seed.add(1)
+                    xs.size()
+                }
+
+                lenOf: (xs: List<Int32>, k: Int32) Size {
+                    xs.size() + (k as Size)
+                }
+
+                push: (mut xs: List<Int32>) Int32 {
+                    xs.add(1)
                     1
                 }
-            }
 
-            size: (xs: List<Int32>) Size {
-                xs.size()
-            }
+                echo: (xs: List<Int32>) List<Int32> {
+                    xs
+                }
 
-            count: (xs: List<Int32>) Size {
-                seed.add(1)
-                xs.size()
-            }
+                fresh: () List<Int32> {
+                    mut out: List<Int32> = List<Int32> { }
+                    out.add(1)
+                    out
+                }
 
-            lenOf: (xs: List<Int32>, k: Int32) Size {
-                xs.size() + (k as Size)
-            }
+                pick: (c: Bool, a: List<Int32>) List<Int32> {
+                    c ? a : fresh()
+                }
 
-            push: (mut xs: List<Int32>) Int32 {
-                xs.add(1)
-                1
-            }
-
-            echo: (xs: List<Int32>) List<Int32> {
-                xs
-            }
-
-            fresh: () List<Int32> {
-                mut out: List<Int32> = List<Int32> { }
-                out.add(1)
-                out
-            }
-
-            pick: (c: Bool, a: List<Int32>) List<Int32> {
-                c ? a : fresh()
-            }
-
-            f: (h: Holder) Void {
-                mut a: List<Int32> = fresh()
-                mut b: List<Int32> = a
-                mut c: List<Int32> = seed
-                mut d: List<Int32> = h.items
-                a = b
-                n: Size = size(a) + size(h.items) + size(seed) + count(seed) + lenOf(a, push(mut a)) + lenOf(h.items, h.grow())
-                k: Holder = Holder { a }
-            }
-            """
-        )
-        assertTrue(py.contains("        self.items = list(items)"), "__init__ stores a copy of what it is given:\n$py")
-        assertTrue(py.contains("        return list(self.items)"), "a field returned is copied:\n$py")
-        assertTrue(py.contains("    return list(xs)"), "a parameter returned is copied:\n$py")
-        assertTrue(py.contains("    out.append(1)\n    return out"), "a local returned dies, so it is not copied:\n$py")
-        assertTrue(py.contains("    return list(a if c else _fresh())"), py)
-        assertTrue(py.contains("    a = _fresh()\n    b = list(a)\n    c = list(_seed)\n    d = list(h.items)\n    a = list(b)"), "a variable stored is copied, a call is not:\n$py")
-        assertTrue(py.contains("_size(a) + _size(h.items)) + _size(_seed)"), "a pure callee is given the field or global itself:\n$py")
-        assertTrue(py.contains("_count(list(_seed))"), "a callee that writes may write the global it is given:\n$py")
-        assertTrue(py.contains("_lenOf(list(a), _push(a))"), "a local a later argument writes is copied first:\n$py")
-        assertTrue(py.contains("_lenOf(list(h.items), h.grow())"), py)
-        assertTrue(py.contains("k = _Holder(a)"), py)
+                f: (h: Holder) Void {
+                    mut a: List<Int32> = fresh()
+                    mut b: List<Int32> = a
+                    mut c: List<Int32> = seed
+                    mut d: List<Int32> = h.items
+                    a = b
+                    n: Size = size(a) + size(h.items) + size(seed) + count(seed) + lenOf(a, push(mut a)) + lenOf(h.items, h.grow())
+                    k: Holder = Holder { a }
+                }
+                """
+            )
+            assertTrue(py.contains("        self.items = list(items)"), "__init__ stores a copy of what it is given:\n$py")
+            assertTrue(py.contains("        return list(self.items)"), "a field returned is copied:\n$py")
+            assertTrue(py.contains("    return list(xs)"), "a parameter returned is copied:\n$py")
+            assertTrue(py.contains("    out.append(1)\n    return out"), "a local returned dies, so it is not copied:\n$py")
+            assertTrue(py.contains("    return list(a if c else _fresh())"), py)
+            assertTrue(py.contains("    a = _fresh()\n    b = list(a)\n    c = list(_seed)\n    d = list(h.items)\n    a = list(b)"), "a variable stored is copied, a call is not:\n$py")
+            assertTrue(py.contains("_size(a) + _size(h.items)) + _size(_seed)"), "a pure callee is given the field or global itself:\n$py")
+            assertTrue(py.contains("_count(list(_seed))"), "a callee that writes may write the global it is given:\n$py")
+            assertTrue(py.contains("_lenOf(list(a), _push(a))"), "a local a later argument writes is copied first:\n$py")
+            assertTrue(py.contains("_lenOf(list(h.items), h.grow())"), py)
+            assertTrue(py.contains("k = _Holder(a)"), py)
+        }
     }
 
     @Test
     fun aFieldIsCopiedForACalleeThatMayWriteWhatItsCallerSeesNotForOneThatOnlyPrints() {
-        val py = python(
-            """
-            show: (xs: List<Int32>) Size {
-                trace(xs.size())
-                xs.size()
-            }
-
-            into: (xs: List<Int32>, mut out: List<Int32>) Size {
-                out.add(1)
-                xs.size()
-            }
-
-            Holder: Any {
-                pub mut items: List<Int32> = List<Int32> { }
-
-                pub mut f: () Size {
-                    mut out: List<Int32> = List<Int32> { }
-                    show(items) + into(items, mut out)
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                show: (xs: List<Int32>) Size {
+                    trace(xs.size())
+                    xs.size()
                 }
-            }
-            """
-        )
-        assertTrue(py.contains("_show(self.items)"), "a CONFINED callee writes nothing its caller sees:\n$py")
-        assertTrue(py.contains("_into(list(self.items), out)"), "a mut operand may be the field:\n$py")
+
+                into: (xs: List<Int32>, mut out: List<Int32>) Size {
+                    out.add(1)
+                    xs.size()
+                }
+
+                Holder: Any {
+                    pub mut items: List<Int32> = List<Int32> { }
+
+                    pub mut f: () Size {
+                        mut out: List<Int32> = List<Int32> { }
+                        show(items) + into(items, mut out)
+                    }
+                }
+                """
+            )
+            assertTrue(py.contains("_show(self.items)"), "a CONFINED callee writes nothing its caller sees:\n$py")
+            assertTrue(py.contains("_into(list(self.items), out)"), "a mut operand may be the field:\n$py")
+        }
     }
 
     @Test
     fun aLocalBesideAnImpureSiblingIsCopiedOnlyWhenTheSiblingWritesItByName() {
-        val py = python(
-            """
-            mut cursor: Size = 0
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                mut cursor: Size = 0
 
-            next: () Size {
-                cursor += 1
-                cursor - 1
-            }
-
-            at: (v: List<UInt8>, i: Size) UInt32 {
-                v[i] as UInt32
-            }
-
-            fill: (p: MutView<UInt8>) Size {
-                p[0] = 1
-                0
-            }
-
-            push: (mut xs: List<UInt8>) Size {
-                xs.add(1)
-                0
-            }
-
-            walk: (n: Size) UInt32 {
-                mut buf: List<UInt8> = List<UInt8> { }
-                buf.add(5)
-                mut s: UInt32 = 0
-                while cursor < buf.size() {
-                    s = s * 33 + at(buf, next())
+                next: () Size {
+                    cursor += 1
+                    cursor - 1
                 }
-                s += at(buf, push(mut buf))
-                s += at(buf, fill(buf.from(0)))
-                s += at(buf, buf.removeAt(0) as Size)
-                s
-            }
-            """
-        )
-        assertTrue(py.contains("_at(buf, _next())"), "a call that cannot reach the local leaves it uncopied:\n$py")
-        assertTrue(py.contains("_at(bytearray(buf), _push(buf))"), "a mut argument writes it:\n$py")
-        assertTrue(py.contains("_at(bytearray(buf), _fill(_k_from(buf, 0)))"), "a MutView of it writes it:\n$py")
-        assertTrue(py.contains("_at(bytearray(buf), buf.pop(0))"), "a mut fx on it writes it:\n$py")
+
+                at: (v: List<UInt8>, i: Size) UInt32 {
+                    v[i] as UInt32
+                }
+
+                fill: (p: MutView<UInt8>) Size {
+                    p[0] = 1
+                    0
+                }
+
+                push: (mut xs: List<UInt8>) Size {
+                    xs.add(1)
+                    0
+                }
+
+                walk: (n: Size) UInt32 {
+                    mut buf: List<UInt8> = List<UInt8> { }
+                    buf.add(5)
+                    mut s: UInt32 = 0
+                    while cursor < buf.size() {
+                        s = s * 33 + at(buf, next())
+                    }
+                    s += at(buf, push(mut buf))
+                    s += at(buf, fill(buf.from(0)))
+                    s += at(buf, buf.removeAt(0) as Size)
+                    s
+                }
+                """
+            )
+            assertTrue(py.contains("_at(buf, _next())"), "a call that cannot reach the local leaves it uncopied:\n$py")
+            assertTrue(py.contains("_at(bytearray(buf), _push(buf))"), "a mut argument writes it:\n$py")
+            assertTrue(py.contains("_at(bytearray(buf), _fill(_k_from(buf, 0)))"), "a MutView of it writes it:\n$py")
+            assertTrue(py.contains("_at(bytearray(buf), buf.pop(0))"), "a mut fx on it writes it:\n$py")
+        }
     }
 
     @Test
@@ -975,7 +982,7 @@ class PyEmitterTest {
             """
             A: Arr<Int32, 2> = B
             B: Arr<Int32, 2> = @arrOf(7, 8)
-            mut k: Arr<UInt8, 2> = KEY
+            k: Mutable<Arr<UInt8, 2>> = KEY
             KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
 
             total: (xs: Arr<Int32, 2>) Int32 {
@@ -993,40 +1000,42 @@ class PyEmitterTest {
 
     @Test
     fun aMutListParameterIsTheCallersListAndAnAssignmentKeepsIt() {
-        val py = python(
-            """
-            mut seed: List<Int32> = List<Int32> { }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                mut seed: List<Int32> = List<Int32> { }
 
-            Holder: Any {
-                pub mut items: List<Int32> = List<Int32> { }
+                Holder: Any {
+                    pub mut items: List<Int32> = List<Int32> { }
 
-                pub mut reset: (mut xs: List<Int32>) Void {
-                    items = List<Int32> { }
-                    xs.add(1)
+                    pub mut reset: (mut xs: List<Int32>) Void {
+                        items = List<Int32> { }
+                        xs.add(1)
+                    }
                 }
-            }
 
-            fill: (mut xs: List<Int32>, ys: List<Int32>) Void {
-                xs = ys
-                xs.add(2)
-                xs[0] = 3
-            }
+                fill: (mut xs: List<Int32>, ys: List<Int32>) Void {
+                    xs = ys
+                    xs.add(2)
+                    xs[0] = 3
+                }
 
-            f: (h: Holder) Void {
-                mut a: List<Int32> = List<Int32> { }
-                fill(mut a, seed)
-                fill(mut h.items, a)
-                fill(mut seed, a)
-                h.reset(mut h.items)
-                seed = a
-                a = seed
-            }
-            """
-        )
-        assertTrue(py.contains("def _fill(xs, ys):\n    xs[:] = ys\n    xs.append(2)\n    xs[0] = 3"), py)
-        assertTrue(py.contains("        self.items[:] = []\n        xs.append(1)"), "a field keeps its list, which a mut parameter may be:\n$py")
-        assertTrue(py.contains("    _fill(a, list(_seed))\n    _fill(h.items, a)\n    _fill(_seed, a)\n    h.reset(h.items)"), py)
-        assertTrue(py.contains("    _seed[:] = a\n    a = list(_seed)"), py)
+                f: (h: Holder) Void {
+                    mut a: List<Int32> = List<Int32> { }
+                    fill(mut a, seed)
+                    fill(mut h.items, a)
+                    fill(mut seed, a)
+                    h.reset(mut h.items)
+                    seed = a
+                    a = seed
+                }
+                """
+            )
+            assertTrue(py.contains("def _fill(xs, ys):\n    xs[:] = ys\n    xs.append(2)\n    xs[0] = 3"), py)
+            assertTrue(py.contains("        self.items[:] = []\n        xs.append(1)"), "a field keeps its list, which a mut parameter may be:\n$py")
+            assertTrue(py.contains("    _fill(a, list(_seed))\n    _fill(h.items, a)\n    _fill(_seed, a)\n    h.reset(h.items)"), py)
+            assertTrue(py.contains("    _seed[:] = a\n    a = list(_seed)"), py)
+        }
     }
 
     @Test
@@ -1034,7 +1043,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (x: Float64) Bool {
-                mut xs: List<Float64> = List<Float64> { }
+                xs: Mutable<List<Float64>> = List<Float64> { }
                 xs.add(x)
                 xs.set(0, x + 1.0)
                 xs.contains(x)
@@ -1050,7 +1059,7 @@ class PyEmitterTest {
     fun aMapIsADictAndItsMethodsBindToItsOwn() {
         val py = python(
             """
-            mut at: Int32 = 0
+            at: Mutable<Int32> = 0
 
             key: () Int32 {
                 at += 1
@@ -1058,18 +1067,18 @@ class PyEmitterTest {
             }
 
             f: (k: Str, x: Float64) Size {
-                mut m: Map<Str, Int32> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
                 m.put(k, 1)
                 m[k] = 2
                 g: Maybe<Int32> = m.get(k)
                 r: Maybe<Int32> = m.remove(k)
                 ks: Arr<Str> = m.keys()
                 vs: Arr<Int32> = m.valuesArr()
-                mut t: Map<UInt8, UInt8> = Map<UInt8, UInt8> { }
+                t: Mutable<Map<UInt8, UInt8>> = Map<UInt8, UInt8> { }
                 t[1] = 2
                 tk: Arr<UInt8> = t.keys()
                 tv: Arr<UInt8> = t.valuesArr()
-                mut f: Map<Int32, Float64> = Map<Int32, Float64> { }
+                f: Mutable<Map<Int32, Float64>> = Map<Int32, Float64> { }
                 f[-1] = x
                 f[key()] = x + (at as Float64)
                 if m.containsKey(k) && f.containsValue(x) && !m.isEmpty() {
@@ -1092,21 +1101,21 @@ class PyEmitterTest {
     fun putAndContainsKeyTakeTheFasterFormOnlyWhereTheirOrderCannotShow() {
         val py = python(
             """
-            mut at: Int32 = 0
+            at: Mutable<Int32> = 0
 
             key: () Str {
                 at += 1
                 "k"
             }
 
-            Holder: Any {
-                pub mut items: Map<Str, Int32> = Map<Str, Int32> { }
+            Holder: Mutable<Any> {
+                pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
 
                 pub mine: () Holder {
                     this
                 }
 
-                pub mut f: (xs: List<Int32>, k: Str) Bool {
+                pub f: (xs: List<Int32>, k: Str) Bool {
                     items.put(k, xs[0] + 1)
                     items.put(key(), 1)
                     items.put(k + "x", xs[1])
@@ -1125,84 +1134,88 @@ class PyEmitterTest {
 
     @Test
     fun aMapIsCopiedWhereASecondNameCouldSeeAWriteAsAListIs() {
-        val py = python(
-            """
-            mut seed: Map<Str, Int32> = Map<Str, Int32> { }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                mut seed: Map<Str, Int32> = Map<Str, Int32> { }
 
-            Holder: Any {
-                pub mut items: Map<Str, Int32>
+                Holder: Any {
+                    pub mut items: Map<Str, Int32>
 
-                pub snapshot: () Map<Str, Int32> {
-                    items
+                    pub snapshot: () Map<Str, Int32> {
+                        items
+                    }
+
+                    pub mut reset: (mut xs: Map<Str, Int32>) Void {
+                        items = Map<Str, Int32> { }
+                        xs["r"] = 1
+                    }
                 }
 
-                pub mut reset: (mut xs: Map<Str, Int32>) Void {
-                    items = Map<Str, Int32> { }
-                    xs["r"] = 1
+                count: (xs: Map<Str, Int32>) Size {
+                    seed["n"] = 1
+                    xs.size()
                 }
-            }
 
-            count: (xs: Map<Str, Int32>) Size {
-                seed["n"] = 1
-                xs.size()
-            }
+                fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
+                    xs = ys
+                    xs["f"] = 2
+                }
 
-            fill: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
-                xs = ys
-                xs["f"] = 2
-            }
-
-            f: (h: Holder) Size {
-                mut a: Map<Str, Int32> = Map<Str, Int32> { }
-                mut b: Map<Str, Int32> = a
-                fill(mut a, seed)
-                fill(mut h.items, a)
-                h.reset(mut h.items)
-                seed = a
-                k: Holder = Holder { a }
-                count(seed) + b.size()
-            }
-            """
-        )
-        assertTrue(py.contains("        self.items = dict(items)"), "__init__ stores a copy of what it is given:\n$py")
-        assertTrue(py.contains("        return dict(self.items)"), "a field returned is copied:\n$py")
-        assertTrue(py.contains("        _k_mapset(self.items, {})\n        xs[\"r\"] = 1"), "a field keeps its dict, which a mut parameter may be:\n$py")
-        assertTrue(py.contains("def _fill(xs, ys):\n    _k_mapset(xs, ys)\n    xs[\"f\"] = 2"), py)
-        assertTrue(py.contains("    b = dict(a)\n    _fill(a, dict(_seed))\n    _fill(h.items, a)\n    h.reset(h.items)\n    _k_mapset(_seed, a)\n    k = _Holder(a)"), py)
-        assertTrue(py.contains("_count(dict(_seed))"), "a callee that writes may write the global it is given:\n$py")
-        assertTrue(py.contains("def _k_mapset(m, v):\n    if m is not v:\n        m.clear()\n        m.update(v)"), py)
+                f: (h: Holder) Size {
+                    mut a: Map<Str, Int32> = Map<Str, Int32> { }
+                    mut b: Map<Str, Int32> = a
+                    fill(mut a, seed)
+                    fill(mut h.items, a)
+                    h.reset(mut h.items)
+                    seed = a
+                    k: Holder = Holder { a }
+                    count(seed) + b.size()
+                }
+                """
+            )
+            assertTrue(py.contains("        self.items = dict(items)"), "__init__ stores a copy of what it is given:\n$py")
+            assertTrue(py.contains("        return dict(self.items)"), "a field returned is copied:\n$py")
+            assertTrue(py.contains("        _k_mapset(self.items, {})\n        xs[\"r\"] = 1"), "a field keeps its dict, which a mut parameter may be:\n$py")
+            assertTrue(py.contains("def _fill(xs, ys):\n    _k_mapset(xs, ys)\n    xs[\"f\"] = 2"), py)
+            assertTrue(py.contains("    b = dict(a)\n    _fill(a, dict(_seed))\n    _fill(h.items, a)\n    h.reset(h.items)\n    _k_mapset(_seed, a)\n    k = _Holder(a)"), py)
+            assertTrue(py.contains("_count(dict(_seed))"), "a callee that writes may write the global it is given:\n$py")
+            assertTrue(py.contains("def _k_mapset(m, v):\n    if m is not v:\n        m.clear()\n        m.update(v)"), py)
+        }
     }
 
     @Test
     fun aListOfUInt8IsABytearrayAndAnArrAList() {
-        val py = python(
-            """
-            pub Arr<UInt8, 4> as Cmd
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                pub Arr<UInt8, 4> as Cmd
 
-            Buf: Any {
-                pub mut data: List<UInt8> = List<UInt8> { }
-                pub mut words: Arr<Int32, 3> = Arr<Int32, 3> { }
-            }
+                Buf: Any {
+                    pub mut data: List<UInt8> = List<UInt8> { }
+                    pub mut words: Arr<Int32, 3> = Arr<Int32, 3> { }
+                }
 
-            f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
-                mut out: List<UInt8> = @listOf(0xFF, 0xD8)
-                mut one: Arr<UInt8> = @arrOf(7)
-                mut ints: List<Int32> = @listOf(1, 2)
-                mut p: Cmd = Cmd { }
-                p[1] = 3
-                mut copy: List<UInt8> = List<UInt8> { values = a }
-                out.addAll(xs.toArr())
-                out.addAll(a.clone())
-                ys: List<UInt8> = xs
-                out
-            }
-            """
-        )
-        assertTrue(py.contains("        self.data = bytearray() if data is _k_unset else bytearray(data)\n        self.words = [0] * 3 if words is _k_unset else list(words)"), py)
-        assertTrue(py.contains("    out = bytearray((255, 216))\n    one = bytearray((7,))\n    ints = [1, 2]\n    p = bytearray(4)\n    p[1] = 3"), py)
-        assertTrue(py.contains("    copy = bytearray(a)"), "a List made from an Arr copies it:\n$py")
-        assertTrue(py.contains("    out.extend(_k_copy(xs))\n    out.extend(_k_copy(a))"), py)
-        assertTrue(py.contains("    ys = bytearray(xs)"), "a List of UInt8 is copied as a bytearray:\n$py")
+                f: (xs: List<UInt8>, a: Arr<UInt8>) List<UInt8> {
+                    mut out: List<UInt8> = @listOf(0xFF, 0xD8)
+                    mut one: Arr<UInt8> = @arrOf(7)
+                    mut ints: List<Int32> = @listOf(1, 2)
+                    mut p: Cmd = Cmd { }
+                    p[1] = 3
+                    mut copy: List<UInt8> = List<UInt8> { values = a }
+                    out.addAll(xs.toArr())
+                    out.addAll(a.clone())
+                    ys: List<UInt8> = xs
+                    out
+                }
+                """
+            )
+            assertTrue(py.contains("        self.data = bytearray() if data is _k_unset else bytearray(data)\n        self.words = [0] * 3 if words is _k_unset else list(words)"), py)
+            assertTrue(py.contains("    out = bytearray((255, 216))\n    one = bytearray((7,))\n    ints = [1, 2]\n    p = bytearray(4)\n    p[1] = 3"), py)
+            assertTrue(py.contains("    copy = bytearray(a)"), "a List made from an Arr copies it:\n$py")
+            assertTrue(py.contains("    out.extend(_k_copy(xs))\n    out.extend(_k_copy(a))"), py)
+            assertTrue(py.contains("    ys = bytearray(xs)"), "a List of UInt8 is copied as a bytearray:\n$py")
+        }
     }
 
     @Test
@@ -1211,8 +1224,8 @@ class PyEmitterTest {
             """
             kira.bytes as bytes
 
-            Link: Any {
-                pub mut buf: List<UInt8> = List<UInt8> { }
+            Link: Mutable<Any> {
+                pub buf: Mutable<List<UInt8>> = List<UInt8> { }
 
                 pub head: () UInt16 {
                     readU16Le(buf, 0)
@@ -1220,8 +1233,8 @@ class PyEmitterTest {
             }
 
             sum: (v: View<UInt8>) UInt32 {
-                mut s: UInt32 = 0
-                mut i: Size = 0
+                s: Mutable<UInt32> = 0
+                i: Mutable<Size> = 0
                 while i < v.size() {
                     s += v[i] as UInt32
                     i += 1
@@ -1237,7 +1250,7 @@ class PyEmitterTest {
             }
 
             g: () UInt32 {
-                mut xs: List<UInt8> = List<UInt8> { }
+                xs: Mutable<List<UInt8>> = List<UInt8> { }
                 fill(xs.view(), 1)
                 fill(xs.from(2), 1)
                 ints: List<Int32> = @listOf(1, 2)
@@ -1284,7 +1297,7 @@ class PyEmitterTest {
             f: (v: View<UInt8>, w: View<Int32>) Size {
                 a: List<UInt8> = v.slice(1, 2).toList()
                 b: List<Int32> = w.toList()
-                mut c: List<UInt8> = List<UInt8> { }
+                c: Mutable<List<UInt8>> = List<UInt8> { }
                 c.add(1)
                 d: List<UInt8> = c.from(0).toList()
                 a.size() + b.size() + d.size()
@@ -1305,7 +1318,7 @@ class PyEmitterTest {
             }
 
             f: () Int32 {
-                mut xs: List<Int32> = @listOf(1, 2, 3)
+                xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
                 at(xs.from(1), 0) + at(xs, 2)
             }
             """
@@ -1392,7 +1405,7 @@ class PyEmitterTest {
                 app.other as other
 
                 pub globals: Int32 = 5
-                pub mut type: Int32 = 3
+                pub type: Mutable<Int32> = 3
 
                 pub Pt: Struct {
                     pub x: Int32 = 0
@@ -1400,8 +1413,9 @@ class PyEmitterTest {
 
                 pub main: () Int32 {
                     a: Pt = Pt { 1 }
-                    mut b: Pt = a
-                    b.x = type
+                    b: Pt = a with {
+                        x = type
+                    }
                     globals + o() + b.x
                 }
                 """,
@@ -1444,100 +1458,104 @@ class PyEmitterTest {
 
     @Test
     fun aRangeIsPythonsRangeAndAListThatMayBeWrittenIsWalkedAsACopy() {
-        val py = python(
-            """
-            mut log: List<Int32> = List<Int32> { }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                mut log: List<Int32> = List<Int32> { }
 
-            Bag: Any {
-                pub items: List<Int32>
+                Bag: Any {
+                    pub items: List<Int32>
 
-                pub total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
-                    mut t: Int32 = 0
-                    for x: Int32 in items {
-                        trace(x)
+                    pub total: (xs: List<Int32>, mut ys: List<Int32>) Int32 {
+                        mut t: Int32 = 0
+                        for x: Int32 in items {
+                            trace(x)
+                        }
+                        for x: Int32 in xs {
+                            trace(x)
+                        }
+                        for y: Int32 in ys {
+                            trace(y)
+                        }
+                        for g: Int32 in log {
+                            trace(g)
+                        }
+                        for k: Int32 in items {
+                            t += k
+                        }
+                        for h: Int32 in log {
+                            t += h
+                        }
+                        t
                     }
-                    for x: Int32 in xs {
-                        trace(x)
+                }
+
+                f: (n: Size, v: View<UInt8>) UInt32 {
+                    mut t: UInt32 = 0
+                    for i: Size in 1..n {
+                        t += i as UInt32
                     }
-                    for y: Int32 in ys {
-                        trace(y)
-                    }
-                    for g: Int32 in log {
-                        trace(g)
-                    }
-                    for k: Int32 in items {
-                        t += k
-                    }
-                    for h: Int32 in log {
-                        t += h
+                    for b: UInt8 in v {
+                        t += b as UInt32
                     }
                     t
                 }
-            }
-
-            f: (n: Size, v: View<UInt8>) UInt32 {
-                mut t: UInt32 = 0
-                for i: Size in 1..n {
-                    t += i as UInt32
-                }
-                for b: UInt8 in v {
-                    t += b as UInt32
-                }
-                t
-            }
-            """
-        )
-        assertTrue(py.contains("for i in range(1, n):"), py)
-        assertTrue(py.contains("for b in v:"), py)
-        assertTrue(py.contains("for x in list(self.items):"), py)
-        assertTrue(py.contains("for x in xs:"), py)
-        assertTrue(py.contains("for y in list(ys):"), py)
-        assertTrue(py.contains("for g in list(_log):"), py)
-        // A body that only reads walks any range in place, as C++ lends it.
-        assertTrue(py.contains("for k in self.items:"), py)
-        assertTrue(py.contains("for h in _log:"), py)
+                """
+            )
+            assertTrue(py.contains("for i in range(1, n):"), py)
+            assertTrue(py.contains("for b in v:"), py)
+            assertTrue(py.contains("for x in list(self.items):"), py)
+            assertTrue(py.contains("for x in xs:"), py)
+            assertTrue(py.contains("for y in list(ys):"), py)
+            assertTrue(py.contains("for g in list(_log):"), py)
+            // A body that only reads walks any range in place, as C++ lends it.
+            assertTrue(py.contains("for k in self.items:"), py)
+            assertTrue(py.contains("for h in _log:"), py)
+        }
     }
 
     @Test
     fun aDefaultIsTheDefsOwnWhenItFoldsAndAPubFieldIsAKeywordOfInit() {
-        val py = python(
-            """
-            pub ROW: List<Int32> = @listOf(1, 2)
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                pub ROW: List<Int32> = @listOf(1, 2)
 
-            Knob: Any {
-                pub name: Str
-                pub mut level: Int32 = 3
-                pub mut tags: List<Int32> = List<Int32> { }
-                mut hidden: Int32 = 9
-            }
+                Knob: Any {
+                    pub name: Str
+                    pub mut level: Int32 = 3
+                    pub mut tags: List<Int32> = List<Int32> { }
+                    mut hidden: Int32 = 9
+                }
 
-            Pair: Any {
-                pub left: Knob
-            }
+                Pair: Any {
+                    pub left: Knob
+                }
 
-            scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
-                x * k
-            }
+                scale: (x: Int32, k: Int32 = 2, s: Str = "a", m: Maybe<Int32> = null) Int32 {
+                    x * k
+                }
 
-            total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
-                xs.size()
-            }
+                total: (xs: List<Int32> = ROW, extra: Int32 = 0) Size {
+                    xs.size()
+                }
 
-            f: () Int32 {
-                a: Knob = Knob { "a" }
-                b: Knob = Knob { "b", 4 }
-                scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
-            }
-            """
-        )
-        assertTrue(py.contains("def _scale(x, k=2, s=\"a\", m=None):"), py)
-        assertTrue(py.contains("def _total(xs, extra=0):"), py)
-        assertTrue(py.contains("def __init__(self, name, level=_k_unset, tags=_k_unset):"), py)
-        assertTrue(py.contains("    def __init__(self, left):\n        self.left = left"), py)
-        assertTrue(py.contains("        self.level = 3 if level is _k_unset else level\n        self.tags = [] if tags is _k_unset else list(tags)\n        self._hidden = 9"), py)
-        assertTrue(py.contains("a = _Knob(\"a\")\n    b = _Knob(name=\"b\", level=4)"), py)
-        assertTrue(py.contains("_scale(1) + _scale(1, k=5)"), py)
-        assertTrue(py.contains("_total(xs=ROW)"), py)
+                f: () Int32 {
+                    a: Knob = Knob { "a" }
+                    b: Knob = Knob { "b", 4 }
+                    scale(1) + scale(1, k = 5) + (total() as Int32) + a.level + b.level
+                }
+                """
+            )
+            assertTrue(py.contains("def _scale(x, k=2, s=\"a\", m=None):"), py)
+            assertTrue(py.contains("def _total(xs, extra=0):"), py)
+            assertTrue(py.contains("def __init__(self, name, level=_k_unset, tags=_k_unset):"), py)
+            assertTrue(py.contains("    def __init__(self, left):\n        self.left = left"), py)
+            assertTrue(py.contains("        self.level = 3 if level is _k_unset else level\n        self.tags = [] if tags is _k_unset else list(tags)\n        self._hidden = 9"), py)
+            assertTrue(py.contains("a = _Knob(\"a\")\n    b = _Knob(name=\"b\", level=4)"), py)
+            assertTrue(py.contains("_scale(1) + _scale(1, k=5)"), py)
+            assertTrue(py.contains("_total(xs=ROW)"), py)
+        }
     }
 
     @Test
@@ -1557,11 +1575,11 @@ class PyEmitterTest {
     fun inheritanceIsRefusedSoOq2NeverArises() {
         refused(
             """
-            Base: Any {
-                pub mut seen: Int32 = 0
+            Base: Mutable<Any> {
+                pub seen: Mutable<Int32> = 0
             }
 
-            Kid: Base {
+            Kid: Mutable<Base> {
                 pub k: Int32 = 5
             }
             """,
@@ -1631,20 +1649,6 @@ class PyEmitterTest {
     }
 
     @Test
-    fun theLegacyForLoopIsRefused() {
-        refused(
-            """
-            f: () Void {
-                for mut i: 0..3 {
-                    trace(i)
-                }
-            }
-            """,
-            "the legacy `for mut i: ...` loop",
-        )
-    }
-
-    @Test
     fun aLoopVariableThatShadowsALocalIsRefused() {
         refused(
             """
@@ -1663,59 +1667,63 @@ class PyEmitterTest {
 
     @Test
     fun aStructIsCopiedWhereASecondNameCouldSeeAWrite() {
-        val py = python(
-            """
-            pub Pt: Struct {
-                pub x: Int32 = 0
-                pub tags: List<Int32> = List<Int32> { }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                pub Pt: Struct {
+                    pub x: Int32 = 0
+                    pub tags: List<Int32> = List<Int32> { }
 
-                pub me: () Pt {
-                    this
+                    pub me: () Pt {
+                        this
+                    }
                 }
-            }
 
-            move: (mut p: Pt) Void {
-                p = Pt { 1 }
-            }
+                move: (mut p: Pt) Void {
+                    p = Pt { 1 }
+                }
 
-            f: (q: Pt) Int32 {
-                mut ps: List<Pt> = List<Pt> { }
-                ps.add(q)
-                mut a: Pt = ps[0]
-                move(mut a)
-                ps[0] = a
-                b: Maybe<Pt> = a
-                a.x + ps.get(0).x
-            }
-            """
-        )
-        assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(self.__class__)\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
-        assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
-        assertTrue(py.contains("        return self._k_clone()"), py)
-        assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
-        assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0] = a._k_clone()\n    b = a._k_clone()"), py)
+                f: (q: Pt) Int32 {
+                    mut ps: List<Pt> = List<Pt> { }
+                    ps.add(q)
+                    mut a: Pt = ps[0]
+                    move(mut a)
+                    ps[0] = a
+                    b: Maybe<Pt> = a
+                    a.x + ps.get(0).x
+                }
+                """
+            )
+            assertTrue(py.contains("    def _k_clone(self):\n        c = object.__new__(self.__class__)\n        c.x = self.x\n        c.tags = list(self.tags)\n        return c"), py)
+            assertTrue(py.contains("    def _k_set(self, o):\n        self.x = o.x\n        self.tags = o.tags"), py)
+            assertTrue(py.contains("        return self._k_clone()"), py)
+            assertTrue(py.contains("    p._k_set(Pt(x=1))"), py)
+            assertTrue(py.contains("    ps.append(q._k_clone())\n    a = ps[0]._k_clone()\n    _move(a)\n    ps[0] = a._k_clone()\n    b = a._k_clone()"), py)
+        }
     }
 
     @Test
     fun aListOfStructsIsCopiedThroughMapSoACopyOfATreeCostsOneFramePerLevel() {
-        val py = python(
-            """
-            pub Node: Struct {
-                pub v: Int32 = 0
-                pub kids: List<Node> = List<Node> { }
-            }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                pub Node: Struct {
+                    pub v: Int32 = 0
+                    pub kids: List<Node> = List<Node> { }
+                }
 
-            f: (n: Node) Node {
-                mut q: Queue<Node> = Queue<Node> { }
-                q.enqueue(n)
-                mut more: Queue<Node> = q
-                n
-            }
-            """
-        )
-        assertTrue(py.contains("        c.kids = list(_k_map(Node._k_clone, self.kids))"), py)
-        assertTrue(py.contains("    more = _k_collections.deque(_k_map(Node._k_clone, q))"), py)
-        assertTrue(py.contains("def _k_map(f, xs):\n    return _k_builtins.map(f, xs)"), py)
+                f: (n: Node) Node {
+                    mut q: Queue<Node> = Queue<Node> { }
+                    q.enqueue(n)
+                    mut more: Queue<Node> = q
+                    n
+                }
+                """
+            )
+            assertTrue(py.contains("        c.kids = list(_k_map(Node._k_clone, self.kids))"), py)
+            assertTrue(py.contains("    more = _k_collections.deque(_k_map(Node._k_clone, q))"), py)
+            assertTrue(py.contains("def _k_map(f, xs):\n    return _k_builtins.map(f, xs)"), py)
+        }
     }
 
     @Test
@@ -1729,7 +1737,7 @@ class PyEmitterTest {
 
             pub Seg: Struct {
                 pub a: Pt = Pt { }
-                pub tags: List<Int32> = List<Int32> { }
+                pub b: Pt = Pt { }
             }
 
             pub Other: Struct {
@@ -1742,63 +1750,67 @@ class PyEmitterTest {
             """
         )
         assertTrue(py.contains("    def __eq__(self, o):\n        return self.x == o.x and self.y == o.y"), py)
-        assertTrue(py.contains("    def __eq__(self, o):\n        return self.a == o.a and self.tags == o.tags"), py)
+        assertTrue(py.contains("    def __eq__(self, o):\n        return self.a == o.a and self.b == o.b"), py)
         assertEquals(2, Regex("def __eq__").findAll(py).count(), "Other is never compared:\n$py")
         assertTrue(py.contains("_k_contains(xs, Pt(x=1)) and s != t"), py)
     }
 
     @Test
     fun aLoopVariableIsCopiedWhereItIsReturnedAsCppCopiesItsConstReference() {
-        val py = python(
-            """
-            pub Pt: Struct {
-                pub x: Int32 = 0
-            }
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                pub Pt: Struct {
+                    pub x: Int32 = 0
+                }
 
-            first: (xs: List<Pt>) Pt {
-                mut result: Maybe<Pt> = null
-                mut found: Bool = false
-                for p: Pt in xs {
-                    result = p
-                    found = true
-                    break
+                first: (xs: List<Pt>) Pt {
+                    mut result: Maybe<Pt> = null
+                    mut found: Bool = false
+                    for p: Pt in xs {
+                        result = p
+                        found = true
+                        break
+                    }
+                    found ? result.value : Pt { }
                 }
-                found ? result.value : Pt { }
-            }
 
-            row: (v: View<List<Int32>>, c: Bool) List<Int32> {
-                mut result: List<Int32> = List<Int32> { }
-                mut found: Bool = false
-                for r: List<Int32> in v {
-                    result = c ? r : List<Int32> { }
-                    found = true
-                    break
+                row: (v: View<List<Int32>>, c: Bool) List<Int32> {
+                    mut result: List<Int32> = List<Int32> { }
+                    mut found: Bool = false
+                    for r: List<Int32> in v {
+                        result = c ? r : List<Int32> { }
+                        found = true
+                        break
+                    }
+                    if found {
+                        result
+                    } else {
+                        mut own: List<Int32> = List<Int32> { }
+                        own
+                    }
                 }
-                if found {
-                    result
-                } else {
-                    mut own: List<Int32> = List<Int32> { }
-                    own
-                }
-            }
-            """
-        )
-        // Stage 3: the loop's answer goes in a local, so the copy is where the loop variable is kept.
-        assertTrue(py.contains("    for p in xs:\n        result = p._k_clone()"), py)
-        assertTrue(py.contains("        result = list(r if c else [])"), py)
-        assertTrue(py.contains("        return own\n"), "a local that owns its value is returned as itself:\n$py")
+                """
+            )
+            // Stage 3: the loop's answer goes in a local, so the copy is where the loop variable is kept.
+            assertTrue(py.contains("    for p in xs:\n        result = p._k_clone()"), py)
+            assertTrue(py.contains("        result = list(r if c else [])"), py)
+            assertTrue(py.contains("        return own\n"), "a local that owns its value is returned as itself:\n$py")
+        }
     }
 
     @Test
     fun aMutParameterOtherThanAListAMapOrAStructIsRefused() {
-        refused(
-            """
-            f: (mut x: Int32) Void {
-                x = 1
-            }
-            """,
-            "the mut parameter 'x': Int32 (only a List, a Map, a struct or a class is passed by reference)",
-        )
+        DialectGates.stage4(false) {
+            refused(
+                """
+                f: (mut x: Int32) Void {
+                    x = 1
+                }
+                """,
+                "the mut parameter 'x': Int32 (only a List, a Map, a struct or a class is passed by reference)",
+            )
+        }
     }
 
     @Test
@@ -1814,7 +1826,7 @@ class PyEmitterTest {
         refused(
             """
             f: () Void {
-                mut xs: List<Int32> = @listOf(1, 2, 3)
+                xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
                 xs.from(1).set(0, 5)
             }
             """,
@@ -1907,59 +1919,63 @@ class PyEmitterTest {
 
     @Test
     fun aLambdaIsAModuleFunctionOrAFactoryOfItsCaptures() {
-        val py = python(
-            """
-            f: (k: Int32, xs: List<Int32>) Int32 {
-                g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
-                    x
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                f: (k: Int32, xs: List<Int32>) Int32 {
+                    g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
+                        x
+                    }
+                    h: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
+                        x * k + xs.size() as Int32
+                    }
+                    g(1) + h(2)
                 }
-                h: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
-                    x * k + xs.size() as Int32
-                }
-                g(1) + h(2)
-            }
-            """
-        )
-        assertTrue(py.contains("    g = _k_lam0\n    h = _k_lam1(k, list(xs))\n    return _k_i32(g(1) + h(2))"), py)
-        assertTrue(py.contains("def _k_lam0(x):\n    return x\n"), py)
-        assertTrue(py.contains("def _k_lam1(k, xs):\n    def _k_fn(x):\n        return _k_i32(_k_i32(x * k) + _k_as_i32(len(xs)))\n    return _k_fn"), py)
+                """
+            )
+            assertTrue(py.contains("    g = _k_lam0\n    h = _k_lam1(k, list(xs))\n    return _k_i32(g(1) + h(2))"), py)
+            assertTrue(py.contains("def _k_lam0(x):\n    return x\n"), py)
+            assertTrue(py.contains("def _k_lam1(k, xs):\n    def _k_fn(x):\n        return _k_i32(_k_i32(x * k) + _k_as_i32(len(xs)))\n    return _k_fn"), py)
+        }
     }
 
     @Test
     fun aCaptureIsTheClosuresOwnSoWhatItHandsOnIsACopy() {
-        val py = python(
-            """
-            Pt: Struct {
-                pub x: Int32 = 0
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                Pt: Struct {
+                    pub x: Int32 = 0
 
-                pub later: () Fx<Tuple0, Int32> {
-                    () Int32 {
-                        x
+                    pub later: () Fx<Tuple0, Int32> {
+                        () Int32 {
+                            x
+                        }
+                    }
+
+                    pub whole: () Fx<Tuple0, Pt> {
+                        () Pt {
+                            this
+                        }
                     }
                 }
 
-                pub whole: () Fx<Tuple0, Pt> {
-                    () Pt {
-                        this
+                f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
+                    () List<Int32> {
+                        inner: Fx<Tuple0, Size> = () Size {
+                            xs.size()
+                        }
+                        xs
                     }
                 }
-            }
-
-            f: (xs: List<Int32>) Fx<Tuple0, List<Int32>> {
-                () List<Int32> {
-                    inner: Fx<Tuple0, Size> = () Size {
-                        xs.size()
-                    }
-                    xs
-                }
-            }
-            """
-        )
-        assertTrue(py.contains("return _k_lam0(self.x)"), py)
-        assertTrue(py.contains("return _k_lam1(self._k_clone())"), py)
-        assertTrue(py.contains("def _k_lam1(self):\n    def _k_fn():\n        return self._k_clone()"), py)
-        assertTrue(py.contains("return _k_lam2(list(xs))"), py)
-        assertTrue(py.contains("        inner = _k_lam3(xs)\n        return list(xs)"), py)
+                """
+            )
+            assertTrue(py.contains("return _k_lam0(self.x)"), py)
+            assertTrue(py.contains("return _k_lam1(self._k_clone())"), py)
+            assertTrue(py.contains("def _k_lam1(self):\n    def _k_fn():\n        return self._k_clone()"), py)
+            assertTrue(py.contains("return _k_lam2(list(xs))"), py)
+            assertTrue(py.contains("        inner = _k_lam3(xs)\n        return list(xs)"), py)
+        }
     }
 
     @Test
@@ -1981,11 +1997,11 @@ class PyEmitterTest {
             f: (b: Bank) Int32 {
                 n: Ref<Int32> = Ref<Int32> { value = 1 }
                 n.value = n.value + b.onAdd(2)
-                fill: Fx<Tuple1<mut List<Int32>>, Void> = (mut out: List<Int32>) Void {
+                fill: Fx<Tuple1<List<Int32>>, Void> = (out: List<Int32>) Void {
                     out.add(n.value)
                 }
-                mut xs: List<Int32> = List<Int32> { }
-                fill(mut xs)
+                xs: Mutable<List<Int32>> = List<Int32> { }
+                fill(xs)
                 Bank { double }.add(n.value)
             }
             """
@@ -1999,16 +2015,18 @@ class PyEmitterTest {
 
     @Test
     fun anFxThatWouldWriteAScalarThroughMutIsRefused() {
-        refused(
-            """
-            f: () Void {
-                g: Fx<Tuple1<mut Int32>, Void> = (mut x: Int32) Void {
-                    x += 1
+        DialectGates.stage4(false) {
+            refused(
+                """
+                f: () Void {
+                    g: Fx<Tuple1<mut Int32>, Void> = (mut x: Int32) Void {
+                        x += 1
+                    }
                 }
-            }
-            """,
-            "an Fx taking a mut Int32 (only a List, a Map, a struct or a class is passed by reference)",
-        )
+                """,
+                "an Fx taking a mut Int32 (only a List, a Map, a struct or a class is passed by reference)",
+            )
+        }
     }
 
     @Test
@@ -2127,8 +2145,8 @@ class PyEmitterTest {
             }
 
             f: () Int64 {
-                mut result: Int64 = 0
-                mut found: Bool = false
+                result: Mutable<Int64> = 0
+                found: Mutable<Bool> = false
                 try {
                     result = parse("x")
                     found = true
@@ -2161,30 +2179,32 @@ class PyEmitterTest {
 
     @Test
     fun aTupleIsAPythonTupleOfCopiesAndMapEntriesAreItsItems() {
-        val py = python(
-            """
-            kira.tuples as tuples
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                kira.tuples as tuples
 
-            f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
-                t: Tuple3<Str, List<Int32>, Int32> = Tuple3<Str, List<Int32>, Int32> { "a", xs, 2 }
-                mut inner: List<Int32> = t.second
-                inner.add(t.size())
-                es: Arr<Tuple2<Str, Int32>> = m.entries()
-                built: Map<Str, Int32> = Map<Str, Int32> { values = es }
-                for e: Tuple2<Str, Int32> in m {
-                    trace(e.first)
+                f: (xs: List<Int32>, m: Map<Str, Int32>) Int32 {
+                    t: Tuple3<Str, List<Int32>, Int32> = Tuple3<Str, List<Int32>, Int32> { "a", xs, 2 }
+                    mut inner: List<Int32> = t.second
+                    inner.add(t.size())
+                    es: Arr<Tuple2<Str, Int32>> = m.entries()
+                    built: Map<Str, Int32> = Map<Str, Int32> { values = es }
+                    for e: Tuple2<Str, Int32> in m {
+                        trace(e.first)
+                    }
+                    r: Result<List<Int32>, Str> = Result.success(xs)
+                    t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
                 }
-                r: Result<List<Int32>, Str> = Result.success(xs)
-                t.third + es[0].second + (built.size() as Int32) + (r.unwrap().size() as Int32)
-            }
-            """
-        )
-        assertTrue(py.contains("t = (\"a\", list(xs), 2)"), py)
-        assertTrue(py.contains("inner = list(t[1])\n    inner.append(3)"), py)
-        assertTrue(py.contains("es = list(m.items())\n    built = dict(list(es))"), py)
-        assertTrue(py.contains("for e in m.items():\n        print(e[0])"), py)
-        assertTrue(py.contains("r = (True, list(xs))"), py)
-        assertTrue(py.contains("t[2] + es[0][1]"), py)
+                """
+            )
+            assertTrue(py.contains("t = (\"a\", list(xs), 2)"), py)
+            assertTrue(py.contains("inner = list(t[1])\n    inner.append(3)"), py)
+            assertTrue(py.contains("es = list(m.items())\n    built = dict(list(es))"), py)
+            assertTrue(py.contains("for e in m.items():\n        print(e[0])"), py)
+            assertTrue(py.contains("r = (True, list(xs))"), py)
+            assertTrue(py.contains("t[2] + es[0][1]"), py)
+        }
     }
 
     @Test
@@ -2220,23 +2240,25 @@ class PyEmitterTest {
 
     @Test
     fun containersOfContainersAreCopiedDeeply() {
-        val py = python(
-            """
-            f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
-                mut h: List<List<Int32>> = g
-                mut row: List<Int32> = g[0]
-                h.add(row)
-                mut copy: Map<Str, List<UInt8>> = m
-                o: Maybe<List<Int32>> = row
-                vs: Arr<List<UInt8>> = m.valuesArr()
-                copy.size() + h.size() + vs.size() + o.unwrap().size()
-            }
-            """
-        )
-        assertTrue(py.contains("h = [list(_k_e0) for _k_e0 in g]\n    row = list(g[0])\n    h.append(list(row))"), py)
-        assertTrue(py.contains("copy = {_k_k0: bytearray(_k_v0) for _k_k0, _k_v0 in m.items()}"), py)
-        assertTrue(py.contains("o = list(row)"), py)
-        assertTrue(py.contains("vs = [bytearray(_k_e0) for _k_e0 in list(m.values())]"), py)
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                f: (m: Map<Str, List<UInt8>>, g: List<List<Int32>>) Size {
+                    mut h: List<List<Int32>> = g
+                    mut row: List<Int32> = g[0]
+                    h.add(row)
+                    mut copy: Map<Str, List<UInt8>> = m
+                    o: Maybe<List<Int32>> = row
+                    vs: Arr<List<UInt8>> = m.valuesArr()
+                    copy.size() + h.size() + vs.size() + o.unwrap().size()
+                }
+                """
+            )
+            assertTrue(py.contains("h = [list(_k_e0) for _k_e0 in g]\n    row = list(g[0])\n    h.append(list(row))"), py)
+            assertTrue(py.contains("copy = {_k_k0: bytearray(_k_v0) for _k_k0, _k_v0 in m.items()}"), py)
+            assertTrue(py.contains("o = list(row)"), py)
+            assertTrue(py.contains("vs = [bytearray(_k_e0) for _k_e0 in list(m.values())]"), py)
+        }
     }
 
     @Test
@@ -2253,25 +2275,27 @@ class PyEmitterTest {
 
     @Test
     fun aSetIsADictAndAStackAListAndAQueueOrDequeACollectionsDeque() {
-        val py = python(
-            """
-            f: (q: Queue<Int32>) Int32 {
-                mut s: Set<Str> = Set<Str> { }
-                added: Bool = s.add("a")
-                mut st: Stack<Int32> = Stack<Int32> { }
-                st.push(1)
-                mut d: Deque<Int32> = Deque<Int32> { }
-                d.pushFront(2)
-                mut copy: Queue<Int32> = q
-                copy.enqueue(3)
-                st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
-            }
-            """
-        )
-        assertTrue(py.contains("s = {}\n    added = _k_setadd(s, \"a\")\n    st = []\n    st.append(1)\n    d = _k_collections.deque()\n    d.appendleft(2)\n    copy = _k_collections.deque(q)\n    copy.append(3)"), py)
-        assertTrue(py.contains("_k_or(_k_pop(st), 0)"), py)
-        assertTrue(py.contains("_k_or(_k_popleft(copy), 0)"), py)
-        assertTrue(py.contains("import collections as _k_collections"), py)
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                f: (q: Queue<Int32>) Int32 {
+                    mut s: Set<Str> = Set<Str> { }
+                    added: Bool = s.add("a")
+                    mut st: Stack<Int32> = Stack<Int32> { }
+                    st.push(1)
+                    mut d: Deque<Int32> = Deque<Int32> { }
+                    d.pushFront(2)
+                    mut copy: Queue<Int32> = q
+                    copy.enqueue(3)
+                    st.pop().unwrapOr(0) + d.popBack().unwrapOr(0) + copy.dequeue().unwrapOr(0)
+                }
+                """
+            )
+            assertTrue(py.contains("s = {}\n    added = _k_setadd(s, \"a\")\n    st = []\n    st.append(1)\n    d = _k_collections.deque()\n    d.appendleft(2)\n    copy = _k_collections.deque(q)\n    copy.append(3)"), py)
+            assertTrue(py.contains("_k_or(_k_pop(st), 0)"), py)
+            assertTrue(py.contains("_k_or(_k_popleft(copy), 0)"), py)
+            assertTrue(py.contains("import collections as _k_collections"), py)
+        }
     }
 
     @Test
@@ -2311,7 +2335,7 @@ class PyEmitterTest {
         val e = PyTestSupport.emit(
             """
             f: () Size {
-                mut m: Map<Str, Int32> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
                 m["a"] += 1
                 m.size()
             }
@@ -2417,7 +2441,7 @@ class PyEmitterTest {
         val (py, errors) = PyTestSupport.emitProgram(
             "lib:units" to """
                 pub SCALE: Int32 = 10
-                pub mut calls: Int32 = 0
+                pub calls: Mutable<Int32> = 0
 
                 pub Meter: Any {
                     pub label: Str
@@ -2617,7 +2641,7 @@ class PyEmitterTest {
         assertTrue(py.contains("_k_x = _k_extern(__file__, \"handle_ext.py\", ())\n_k_r0 = _k_raises(_k_x, \"Sock.recv\", (\"TimeoutError\",))"), py)
         assertTrue(py.contains("def _k_o_Sock_recv(_k_o, size):\n    try:\n        _k_r = _k_o.recv(size)\n"), py)
         assertTrue(py.contains("    return _k_check(_k_r, (\"Y\",), \"Sock.recv\", \"List<UInt8>\")"), py)
-        assertTrue(py.contains("kept = list(socks)"), py)
+        assertTrue(py.contains("kept = socks"), py)
         assertTrue(py.contains("len(_k_o_Sock_recv(s, 4))"), py)
     }
 
@@ -2642,12 +2666,10 @@ class PyEmitterTest {
             "@_extern f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
             "@_extern f: (s: List<Set<Int32>>) Void" to "the parameter 's' of the extern 'f': a Set<Int32> inside a value (a Set crosses as a parameter or a result)",
             "@_extern f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
-            "@_extern f: (mut n: List<Int32>) Void" to "the mut parameter 'n' of the extern 'f'",
             "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
             "@_extern f: () Int32 {\n    1\n}" to "the extern 'f' with a body",
             "pub f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
             "@_extern f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
-            "@_extern f: (g: Fx<Tuple1<mut List<Int32>>, Void>) Void" to "(Python writes back through no mut parameter)",
             "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
             "@_extern f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
@@ -2656,7 +2678,7 @@ class PyEmitterTest {
                 "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
             "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (g: Fx<Tuple0, Holder>) Void" to
                 "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
-            "In: Struct {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Struct {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
+            "In: Mutable<Any> {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Mutable<Any> {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
             "C: Struct {\n    pub c: Char = 'x'\n}\n@_extern f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
@@ -2666,9 +2688,9 @@ class PyEmitterTest {
     fun aClassThatHoldsItselfCrossesOnceChecked() {
         val e = besideSidecar(
             """
-            pub Node: Any {
-                pub mut next: Maybe<Node> = null
-                pub mut items: List<Node> = List<Node> { }
+            pub Node: Mutable<Any> {
+                pub next: Mutable<Maybe<Node>> = null
+                pub items: Mutable<List<Node>> = List<Node> { }
             }
 
             @_extern visit: (n: Node, f: Fx<Tuple0, Node>) Void
@@ -2736,19 +2758,19 @@ class PyEmitterTest {
             """
             kira.sync as sync
 
-            Tally: Struct {
-                pub count: Int32 = 0
+            Tally: Mutable<Any> {
+                pub count: Mutable<Int32> = 0
             }
 
             f: () Int64 {
                 hits: Atomic<Int32> = Atomic<Int32> { value = 0 }
                 tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
                 q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-                mut row: List<Int32> = @listOf(1)
+                row: Mutable<List<Int32>> = @listOf(1)
                 t: Thread = spawn("w", () Void {
                     hits.add(1)
                     q.push(row)
-                    tally.lock((mut s: Tally) Void {
+                    tally.lock((s: Tally) Void {
                         s.count += 1
                     })
                 })
@@ -2760,8 +2782,8 @@ class PyEmitterTest {
         assertTrue(py.contains("hits = _k_Atomic(0, _k_as_i32)"), py)
         assertTrue(py.contains("tally = _k_Mutex(_Tally())"), py)
         assertTrue(py.contains("q = _k_BlockingQueue()"), py)
-        assertTrue(py.contains("t = _k_Thread(\"w\", _k_lam0(hits, q, list(row), tally))"), py)
-        assertTrue(py.contains("        hits.add(1)\n        q.push(list(row))\n        tally.lock(_k_lam1)"), py)
+        assertTrue(py.contains("t = _k_Thread(\"w\", _k_lam0(hits, q, row, tally))"), py)
+        assertTrue(py.contains("        hits.add(1)\n        q.push(row)\n        tally.lock(_k_lam1)"), py)
         assertTrue(py.contains("def _k_lam1(s):\n    s.count = _k_i32(s.count + 1)"), py)
         assertTrue(py.contains("    t.join()\n"), py)
         assertTrue(py.contains("class _k_Thread:") && py.contains("def _k_callback(f, args, owner, thrown=70):"), py)
@@ -2787,19 +2809,21 @@ class PyEmitterTest {
 
     @Test
     fun aMutClassParameterGivenANewObjectIsRefused() {
-        refused(
-            """
-            Box: Any {
-                pub mut n: Int64 = 0
-            }
+        DialectGates.stage4(false) {
+            refused(
+                """
+                Box: Any {
+                    pub mut n: Int64 = 0
+                }
 
-            reset: (mut b: Box) Void {
-                b.n = 1
-                b = Box { }
-            }
-            """,
-            "a new Box assigned to the mut parameter 'b'",
-        )
+                reset: (mut b: Box) Void {
+                    b.n = 1
+                    b = Box { }
+                }
+                """,
+                "a new Box assigned to the mut parameter 'b'",
+            )
+        }
     }
 
     @Test
@@ -2814,7 +2838,7 @@ class PyEmitterTest {
         val handle = "pub @_opaque Sock: Any {\n    pub id: () Int32\n}\n"
         listOf(
             "${handle}Peer: Struct {\n    pub s: Sock\n}\nf: (a: Peer, b: Peer) Bool {\n    a == b\n}" to "a comparison of Peer, which holds an opaque handle",
-            "${handle}Peer: Struct {\n    pub s: List<Sock>\n}\nf: (a: Peer, b: Peer) Bool {\n    a != b\n}" to "a comparison of Peer, which holds an opaque handle",
+            "${handle}Peer: Struct {\n    pub s: Arr<Sock>\n}\nf: (a: Peer, b: Peer) Bool {\n    a != b\n}" to "a comparison of Peer, which holds an opaque handle",
             "${handle}f: (xs: List<Sock>, s: Sock) Bool {\n    xs.contains(s)\n}" to "'contains' on a List<Sock>, which compares an opaque handle",
             "${handle}f: (m: Map<Str, Sock>, s: Sock) Bool {\n    m.containsValue(s)\n}" to "'containsValue' on a Map<Str, Sock>, which compares an opaque handle",
         ).forEach { (body, construct) -> refused(body, construct) }
@@ -2828,7 +2852,7 @@ class PyEmitterTest {
             """
             kira.test as test
 
-            Runner: Any {
+            Runner: Mutable<Any> {
                 pub t: Suite
             }
 
@@ -2982,30 +3006,32 @@ class PyEmitterTest {
 
     @Test
     fun aStdlibStructIsBuiltWithItsDefaultsCopiedAndComparedAsAUserStruct() {
-        val py = python(
-            """
-            kira.os as os
+        DialectGates.stage4(false) {
+            val py = python(
+                """
+                kira.os as os
 
-            Seen: Struct {
-                pub last: Datagram = Datagram { }
-            }
+                Seen: Struct {
+                    pub last: Datagram = Datagram { }
+                }
 
-            f: (d: Datagram) Bool {
-                mut e: Datagram = d
-                e.port = 2
-                r: Ready = Ready { events = POLL_READ }
-                xs: List<Ready> = @listOf(r)
-                ys: List<Ready> = xs
-                s: Seen = Seen { }
-                e == d && ys[0] != r && s.last == (Datagram { host = "h" })
-            }
-            """
-        )
-        assertTrue(py.contains("    e = d._k_clone()\n    e.port = 2\n    r = _k_Ready(-1, 1)\n"), py)
-        assertTrue(py.contains("    ys = list(_k_map(_k_Ready._k_clone, xs))\n"), py)
-        assertTrue(py.contains("        self.last = _k_Datagram(0, \"\", 0) if last is _k_unset else last._k_clone()\n"), py)
-        assertTrue(py.contains("return e == d and ys[0] != r and s.last == _k_Datagram(0, \"h\", 0)"), py)
-        assertTrue(py.contains("\nclass _k_Datagram:\n") && py.contains("\nclass _k_Ready:\n"), py)
+                f: (d: Datagram) Bool {
+                    mut e: Datagram = d
+                    e.port = 2
+                    r: Ready = Ready { events = POLL_READ }
+                    xs: List<Ready> = @listOf(r)
+                    ys: List<Ready> = xs
+                    s: Seen = Seen { }
+                    e == d && ys[0] != r && s.last == (Datagram { host = "h" })
+                }
+                """
+            )
+            assertTrue(py.contains("    e = d._k_clone()\n    e.port = 2\n    r = _k_Ready(-1, 1)\n"), py)
+            assertTrue(py.contains("    ys = list(_k_map(_k_Ready._k_clone, xs))\n"), py)
+            assertTrue(py.contains("        self.last = _k_Datagram(0, \"\", 0) if last is _k_unset else last._k_clone()\n"), py)
+            assertTrue(py.contains("return e == d and ys[0] != r and s.last == _k_Datagram(0, \"h\", 0)"), py)
+            assertTrue(py.contains("\nclass _k_Datagram:\n") && py.contains("\nclass _k_Ready:\n"), py)
+        }
     }
 
     /** D84: each stdlib struct's runtime class holds its fields in declaration order, by the names the emitter reaches them by, with the methods it calls. */

@@ -3,10 +3,10 @@
 // by two names (one object), an immutable one copied (indistinguishable), a List of either.
 // The expected output is the C++ backend's run of this same module.
 
-Cell: Any {
-    pub mut count: Int32 = 0
+Cell: Mutable<Any> {
+    pub count: Mutable<Int32> = 0
 
-    pub mut bump: () Int32 {
+    pub bump: () Int32 {
         count += 1
         count
     }
@@ -31,8 +31,8 @@ sign: (n: Int32) Int32 {
 }
 
 sumOdd: (limit: Int32) Int32 {
-    mut i: Int32 = 0
-    mut total: Int32 = 0
+    i: Mutable<Int32> = 0
+    total: Mutable<Int32> = 0
     while true {
         i += 1
         if i > limit {
@@ -59,7 +59,7 @@ main: () Void {
     trace("a" + "b" == "ab")
     trace(true && !false)
     trace(1 < 2 == true)
-    mut first: Cell = Cell { }
+    first: Mutable<Cell> = Cell { }
     second: Cell = first
     first.bump()
     second.bump()
@@ -68,13 +68,13 @@ main: () Void {
     p: Pair = Pair { 7, "x" }
     q: Pair = p
     trace(q.swapped())
-    mut cells: List<Cell> = List<Cell> { }
+    cells: Mutable<List<Cell>> = List<Cell> { }
     cells.add(first)
     cells.add(Cell { })
     cells[0].bump()
     trace(first.count)
     trace(cells[1].bump())
-    mut pairs: List<Pair> = List<Pair> { }
+    pairs: Mutable<List<Pair>> = List<Pair> { }
     pairs.add(p)
     pairs.add(Pair { b = "y", a = 8 })
     trace(pairs[1].swapped())

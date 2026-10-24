@@ -36,7 +36,7 @@ namespace golden::shapes
       std::int32_t y = 0;
 
       [[nodiscard]] std::int32_t manhattan() const;
-      void shift(std::int32_t dx, std::int32_t dy = 0);
+      [[nodiscard]] Point shifted(std::int32_t dx, std::int32_t dy = 0) const;
   };
 
   struct Box
@@ -54,6 +54,6 @@ namespace golden::shapes
   [[nodiscard]] inline std::int32_t scaled(std::int32_t v, std::int32_t by = SCALE, const kira::Str& unit = UNIT_MM);
   [[nodiscard]] inline kira::Str describe(const Box& b, const kira::Str& label = "box?\?");
   [[nodiscard]] inline std::int32_t first(const Outline& points);
-  [[nodiscard]] inline bool total(kira::View<std::int32_t> points, std::int32_t& sum);
+  [[nodiscard]] inline std::int32_t total(kira::View<std::int32_t> points);
 }
 #include "kira/macro_pop.hxx"

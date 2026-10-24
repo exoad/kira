@@ -28,6 +28,13 @@ namespace
       }
   }
 
+  // A field that is there and holds [want].
+  template<class M, class T>
+  bool is(const M& m, T want)
+  {
+      return kira::isSome(m) && kira::unwrap(m) == want;
+  }
+
   void checkStr(const kira::Str& got, const char* want, const char* what)
   {
       const bool ok = got == want;
@@ -69,39 +76,32 @@ int main()
     checkStr(proto::read("OK led on\r\n").line, "OK led on", "CRLF is stripped from the kept line");
     {
         const kira::Str line = "servo=1500 servo_t=1480 esc=1541 esc_t=1600";
-        std::int32_t v = 0;
-        check(proto::fieldInt(line, "servo=", v) && v == 1500, "servo=");
-        check(proto::fieldInt(line, "servo_t=", v) && v == 1480, "servo_t=");
-        check(proto::fieldInt(line, "esc=", v) && v == 1541, "esc=");
-        check(proto::fieldInt(line, "esc_t=", v) && v == 1600, "esc_t=");
+        check(is(proto::fieldInt(line, "servo="), 1500), "servo=");
+        check(is(proto::fieldInt(line, "servo_t="), 1480), "servo_t=");
+        check(is(proto::fieldInt(line, "esc="), 1541), "esc=");
+        check(is(proto::fieldInt(line, "esc_t="), 1600), "esc_t=");
     }
     {
         // strstr(line, "esc=") would find the "esc=" inside "desc=".
         const kira::Str line = "desc=99 esc=1541";
-        std::int32_t v = 0;
-        check(proto::fieldInt(line, "esc=", v) && v == 1541, "esc= is not matched inside desc=");
+        check(is(proto::fieldInt(line, "esc="), 1541), "esc= is not matched inside desc=");
         std::printf("        (strstr would have returned %d here)\n", std::atoi(std::strstr(line.c_str(), "esc=") + 4));
-        check(proto::fieldInt(line, "desc=", v) && v == 99, "and desc= still reads correctly");
+        check(is(proto::fieldInt(line, "desc="), 99), "and desc= still reads correctly");
     }
     {
         const kira::Str line = "a=1 b=2";
-        std::int32_t v = 0;
-        check(!proto::fieldInt(line, "c=", v), "a missing key is false");
-        check(!proto::fieldInt(line, "", v), "an empty key is false");
+        check(!kira::isSome(proto::fieldInt(line, "c=")), "a missing key is false");
+        check(!kira::isSome(proto::fieldInt(line, "")), "an empty key is false");
     }
     {
         // esc=off is not a 0, which would read as neutral throttle.
         const kira::Str line = "esc=off servo=1500";
-        std::int32_t v = -1;
-        check(!proto::fieldInt(line, "esc=", v), "a non-numeric value is refused, not defaulted to 0");
-        check(v == -1, "and the out parameter is left alone");
-        kira::Str raw;
-        check(proto::field(line, "esc=", raw) && raw == "off", "though it can still be read as text");
+        check(!kira::isSome(proto::fieldInt(line, "esc=")), "a non-numeric value is refused, not defaulted to 0");
+        check(is(proto::field(line, "esc="), kira::Str("off")), "though it can still be read as text");
     }
     {
-        std::int32_t v = 0;
-        check(!proto::fieldInt("esc=1541abc", "esc=", v), "a trailing tail is refused");
-        check(!proto::fieldInt("esc=", "esc=", v), "and so is an empty value");
+        check(!kira::isSome(proto::fieldInt("esc=1541abc", "esc=")), "a trailing tail is refused");
+        check(!kira::isSome(proto::fieldInt("esc=", "esc=")), "and so is an empty value");
     }
     {
         // The shape of firmware/app/main.cxx printDrive(): several keys are
@@ -113,24 +113,20 @@ int main()
         const proto::Reply r = proto::read(line);
         check(r.kind == proto::KIND_OK, "the drive reply is an OK");
         checkStr(r.topic, "drive", "with topic drive");
-        std::int32_t v = 0;
-        check(proto::fieldInt(r.rest, "armed=", v) && v == 1, "armed= reads the arm state");
-        check(proto::fieldInt(r.rest, "esc=", v) && v == 1560, "esc= is not esc_t=, esc_min= or esc_max=");
-        check(proto::fieldInt(r.rest, "steer_now=", v) && v == -250, "steer_now= is negative and is not steer_m=");
-        check(proto::fieldInt(r.rest, "tick=", v) && v == -2859, "tick= is the encoder's signed count");
-        check(proto::fieldInt(r.rest, "tps=", v) && v == -420, "tps= its signed speed");
-        check(proto::fieldInt(r.rest, "hbad=", v) && v == 1, "hbad= is its own key at the end of the line");
-        check(proto::fieldInt(r.rest, "slew=", v) && v == 8, "slew= is not slew_esc=");
-        v = 0;
-        check(!proto::fieldInt(r.rest, "armed", v), "a key missing its = is refused, not silently empty");
-        check(v == 0, "and it leaves the out parameter alone");
+        check(is(proto::fieldInt(r.rest, "armed="), 1), "armed= reads the arm state");
+        check(is(proto::fieldInt(r.rest, "esc="), 1560), "esc= is not esc_t=, esc_min= or esc_max=");
+        check(is(proto::fieldInt(r.rest, "steer_now="), -250), "steer_now= is negative and is not steer_m=");
+        check(is(proto::fieldInt(r.rest, "tick="), -2859), "tick= is the encoder's signed count");
+        check(is(proto::fieldInt(r.rest, "tps="), -420), "tps= its signed speed");
+        check(is(proto::fieldInt(r.rest, "hbad="), 1), "hbad= is its own key at the end of the line");
+        check(is(proto::fieldInt(r.rest, "slew="), 8), "slew= is not slew_esc=");
+        check(!kira::isSome(proto::fieldInt(r.rest, "armed")), "a key missing its = is refused, not silently empty");
     }
     {
         const kira::Str line = "hz=2.50 gain=-0.125";
-        float f = 0.0f;
-        check(proto::fieldFloat(line, "hz=", f) && f > 2.49f && f < 2.51f, "a float field");
-        check(proto::fieldFloat(line, "gain=", f) && f < -0.124f && f > -0.126f, "a negative float field");
-        check(!proto::fieldFloat("hz=2,50", "hz=", f), "a comma decimal is refused");
+        check(is(proto::fieldFloat(line, "hz="), 2.5f), "a float field");
+        check(is(proto::fieldFloat(line, "gain="), -0.125f), "a negative float field");
+        check(!kira::isSome(proto::fieldFloat("hz=2,50", "hz=")), "a comma decimal is refused");
     }
     checkStr(proto::steer(0.25f), "STEER 0.250", "a steering command");
     checkStr(proto::steer(-0.5f), "STEER -0.500", "a negative one");
@@ -158,8 +154,7 @@ int main()
         }
         const kira::Str s = proto::steer(0.25f);
         check(s.find(',') == kira::Str::npos && s == "STEER 0.250", "no comma survives into a command");
-        float f = 0.0f;
-        check(proto::fieldFloat("hz=2.50", "hz=", f) && f > 2.49f && f < 2.51f, "and 2.50 still reads as 2.5");
+        check(is(proto::fieldFloat("hz=2.50", "hz="), 2.5f), "and 2.50 still reads as 2.5");
         std::setlocale(LC_ALL, "C");
     }
     std::printf("\n%d checks, %d failed\n", checks, failures);

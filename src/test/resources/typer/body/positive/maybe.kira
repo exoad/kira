@@ -40,7 +40,7 @@ pub maybes: (m: Maybe<Int32>, w: Weak<Pet>) Void {
     mp: Maybe<Pet> = Pet { "Mochi" }       // @type Pet coerce=WrapSome(Pet)
     passed: Int32 = takes(5)               // @type Int32 coerce=WrapSome(Int32) @ 5
     none: Int32 = takes(null)              // @type Null coerce=NoneOf(Int32) @ null
-    mut later: Maybe<Str> = null
+    later: Mutable<Maybe<Str>> = null
     later = "set"                          // @type Str coerce=WrapSome(Str) @ "set"
     kept: Maybe<Int32> = m                 // @type Maybe<Int32> place=Param(m)
 }

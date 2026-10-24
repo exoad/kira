@@ -5,14 +5,13 @@ Box: Struct {
     pub w: Int32
     pub h: Int32
     pub area: Int32 = 0
-    pub tags: List<Str> = List<Str> { }
 
     initially {
         area = w * h
     }
 
-    pub mut grow: (by: Int32) Void {
-        w += by
+    pub grown: (by: Int32) Int32 {
+        w + by
     }
 }
 
@@ -23,17 +22,17 @@ Trim: Any {
 }
 
 // A class with a `mut` field: edited in place.
-Counter: Any {
-    pub mut frames: Int64 = 0
-    pub mut label: Str = ""
+Counter: Mutable<Any> {
+    pub frames: Mutable<Int64> = 0
+    pub label: Mutable<Str> = ""
 
-    pub mut count: () Void {
+    pub count: () Void {
         frames += 1
     }
 }
 
-Holder: Any {
-    pub mut box: Box = Box { 1, 1 }
+Holder: Mutable<Any> {
+    pub box: Mutable<Box> = Box { 1, 1 }
 }
 
 BENCH_TRIM: Trim = Trim { 1500, 1541 } with {
@@ -45,7 +44,7 @@ NAMED_TRIM: Trim = Trim { servoCenterUs = 1400, escMinUs = 1500 } with {
 }
 
 show: (b: Box) Str {
-    "${b.w}x${b.h}=${b.area} [${b.tags.joinToString(",")}]"
+    "${b.w}x${b.h}=${b.area}"
 }
 
 trimText: (t: Trim) Str {
@@ -66,7 +65,6 @@ main: () Void {
     b: Box = Box { 2, 3 }
     c: Box = b with {
         w = 10
-        tags.add("big")
     }
     println("${show(b)} ${show(c)}")
     println(show(wider(b, 5)))
@@ -75,7 +73,7 @@ main: () Void {
         h = 5
     })}")
     g: Box = b with {
-        grow(3)
+        w = grown(3)
     }
     println(show(g))
     println("${trimText(BENCH_TRIM)} ${trimText(NAMED_TRIM)}")
@@ -95,7 +93,7 @@ main: () Void {
         w = 4
     }
     println(show(holder.box))
-    mut acc: Box = Box { 0, 1 }
+    acc: Mutable<Box> = Box { 0, 1 }
     for i: Int32 in 0..6 {
         acc = acc with {
             w = w + i

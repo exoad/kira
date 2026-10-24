@@ -1,10 +1,10 @@
-Node: Struct {
-    pub v: Int32 = 0
-    pub kids: List<Node> = List<Node> { }
+Node: Mutable<Any> {
+    pub v: Mutable<Int32> = 0
+    pub kids: Mutable<List<Node>> = List<Node> { }
 }
 
 total: (n: Node) Int32 {
-    mut t: Int32 = n.v
+    t: Mutable<Int32> = n.v
     for k: Node in n.kids {
         t += total(k)
     }
@@ -12,20 +12,20 @@ total: (n: Node) Int32 {
 }
 
 main: () Void {
-    mut leaf: Node = Node { 1 }
-    mut mid: Node = Node { 10 }
+    leaf: Mutable<Node> = Node { 1 }
+    mid: Mutable<Node> = Node { 10 }
     mid.kids.add(leaf)
     mid.kids.add(leaf)
-    mut root: Node = Node { 100 }
+    root: Mutable<Node> = Node { 100 }
     root.kids.add(mid)
     leaf.v = 5
-    mut copy: Node = root
+    copy: Mutable<Node> = root
     copy.kids[0].kids[1].v = 1000
     trace(total(root))
     trace(total(copy))
-    mut chain: Node = Node { 0 }
+    chain: Mutable<Node> = Node { 0 }
     for i: Int32 in 0..600 {
-        mut up: Node = Node { i }
+        up: Mutable<Node> = Node { i }
         up.kids.add(chain)
         chain = up
     }

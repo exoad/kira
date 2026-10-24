@@ -26,20 +26,20 @@ isSpace: (c: Char) Bool {
 }
 
 // [begin, end) of the first word at or after `from`.
-wordAt: (s: Str, from: Size, mut begin: Size, mut end: Size) Void {
-    mut at: Size = from
+wordAt: (s: Str, from: Size) Tuple2<Size, Size> {
+    at: Mutable<Size> = from
     while at < s.length() && isSpace(s[at]) {
         at += 1
     }
-    begin = at
+    begin: Size = at
     while at < s.length() && !isSpace(s[at]) {
         at += 1
     }
-    end = at
+    Tuple2<Size, Size> { begin, at }
 }
 
 tailFrom: (s: Str, from: Size) Str {
-    mut at: Size = from
+    at: Mutable<Size> = from
     while at < s.length() && isSpace(s[at]) {
         at += 1
     }
@@ -47,7 +47,7 @@ tailFrom: (s: Str, from: Size) Str {
 }
 
 trimEnd: (s: Str) Str {
-    mut n: Size = s.length()
+    n: Mutable<Size> = s.length()
     while n > 0 && (s[n - 1] == '\r' || s[n - 1] == '\n' || isSpace(s[n - 1])) {
         n -= 1
     }
@@ -56,55 +56,45 @@ trimEnd: (s: Str) Str {
 
 // Classifies one line. Strips CR, so a caller may hand it either ending.
 pub read: (line: Str) Reply {
-    mut out: Reply = Reply { line = trimEnd(line) }
-    mut b: Size = 0
-    mut e: Size = 0
-    wordAt(out.line, 0, mut b, mut e)
+    kept: Str = trimEnd(line)
+    word: Tuple2<Size, Size> = wordAt(kept, 0)
+    b: Size = word.first
+    e: Size = word.second
     if b >= e {
-        out.kind = KIND_EMPTY
-        out
+        Reply { kind = KIND_EMPTY, line = kept }
     } else {
-        head: Str = out.line.substring(b, e)
+        head: Str = kept.substring(b, e)
         if head == "ERR" {
-            out.kind = KIND_ERR
-            out.rest = tailFrom(out.line, e)
-            out
+            Reply { kind = KIND_ERR, rest = tailFrom(kept, e), line = kept }
         } else if head == "OK" || head == "INFO" {
-            out.kind = head == "OK" ? KIND_OK : KIND_INFO
-            mut tb: Size = 0
-            mut te: Size = 0
-            wordAt(out.line, e, mut tb, mut te)
-            if tb < te {
-                out.topic = out.line.substring(tb, te)
-                out.rest = tailFrom(out.line, te)
-            }
-            out
+            topic: Tuple2<Size, Size> = wordAt(kept, e)
+            tb: Size = topic.first
+            te: Size = topic.second
+            named: Bool = tb < te
+            Reply { kind = head == "OK" ? KIND_OK : KIND_INFO, topic = named ? kept.substring(tb, te) : "", rest = named ? tailFrom(kept, te) : "", line = kept }
         } else {
-            out.kind = KIND_OTHER
-            out.rest = out.line
-            out
+            Reply { kind = KIND_OTHER, rest = kept, line = kept }
         }
     }
 }
 
-// The value of `key` in `text`, running to the next space. MATCHES ON TOKEN
+// The value of `key` in `text`, running to the next space, or none. MATCHES ON TOKEN
 // BOUNDARIES: "esc=" is never found inside "desc=".
-pub field: (text: Str, key: Str, mut out: Str) Bool {
+pub field: (text: Str, key: Str) Maybe<Str> {
     if key.isEmpty() {
-        false
+        null
     } else {
         klen: Size = key.length()
-        mut i: Size = 0
-        mut result: Bool = false
+        i: Mutable<Size> = 0
+        result: Mutable<Maybe<Str>> = null
         while i + klen <= text.length() {
             boundary: Bool = i == 0 || isSpace(text[i - 1])
             if boundary && text.substring(i, i + klen) == key {
-                mut to: Size = i + klen
+                to: Mutable<Size> = i + klen
                 while to < text.length() && !isSpace(text[to]) {
                     to += 1
                 }
-                out = text.substring(i + klen, to)
-                result = true
+                result = text.substring(i + klen, to)
                 break
             }
             i += 1
@@ -113,34 +103,24 @@ pub field: (text: Str, key: Str, mut out: Str) Bool {
     }
 }
 
-// False when the key is absent OR the value is not wholly a number.
-pub fieldInt: (text: Str, key: Str, mut out: Int32) Bool {
-    mut raw: Str = ""
-    if !field(text, key, mut raw) {
-        false
+// None when the key is absent OR the value is not wholly a number.
+pub fieldInt: (text: Str, key: Str) Maybe<Int32> {
+    raw: Maybe<Str> = field(text, key)
+    if raw.isNone() {
+        null
     } else {
-        v: Maybe<Int64> = raw.toInt64()        // strict decimal, locale-free: "1541abc" is refused
-        if v.isNone() {
-            false
-        } else {
-            out = v.unwrap() as Int32
-            true
-        }
+        v: Maybe<Int64> = raw.unwrap().toInt64()        // strict decimal, locale-free: "1541abc" is refused
+        v.isNone() ? null : v.unwrap() as Int32
     }
 }
 
-pub fieldFloat: (text: Str, key: Str, mut out: Float32) Bool {
-    mut raw: Str = ""
-    if !field(text, key, mut raw) {
-        false
+pub fieldFloat: (text: Str, key: Str) Maybe<Float32> {
+    raw: Maybe<Str> = field(text, key)
+    if raw.isNone() {
+        null
     } else {
-        v: Maybe<Float64> = raw.toFloat64()
-        if v.isNone() {
-            false
-        } else {
-            out = v.unwrap() as Float32
-            true
-        }
+        v: Maybe<Float64> = raw.unwrap().toFloat64()
+        v.isNone() ? null : v.unwrap() as Float32
     }
 }
 
@@ -158,7 +138,7 @@ fixed3: (value: Float32) Str {
 
 // A fraction of this car's steering travel, clamped to -1..1.
 pub steer: (fraction: Float32) Str {
-    mut f: Float32 = fraction
+    f: Mutable<Float32> = fraction
     if f < -1.0 {
         f = -1.0
     }

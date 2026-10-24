@@ -6,10 +6,10 @@ Pt: Struct {
     pub y: Int32 = 0
 }
 
-mut calls: Int32 = 0
+calls: Mutable<Int32> = 0
 
 find: (xs: List<Int32>, v: Int32) Maybe<Int32> {
-    mut result: Maybe<Int32> = null
+    result: Mutable<Maybe<Int32>> = null
     for i: Size in 0..xs.size() {
         if xs[i] == v {
             result = i as Int32
@@ -55,7 +55,7 @@ orZero: (m: Maybe<Int32>) Int32 {
 }
 
 countdown: (m: Maybe<Int32>) Int32 {
-    mut steps: Int32 = 0
+    steps: Mutable<Int32> = 0
     while m == Int32 && steps < m {
         steps += 1
     }

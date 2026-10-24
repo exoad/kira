@@ -28,7 +28,7 @@ decls - declarations by themselves
   ok    a default argument named like a field, and a field named std
   ok    null defaults are kira::none
   ok    a null default argument, filled or given
-  ok    Unsafe<T> is const T*, T* when mut
+  ok    Unsafe<T> is const T*
   ok    a narrow literal as a Maybe default argument
   ok    containers of a struct declared later
 

@@ -13,6 +13,7 @@ import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * ViewPass: views are second-class (decision 4b, design 30-second-class). The positive cases are
@@ -55,7 +56,7 @@ class ViewPassTest {
                 first ? a : b.from(1)
             }
             pub sum: (buf: View<UInt8>) UInt32 {
-                mut s: UInt32 = 0
+                s: Mutable<UInt32> = 0
                 for b: UInt8 in buf {
                     s += b as UInt32
                 }
@@ -87,8 +88,8 @@ class ViewPassTest {
                     all().from(1)
                 }
             }
-            pub CBuf: Any {
-                pub mut data: List<Char> = List<Char> {}
+            pub CBuf: Mutable<Any> {
+                pub data: Mutable<List<Char>> = List<Char> {}
                 pub all: () View<Char> {
                     this.data.view()
                 }
@@ -109,9 +110,9 @@ class ViewPassTest {
         // types.view.temporary refused total(makeList()) before decision 4b; it is TEMP now.
         val p = snippet(
             """
-            mut idx: Size = 0
+            idx: Mutable<Size> = 0
             pub makeList: () List<Int32> {
-                mut xs: List<Int32> = List<Int32> {}
+                xs: Mutable<List<Int32>> = List<Int32> {}
                 xs.add(1)
                 xs.add(2)
                 xs
@@ -121,7 +122,7 @@ class ViewPassTest {
                 idx
             }
             pub total: (v: View<Int32>) Int32 {
-                mut t: Int32 = 0
+                t: Mutable<Int32> = 0
                 for x: Int32 in v {
                     t += x
                 }
@@ -152,12 +153,12 @@ class ViewPassTest {
         // so header and scalars view locals now, and first's impure bump() runs before its view is formed.
         val p = snippet(
             """
-            pub Header: Struct {
+            pub Header: Mutable<Any> {
                 pub type: UInt32 = 0
-                pub size: UInt32 = 0
+                pub size: Mutable<UInt32> = 0
             }
-            mut idx: Size = 0
-            mut count: Int32 = 0
+            idx: Mutable<Size> = 0
+            count: Mutable<Int32> = 0
             pub nextSize: () Size {
                 idx = idx + 1
                 idx
@@ -181,31 +182,31 @@ class ViewPassTest {
             pub writeU32: (p: MutView<UInt8>, v: UInt32) Void {
                 p[0] = (v & 0xFF) as UInt8
             }
-            pub readHeader: (buf: View<UInt8>, mut out: Header) Bool {
+            pub readHeader: (buf: View<UInt8>, out: Header) Bool {
                 out.size = buf.size() as UInt32
                 true
             }
             pub a5: () Int32 {
-                mut xs: List<Int32> = List<Int32> {}
+                xs: Mutable<List<Int32>> = List<Int32> {}
                 xs.add(1)
                 xs.add(total(xs.view()))
                 total(xs)
             }
             pub a6: () UInt32 {
-                mut p: Arr<UInt8, 32> = Arr<UInt8, 32> {}
+                p: Mutable<Arr<UInt8, 32>> = Arr<UInt8, 32> {}
                 writeU32(p.from(20), crc(p.slice(12, 8)))
                 crc(p)
             }
             pub first: (n: Int32, v: View<Int32>) Int32 {
                 n
             }
-            pub header: (mut h: Header) Bool {
-                mut buf: List<UInt8> = List<UInt8> {}
-                mut local: Header = Header {}
-                readHeader(buf.view(), mut local) && readHeader(buf.view(), mut h)
+            pub header: (h: Header) Bool {
+                buf: Mutable<List<UInt8>> = List<UInt8> {}
+                local: Mutable<Header> = Header {}
+                readHeader(buf.view(), local) && readHeader(buf.view(), h)
             }
             pub scalars: () Int32 {
-                mut xs: List<Int32> = List<Int32> {}
+                xs: Mutable<List<Int32>> = List<Int32> {}
                 total(tail(xs, nextSize())) + total2(xs.view(), bump())
             }
             pub before: (xs: List<Int32>) Int32 {
@@ -224,9 +225,9 @@ class ViewPassTest {
         // before buf.view() is formed; the old total(...) is split so that trace(t) runs in its own statement.
         val p = snippet(
             """
-            pub Log: Any {
-                pub mut n: Int32 = 0
-                pub mut note: () Int32 {
+            pub Log: Mutable<Any> {
+                pub n: Mutable<Int32> = 0
+                pub note: () Int32 {
                     n += 1
                     n
                 }
@@ -237,8 +238,8 @@ class ViewPassTest {
             pub size: (v: View<Int32>) Int32 {
                 v.size() as Int32
             }
-            pub Sensor: Any {
-                pub mut buf: List<Int32> = List<Int32> {}
+            pub Sensor: Mutable<Any> {
+                pub buf: Mutable<List<Int32>> = List<Int32> {}
                 pub log: Log = Log {}
                 pub read: () Int32 {
                     trace(size(buf.view()))
@@ -255,81 +256,83 @@ class ViewPassTest {
 
     @Test
     fun anyImpureCallInTheSpanOfASharedOrGlobalViewIsAWrite() {
-        // Decision 4b read literally (DECISIONS-user 4b, 30-second-class 3.2's "one-line swap"): beside a view of a
-        // shared place (a field of a class, a const& or mut parameter, anything behind a Ref or handle) or a mut
-        // global, any IMPURE call in the span is refused, whatever it writes: a note() bumping an Int32 field, a
-        // trace, a consumer that writes only its own mut Header parameter, a scalar global's writer, and a callee
-        // writing an Arr field's elements through the MutView it is lent.
-        val p = snippet(
-            """
-            pub Header: Struct {
-                pub type: UInt32 = 0
-                pub size: UInt32 = 0
-            }
-            mut idx: Size = 0
-            mut count: Int32 = 0
-            mut COUNTS: List<Int32> = List<Int32> {}
-            pub nextSize: () Size {
-                idx = idx + 1
-                idx
-            }
-            pub bump: () Int32 {
-                count += 1
-                count
-            }
-            pub Log: Any {
-                pub mut n: Int32 = 0
-                pub mut note: () Int32 {
-                    n += 1
-                    n
+        DialectGates.stage4(false) {
+            // Decision 4b read literally (DECISIONS-user 4b, 30-second-class 3.2's "one-line swap"): beside a view of a
+            // shared place (a field of a class, a const& or mut parameter, anything behind a Ref or handle) or a mut
+            // global, any IMPURE call in the span is refused, whatever it writes: a note() bumping an Int32 field, a
+            // trace, a consumer that writes only its own mut Header parameter, a scalar global's writer, and a callee
+            // writing an Arr field's elements through the MutView it is lent.
+            val p = snippet(
+                """
+                pub Header: Struct {
+                    pub type: UInt32 = 0
+                    pub size: UInt32 = 0
                 }
-            }
-            pub total: (v: View<Int32>, k: Int32) Int32 {
-                k
-            }
-            pub size: (v: View<Int32>) Int32 {
-                v.size() as Int32
-            }
-            pub tail: (xs: View<Int32>, at: Size) View<Int32> {
-                xs.from(at)
-            }
-            pub fill: (p: MutView<Int32>, v: Int32) Void {
-                p[0] = v
-            }
-            pub readHeader: (buf: View<UInt8>, mut out: Header) Bool {
-                out.size = buf.size() as UInt32
-                true
-            }
-            pub Sensor: Any {
-                pub mut buf: List<Int32> = List<Int32> {}
-                pub mut raw: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
-                pub log: Log = Log {}
-                pub read: () Int32 {
-                    total(buf.view(), log.note())
+                mut idx: Size = 0
+                mut count: Int32 = 0
+                mut COUNTS: List<Int32> = List<Int32> {}
+                pub nextSize: () Size {
+                    idx = idx + 1
+                    idx
                 }
-                pub show: () Void {
-                    trace(size(buf.view()) + total(buf.view(), log.note()))
+                pub bump: () Int32 {
+                    count += 1
+                    count
                 }
-                pub mut put: () Void {
-                    fill(raw.from(0 as Size), 6)
+                pub Log: Any {
+                    pub mut n: Int32 = 0
+                    pub mut note: () Int32 {
+                        n += 1
+                        n
+                    }
                 }
-            }
-            pub header: (buf: List<UInt8>, mut h: Header) Bool {
-                readHeader(buf.view(), mut h)
-            }
-            pub scalars: (xs: List<Int32>) Int32 {
-                size(tail(xs, nextSize())) + total(xs.view(), bump())
-            }
-            pub global: () Int32 {
-                total(COUNTS.view(), bump())
-            }
-            """,
-        )
-        expectView(p, *Array(7) { "rules.view.write" })
-        val m = messages(p, "rules.view.write")
-        assertTrue(m.any { it.contains("'log.note()' may replace, grow or free 'this.buf' (it is impure, and 'this.buf' is shared storage") }, m.joinToString("\n"))
-        assertTrue(m.any { it.contains("'readHeader(buf.view(), mut h)'") }, m.joinToString("\n"))
-        assertTrue(m.any { it.contains("'bump()' may replace, grow or free 'COUNTS' (it is impure, and 'COUNTS' is a mut global") }, m.joinToString("\n"))
+                pub total: (v: View<Int32>, k: Int32) Int32 {
+                    k
+                }
+                pub size: (v: View<Int32>) Int32 {
+                    v.size() as Int32
+                }
+                pub tail: (xs: View<Int32>, at: Size) View<Int32> {
+                    xs.from(at)
+                }
+                pub fill: (p: MutView<Int32>, v: Int32) Void {
+                    p[0] = v
+                }
+                pub readHeader: (buf: View<UInt8>, mut out: Header) Bool {
+                    out.size = buf.size() as UInt32
+                    true
+                }
+                pub Sensor: Any {
+                    pub mut buf: List<Int32> = List<Int32> {}
+                    pub mut raw: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
+                    pub log: Log = Log {}
+                    pub read: () Int32 {
+                        total(buf.view(), log.note())
+                    }
+                    pub show: () Void {
+                        trace(size(buf.view()) + total(buf.view(), log.note()))
+                    }
+                    pub mut put: () Void {
+                        fill(raw.from(0 as Size), 6)
+                    }
+                }
+                pub header: (buf: List<UInt8>, mut h: Header) Bool {
+                    readHeader(buf.view(), mut h)
+                }
+                pub scalars: (xs: List<Int32>) Int32 {
+                    size(tail(xs, nextSize())) + total(xs.view(), bump())
+                }
+                pub global: () Int32 {
+                    total(COUNTS.view(), bump())
+                }
+                """,
+            )
+            expectView(p, *Array(7) { "rules.view.write" })
+            val m = messages(p, "rules.view.write")
+            assertTrue(m.any { it.contains("'log.note()' may replace, grow or free 'this.buf' (it is impure, and 'this.buf' is shared storage") }, m.joinToString("\n"))
+            assertTrue(m.any { it.contains("'readHeader(buf.view(), mut h)'") }, m.joinToString("\n"))
+            assertTrue(m.any { it.contains("'bump()' may replace, grow or free 'COUNTS' (it is impure, and 'COUNTS' is a mut global") }, m.joinToString("\n"))
+        }
     }
 
     @Test
@@ -340,7 +343,7 @@ class ViewPassTest {
                 f()
             }
             pub eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Size {
-                mut at: Size = 0
+                at: Mutable<Size> = 0
                 while at < buf.size() {
                     each(buf.slice(at, 1))
                     at += 1
@@ -382,22 +385,24 @@ class ViewPassTest {
 
     @Test
     fun anExternTakesViewsCStrsAndUnsafePointersAsParameters() {
-        val p = snippet(
-            """
-            pub @_extern(cpp = "ext::put", header = "ext.hxx") put: (p: Unsafe<Int32>, mut q: Unsafe<Int32>, v: View<UInt8>, t: CStr) Int32;
-            pub @_extern(cpp = "ext::name", header = "ext.hxx") name: () Str;
-            pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
-            pub total: (points: View<Int32>, mut sum: Int32) Bool;
-            """,
-        )
-        expectAllowed(p)
+        DialectGates.stage4(false) {
+            val p = snippet(
+                """
+                pub @_extern(cpp = "ext::put", header = "ext.hxx") put: (p: Unsafe<Int32>, mut q: Unsafe<Int32>, v: View<UInt8>, t: CStr) Int32;
+                pub @_extern(cpp = "ext::name", header = "ext.hxx") name: () Str;
+                pub peek: (p: Unsafe<Int32>, mut q: Unsafe<Int32>) Int32;
+                pub total: (points: View<Int32>, mut sum: Int32) Bool;
+                """,
+            )
+            expectAllowed(p)
+        }
     }
 
     @Test
     fun theOriginsAreRecordedForTheEmitter() {
         val p = snippet(
             """
-            mut GL: List<Int32> = List<Int32> {}
+            GL: Mutable<List<Int32>> = List<Int32> {}
             pub total: (v: View<Int32>) Int32 {
                 v.size() as Int32
             }
@@ -405,7 +410,7 @@ class ViewPassTest {
                 List<Int32> {}
             }
             pub useIt: (xs: List<Int32>, v: View<Int32>) Int32 {
-                mut ys: List<Int32> = List<Int32> {}
+                ys: Mutable<List<Int32>> = List<Int32> {}
                 total(ys.view()) + total(xs.view()) + total(GL.view()) + total(v) + total(mk().view())
             }
             """,
@@ -444,13 +449,13 @@ class ViewPassTest {
         // reported again.
         val p = snippet(
             """
-            pub Buf: Any {
-                pub mut data: List<Char> = List<Char> {}
+            pub Buf: Mutable<Any> {
+                pub data: Mutable<List<Char>> = List<Char> {}
                 pub all: () View<Char> {
                     data.view()
                 }
             }
-            pub Sub: Buf {
+            pub Sub: Mutable<Buf> {
             }
             pub tail: (xs: View<Int32>, at: Size) View<Int32> {
                 xs.from(at)
@@ -461,7 +466,7 @@ class ViewPassTest {
                 v
             }
             pub arrview: () Int32 {
-                mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
+                arr: Mutable<Arr<Int32, 3>> = @arrOf(1, 2, 3)
                 w: View<Int32> = arr.view()
                 arr = @arrOf(4, 5, 6)
                 w[0]
@@ -485,47 +490,49 @@ class ViewPassTest {
 
     @Test
     fun aTypeThatHoldsAViewCannotBeWritten() {
-        // w2-5 #0 Q10, #1 Q7, #3 Q4b; w2-3 #0 h1 (a view-typed global); w2-4 S3 viewmutparam, viewmutlist; the text
-        // golden's old Maybe<View<Char>> result.
-        val p = snippet(
-            """
-            pub mut GV: View<Char> = ""
-            pub Cursor: Struct {
-                pub text: View<Char> = ""
-            }
-            pub Holder<T>: Any {
-                pub mut item: Maybe<T> = null
-            }
-            pub word: (s: View<Char>) Maybe<View<Char>> {
-                s.from(1)
-            }
-            pub q10: (mut out: View<Char>) Void {
-                out = "x"
-            }
-            pub q7: (a: View<Char>) Size {
-                mut vs: List<View<Char>> = List<View<Char>> {}
-                vs.add(a)
-                vs.size()
-            }
-            pub q4b: (r: Ref<View<Char>>, a: Str) Void {
-                r.value = a.view()
-            }
-            pub pair: (a: View<UInt8>) Tuple2<View<UInt8>, Size> {
-                Tuple2<View<UInt8>, Size> { a, a.size() }
-            }
-            pub holder: () Void {
-                h: Holder<View<Int32>> = Holder<View<Int32>> {}
-            }
-            pub h9: (sink: Ref<List<View<Int32>>>, r: Ref<List<Int32>>) Void {
-                sink.value.add(r.value.view())
-            }
-            """,
-        )
-        // Ten: the tuple is refused at pair's result and again at the construction that writes it; w2-3 #0 h9's Ref of a
-        // List of views at its parameter. And one write: h9's sink.value.add is impure, and r.value lies behind a Ref
-        // (sink and r may be one box, so the add may grow the List the view points into).
-        assertEquals(List(10) { "rules.view.type" } + "rules.view.write", view(p), TyperTestSupport.render(p))
-        assertTrue(messages(p, "rules.view.type").any { it.contains("return an index, Maybe<Size>, and let the caller slice") }, messages(p, "rules.view.type").joinToString("\n"))
+        DialectGates.stage4(false) {
+            // w2-5 #0 Q10, #1 Q7, #3 Q4b; w2-3 #0 h1 (a view-typed global); w2-4 S3 viewmutparam, viewmutlist; the text
+            // golden's old Maybe<View<Char>> result.
+            val p = snippet(
+                """
+                pub mut GV: View<Char> = ""
+                pub Cursor: Struct {
+                    pub text: View<Char> = ""
+                }
+                pub Holder<T>: Any {
+                    pub mut item: Maybe<T> = null
+                }
+                pub word: (s: View<Char>) Maybe<View<Char>> {
+                    s.from(1)
+                }
+                pub q10: (mut out: View<Char>) Void {
+                    out = "x"
+                }
+                pub q7: (a: View<Char>) Size {
+                    mut vs: List<View<Char>> = List<View<Char>> {}
+                    vs.add(a)
+                    vs.size()
+                }
+                pub q4b: (r: Ref<View<Char>>, a: Str) Void {
+                    r.value = a.view()
+                }
+                pub pair: (a: View<UInt8>) Tuple2<View<UInt8>, Size> {
+                    Tuple2<View<UInt8>, Size> { a, a.size() }
+                }
+                pub holder: () Void {
+                    h: Holder<View<Int32>> = Holder<View<Int32>> {}
+                }
+                pub h9: (sink: Ref<List<View<Int32>>>, r: Ref<List<Int32>>) Void {
+                    sink.value.add(r.value.view())
+                }
+                """,
+            )
+            // Ten: the tuple is refused at pair's result and again at the construction that writes it; w2-3 #0 h9's Ref of a
+            // List of views at its parameter. And one write: h9's sink.value.add is impure, and r.value lies behind a Ref
+            // (sink and r may be one box, so the add may grow the List the view points into).
+            assertEquals(List(10) { "rules.view.type" } + "rules.view.write", view(p), TyperTestSupport.render(p))
+            assertTrue(messages(p, "rules.view.type").any { it.contains("return an index, Maybe<Size>, and let the caller slice") }, messages(p, "rules.view.type").joinToString("\n"))
+        }
     }
 
     // ---- rules.view.generic -------------------------------------------------------------------
@@ -538,7 +545,7 @@ class ViewPassTest {
                 x
             }
             pub keepG<T>: (x: T) Size {
-                mut xs: List<T> = List<T> {}
+                xs: Mutable<List<T>> = List<T> {}
                 xs.add(x)
                 xs.size()
             }
@@ -572,7 +579,7 @@ class ViewPassTest {
         // Counter.count<T>, whose one implementation only calls f.
         val p = snippet(
             """
-            mut KEPT: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+            KEPT: Mutable<List<Fx<Tuple0, Size>>> = List<Fx<Tuple0, Size>> {}
             pub Keeper: Any {
                 pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size;
             }
@@ -638,13 +645,13 @@ class ViewPassTest {
         // whatever the class holds.
         val p = snippet(
             """
-            pub Buf: Any {
-                pub mut data: List<Char> = List<Char> {}
+            pub Buf: Mutable<Any> {
+                pub data: Mutable<List<Char>> = List<Char> {}
                 pub all: () View<Char> {
                     data.view()
                 }
             }
-            pub Sub: Buf {
+            pub Sub: Mutable<Buf> {
                 override pub all: () View<Char> {
                     data.view()
                 }
@@ -652,22 +659,22 @@ class ViewPassTest {
             pub Viewer: Any {
                 pub all: () View<Char>;
             }
-            pub Impl: Viewer {
-                pub mut data: List<Char> = List<Char> {}
+            pub Impl: Mutable<Viewer> {
+                pub data: Mutable<List<Char>> = List<Char> {}
                 override pub all: () View<Char> {
                     data.view()
                 }
             }
-            pub Holder: Any {
-                pub mut data: List<Char> = List<Char> {}
-                pub mut cb: Maybe<Fx<Tuple0, Size>> = null
+            pub Holder: Mutable<Any> {
+                pub data: Mutable<List<Char>> = List<Char> {}
+                pub cb: Mutable<Maybe<Fx<Tuple0, Size>>> = null
                 pub all: () View<Char> {
                     data.view()
                 }
             }
-            pub Box<T>: Any {
-                pub mut data: List<Char> = List<Char> {}
-                pub mut item: Maybe<T> = null
+            pub Box<T>: Mutable<Any> {
+                pub data: Mutable<List<Char>> = List<Char> {}
+                pub item: Mutable<Maybe<T>> = null
                 pub all: () View<Char> {
                     data.view()
                 }
@@ -713,21 +720,21 @@ class ViewPassTest {
                 List<Int32> {}
             }
             pub q7b: () View<Fx<Tuple0, Size>> {
-                mut fs: List<Fx<Tuple0, Size>> = List<Fx<Tuple0, Size>> {}
+                fs: Mutable<List<Fx<Tuple0, Size>>> = List<Fx<Tuple0, Size>> {}
                 fs.add(() Size { 1 as Size })
                 fs.view()
             }
             pub q7c<T>: (a: T) View<T> {
-                mut xs: List<T> = List<T> {}
+                xs: Mutable<List<T>> = List<T> {}
                 xs.add(a)
                 xs.view()
             }
             pub q7d: () View<Int32> {
-                mut xs: List<Int32> = List<Int32> {}
+                xs: Mutable<List<Int32>> = List<Int32> {}
                 xs
             }
             pub q7e<T>: (a: T) View<T> {
-                mut xs: List<T> = List<T> {}
+                xs: Mutable<List<T>> = List<T> {}
                 xs.add(a)
                 xs
             }
@@ -788,15 +795,15 @@ class ViewPassTest {
                 v.size() as Int32
             }
             pub r5: () Int32 {
-                mut t: Int32 = 0
+                t: Mutable<Int32> = 0
                 for x: Int32 in mk().view() {
                     t += x
                 }
                 t
             }
             pub local: () Int32 {
-                mut xs: List<Int32> = List<Int32> {}
-                mut t: Int32 = 0
+                xs: Mutable<List<Int32>> = List<Int32> {}
+                t: Mutable<Int32> = 0
                 for x: Int32 in xs.view() {
                     t += x
                 }
@@ -827,13 +834,13 @@ class ViewPassTest {
         // a function that stores it (Q5b's link), to a mut fx that stores it (Q6's keep) and to a stdlib container.
         val p = snippet(
             """
-            pub Cb2: Any {
-                pub mut f: Maybe<Fx<Tuple0, Char>> = null
-                pub mut keep: (g: Fx<Tuple0, Char>) Void {
+            pub Cb2: Mutable<Any> {
+                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
+                pub keep: (g: Fx<Tuple0, Char>) Void {
                     f = g
                 }
             }
-            pub mut GH: Maybe<Cb2> = null
+            pub GH: Mutable<Maybe<Cb2>> = null
             pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
                 h.f = g
             }
@@ -858,7 +865,7 @@ class ViewPassTest {
                     v[0]
                 })
             }
-            pub listed: (v: View<Char>, mut fs: List<Fx<Tuple0, Char>>) Void {
+            pub listed: (v: View<Char>, fs: List<Fx<Tuple0, Char>>) Void {
                 fs.add(() Char {
                     v[0]
                 })
@@ -875,17 +882,17 @@ class ViewPassTest {
         // is refused, and the lambda that captures it is not reported again.
         val p = snippet(
             """
-            pub Cb2: Any {
-                pub mut f: Maybe<Fx<Tuple0, Char>> = null
-                pub mut keep: (g: Fx<Tuple0, Char>) Void {
+            pub Cb2: Mutable<Any> {
+                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
+                pub keep: (g: Fx<Tuple0, Char>) Void {
                     f = g
                 }
             }
-            pub Box2: Any {
-                pub mut item: Maybe<Cb2> = null
+            pub Box2: Mutable<Any> {
+                pub item: Mutable<Maybe<Cb2>> = null
             }
-            pub mut GH: Maybe<Cb2> = null
-            pub mut GR: Maybe<Ref<Maybe<Fx<Tuple0, Char>>>> = null
+            pub GH: Mutable<Maybe<Cb2>> = null
+            pub GR: Mutable<Maybe<Ref<Maybe<Fx<Tuple0, Char>>>>> = null
             pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
                 h.f = g
             }
@@ -965,16 +972,16 @@ class ViewPassTest {
         // view parameter the lambda is refused for escaping into keep, whatever Cb2's initially does.
         val p = snippet(
             """
-            pub Cb2: Any {
-                pub mut f: Maybe<Fx<Tuple0, Char>> = null
+            pub Cb2: Mutable<Any> {
+                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
                 initially {
                     GH = this
                 }
-                pub mut keep: (g: Fx<Tuple0, Char>) Void {
+                pub keep: (g: Fx<Tuple0, Char>) Void {
                     f = g
                 }
             }
-            pub mut GH: Maybe<Cb2> = null
+            pub GH: Mutable<Maybe<Cb2>> = null
             pub q6c: (a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
@@ -1031,7 +1038,7 @@ class ViewPassTest {
             pub size: (v: View<Char>) Size {
                 v.size()
             }
-            pub texts: (v: View<Char>, mut out: StrBuf<32>) Str {
+            pub texts: (v: View<Char>, out: StrBuf<32>) Str {
                 out.add(v)
                 out.set("n=${'$'}{size(v)}")
                 trace(size(v.from(1)))
@@ -1051,7 +1058,7 @@ class ViewPassTest {
         // method that grows a List through a reference: heap), w2-4 S1 arrhanded (total refills b.arr through b).
         val p = snippet(
             """
-            mut gl: List<Int32> = List<Int32> {}
+            gl: Mutable<List<Int32>> = List<Int32> {}
             pub growL: () Int32 {
                 gl.add(1)
                 1
@@ -1059,26 +1066,26 @@ class ViewPassTest {
             pub countOf: (v: View<Int32>, n: Int32) Int32 {
                 v.size() as Int32 + n
             }
-            pub f: (v: View<Int32>, mut xs: List<Int32>) Int32 {
+            pub f: (v: View<Int32>, xs: List<Int32>) Int32 {
                 xs.add(1)
                 1
             }
-            pub Log: Any {
-                pub mut lines: List<Int32> = List<Int32> {}
-                pub mut note: () Int32 {
+            pub Log: Mutable<Any> {
+                pub lines: Mutable<List<Int32>> = List<Int32> {}
+                pub note: () Int32 {
                     lines.add(1)
                     1
                 }
             }
-            pub Sensor: Any {
-                pub mut buf: List<Int32> = List<Int32> {}
+            pub Sensor: Mutable<Any> {
+                pub buf: Mutable<List<Int32>> = List<Int32> {}
                 pub log: Log = Log {}
                 pub read: () Int32 {
                     countOf(buf.view(), log.note())
                 }
             }
-            pub B: Any {
-                pub mut arr: Arr<Int32> = @arrOf(1, 2, 3)
+            pub B: Mutable<Any> {
+                pub arr: Mutable<Arr<Int32>> = @arrOf(1, 2, 3)
             }
             pub refill: (v: View<Int32>, b: B) Int32 {
                 b.arr = @arrOf(4, 5, 6)
@@ -1088,10 +1095,10 @@ class ViewPassTest {
                 countOf(gl, growL())
             }
             pub named: () Int32 {
-                mut xs: List<Int32> = List<Int32> {}
-                f(xs.view(), mut xs)
+                xs: Mutable<List<Int32>> = List<Int32> {}
+                f(xs.view(), xs)
             }
-            pub self: (mut sb: StrBuf<16>) Void {
+            pub self: (sb: StrBuf<16>) Void {
                 sb.add(sb.view())
             }
             pub arrhanded: (b: B) Int32 {
@@ -1106,46 +1113,48 @@ class ViewPassTest {
 
     @Test
     fun aCallThatMayWriteAnythingOrStorageTheViewMayBeIsAWriteToo() {
-        // A trait call and a callback write anything (3.2); a mut parameter may be bound to a global; a const&
-        // parameter's view is shared, and a hidden write of a global of its type may be the same storage; the call that
-        // forms a view of its receiver may free it first (b.all() on a class whose all() resets a global holding it).
-        val p = snippet(
-            """
-            mut gl: List<Int32> = List<Int32> {}
-            pub Sink: Any {
-                pub poke: () Int32;
-            }
-            pub countOf: (v: View<Int32>, n: Int32) Int32 {
-                n
-            }
-            pub both: (v: View<Int32>, mut xs: List<Int32>) Int32 {
-                1
-            }
-            pub run: (f: Fx<Tuple0, Int32>) Int32 {
-                f()
-            }
-            pub grow: () Int32 {
-                gl.add(1)
-                1
-            }
-            pub viaTrait: (s: Sink) Int32 {
-                countOf(gl.view(), s.poke())
-            }
-            pub viaLambda: () Int32 {
-                countOf(gl.view(), run(() Int32 {
-                    gl.add(2)
-                    2
-                }))
-            }
-            pub viaMutParam: (mut other: List<Int32>) Int32 {
-                both(gl.view(), mut other)
-            }
-            pub viaSharedParam: (xs: List<Int32>) Int32 {
-                countOf(xs.view(), grow())
-            }
-            """,
-        )
-        expectView(p, *Array(4) { "rules.view.write" })
+        DialectGates.stage4(false) {
+            // A trait call and a callback write anything (3.2); a mut parameter may be bound to a global; a const&
+            // parameter's view is shared, and a hidden write of a global of its type may be the same storage; the call that
+            // forms a view of its receiver may free it first (b.all() on a class whose all() resets a global holding it).
+            val p = snippet(
+                """
+                mut gl: List<Int32> = List<Int32> {}
+                pub Sink: Any {
+                    pub poke: () Int32;
+                }
+                pub countOf: (v: View<Int32>, n: Int32) Int32 {
+                    n
+                }
+                pub both: (v: View<Int32>, mut xs: List<Int32>) Int32 {
+                    1
+                }
+                pub run: (f: Fx<Tuple0, Int32>) Int32 {
+                    f()
+                }
+                pub grow: () Int32 {
+                    gl.add(1)
+                    1
+                }
+                pub viaTrait: (s: Sink) Int32 {
+                    countOf(gl.view(), s.poke())
+                }
+                pub viaLambda: () Int32 {
+                    countOf(gl.view(), run(() Int32 {
+                        gl.add(2)
+                        2
+                    }))
+                }
+                pub viaMutParam: (mut other: List<Int32>) Int32 {
+                    both(gl.view(), mut other)
+                }
+                pub viaSharedParam: (xs: List<Int32>) Int32 {
+                    countOf(xs.view(), grow())
+                }
+                """,
+            )
+            expectView(p, *Array(4) { "rules.view.write" })
+        }
     }
 
     // ---- round 1's probes, each whole program as the verifier or its sibling package wrote it --------
@@ -1163,584 +1172,586 @@ class ViewPassTest {
 
     @Test
     fun theProbesW24AndW23LeftToThisPassAreRefused() {
-        // Round 1's notes: w2-4's S1-S3 probes (scratchpad v-w24c4/probes) and w2-3's h1, h5, h6, h7, h9, h10 and k3
-        // (vw23cr4, sc31), which their branches no longer refuse themselves. Each is refused here: a view kept in a
-        // local or a type, or a view of shared or global storage beside an impure call (arrhanded's total refills
-        // b.arr, viewmutlist's and h9's add grows a List behind a reference, k3's growThenSum grows gl).
-        expectProbes(
-            listOf(
-            "w24-arrview" to Probe(
-                """
-                // A view of a class's Arr<Int32> field; the field is assigned a new Arr (a std::vector move-assign frees the old buffer); the view is read.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-                }
+        DialectGates.stage4(false) {
+            // Round 1's notes: w2-4's S1-S3 probes (scratchpad v-w24c4/probes) and w2-3's h1, h5, h6, h7, h9, h10 and k3
+            // (vw23cr4, sc31), which their branches no longer refuse themselves. Each is refused here: a view kept in a
+            // local or a type, or a view of shared or global storage beside an impure call (arrhanded's total refills
+            // b.arr, viewmutlist's and h9's add grows a List behind a reference, k3's growThenSum grows gl).
+            expectProbes(
+                listOf(
+                "w24-arrview" to Probe(
+                    """
+                    // A view of a class's Arr<Int32> field; the field is assigned a new Arr (a std::vector move-assign frees the old buffer); the view is read.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
+                    }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    v: View<Int32> = b.arr.view()
-                    b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
-                    trace(v.size())
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrsame" to Probe(
-                """
-                // arrview with an Arr of the same length: `a = [4, 5]` on an Arr<Int32> field, the shape the classes part says leaves the buffer in place.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-                }
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        v: View<Int32> = b.arr.view()
+                        b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        trace(v.size())
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrsame" to Probe(
+                    """
+                    // arrview with an Arr of the same length: `a = [4, 5]` on an Arr<Int32> field, the shape the classes part says leaves the buffer in place.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
+                    }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    v: View<Int32> = b.arr.view()
-                    b.arr = @arrOf(4, 5)
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrview2" to Probe(
-                """
-                // A method views its own Arr<Int32> field, assigns the field a new Arr, then reads the view.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        v: View<Int32> = b.arr.view()
+                        b.arr = @arrOf(4, 5)
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrview2" to Probe(
+                    """
+                    // A method views its own Arr<Int32> field, assigns the field a new Arr, then reads the view.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
-                    pub mut swap: () Int32 {
-                        v: View<Int32> = arr.view()
-                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        pub mut swap: () Int32 {
+                            v: View<Int32> = arr.view()
+                            arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                            v.get(0) + v.get(1)
+                        }
+                    }
+
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        trace(b.swap())
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrparam" to Probe(
+                    """
+                    // A const& Arr<Int32> parameter bound to a class field; the body views it, the field is assigned a new Arr through
+                    // another handle, and the view is read.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
+
+                        pub mut refill: () Void {
+                            arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        }
+                    }
+
+                    pub sum: (a: Arr<Int32>, b: Bag) Int32 {
+                        v: View<Int32> = a.view()
+                        b.refill()
                         v.get(0) + v.get(1)
                     }
-                }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    trace(b.swap())
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrparam" to Probe(
-                """
-                // A const& Arr<Int32> parameter bound to a class field; the body views it, the field is assigned a new Arr through
-                // another handle, and the view is read.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-
-                    pub mut refill: () Void {
-                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        c: Bag = b
+                        trace(sum(c.arr, b))
+                        0
                     }
-                }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrhanded" to Probe(
+                    """
+                    // A view of a class's Arr<Int32> field handed to a function that assigns the field a new Arr, then reads the view.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
-                pub sum: (a: Arr<Int32>, b: Bag) Int32 {
-                    v: View<Int32> = a.view()
-                    b.refill()
-                    v.get(0) + v.get(1)
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    c: Bag = b
-                    trace(sum(c.arr, b))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrhanded" to Probe(
-                """
-                // A view of a class's Arr<Int32> field handed to a function that assigns the field a new Arr, then reads the view.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-
-                    pub mut refill: () Void {
-                        arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        pub mut refill: () Void {
+                            arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        }
                     }
-                }
 
-                pub total: (v: View<Int32>, b: Bag) Int32 {
-                    b.refill()
-                    v.get(0) + v.get(1)
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    trace(total(b.arr.view(), b))
-                    0
-                }
-                """,
-                listOf("rules.view.write"),
-            ),
-            "w24-arrmut" to Probe(
-                """
-                // A view of a class's Arr<Int32> field; the field is passed mut to a function that assigns it a new Arr; the view is read.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-                }
-
-                pub refill: (mut a: Arr<Int32>) Void {
-                    a = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    v: View<Int32> = b.arr.view()
-                    refill(mut b.arr)
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrmethod" to Probe(
-                """
-                // A method returns a view of its Arr<Int32> field; the caller assigns the field a new Arr, then reads the view.
-                pub Bag: Any {
-                    pub mut arr: Arr<Int32> = @arrOf(1, 2)
-
-                    pub all: () View<Int32> {
-                        arr.view()
+                    pub total: (v: View<Int32>, b: Bag) Int32 {
+                        b.refill()
+                        v.get(0) + v.get(1)
                     }
-                }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    v: View<Int32> = b.all()
-                    b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-arrref" to Probe(
-                """
-                // A view of the Arr<Int32> a Ref box holds; the box is given a new Arr; the view is read.
-                pub main: () Int32 {
-                    r: Ref<Arr<Int32>> = Ref<Arr<Int32>> { value = @arrOf(1, 2) }
-                    v: View<Int32> = r.value.view()
-                    r.value = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-strelem" to Probe(
-                """
-                // A view of a Str element of a class's List<Str>; the element is assigned a new Str by index; the view is read.
-                pub Bag: Any {
-                    pub mut names: List<Str> = List<Str> {}
-                }
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        trace(total(b.arr.view(), b))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.write"),
+                ),
+                "w24-arrmut" to Probe(
+                    """
+                    // A view of a class's Arr<Int32> field; the field is passed mut to a function that assigns it a new Arr; the view is read.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
+                    }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    b.names.add("the first long name that does not fit in the small string buffer")
-                    v: View<Char> = b.names[0].view()
-                    b.names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
-                    trace(v.size())
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-strelem2" to Probe(
-                """
-                // A method views a Str element of its own List<Str> field, assigns that element by index, then reads the view.
-                pub Bag: Any {
-                    pub mut names: List<Str> = List<Str> {}
+                    pub refill: (mut a: Arr<Int32>) Void {
+                        a = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                    }
 
-                    pub mut rename: () Size {
-                        v: View<Char> = names[0].view()
-                        names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        v: View<Int32> = b.arr.view()
+                        refill(mut b.arr)
                         trace(v.get(0))
-                        v.size()
+                        trace(v.get(1))
+                        0
                     }
-                }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrmethod" to Probe(
+                    """
+                    // A method returns a view of its Arr<Int32> field; the caller assigns the field a new Arr, then reads the view.
+                    pub Bag: Any {
+                        pub mut arr: Arr<Int32> = @arrOf(1, 2)
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    b.names.add("the first long name that does not fit in the small string buffer")
-                    trace(b.rename())
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-strparam" to Probe(
-                """
-                // A Str parameter bound to an element of a class's List<Str>; the body views it, the element is assigned by index
-                // through another handle, and the view is read.
-                pub Bag: Any {
-                    pub mut names: List<Str> = List<Str> {}
-
-                    pub mut rename: () Void {
-                        names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
-                    }
-                }
-
-                pub firstChar: (s: Str, b: Bag) Char {
-                    v: View<Char> = s.view()
-                    b.rename()
-                    v.get(0)
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    b.names.add("the first long name that does not fit in the small string buffer")
-                    c: Bag = b
-                    trace(firstChar(c.names[0], b))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-listelemparam" to Probe(
-                """
-                // A view of an element List of a class's List<List<Int32>>, element replaced by index inside a method call; the view is read.
-                pub Bag: Any {
-                    pub mut lists: List<List<Int32>> = List<List<Int32>> {}
-
-                    pub mut replace: () Void {
-                        mut other: List<Int32> = List<Int32> {}
-                        mut i: Int32 = 0
-                        while i < 100 {
-                            other.add(9)
-                            i = i + 1
-                        }
-                        lists[0] = other
-                    }
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    mut first: List<Int32> = List<Int32> {}
-                    first.add(1)
-                    first.add(2)
-                    b.lists.add(first)
-                    v: View<Int32> = b.lists[0].view()
-                    b.replace()
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-refelem" to Probe(
-                """
-                // A view of a Str element of the List a Ref box holds; the element is assigned by index; the view is read.
-                pub main: () Int32 {
-                    mut names: List<Str> = List<Str> {}
-                    names.add("the first long name that does not fit in the small string buffer")
-                    r: Ref<List<Str>> = Ref<List<Str>> { value = names }
-                    v: View<Char> = r.value[0].view()
-                    r.value[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
-                    trace(v.size())
-                    trace(v.get(0))
-                    trace(v.get(1))
-                    0
-                }
-                """,
-                listOf("rules.view.local"),
-            ),
-            "w24-viewmutparam" to Probe(
-                """
-                // A view local passed `mut` to a function that grows the field the view points into, then reads the view.
-                pub Bag: Any {
-                    pub mut items: List<Int32> = List<Int32> {}
-
-                    pub mut grow: () Void {
-                        mut i: Int32 = 0
-                        while i < 100 {
-                            items.add(9)
-                            i = i + 1
+                        pub all: () View<Int32> {
+                            arr.view()
                         }
                     }
-                }
 
-                pub peek: (mut v: View<Int32>, b: Bag) Int32 {
-                    b.grow()
-                    n: Int32 = v.get(1)
-                    v = v.from(0)
-                    n
-                }
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        v: View<Int32> = b.all()
+                        b.arr = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-arrref" to Probe(
+                    """
+                    // A view of the Arr<Int32> a Ref box holds; the box is given a new Arr; the view is read.
+                    pub main: () Int32 {
+                        r: Ref<Arr<Int32>> = Ref<Arr<Int32>> { value = @arrOf(1, 2) }
+                        v: View<Int32> = r.value.view()
+                        r.value = @arrOf(7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-strelem" to Probe(
+                    """
+                    // A view of a Str element of a class's List<Str>; the element is assigned a new Str by index; the view is read.
+                    pub Bag: Any {
+                        pub mut names: List<Str> = List<Str> {}
+                    }
 
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    b.items.add(1)
-                    b.items.add(2)
-                    mut v: View<Int32> = b.items.view()
-                    trace(peek(mut v, b))
-                    0
-                }
-                """,
-                listOf("rules.view.type", "rules.view.local"),
-            ),
-            "w24-viewmutlist" to Probe(
-                """
-                // A local List of views passed `mut` to a function that grows the field the views point into, then reads one.
-                pub Bag: Any {
-                    pub mut items: List<Int32> = List<Int32> {}
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        b.names.add("the first long name that does not fit in the small string buffer")
+                        v: View<Char> = b.names[0].view()
+                        b.names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
+                        trace(v.size())
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-strelem2" to Probe(
+                    """
+                    // A method views a Str element of its own List<Str> field, assigns that element by index, then reads the view.
+                    pub Bag: Any {
+                        pub mut names: List<Str> = List<Str> {}
 
-                    pub mut grow: () Void {
-                        mut i: Int32 = 0
-                        while i < 100 {
-                            items.add(9)
-                            i = i + 1
+                        pub mut rename: () Size {
+                            v: View<Char> = names[0].view()
+                            names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
+                            trace(v.get(0))
+                            v.size()
                         }
                     }
-                }
 
-                pub peek: (mut vs: List<View<Int32>>, b: Bag) Int32 {
-                    b.grow()
-                    n: Int32 = vs.get(0).get(1)
-                    vs.clear()
-                    n
-                }
-
-                pub main: () Int32 {
-                    b: Bag = Bag {}
-                    b.items.add(1)
-                    b.items.add(2)
-                    mut vs: List<View<Int32>> = List<View<Int32>> {}
-                    vs.add(b.items.view())
-                    trace(peek(mut vs, b))
-                    0
-                }
-                """,
-                listOf("rules.view.type", "rules.view.type", "rules.view.write"),
-            ),
-            "w23-h1" to Probe(
-                """
-                // A user function stores a view of its Ref parameter's field in a global; the caller hands it
-                // a fresh Ref, whose box the kira::Rc temporary frees at the end of the statement.
-
-                mut gv: Maybe<MutView<Int32>> = null
-
-                makeRef: () Ref<List<Int32>> {
-                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
-                }
-
-                keepField: (r: Ref<List<Int32>>) Void {
-                    gv = r.value.view()
-                }
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        b.names.add("the first long name that does not fit in the small string buffer")
+                        trace(b.rename())
+                        0
                     }
-                    s
-                }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-strparam" to Probe(
+                    """
+                    // A Str parameter bound to an element of a class's List<Str>; the body views it, the element is assigned by index
+                    // through another handle, and the view is read.
+                    pub Bag: Any {
+                        pub mut names: List<Str> = List<Str> {}
 
-                main: () Void {
-                    keepField(makeRef())
-                    // Kira: 1360.
-                    trace(total(gv.unwrap()))
-                }
-                """,
-                listOf("rules.view.type"),
-            ),
-            "w23-h5" to Probe(
-                """
-                // An Fx value whose lambda stores a view of its Ref parameter's field in a global, handed a
-                // fresh Ref.
-
-                mut gv: Maybe<MutView<Int32>> = null
-
-                makeRef: () Ref<List<Int32>> {
-                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
-                }
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                        pub mut rename: () Void {
+                            names[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
+                        }
                     }
-                    s
-                }
 
-                main: () Void {
-                    k: Fx<Tuple1<Ref<List<Int32>>>, Void> = (r: Ref<List<Int32>>) Void {
+                    pub firstChar: (s: Str, b: Bag) Char {
+                        v: View<Char> = s.view()
+                        b.rename()
+                        v.get(0)
+                    }
+
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        b.names.add("the first long name that does not fit in the small string buffer")
+                        c: Bag = b
+                        trace(firstChar(c.names[0], b))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-listelemparam" to Probe(
+                    """
+                    // A view of an element List of a class's List<List<Int32>>, element replaced by index inside a method call; the view is read.
+                    pub Bag: Any {
+                        pub mut lists: List<List<Int32>> = List<List<Int32>> {}
+
+                        pub mut replace: () Void {
+                            mut other: List<Int32> = List<Int32> {}
+                            mut i: Int32 = 0
+                            while i < 100 {
+                                other.add(9)
+                                i = i + 1
+                            }
+                            lists[0] = other
+                        }
+                    }
+
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        mut first: List<Int32> = List<Int32> {}
+                        first.add(1)
+                        first.add(2)
+                        b.lists.add(first)
+                        v: View<Int32> = b.lists[0].view()
+                        b.replace()
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-refelem" to Probe(
+                    """
+                    // A view of a Str element of the List a Ref box holds; the element is assigned by index; the view is read.
+                    pub main: () Int32 {
+                        mut names: List<Str> = List<Str> {}
+                        names.add("the first long name that does not fit in the small string buffer")
+                        r: Ref<List<Str>> = Ref<List<Str>> { value = names }
+                        v: View<Char> = r.value[0].view()
+                        r.value[0] = "another long name that does not fit in the small string buffer either, and it goes on and on and on well past any capacity the first one had, so the assignment has to allocate a new buffer and free the old one"
+                        trace(v.size())
+                        trace(v.get(0))
+                        trace(v.get(1))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.local"),
+                ),
+                "w24-viewmutparam" to Probe(
+                    """
+                    // A view local passed `mut` to a function that grows the field the view points into, then reads the view.
+                    pub Bag: Any {
+                        pub mut items: List<Int32> = List<Int32> {}
+
+                        pub mut grow: () Void {
+                            mut i: Int32 = 0
+                            while i < 100 {
+                                items.add(9)
+                                i = i + 1
+                            }
+                        }
+                    }
+
+                    pub peek: (mut v: View<Int32>, b: Bag) Int32 {
+                        b.grow()
+                        n: Int32 = v.get(1)
+                        v = v.from(0)
+                        n
+                    }
+
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        b.items.add(1)
+                        b.items.add(2)
+                        mut v: View<Int32> = b.items.view()
+                        trace(peek(mut v, b))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.type", "rules.view.local"),
+                ),
+                "w24-viewmutlist" to Probe(
+                    """
+                    // A local List of views passed `mut` to a function that grows the field the views point into, then reads one.
+                    pub Bag: Any {
+                        pub mut items: List<Int32> = List<Int32> {}
+
+                        pub mut grow: () Void {
+                            mut i: Int32 = 0
+                            while i < 100 {
+                                items.add(9)
+                                i = i + 1
+                            }
+                        }
+                    }
+
+                    pub peek: (mut vs: List<View<Int32>>, b: Bag) Int32 {
+                        b.grow()
+                        n: Int32 = vs.get(0).get(1)
+                        vs.clear()
+                        n
+                    }
+
+                    pub main: () Int32 {
+                        b: Bag = Bag {}
+                        b.items.add(1)
+                        b.items.add(2)
+                        mut vs: List<View<Int32>> = List<View<Int32>> {}
+                        vs.add(b.items.view())
+                        trace(peek(mut vs, b))
+                        0
+                    }
+                    """,
+                    listOf("rules.view.type", "rules.view.type", "rules.view.write"),
+                ),
+                "w23-h1" to Probe(
+                    """
+                    // A user function stores a view of its Ref parameter's field in a global; the caller hands it
+                    // a fresh Ref, whose box the kira::Rc temporary frees at the end of the statement.
+
+                    mut gv: Maybe<MutView<Int32>> = null
+
+                    makeRef: () Ref<List<Int32>> {
+                        Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    }
+
+                    keepField: (r: Ref<List<Int32>>) Void {
                         gv = r.value.view()
                     }
-                    k(makeRef())
-                    // Kira: 1360.
-                    trace(total(gv.unwrap()))
-                }
-                """,
-                listOf("rules.view.type"),
-            ),
-            "w23-h6" to Probe(
-                """
-                kira.sync as sync
 
-                // A temporary Mutex whose value is a Ref: lock hands the Ref to a lambda that keeps a view of
-                // the Ref's field. The Mutex temporary is the Ref's only owner.
-
-                mut gv: Maybe<MutView<Int32>> = null
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
                     }
-                    s
-                }
 
-                main: () Void {
-                    Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } }.lock((mut l: Ref<List<Int32>>) Void {
-                        gv = l.value.view()
-                    })
-                    // Kira: 1360.
-                    trace(total(gv.unwrap()))
-                }
-                """,
-                listOf("rules.view.type"),
-            ),
-            "w23-h7" to Probe(
-                """
-                // A user function stores a view of the field of the Ref inside its Maybe parameter; the
-                // caller passes a fresh Maybe of a fresh Ref.
-
-                mut gv: Maybe<MutView<Int32>> = null
-
-                makeMRef: () Maybe<Ref<List<Int32>>> {
-                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
-                }
-
-                keepM: (m: Maybe<Ref<List<Int32>>>) Void {
-                    gv = m.value.value.view()
-                }
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    main: () Void {
+                        keepField(makeRef())
+                        // Kira: 1360.
+                        trace(total(gv.unwrap()))
                     }
-                    s
-                }
+                    """,
+                    listOf("rules.view.type"),
+                ),
+                "w23-h5" to Probe(
+                    """
+                    // An Fx value whose lambda stores a view of its Ref parameter's field in a global, handed a
+                    // fresh Ref.
 
-                main: () Void {
-                    keepM(makeMRef())
-                    // Kira: 1360.
-                    trace(total(gv.unwrap()))
-                }
-                """,
-                listOf("rules.view.type"),
-            ),
-            "w23-h9" to Probe(
-                """
-                // A lambda written in a generic function keeps a view of its Ref argument's field; called
-                // through a concrete Fx value with a fresh Ref.
+                    mut gv: Maybe<MutView<Int32>> = null
 
-                mut gref: Ref<List<MutView<Int32>>> = Ref<List<MutView<Int32>>> { value = List<MutView<Int32>> { } }
-
-                makeRef: () Ref<List<Int32>> {
-                    Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
-                }
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    makeRef: () Ref<List<Int32>> {
+                        Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
                     }
-                    s
-                }
 
-                mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
-                    (r: Ref<List<T>>) Void {
-                        sink.value.add(r.value.view())
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
                     }
-                }
 
-                main: () Void {
-                    k: Fx<Tuple1<Ref<List<Int32>>>, Void> = mkKeeper<Int32>(gref)
-                    k(makeRef())
-                    // Kira: 1360.
-                    trace(total(gref.value[0]))
-                }
-                """,
-                listOf("rules.view.type", "rules.view.type", "rules.view.type", "rules.view.type", "rules.view.write"),
-            ),
-            "w23-h10" to Probe(
-                """
-                kira.sync as sync
-
-                // A user function hands its Mutex parameter's Ref value to a lambda that keeps a view of the
-                // Ref's field; the caller passes a temporary Mutex (round 4's n5, with a Ref inside).
-
-                mut gv: Maybe<MutView<Int32>> = null
-
-                total: (v: MutView<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    main: () Void {
+                        k: Fx<Tuple1<Ref<List<Int32>>>, Void> = (r: Ref<List<Int32>>) Void {
+                            gv = r.value.view()
+                        }
+                        k(makeRef())
+                        // Kira: 1360.
+                        trace(total(gv.unwrap()))
                     }
-                    s
-                }
+                    """,
+                    listOf("rules.view.type"),
+                ),
+                "w23-h6" to Probe(
+                    """
+                    kira.sync as sync
 
-                lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
-                    m.lock((mut l: Ref<List<Int32>>) Void {
-                        gv = l.value.view()
-                    })
-                }
+                    // A temporary Mutex whose value is a Ref: lock hands the Ref to a lambda that keeps a view of
+                    // the Ref's field. The Mutex temporary is the Ref's only owner.
 
-                main: () Void {
-                    lockAndKeep(Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } })
-                    // Kira: 1360.
-                    trace(total(gv.unwrap()))
-                }
-                """,
-                listOf("rules.view.type"),
-            ),
-            "w23-k3" to Probe(
-                """
-                mut gl: List<Int32> = List<Int32> { values = @arrOf(100, 200, 300) }
+                    mut gv: Maybe<MutView<Int32>> = null
 
-                growL: () Int32 {
-                    mut i: Int32 = 0
-                    while i < 64 {
-                        gl.add(i)
-                        i += 1
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
                     }
-                    0
-                }
 
-                total: (v: View<Int32>) Int32 {
-                    mut s: Int32 = 0
-                    for x: Int32 in v {
-                        s += x
+                    main: () Void {
+                        Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } }.lock((l: Ref<List<Int32>>) Void {
+                            gv = l.value.view()
+                        })
+                        // Kira: 1360.
+                        trace(total(gv.unwrap()))
                     }
-                    s
-                }
+                    """,
+                    listOf("rules.view.type"),
+                ),
+                "w23-h7" to Probe(
+                    """
+                    // A user function stores a view of the field of the Ref inside its Maybe parameter; the
+                    // caller passes a fresh Maybe of a fresh Ref.
 
-                growThenSum: (v: View<Int32>) Int32 {
-                    k: Int32 = growL()
-                    total(v) + k
-                }
+                    mut gv: Maybe<MutView<Int32>> = null
 
-                main: () Void {
-                    trace(growThenSum(gl.view()))
-                }
-                """,
-                listOf("rules.view.write"),
-            ),
-            ),
-        )
+                    makeMRef: () Maybe<Ref<List<Int32>>> {
+                        Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    }
+
+                    keepM: (m: Maybe<Ref<List<Int32>>>) Void {
+                        gv = m.value.value.view()
+                    }
+
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
+                    }
+
+                    main: () Void {
+                        keepM(makeMRef())
+                        // Kira: 1360.
+                        trace(total(gv.unwrap()))
+                    }
+                    """,
+                    listOf("rules.view.type"),
+                ),
+                "w23-h9" to Probe(
+                    """
+                    // A lambda written in a generic function keeps a view of its Ref argument's field; called
+                    // through a concrete Fx value with a fresh Ref.
+
+                    mut gref: Ref<List<MutView<Int32>>> = Ref<List<MutView<Int32>>> { value = List<MutView<Int32>> { } }
+
+                    makeRef: () Ref<List<Int32>> {
+                        Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } }
+                    }
+
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
+                    }
+
+                    mkKeeper<T>: (sink: Ref<List<MutView<T>>>) Fx<Tuple1<Ref<List<T>>>, Void> {
+                        (r: Ref<List<T>>) Void {
+                            sink.value.add(r.value.view())
+                        }
+                    }
+
+                    main: () Void {
+                        k: Fx<Tuple1<Ref<List<Int32>>>, Void> = mkKeeper<Int32>(gref)
+                        k(makeRef())
+                        // Kira: 1360.
+                        trace(total(gref.value[0]))
+                    }
+                    """,
+                    listOf("rules.view.type", "rules.view.type", "rules.view.type", "rules.view.type", "rules.view.write"),
+                ),
+                "w23-h10" to Probe(
+                    """
+                    kira.sync as sync
+
+                    // A user function hands its Mutex parameter's Ref value to a lambda that keeps a view of the
+                    // Ref's field; the caller passes a temporary Mutex (round 4's n5, with a Ref inside).
+
+                    mut gv: Maybe<MutView<Int32>> = null
+
+                    total: (v: MutView<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
+                    }
+
+                    lockAndKeep: (m: Mutex<Ref<List<Int32>>>) Void {
+                        m.lock((l: Ref<List<Int32>>) Void {
+                            gv = l.value.view()
+                        })
+                    }
+
+                    main: () Void {
+                        lockAndKeep(Mutex<Ref<List<Int32>>> { value = Ref<List<Int32>> { value = List<Int32> { values = @arrOf(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160) } } })
+                        // Kira: 1360.
+                        trace(total(gv.unwrap()))
+                    }
+                    """,
+                    listOf("rules.view.type"),
+                ),
+                "w23-k3" to Probe(
+                    """
+                    mut gl: List<Int32> = List<Int32> { values = @arrOf(100, 200, 300) }
+
+                    growL: () Int32 {
+                        mut i: Int32 = 0
+                        while i < 64 {
+                            gl.add(i)
+                            i += 1
+                        }
+                        0
+                    }
+
+                    total: (v: View<Int32>) Int32 {
+                        mut s: Int32 = 0
+                        for x: Int32 in v {
+                            s += x
+                        }
+                        s
+                    }
+
+                    growThenSum: (v: View<Int32>) Int32 {
+                        k: Int32 = growL()
+                        total(v) + k
+                    }
+
+                    main: () Void {
+                        trace(growThenSum(gl.view()))
+                    }
+                    """,
+                    listOf("rules.view.write"),
+                ),
+                ),
+            )
+        }
     }
 
     // ---- rules.view.extern and rules.view.unsafe ----------------------------------------------
@@ -1769,70 +1780,74 @@ class ViewPassTest {
 
     @Test
     fun unsafeIsAnExternParameterTypeOnly() {
-        // w2-6 #1's mut out: Unsafe<CStr> (a view of stored pointers) and #2b's Maybe<CStr> global.
-        val p = snippet(
-            """
-            pub kira: (p: Unsafe<Int32>) Int32 {
-                1
-            }
-            pub Holder: Struct {
-                pub p: Unsafe<Int32>
-            }
-            pub made: () Unsafe<Int32> {
-                made()
-            }
-            pub @_extern(cpp = "ext::fill", header = "ext.hxx") fill: (mut out: Unsafe<CStr>) Void;
-            pub mut SAVED: Maybe<CStr> = null
-            """,
-        )
-        assertEquals(listOf("rules.view.type", "rules.view.type", "rules.view.unsafe", "rules.view.unsafe", "rules.view.unsafe"), view(p), TyperTestSupport.render(p))
+        DialectGates.stage4(false) {
+            // w2-6 #1's mut out: Unsafe<CStr> (a view of stored pointers) and #2b's Maybe<CStr> global.
+            val p = snippet(
+                """
+                pub kira: (p: Unsafe<Int32>) Int32 {
+                    1
+                }
+                pub Holder: Struct {
+                    pub p: Unsafe<Int32>
+                }
+                pub made: () Unsafe<Int32> {
+                    made()
+                }
+                pub @_extern(cpp = "ext::fill", header = "ext.hxx") fill: (mut out: Unsafe<CStr>) Void;
+                pub mut SAVED: Maybe<CStr> = null
+                """,
+            )
+            assertEquals(listOf("rules.view.type", "rules.view.type", "rules.view.unsafe", "rules.view.unsafe", "rules.view.unsafe"), view(p), TyperTestSupport.render(p))
+        }
     }
 
     // ---- round 3 (40-round3 F2, F3, and round 2's minors) ------------------------------------------
 
     @Test
     fun aSecondClassArgumentIsNeverANamedWrite() {
-        // F2 (w2-6 #0, a regression): a `mut p: Unsafe<T>` is a T* by value (1.4), so passing it a MutView of a place
-        // moves nothing; with a local the canonical call of design 1.4 (fillP(xs.view(), xs.size(), 7)) is allowed.
-        // With a shared place (a mut List parameter) the extern is IMPURE beside a view of shared storage: literal 4b
-        // refuses it. W2.6's typer lets a view reach a `mut Unsafe<T>` and keeps the call's byRef (CallResolver); this
-        // branch's typer does not type that call yet, so the test types the same calls through a MutView parameter and
-        // sets byRef on the binding as W2.6's CallResolver does, then runs the passes again: no new refusal.
-        val p = snippet(
-            """
-            pub @_extern(cpp = "ext::fillP", header = "ext.hxx") fillP: (p: MutView<Int32>, n: Size, v: Int32) Void;
-            pub @_extern(cpp = "ext::setFirst", header = "ext.hxx") setFirst: (p: MutView<Int32>, v: Int32) Void;
-            pub @_extern(cpp = "ext::peek", header = "ext.hxx") peek: (p: View<Int32>, q: MutView<Int32>) Int32;
-            pub locals: () Int32 {
-                mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
-                mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
-                ys: List<Int32> = List<Int32> { values = @arrOf(4) }
-                fillP(xs.view(), xs.size(), 7)
-                fillP(arr.view(), 3, 1)
-                setFirst(xs.view(), 9)
-                peek(ys.view(), xs.view())
+        DialectGates.stage4(false) {
+            // F2 (w2-6 #0, a regression): a `mut p: Unsafe<T>` is a T* by value (1.4), so passing it a MutView of a place
+            // moves nothing; with a local the canonical call of design 1.4 (fillP(xs.view(), xs.size(), 7)) is allowed.
+            // With a shared place (a mut List parameter) the extern is IMPURE beside a view of shared storage: literal 4b
+            // refuses it. W2.6's typer lets a view reach a `mut Unsafe<T>` and keeps the call's byRef (CallResolver); this
+            // branch's typer does not type that call yet, so the test types the same calls through a MutView parameter and
+            // sets byRef on the binding as W2.6's CallResolver does, then runs the passes again: no new refusal.
+            val p = snippet(
+                """
+                pub @_extern(cpp = "ext::fillP", header = "ext.hxx") fillP: (p: MutView<Int32>, n: Size, v: Int32) Void;
+                pub @_extern(cpp = "ext::setFirst", header = "ext.hxx") setFirst: (p: MutView<Int32>, v: Int32) Void;
+                pub @_extern(cpp = "ext::peek", header = "ext.hxx") peek: (p: View<Int32>, q: MutView<Int32>) Int32;
+                pub locals: () Int32 {
+                    mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+                    mut arr: Arr<Int32, 3> = @arrOf(1, 2, 3)
+                    ys: List<Int32> = List<Int32> { values = @arrOf(4) }
+                    fillP(xs.view(), xs.size(), 7)
+                    fillP(arr.view(), 3, 1)
+                    setFirst(xs.view(), 9)
+                    peek(ys.view(), xs.view())
+                }
+                pub shared: (mut xs: List<Int32>) Void {
+                    fillP(xs.view(), xs.size(), 7)
+                }
+                """,
+            )
+            fun check() {
+                assertEquals(listOf("rules.view.write"), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
+                assertTrue(messages(p, "rules.view.write").single().contains("'xs' is shared storage any impure call may write"), messages(p, "rules.view.write").single())
             }
-            pub shared: (mut xs: List<Int32>) Void {
-                fillP(xs.view(), xs.size(), 7)
+            check()
+            for (call in BodyTestSupport.every<FunctionCallExpr>(p)) {
+                val rc = p.model.calls[call] ?: continue
+                if (rc.fn?.name !in setOf("fillP", "setFirst", "peek")) {
+                    continue
+                }
+                val q = rc.args.lastIndex.takeIf { rc.fn?.name == "peek" } ?: 0
+                p.model.calls[call] = rc.copy(args = rc.args.mapIndexed { i, a -> if (i == q) (a as ArgBinding.Given).copy(byRef = true) else a })
             }
-            """,
-        )
-        fun check() {
-            assertEquals(listOf("rules.view.write"), p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
-            assertTrue(messages(p, "rules.view.write").single().contains("'xs' is shared storage any impure call may write"), messages(p, "rules.view.write").single())
+            net.exoad.kira.compiler.analysis.types.rules.ViewPass().run(p)
+            net.exoad.kira.compiler.analysis.types.rules.ExclusivityPass().run(p)
+            check()
         }
-        check()
-        for (call in BodyTestSupport.every<FunctionCallExpr>(p)) {
-            val rc = p.model.calls[call] ?: continue
-            if (rc.fn?.name !in setOf("fillP", "setFirst", "peek")) {
-                continue
-            }
-            val q = rc.args.lastIndex.takeIf { rc.fn?.name == "peek" } ?: 0
-            p.model.calls[call] = rc.copy(args = rc.args.mapIndexed { i, a -> if (i == q) (a as ArgBinding.Given).copy(byRef = true) else a })
-        }
-        net.exoad.kira.compiler.analysis.types.rules.ViewPass().run(p)
-        net.exoad.kira.compiler.analysis.types.rules.ExclusivityPass().run(p)
-        check()
     }
 
     @Test
@@ -1842,8 +1857,8 @@ class ViewPassTest {
         // remedy, an if statement with one call per branch, is allowed; so is an if-expression over places.
         val p = snippet(
             """
-            pub mut gl: List<Int32> = List<Int32> { values = @arrOf(1) }
-            pub mut ticks: Int32 = 0
+            pub gl: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1) }
+            pub ticks: Mutable<Int32> = 0
             pub next: () Int32 {
                 ticks += 1
                 ticks
@@ -1860,13 +1875,13 @@ class ViewPassTest {
             pub f: (c: Bool) Int32 {
                 a: Int32 = minus(c ? makeList().view() : gl.view(), next())
                 b: Int32 = total(c ? makeList().view() : gl.view())
-                mut d: Int32 = 0
+                d: Mutable<Int32> = 0
                 if c {
                     d = total(makeList().view())
                 } else {
                     d = total(gl.view())
                 }
-                mut xs: List<Int32> = List<Int32> { values = @arrOf(3) }
+                xs: Mutable<List<Int32>> = List<Int32> { values = @arrOf(3) }
                 e: Int32 = total(c ? xs.view() : xs.view().from(1))
                 a + b + d + e
             }
@@ -1903,35 +1918,35 @@ class ViewPassTest {
         // both spellings, and so is h.itemsView() on a parameter (the a3c control).
         val p = snippet(
             """
-            pub H: Any {
-                pub mut items: List<List<Int32>> = List<List<Int32>> { }
-                pub mut m: Maybe<List<Int32>> = null
+            pub H: Mutable<Any> {
+                pub items: Mutable<List<List<Int32>>> = List<List<Int32>> { }
+                pub m: Mutable<Maybe<List<Int32>>> = null
                 pub itemsView: () View<Int32> {
                     items.get(0).view()
                 }
-                pub mut wipeThen: (v: View<Int32>) Int32 {
+                pub wipeThen: (v: View<Int32>) Int32 {
                     items = List<List<Int32>> { }
                     total(v)
                 }
                 pub me: () H {
                     this
                 }
-                pub mut reset: () Int32 {
+                pub reset: () Int32 {
                     items = List<List<Int32>> { }
                     0
                 }
-                pub mut viaMe: () Int32 {
+                pub viaMe: () Int32 {
                     sumK(me().items.get(0).view(), reset())
                 }
-                pub mut viaMeIdx: () Int32 {
+                pub viaMeIdx: () Int32 {
                     sumK(me().items[0].view(), reset())
                 }
-                pub mut viaThisMe: () Int32 {
+                pub viaThisMe: () Int32 {
                     sumK(this.me().items.get(0).view(), reset())
                 }
             }
             pub total: (v: View<Int32>) Int32 {
-                mut s: Int32 = 0
+                s: Mutable<Int32> = 0
                 for x: Int32 in v {
                     s += x
                 }
@@ -1982,30 +1997,32 @@ class ViewPassTest {
 
     @Test
     fun aLentResultOnAValueTemporaryIsStillATemporary() {
-        // O2's other side: mk() returns a struct, so mk().items reaches no handle; a view of it is TEMP and only its own
-        // full-expression names it, which no writer can reach.
-        val p = snippet(
-            """
-            pub S: Struct {
-                pub items: List<List<Int32>> = List<List<Int32>> { }
-            }
-            pub mut G: Int32 = 0
-            pub mk: () S {
-                S { }
-            }
-            pub bump: () Int32 {
-                G += 1
-                0
-            }
-            pub sumK: (v: View<Int32>, k: Int32) Int32 {
-                k
-            }
-            pub rows: () Int32 {
-                sumK(mk().items.get(0).view(), bump()) + sumK(mk().items[0].view(), bump())
-            }
-            """,
-        )
-        assertTrue(p.diagnostics.none { it.code.startsWith("rules.view") }, TyperTestSupport.render(p))
+        DialectGates.stage4(false) {
+            // O2's other side: mk() returns a struct, so mk().items reaches no handle; a view of it is TEMP and only its own
+            // full-expression names it, which no writer can reach.
+            val p = snippet(
+                """
+                pub S: Struct {
+                    pub items: List<List<Int32>> = List<List<Int32>> { }
+                }
+                pub mut G: Int32 = 0
+                pub mk: () S {
+                    S { }
+                }
+                pub bump: () Int32 {
+                    G += 1
+                    0
+                }
+                pub sumK: (v: View<Int32>, k: Int32) Int32 {
+                    k
+                }
+                pub rows: () Int32 {
+                    sumK(mk().items.get(0).view(), bump()) + sumK(mk().items[0].view(), bump())
+                }
+                """,
+            )
+            assertTrue(p.diagnostics.none { it.code.startsWith("rules.view") }, TyperTestSupport.render(p))
+        }
     }
 
     @Test
@@ -2017,7 +2034,7 @@ class ViewPassTest {
             """
             kira.sync as sync
 
-            mut gl: List<Int32> = @listOf(1, 2, 3)
+            gl: Mutable<List<Int32>> = @listOf(1, 2, 3)
 
             bump: () Int32 {
                 t: Thread = Thread { name = "w", body = () Void {
@@ -2027,7 +2044,7 @@ class ViewPassTest {
             }
 
             sumView: (v: View<Int32>, n: Int32) Int32 {
-                mut t: Int32 = n
+                t: Mutable<Int32> = n
                 for x: Int32 in v {
                     t += x
                 }

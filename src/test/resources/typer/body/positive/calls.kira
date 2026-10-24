@@ -1,4 +1,4 @@
-// Calls (design 3.3): named arguments, defaults, mut parameters, explicit type arguments, the
+// Calls (design 3.3): named arguments, defaults, explicit type arguments, the
 // stdlib's @_infer math (D20), the print family, magic methods and function values. R5, R6,
 // R8, R21.
 
@@ -10,10 +10,6 @@ pub sub: (a: Int32, b: Int32) Int32 {
 
 pub command: (verb: Str, args: Str = "", retries: Int32 = LIMIT) Str {
     verb                            // @type Str place=Param(verb)
-}
-
-pub bump: (mut value: Int32, by: Int32 = 1) Void {
-    value += by                            // @type Void
 }
 
 id<T>: (value: T) T {
@@ -34,9 +30,6 @@ pub calls: () Void {
     r3: Str = command("go")                // @type Str call=FREE(command)
     r4: Str = command("go", retries = 5)   // @type Str call=FREE(command)
     r4b: Str = command(verb = "go", args = "x") // @type Str call=FREE(command)
-    mut n: Int32 = 0
-    bump(mut n)                            // @type Void call=FREE(bump)
-    bump(mut n, 4)                         // @type Int32 place=Local(n) @ n
     r5: Int32 = id<Int32>(7)               // @type Int32 call=FREE(id)
     r6: Str = id<Str>("s")                 // @type Str call=FREE(id)
     r7: Int32 = apply(twice, 5)            // @type Fx<Tuple1<Int32>, Int32> coerce=FnRef(positive:calls.twice) @ twice
@@ -69,7 +62,7 @@ pub calls: () Void {
     nine: Char = '9'
     dg: Bool = nine.isDigit()              // @type Bool call=MAGIC(Char.isDigit)
     sp: Bool = nine.isWhitespace() || nine.isLetter() // @type Bool call=MAGIC(Char.isWhitespace) @ nine.isWhitespace()
-    mut xs: List<Int32> = List<Int32> { }
+    xs: Mutable<List<Int32>> = List<Int32> { }
     xs.add(3)                              // @type Void call=MAGIC(List.add)
     got: Int32 = xs.get(0)                 // @type Int32 call=MAGIC(List.get)
     count: Int32 = 7
@@ -85,10 +78,10 @@ pub calls: () Void {
     total: Int32 = xs.sum()                // @type Int32 call=MAGIC(List.sum)
     least: Maybe<Int32> = xs.minOrNull()   // @type Maybe<Int32> call=MAGIC(List.minOrNull)
     most: Maybe<Str> = names.maxOrNull()   // @type Maybe<Str> call=MAGIC(List.maxOrNull)
-    mut ages: Map<Str, Int32> = Map<Str, Int32> { }
+    ages: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
     ages.put("ada", 36)                    // @type Void call=MAGIC(Map.put)
     found: Maybe<Int32> = ages.get("ada")  // @type Maybe<Int32> call=MAGIC(Map.get)
-    mut seen: Set<Int32> = Set<Int32> { }
+    seen: Mutable<Set<Int32>> = Set<Int32> { }
     added: Bool = seen.add(1)              // @type Bool call=MAGIC(Set.add)
     seen.add(2)                            // @type Bool call=MAGIC(Set.add)
 }

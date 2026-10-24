@@ -6,7 +6,7 @@ kira.os as os
 // would define them a second time (measured: gcc, clang and MSVC each reject
 // the pair). `Poller {}` is std::make_shared of kira::os::Poller.
 
-pub Link: Struct {
+pub Link: Mutable<Any> {
     pub last: Datagram = Datagram { }
     pub sock: Maybe<UdpSocket> = null
     pub poll: Poller = Poller {}

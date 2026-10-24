@@ -21,27 +21,27 @@ pub Pass: Struct {
 
 // A trait lowers to an abstract C++ class; a default body is a virtual with a
 // body, so a C++ test double overrides exactly what it needs.
-pub Behaviour: Any {
+pub Behaviour: Mutable<Any> {
     pub id: () Str;
     pub name: () Str;
     pub mayDrive: () Bool {
         false
     }
-    pub mut onLoad: () Void {
+    pub onLoad: () Void {
     }
-    pub mut onUnload: () Void {
+    pub onUnload: () Void {
     }
-    pub mut step: (p: Pass) Reply;
+    pub step: (p: Pass) Reply;
 }
 
-Stop: Behaviour {
+Stop: Mutable<Behaviour> {
     override pub id: () Str {
         ID_STOP
     }
     override pub name: () Str {
         "stop"
     }
-    override pub mut step: (p: Pass) Reply {
+    override pub step: (p: Pass) Reply {
         Reply { act = ACT_CLAMP, throttle = 0.0 }
     }
 }
@@ -50,21 +50,28 @@ pub make: (wanted: Str) Maybe<Behaviour> {
     wanted == ID_STOP ? Stop {} : null
 }
 
-pub Chain: Any {
-    mut loaded: List<Behaviour> = List<Behaviour> {}
+pub Chain: Mutable<Any> {
+    loaded: Mutable<List<Behaviour>> = List<Behaviour> {}
+    refusal: Mutable<Str> = ""
 
-    pub mut load: (b: Maybe<Behaviour>, mut why: Str) Bool {
+    // Why the last load was refused, empty when it loaded.
+    pub why: () Str {
+        refusal
+    }
+
+    pub load: (b: Maybe<Behaviour>) Bool {
+        refusal = ""
         if b.isNone() {
-            why = "no behaviour"
+            refusal = "no behaviour"
             false
         } else {
             it: Behaviour = b.unwrap()
             wanted: Str = it.id()
             if wanted.isEmpty() {
-                why = "a behaviour with no id"
+                refusal = "a behaviour with no id"
                 false
             } else if has(wanted) {
-                why = "already loaded: ${wanted}"
+                refusal = "already loaded: ${wanted}"
                 false
             } else {
                 it.onLoad()
@@ -79,7 +86,7 @@ pub Chain: Any {
     }
 
     pub has: (wanted: Str) Bool {
-        mut result: Bool = false
+        result: Mutable<Bool> = false
         for b: Behaviour in loaded {
             if b.id() == wanted {
                 result = true

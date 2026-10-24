@@ -8,8 +8,8 @@ abc
 operation forbidden on released memoryview object
 5
 cannot modify read-only memory, 5 bytes
-1 1 1 1
-bytes bytes bytes bytes bytes bytes
+1 2 1 1
+bytes bytes bytes bytes bytes bytearray
 1
 giveInt32 int -> int 7
 giveInt32 none -> panic: kira: externs_ext.giveInt32 gave None (NoneType) where Int32 was declared

@@ -5,24 +5,24 @@ kira.os as os
 kira.sync as sync
 kira.time as time
 
-pub Tally: Struct {
-    pub count: Int32 = 0
+pub Tally: Mutable<Any> {
+    pub count: Mutable<Int32> = 0
     pub names: List<Str> = List<Str> { }
 }
 
 counting: () Void {
     hits: Atomic<Int64> = Atomic<Int64> { value = 0 }
     tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
-    mut workers: List<Thread> = List<Thread> { }
+    workers: Mutable<List<Thread>> = List<Thread> { }
     for w: Int32 in 0..4 {
         workers.add(spawn("worker ${w}", () Void {
             for i: Int32 in 0..500 {
                 hits.add(1)
-                tally.lock((mut t: Tally) Void {
+                tally.lock((t: Tally) Void {
                     t.count += 1
                 })
             }
-            tally.lock((mut t: Tally) Void {
+            tally.lock((t: Tally) Void {
                 t.names.add("w${w}")
             })
         }))
@@ -31,7 +31,7 @@ counting: () Void {
         t.join()
         t.join()
     }
-    tally.lock((mut t: Tally) Void {
+    tally.lock((t: Tally) Void {
         t.names.sort()
         println("counted ${hits.load()} and ${t.count}, from ${t.names.joinToString(" ")}")
     })
@@ -46,9 +46,9 @@ queueing: () Void {
         }
         q.close()
     })
-    mut total: Int32 = 0
-    mut got: Int32 = 0
-    mut more: Bool = true
+    total: Mutable<Int32> = 0
+    got: Mutable<Int32> = 0
+    more: Mutable<Bool> = true
     while more {
         m: Maybe<List<Int32>> = q.pop(-1)
         if m.isNone() {
@@ -63,8 +63,8 @@ queueing: () Void {
     q.push(@listOf(9))
     println("a push after close is dropped: ${q.size()}")
     rows: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-    mut row: List<Int32> = @listOf(1)
-    rows.push(row)
+    row: Mutable<List<Int32>> = @listOf(1)
+    rows.push(List<Int32> { values = row.toArr() })
     row.add(2)
     first: Size = rows.pop(0).unwrap().size()
     println("a pushed List is a copy: ${first}, none waiting: ${rows.pop(20).isNone()}")
@@ -74,7 +74,7 @@ waiting: () Void {
     ready: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
     filler: Thread = spawn("filler", () Void {
         sleepMs(20)
-        ready.lock((mut xs: List<Int32>) Void {
+        ready.lock((xs: List<Int32>) Void {
             xs.add(7)
         })
     })

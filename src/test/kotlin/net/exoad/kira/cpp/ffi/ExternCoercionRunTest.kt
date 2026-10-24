@@ -38,9 +38,9 @@ class ExternCoercionRunTest {
 
         pub @_extern(cpp = "m3::callKind", header = "m3.hxx") callKind: (f: Fx<Tuple0, Int32>) Int32;
 
-        mut gs: Str = "$OLD"
-        mut gm: Maybe<Str> = "$OLD"
-        mut gls: List<Str> = @listOf("$OLD")
+        gs: Mutable<Str> = "$OLD"
+        gm: Mutable<Maybe<Str>> = "$OLD"
+        gls: Mutable<List<Str>> = @listOf("$OLD")
 
         reset: () Void {
             gs = "$OLD"
@@ -170,12 +170,12 @@ class ExternCoercionRunTest {
             }
         }
 
-        pub H: Any {
-            pub mut kid: Kid = Kid { }
-            pub mut dog: Dog = Dog { }
+        pub H: Mutable<Any> {
+            pub kid: Mutable<Kid> = Kid { }
+            pub dog: Mutable<Dog> = Dog { }
         }
 
-        mut gks: List<Kid> = @listOf()
+        gks: Mutable<List<Kid>> = @listOf()
 
         pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32;
 

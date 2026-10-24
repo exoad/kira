@@ -57,7 +57,7 @@ class CppExprRowsTest {
             }
 
             pub bump: (x: UInt8) UInt8 {
-                mut y: UInt8 = x
+                y: Mutable<UInt8> = x
                 y += 1
                 y
             }
@@ -90,7 +90,7 @@ class CppExprRowsTest {
             "r2",
             """
             pub crcInit: () UInt32 {
-                mut crc: UInt32 = 0xFFFFFFFF
+                crc: Mutable<UInt32> = 0xFFFFFFFF
                 crc = crc ^ 1
                 crc
             }
@@ -201,7 +201,7 @@ class CppExprRowsTest {
             }
 
             pub grow: (n: Int32) List<Int32> {
-                mut xs: List<Int32> = List<Int32> { }
+                xs: Mutable<List<Int32>> = List<Int32> { }
                 xs.add(n)
                 xs.add(n + 1)
                 xs
@@ -285,7 +285,7 @@ class CppExprRowsTest {
         row(
             "r8",
             """
-            pub mut calls: Int32 = 0
+            pub calls: Mutable<Int32> = 0
 
             pub tick: () Int32 {
                 calls += 1
@@ -349,7 +349,7 @@ class CppExprRowsTest {
             }
 
             pub addAll: (xs: List<Int32>, k: Int32) Int32 {
-                mut total: Int32 = 0
+                total: Mutable<Int32> = 0
                 for x: Int32 in xs {
                     total += applyTo((v: Int32) Int32 {
                         v + k
@@ -432,8 +432,10 @@ class CppExprRowsTest {
                 a / -1
             }
 
-            pub halve: (mut a: Int32, b: Int32) Void {
-                a /= b
+            pub halved: (a: Int32, b: Int32) Int32 {
+                h: Mutable<Int32> = a
+                h /= b
+                h
             }
             """,
             listOf(
@@ -441,14 +443,14 @@ class CppExprRowsTest {
                 "return kira::mod(a, b);",
                 "return a / 10;",
                 "return kira::div(a, std::int32_t{-1});",
-                "a = kira::div(a, b);",
+                "h = kira::div(h, b);",
             ),
             listOf(
                 """check(r11::ratio(7, 2) == 3, "R11: / by a variable is kira::div");""",
                 """check(r11::rem(7, 2) == 1, "R11: % by a variable is kira::mod");""",
                 """check(r11::tenth(95) == 9, "R11: / by a nonzero constant is bare");""",
                 """check(r11::byMinusOne(5) == -5, "R11: / -1 on a signed type is checked");""",
-                """{ std::int32_t h = 9; r11::halve(h, 2); check(h == 4, "R11: /= by a variable is x = kira::div(x, y)"); }""",
+                """check(r11::halved(9, 2) == 4, "R11: /= by a variable is x = kira::div(x, y)");""",
             ),
         ),
         row(
@@ -587,8 +589,10 @@ class CppExprRowsTest {
                 v[3]
             }
 
-            pub setFirst: (mut a: Arr<Int32, 2>, v: Int32) Void {
-                a[0] = v
+            pub setFirst: (a: Arr<Int32, 2>, v: Int32) Arr<Int32, 2> {
+                b: Mutable<Arr<Int32, 2>> = a
+                b[0] = v
+                b
             }
             """,
             listOf(
@@ -596,13 +600,13 @@ class CppExprRowsTest {
                 "return kira::at(xs, 1);",
                 "return kira::at(a, 2);",
                 "return kira::at(v, 3);",
-                "kira::at(a, 0) = v;",
+                "kira::at(b, 0) = v;",
             ),
             listOf(
                 """check(r15::initial("kira") == 'k', "R15: s[i] on a Str is kira::str::at");""",
                 """check(r15::second(kira::List<std::int32_t>{4, 5}) == 5, "R15: a List index is kira::at");""",
                 """{ const std::array<std::uint8_t, 4> quad{1, 2, 3, 4}; check(r15::third(quad) == 3 && r15::fourth(quad) == 4, "R15: Arr<T, N> and View indexes are kira::at"); }""",
-                """{ std::array<std::int32_t, 2> pair{0, 0}; r15::setFirst(pair, 8); check(pair[0] == 8, "R15: kira::at is an lvalue on a mutable place"); }""",
+                """{ const std::array<std::int32_t, 2> pair{0, 0}; check(r15::setFirst(pair, 8)[0] == 8 && pair[0] == 0, "R15: kira::at is an lvalue on a mutable place"); }""",
             ),
         ),
         row(
@@ -701,7 +705,7 @@ class CppExprRowsTest {
         row(
             "r19",
             """
-            mut ticks: Int32 = 0
+            ticks: Mutable<Int32> = 0
 
             next: () Int32 {
                 ticks += 1
@@ -762,7 +766,7 @@ class CppExprRowsTest {
 
             pub locals: (v: Int32) Int32 {
                 x: Int32 = v
-                mut y: Int32 = x
+                y: Mutable<Int32> = x
                 r: Holder = Holder { n = y }
                 y += r.n
                 y
@@ -777,7 +781,7 @@ class CppExprRowsTest {
             pub LIMIT: Int32 = 4
 
             pub sumTo: (n: Size) Size {
-                mut t: Size = 0
+                t: Mutable<Size> = 0
                 for i: Size in 0..n {
                     t += i
                 }
@@ -785,7 +789,7 @@ class CppExprRowsTest {
             }
 
             pub constBound: () Int32 {
-                mut t: Int32 = 0
+                t: Mutable<Int32> = 0
                 for i: Int32 in 0..LIMIT {
                     t += i
                 }
@@ -796,7 +800,7 @@ class CppExprRowsTest {
             }
 
             pub each: (xs: List<Int32>, names: List<Str>) Int32 {
-                mut t: Int32 = 0
+                t: Mutable<Int32> = 0
                 for x: Int32 in xs {
                     t += x
                 }
@@ -806,13 +810,6 @@ class CppExprRowsTest {
                 t
             }
 
-            pub legacy: (n: Int32) Int32 {
-                mut t: Int32 = 0
-                for mut i: 0..n {
-                    t += i
-                }
-                t
-            }
             """,
             listOf(
                 "for(kira::Size i = 0, i_end = n; i < i_end; ++i)",
@@ -820,13 +817,11 @@ class CppExprRowsTest {
                 "for(std::int32_t j = 0; j < 3; ++j)",
                 "for(const std::int32_t x : xs)",
                 "for(const kira::Str& s : names)",
-                "for(std::int32_t i = 0, i_end = n; i <= i_end; ++i)",
             ),
             listOf(
                 """check(s2::sumTo(4) == 6u, "5.4: a range's bound is evaluated once, i_end");""",
                 """check(s2::constBound() == 9, "5.4: a constant or literal bound needs no temporary");""",
                 """check(s2::each(kira::List<std::int32_t>{1, 2}, kira::List<kira::Str>{"ab", "c"}) == 6, "5.4: range-for, by value for a scalar, by const& otherwise");""",
-                """check(s2::legacy(3) == 6, "5.4: the legacy loop includes its bound (D17)");""",
             ),
         ),
         row(
@@ -835,29 +830,29 @@ class CppExprRowsTest {
             pub K2_OK: Int32 = 0
             pub K2_ERR: Int32 = 1
 
-            pub Out: Struct {
-                pub kind: Int32 = K2_OK
+            pub Out: Mutable<Any> {
+                pub kind: Mutable<Int32> = K2_OK
             }
 
             pub TAIL: Arr<UInt8, 2> = @arrOf(0x00, 0xFF)
 
             pub places: () Int32 {
-                mut o: Out = Out { }
+                o: Mutable<Out> = Out { }
                 o.kind = K2_ERR
-                mut p: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
+                p: Mutable<Arr<UInt8, 4>> = @arrOf(1, 2, 3, 4)
                 p[3] = TAIL[1];
                 (p[3] as Int32) + o.kind
             }
 
             pub mapped: () Size {
-                mut m: Map<Str, Int32> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
                 m["k"] = 30
                 m["k"] = 31
                 m.size()
             }
             """,
             listOf(
-                "o.kind = K2_ERR;",
+                "o->kind = K2_ERR;",
                 "std::array<std::uint8_t, 4> p = {1, 2, 3, 4};",
                 "kira::at(p, 3) = kira::at(TAIL, 1);",
                 "m[\"k\"] = 30;",
@@ -871,8 +866,8 @@ class CppExprRowsTest {
             "s4",
             """
             pub control: (n: Int32) Int32 {
-                mut i: Int32 = 0
-                mut t: Int32 = 0
+                i: Mutable<Int32> = 0
+                t: Mutable<Int32> = 0
                 while i < n {
                     i += 1
                     if i == 2 {
@@ -909,7 +904,7 @@ class CppExprRowsTest {
             }
 
             pub caught: () Str {
-                mut msg: Str = ""
+                msg: Mutable<Str> = ""
                 try {
                     v: Int32 = risky(false)
                     msg = "no"
@@ -966,27 +961,6 @@ class CppExprRowsTest {
                 """check(kira::unwrap(m1::small()) == 200, "5.7: a narrow literal into a Maybe is T{lit}");""",
                 """check(m1::locals() == 8, "5.7: Maybe locals, and m.value is unwrap (D40)");""",
             ),
-        ),
-        row(
-            "d24",
-            """
-            pub run: (f: Fx<Tuple1<mut Int32>, Void>, mut x: Int32) Void {
-                f(mut x)
-            }
-
-            pub twiceBumped: () Int32 {
-                mut n: Int32 = 1
-                run((mut v: Int32) Void {
-                    v += 1
-                }, mut n)
-                run((mut v: Int32) Void {
-                    v += 1
-                }, mut n)
-                n
-            }
-            """,
-            listOf("run([](std::int32_t& v) -> void", "v += 1;", "f(x);", "}, n);"),
-            listOf("""check(d24::twiceBumped() == 3, "D24: a mut lambda parameter is T&, and writing it is a use");"""),
         ),
         row(
             "d39",
@@ -1107,8 +1081,8 @@ class CppExprRowsTest {
             }
 
             pub spaces: (s: Str) Int32 {
-                mut n: Int32 = 0
-                mut i: Size = 0
+                n: Mutable<Int32> = 0
+                i: Mutable<Size> = 0
                 while i < s.length() {
                     if s[i].isWhitespace() {
                         n += 1
@@ -1177,13 +1151,13 @@ class CppExprRowsTest {
             "d61",
             """
             pub sorted: (xs: List<Int32>) List<Int32> {
-                mut out: List<Int32> = xs
+                out: Mutable<List<Int32>> = xs.view().toList()
                 out.sort()
                 out
             }
 
             pub words: (s: Str) Str {
-                mut ws: List<Str> = s.splitWhitespace()
+                ws: Mutable<List<Str>> = s.splitWhitespace()
                 ws.sort()
                 ws.joinToString(",")
             }
@@ -1212,16 +1186,16 @@ class CppExprRowsTest {
             }
 
             pub lend: () UInt8 {
-                mut p: Arr<UInt8, 4> = @arrOf(0, 0, 0, 0)
+                p: Mutable<Arr<UInt8, 4>> = @arrOf(0, 0, 0, 0)
                 poke(p.from(2), 9)
                 p[2]
             }
 
-            pub fill: (servo: Int32, esc: UInt32, mut out: StrBuf<32>) Void {
+            pub fill: (servo: Int32, esc: UInt32, out: StrBuf<32>) Void {
                 out.set("servo=${'$'}{servo} esc=${'$'}{esc}")
             }
 
-            pub append: (mut out: StrBuf<32>) Void {
+            pub append: (out: StrBuf<32>) Void {
                 out.add("!")
             }
             """,
@@ -1248,7 +1222,7 @@ class CppExprRowsTest {
             }
 
             pub negTwice: (a: Int32) Int32 {
-                mut y: Int32 = a
+                y: Mutable<Int32> = a
                 z: Int32 = -(-y)
                 y += 1
                 z * 10 + y
@@ -1282,7 +1256,7 @@ class CppExprRowsTest {
             }
 
             pub mulAssign16: (a: UInt16, b: UInt16) UInt16 {
-                mut x: UInt16 = a
+                x: Mutable<UInt16> = a
                 x *= b
                 x
             }
@@ -1310,8 +1284,8 @@ class CppExprRowsTest {
         row(
             "f2",
             """
-            mut ticks: Int32 = 0
-            mut idx: Size = 0
+            ticks: Mutable<Int32> = 0
+            idx: Mutable<Size> = 0
 
             next: () Int32 {
                 ticks += 1
@@ -1327,18 +1301,14 @@ class CppExprRowsTest {
                 a - b
             }
 
-            store: (mut into: Int32, tens: Int32, ones: Int32) Void {
-                into = tens * 10 + ones
-            }
-
-            pub Box: Struct {
-                pub v: Int32 = 0
+            pub Box: Mutable<Any> {
+                pub v: Mutable<Int32> = 0
 
                 pub pair: (a: Int32, b: Int32) Int32 {
                     v * 100 + a * 10 + b
                 }
 
-                pub mut grow: (a: Int32, b: Int32) Void {
+                pub grow: (a: Int32, b: Int32) Void {
                     v = v * 100 + a * 10 + b
                 }
             }
@@ -1369,25 +1339,17 @@ class CppExprRowsTest {
                 makeBox().pair(next(), next())
             }
 
-            pub mutIndexFirst: () Int32 {
-                ticks = 0
-                idx = 0
-                mut q: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
-                store(mut q[nextSize()], next(), next())
-                q[1]
-            }
-
             pub targetFirst: () Int32 {
                 ticks = 0
                 idx = 0
-                mut s: Arr<Int32, 4> = @arrOf(0, 0, 0, 0)
+                s: Mutable<Arr<Int32, 4>> = @arrOf(0, 0, 0, 0)
                 s[nextSize()] = next()
                 s[1] * 10 + s[2]
             }
 
             pub dividedOnce: () Int32 {
                 idx = 0
-                mut p: Arr<Int32, 4> = @arrOf(80, 80, 80, 80)
+                p: Mutable<Arr<Int32, 4>> = @arrOf(80, 80, 80, 80)
                 d: Int32 = 2
                 p[nextSize()] /= d
                 p[1] * 100 + p[2] + (idx as Int32)
@@ -1395,7 +1357,7 @@ class CppExprRowsTest {
 
             pub shiftedOnce: () Int32 {
                 idx = 0
-                mut q: Arr<Int32, 4> = @arrOf(1, 1, 1, 1)
+                q: Mutable<Arr<Int32, 4>> = @arrOf(1, 1, 1, 1)
                 n: Int32 = 3
                 q[nextSize()] <<= n
                 q[1] * 10 + (idx as Int32)
@@ -1404,7 +1366,7 @@ class CppExprRowsTest {
             pub mutReceiverBound: () Int32 {
                 ticks = 0
                 idx = 0
-                mut boxes: Arr<Box, 1> = @arrOf(Box { })
+                boxes: Arr<Box, 1> = @arrOf(Box { })
                 boxes[nextSize() - 1].grow(next(), next())
                 boxes[0].v
             }
@@ -1413,28 +1375,26 @@ class CppExprRowsTest {
                 "const std::int32_t t0_ = ticks;\n          const std::int32_t t1_ = next();\n          return sub(t0_, t1_);",
                 "return kira::cat(t0_, \":\", t1_);",
                 "const std::int32_t t0_ = ticks;\n          const std::int32_t t1_ = next();\n          ticks = t0_ + t1_;",
-                "const Box t0_ = makeBox();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_.pair(t1_, t2_);",
-                "const kira::Size t0_ = nextSize();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          store(kira::at(q, t0_), t1_, t2_);",
+                "const kira::Rc<Box> t0_ = makeBox();\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          return t0_->pair(t1_, t2_);",
                 "const kira::Size t0_ = nextSize();\n          const std::int32_t t1_ = next();\n          kira::at(s, t0_) = t1_;",
                 "const kira::Size t0_ = nextSize();\n          kira::at(p, t0_) = kira::div(kira::at(p, t0_), d);",
                 "const kira::Size t0_ = nextSize();\n          kira::at(q, t0_) = kira::shl(kira::at(q, t0_), n);",
-                "const kira::Size t0_ = nextSize() - 1;\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          kira::at(boxes, t0_).grow(t1_, t2_);",
+                "kira::Rc<Box> t0_ = kira::at(boxes, nextSize() - 1);\n          const std::int32_t t1_ = next();\n          const std::int32_t t2_ = next();\n          t0_->grow(t1_, t2_);",
             ),
             listOf(
                 """check(f2::readBesideEffect() == -1 && f2::holeBesideEffect() == "0:1", "D33: a read of shared state beside an effect is copied before the effect runs");""",
                 """check(f2::compoundReadsFirst() == 1, "D33: a compound assignment reads its target before an impure value runs");""",
                 """check(f2::receiverFirst() == 123, "D33: an impure receiver runs before the spilled arguments");""",
-                """check(f2::mutIndexFirst() == 12, "D33: a mut argument's index runs before its siblings, and the element itself is written, not a copy");""",
                 """check(f2::targetFirst() == 10, "D33: a place assignment locates its target before the value runs");""",
                 """check(f2::dividedOnce() == 4081 && f2::shiftedOnce() == 81, "R11, R12: a rewritten compound assignment computes its target's index once");""",
-                """check(f2::mutReceiverBound() == 12, "D33: the receiver of a mut fx on an element is written in place, never copied");""",
+                """check(f2::mutReceiverBound() == 12, "D33: a function that changes an element runs on the element's own object, never a copy");""",
             ),
         ),
         row(
             "f3",
             """
-            mut gl: List<Int32> = List<Int32> { values = @arrOf(11, 22, 33) }
-            mut idx: Size = 0
+            gl: Mutable<List<Int32>> = List<Int32> { values = @arrOf(11, 22, 33) }
+            idx: Mutable<Size> = 0
 
             nextSize: () Size {
                 idx += 1
@@ -1450,7 +1410,7 @@ class CppExprRowsTest {
             }
 
             sumV: (v: View<Int32>) Int32 {
-                mut s: Int32 = 0
+                s: Mutable<Int32> = 0
                 for x: Int32 in v {
                     s += x
                 }
@@ -1467,15 +1427,15 @@ class CppExprRowsTest {
                 sumV(tailV(List<Int32> { values = @arrOf(5, 6, 7) }.view(), nextSize()))
             }
 
-            pub Acc: Struct {
-                pub n: Int32 = 1
+            pub Acc: Mutable<Any> {
+                pub n: Mutable<Int32> = 1
 
-                pub mut bump: () Int32 {
+                pub bump: () Int32 {
                     n = 2
                     10
                 }
 
-                pub mut viaThis: () Int32 {
+                pub viaThis: () Int32 {
                     peek(this, bump())
                 }
             }
@@ -1485,7 +1445,7 @@ class CppExprRowsTest {
             }
 
             pub thisBeforeBump: () Int32 {
-                mut x: Acc = Acc { }
+                x: Mutable<Acc> = Acc { }
                 x.viaThis()
             }
 
@@ -1519,7 +1479,7 @@ class CppExprRowsTest {
                 // span, decision 4b read literally refuses it (`tailV(gl, nextSize())`).
                 "const kira::Size t0_ = nextSize();\n          const kira::View<std::int32_t> t1_ = tailAtV(t0_, gl);\n          return sumV(t1_);",
                 "const kira::List<std::int32_t> t0_ = kira::List<std::int32_t>{5, 6, 7};\n          const kira::Size t1_ = nextSize();\n          const kira::View<std::int32_t> t2_ = tailV(kira::view(t0_), t1_);",
-                "const Acc t0_ = *this;\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
+                "const kira::Rc<Acc> t0_ = shared_from_this();\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
                 "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",
                 "const kira::List<std::int32_t> c = kira::list::clone(a);",
                 "const kira::Map<kira::Str, std::int32_t> m = kira::Map<kira::Str, std::int32_t>{kira::Tuple2<kira::Str, std::int32_t>{.first = \"k\", .second = 1}, kira::Tuple2<kira::Str, std::int32_t>{.first = \"j\", .second = 2}};",
@@ -1528,7 +1488,7 @@ class CppExprRowsTest {
             ),
             listOf(
                 """check(f3::viewOfAPlace() == 55 && f3::viewOfATemporary() == 13, "D33: a view is formed of the place itself, and of a temporary only inside the lambda that holds it (design 30, E1-E3)");""",
-                """check(f3::thisBeforeBump() == 11, "D33: a struct's this beside a sibling mut fx is read before the effect");""",
+                """check(f3::thisBeforeBump() == 12, "D33: a Mutable type's this beside a sibling that changes it is the one object, so it sees the change");""",
                 """check(f3::fixedContains() && f3::fixedClone() == 3, "Arr<T, N>.contains and Arr<T, N>.clone bind over a std::array");""",
                 """check(f3::mapLiteral() == 22 && f3::setLiteral() == 202, "R9: a Map or Set literal is a braced list of entries or values (a Set keeps one of each), and an empty one is T{}");""",
             ),

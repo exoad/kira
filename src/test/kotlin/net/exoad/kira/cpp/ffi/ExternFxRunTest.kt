@@ -66,7 +66,7 @@ class ExternFxRunTest {
 
         pub @_extern(cpp = "f7::newBox", header = "f7.hxx") newBox: () Box;
 
-        mut gc: Bool = true
+        gc: Mutable<Bool> = true
 
         two: () Int32 {
             2
@@ -366,8 +366,8 @@ class ExternFxRunTest {
         """
         $EXTERNS
 
-        pub Counter: Any {
-            pub mut n: Int32 = 5
+        pub Counter: Mutable<Any> {
+            pub n: Mutable<Int32> = 5
 
             pub viaThis: () Int32 {
                 callKind(() Int32 { n })

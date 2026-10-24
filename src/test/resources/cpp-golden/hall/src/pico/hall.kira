@@ -27,7 +27,18 @@ pub Decoder: Struct {
         skips + invalid
     }
 
-    pub mut @_const feed: (next: UInt8, nowUs: UInt64) Void {
+    // The decoder after one more state: a value type never changes, so the caller rebinds (`d = d.fed(x, t)`).
+    pub @_const fed: (next: UInt8, nowUs: UInt64) Decoder {
+        ticks: Mutable<Int32> = this.ticks
+        edges: Mutable<UInt32> = this.edges
+        skips: Mutable<UInt32> = this.skips
+        invalid: Mutable<UInt32> = this.invalid
+        repeats: Mutable<UInt32> = this.repeats
+        state: Mutable<UInt8> = this.state
+        primed: Mutable<Bool> = this.primed
+        lastDir: Mutable<Int8> = this.lastDir
+        lastEdgeUs: Mutable<UInt64> = this.lastEdgeUs
+        periodUs: Mutable<UInt32> = this.periodUs
         bits: UInt8 = next & 7
         idx: Int8 = INDEX_OF[bits as Size]
         if idx < 0 {
@@ -57,6 +68,7 @@ pub Decoder: Struct {
                 lastEdgeUs = nowUs
             }
         }
+        Decoder { ticks, edges, skips, invalid, repeats, state, primed, lastDir, lastEdgeUs, periodUs }
     }
 }
 
@@ -68,29 +80,28 @@ pub Speed: Struct {
 }
 
 pub speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
-    mut s: Speed = Speed {}
-    s.windowTps = windowTicks * ((1000 / WINDOW_MS) as Int32)
+    windowTps: Mutable<Int32> = windowTicks * ((1000 / WINDOW_MS) as Int32)
     sinceEdge: UInt64 = nowUs - d.lastEdgeUs
-    s.stopped = !d.primed || sinceEdge > (STOPPED_US as UInt64)
-    if !s.stopped && d.periodUs > 0 {
-        s.periodTps = ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)
+    stopped: Bool = !d.primed || sinceEdge > (STOPPED_US as UInt64)
+    periodTps: Mutable<Int32> = 0
+    if !stopped && d.periodUs > 0 {
+        periodTps = ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)
     }
-    if s.stopped {
-        s.periodTps = 0
-        s.windowTps = 0
+    if stopped {
+        periodTps = 0
+        windowTps = 0
     }
     magnitude: Int32 = windowTicks < 0 ? -windowTicks : windowTicks
-    s.usePeriod = !s.stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0
-    s
+    Speed { windowTps, periodTps, stopped, !stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0 }
 }
 
 // A decoder after these states, 1 ms apart from t0. Compile-time, so a
 // static_assert can hold the decoder to a walk.
 pub @_const settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
-    mut d: Decoder = Decoder {}
-    mut t: UInt64 = t0
+    d: Mutable<Decoder> = Decoder {}
+    t: Mutable<UInt64> = t0
     for s: UInt8 in steps {
-        d.feed(s, t)
+        d = d.fed(s, t)
         t += 1000
     }
     d

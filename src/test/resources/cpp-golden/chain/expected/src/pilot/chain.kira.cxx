@@ -11,17 +11,17 @@ namespace chain
         Stop() = default;
         Stop(const Stop&) = delete;
         Stop& operator=(const Stop&) = delete;
-        [[nodiscard]] kira::Str id() const override;
-        [[nodiscard]] kira::Str name() const override;
+        [[nodiscard]] kira::Str id() override;
+        [[nodiscard]] kira::Str name() override;
         [[nodiscard]] Reply step(const Pass& p) override;
     };
 
-    kira::Str Stop::id() const
+    kira::Str Stop::id()
     {
         return ID_STOP;
     }
 
-    kira::Str Stop::name() const
+    kira::Str Stop::name()
     {
         return "stop";
     }
@@ -32,7 +32,7 @@ namespace chain
     }
   }
 
-  bool Behaviour::mayDrive() const
+  bool Behaviour::mayDrive()
   {
       return false;
   }
@@ -50,16 +50,22 @@ namespace chain
       return wanted == ID_STOP ? kira::Maybe<kira::Rc<Behaviour>>(std::make_shared<Stop>()) : kira::Maybe<kira::Rc<Behaviour>>(kira::none);
   }
 
-  Chain::Chain(kira::List<kira::Rc<Behaviour>> loaded_)
-      : loaded(std::move(loaded_))
+  Chain::Chain(kira::List<kira::Rc<Behaviour>> loaded_, kira::Str refusal_)
+      : loaded(std::move(loaded_)), refusal(std::move(refusal_))
   {
   }
 
-  bool Chain::load(const kira::Maybe<kira::Rc<Behaviour>>& b, kira::Str& why)
+  kira::Str Chain::why() const
   {
+      return refusal;
+  }
+
+  bool Chain::load(const kira::Maybe<kira::Rc<Behaviour>>& b)
+  {
+      refusal = "";
       if(!kira::isSome(b))
       {
-          why = "no behaviour";
+          refusal = "no behaviour";
           return false;
       }
       else
@@ -68,12 +74,12 @@ namespace chain
           const kira::Str wanted = it->id();
           if(kira::str::isEmpty(wanted))
           {
-              why = "a behaviour with no id";
+              refusal = "a behaviour with no id";
               return false;
           }
           else if(has(wanted))
           {
-              why = kira::cat("already loaded: ", wanted);
+              refusal = kira::cat("already loaded: ", wanted);
               return false;
           }
           else

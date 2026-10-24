@@ -150,7 +150,7 @@ class BlockValueTest {
     @Test
     fun aTryValueNeedsItsOnAndEndsInAValue() {
         assertEquals("parse.try.value", parseError("f: () Int32 {\n    x: Int32 = try {\n        1\n    }\n    x\n}").tag)
-        val bad = TyperTestSupport.snippet("f: () Int32 {\n    mut y: Int32 = 0\n    x: Int32 = try {\n        y = 1\n    } on e: Str {\n        0\n    }\n    x\n}")
+        val bad = TyperTestSupport.snippet("f: () Int32 {\n    y: Mutable<Int32> = 0\n    x: Int32 = try {\n        y = 1\n    } on e: Str {\n        0\n    }\n    x\n}")
         expectDiagnostic(bad, "types.try.value")
         expectDiagnostic(TyperTestSupport.snippet("f: () Int32 {\n    x: Int32 = try {\n        \"one\"\n    } on e: Str {\n        0\n    }\n    x\n}"), "types.assign.mismatch")
         expectNoErrors(TyperTestSupport.snippet("f: () Str {\n    x: Str = try {\n        throw \"no\"\n    } on e: Str {\n        e\n    }\n    x\n}"))
@@ -191,7 +191,7 @@ class BlockValueTest {
     fun aTernaryWithoutItsSecondArmOrWithAnAssignmentIsRefused() {
         assertEquals("parse.ternary.colon", parseError("f: (c: Bool) Int32 {\n    x: Int32 = c ? 1\n    x\n}").tag)
         assertEquals("parse.ternary.nested", parseError("f: (a: Bool, b: Bool) Int32 {\n    x: Int32 = a ? b ? 1 : 2 : 3\n    x\n}").tag)
-        assertEquals("parse.ternary.arm", parseError("f: (c: Bool) Void {\n    mut y: Int32 = 0\n    c ? y = 1 : 2\n}").tag)
+        assertEquals("parse.ternary.arm", parseError("f: (c: Bool) Void {\n    y: Mutable<Int32> = 0\n    c ? y = 1 : 2\n}").tag)
         expectDiagnostic(TyperTestSupport.snippet("f: (c: Bool) Int32 {\n    x: Int32 = c ? 1 : \"two\"\n    x\n}"), "types.assign.mismatch")
         val cond = expectDiagnostic(TyperTestSupport.snippet("f: (n: Int32) Int32 {\n    x: Int32 = n ? 1 : 2\n    x\n}"), "types.assign.mismatch")
         assertTrue(cond.message.contains("the condition of `?:`"), cond.message)
@@ -213,10 +213,10 @@ class BlockValueTest {
     fun aLoopIsAStatementNotAValue() {
         val w = parseError("f: (c: Bool) Int32 {\n    x: Int32 = while c {\n        break\n    }\n    x\n}")
         assertEquals("parse.loop.value", w.tag)
-        assertTrue(w.message.contains("`mut` local") && w.message.contains("`break`"), w.message)
+        assertTrue(w.message.contains("Mutable local") && w.message.contains("`break`"), w.message)
         assertEquals("parse.loop.value", parseError("f: () Int32 {\n    x: Int32 = 1 + for i: Int32 in 0..3 {\n    }\n    x\n}").tag)
         // A value body that ends in a loop has no value on that path.
-        expectDiagnostic(TyperTestSupport.snippet("f: () Int32 {\n    mut n: Int32 = 0\n    while n < 3 {\n        n += 1\n    }\n}"), "rules.return.missing")
+        expectDiagnostic(TyperTestSupport.snippet("f: () Int32 {\n    n: Mutable<Int32> = 0\n    while n < 3 {\n        n += 1\n    }\n}"), "rules.return.missing")
     }
 
     @Test
@@ -324,7 +324,7 @@ class BlockValueTest {
     fun onPyAnIfWithStatementArmsIsADefCalledInPlace() {
         val py = PyTestSupport.emit(
             "note: () Int32 {\n    1\n}\n\n" +
-                "f: (c: Bool) Int32 {\n    mut total: Int32 = 0\n    v: Int32 = if c {\n        total = note()\n        total * 10\n    } else {\n        -1\n    }\n    v + total\n}",
+                "f: (c: Bool) Int32 {\n    total: Mutable<Int32> = 0\n    v: Int32 = if c {\n        total = note()\n        total * 10\n    } else {\n        -1\n    }\n    v + total\n}",
         ).python()
         assertTrue(py.contains("    def _k_t0():\n        nonlocal total\n        if c:\n            total = _note()\n"), py)
         assertTrue(py.contains("        else:\n            return -1\n    v = _k_t0()\n"), py)
@@ -363,7 +363,7 @@ class BlockValueTest {
     @Test
     fun onPyALoopVariableInAnArmIsTheDefsOwn() {
         val py = PyTestSupport.emit(
-            "f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        mut s: Int32 = 0\n        for i: Int32 in 0..3 {\n            s += i\n        }\n        s\n    } else {\n        0\n    }\n    v\n}",
+            "f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        s: Mutable<Int32> = 0\n        for i: Int32 in 0..3 {\n            s += i\n        }\n        s\n    } else {\n        0\n    }\n    v\n}",
         ).python()
         assertFalse(py.contains("nonlocal"), py)
     }
@@ -384,11 +384,11 @@ class BlockValueTest {
         val returns = DialectGates.stage3(false) { PyTestSupport.emit("f: (c: Bool, d: Bool) Int32 {\n    v: Int32 = if c {\n        if d {\n            return 1\n        }\n        2\n    } else {\n        3\n    }\n    v\n}") }
         assertTrue(returns.errors.any { it.contains("a return inside an arm of an if or try used as a value") }, returns.errors.joinToString("\n"))
         val breaks = PyTestSupport.emit(
-            "f: (d: Bool) Int32 {\n    mut s: Int32 = 0\n    for i: Int32 in 0..3 {\n        s += try {\n            if d {\n                break\n            }\n            i\n        } on e: Str {\n            0\n        }\n    }\n    s\n}",
+            "f: (d: Bool) Int32 {\n    s: Mutable<Int32> = 0\n    for i: Int32 in 0..3 {\n        s += try {\n            if d {\n                break\n            }\n            i\n        } on e: Str {\n            0\n        }\n    }\n    s\n}",
         )
         assertTrue(breaks.errors.any { it.contains("a break inside an arm of an if or try used as a value") }, breaks.errors.joinToString("\n"))
         // A loop inside the arm keeps its own break.
-        val inner = PyTestSupport.emit("f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        mut n: Int32 = 0\n        while true {\n            n += 1\n            if n > 2 {\n                break\n            }\n        }\n        n\n    } else {\n        0\n    }\n    v\n}")
+        val inner = PyTestSupport.emit("f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        n: Mutable<Int32> = 0\n        while true {\n            n += 1\n            if n > 2 {\n                break\n            }\n        }\n        n\n    } else {\n        0\n    }\n    v\n}")
         assertTrue(inner.errors.isEmpty(), inner.errors.joinToString("\n"))
         // As the arm's last statement a return is no value: the typer says so first.
         DialectGates.stage3(false) {
@@ -403,8 +403,8 @@ class BlockValueTest {
         expectNoErrors(TyperTestSupport.snippet(ok))
         val okPy = PyTestSupport.emit(ok).python()
         assertTrue(okPy.contains("        if c:\n            _k_w0 = q._k_clone()\n            _k_w0.x = 5\n"), okPy)
-        // Each arm returns a copy, so the def's value is stored as it is.
-        assertTrue(okPy.contains("            return t._k_clone()\n") && okPy.contains("    r = _k_t0()\n"), okPy)
+        // A value never changes in place (stage 4), so each arm returns it as it is, and the def's value is stored so.
+        assertTrue(okPy.contains("            return t\n") && okPy.contains("    r = _k_t0()\n"), okPy)
         val bad = TyperTestSupport.snippet("${p}f: (c: Bool, q: P) Int32 {\n    r: P = c ? q with {\n        x = 5\n    } : q\n    r.x\n}")
         assertTrue(expectDiagnostic(bad, "types.with.position").message.contains("a branch of an if-expression"))
     }

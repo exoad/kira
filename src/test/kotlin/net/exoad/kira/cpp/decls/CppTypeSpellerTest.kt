@@ -11,12 +11,16 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * Design table 5.1, row by row, read off the parameters and return types of one module: a
  * parameter spells the parameter column, a `mut` parameter the third, a return type the
  * value column.
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class CppTypeSpellerTest {
     private val module = DeclTestSupport.module(
         "test:types",

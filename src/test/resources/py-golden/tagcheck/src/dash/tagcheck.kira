@@ -19,8 +19,8 @@ space: (c: Char) Bool {
 }
 
 strip: (s: Str) Str {
-    mut a: Size = 0
-    mut b: Size = s.length()
+    a: Mutable<Size> = 0
+    b: Mutable<Size> = s.length()
     while a < b && space(s[a]) {
         a += 1
     }
@@ -39,8 +39,8 @@ control: (c: Char) Bool {
 // \n and \r escaped, any other control character as \xNN.
 pub pyRepr: (s: Str) Str {
     q: Char = s.contains("'") && !s.contains("\"") ? '"' : '\''
-    mut out: Str = "${q}"
-    mut i: Size = 0
+    out: Mutable<Str> = "${q}"
+    i: Mutable<Size> = 0
     while i < s.length() {
         c: Char = s[i]
         if c == '\\' || c == q {
@@ -70,8 +70,8 @@ idText: (text: Str) Bool {
     } else if body.isEmpty() || body.length() > 6 || body[0] < '1' || body[0] > '9' {
         false
     } else {
-        mut i: Size = 1
-        mut result: Bool = true
+        i: Mutable<Size> = 1
+        result: Mutable<Bool> = true
         while i < body.length() {
             if body[i] < '0' || body[i] > '9' {
                 result = false
@@ -84,8 +84,8 @@ idText: (text: Str) Bool {
 }
 
 pub tagOf: (text: Str) Answer {
-    mut result: Maybe<Answer> = null
-    mut found: Bool = false
+    result: Mutable<Maybe<Answer>> = null
+    found: Mutable<Bool> = false
     if idText(text) {
         id: Int64 = strip(text).toInt64().unwrapOr(-1)
         if id >= 0 && id < TAGS {
@@ -103,9 +103,9 @@ pub label: (v: Str) Answer {
 
 pub note: (v: Str) Answer {
     s: Str = strip(v)
-    mut i: Size = 0
-    mut result: Maybe<Answer> = null
-    mut found: Bool = false
+    i: Mutable<Size> = 0
+    result: Mutable<Maybe<Answer>> = null
+    found: Mutable<Bool> = false
     while i < s.length() {
         if control(s[i]) {
             result = Answer { false, "note not one line" }

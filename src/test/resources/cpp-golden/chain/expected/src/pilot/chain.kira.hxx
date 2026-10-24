@@ -33,9 +33,9 @@ namespace chain
   {
   public:
       virtual ~Behaviour() = default;
-      [[nodiscard]] virtual kira::Str id() const = 0;
-      [[nodiscard]] virtual kira::Str name() const = 0;
-      [[nodiscard]] virtual bool mayDrive() const;
+      [[nodiscard]] virtual kira::Str id() = 0;
+      [[nodiscard]] virtual kira::Str name() = 0;
+      [[nodiscard]] virtual bool mayDrive();
       virtual void onLoad();
       virtual void onUnload();
       [[nodiscard]] virtual Reply step(const Pass& p) = 0;
@@ -44,15 +44,17 @@ namespace chain
   class Chain final
   {
   public:
-      explicit Chain(kira::List<kira::Rc<Behaviour>> loaded_ = kira::List<kira::Rc<Behaviour>>{});
+      Chain(kira::List<kira::Rc<Behaviour>> loaded_ = kira::List<kira::Rc<Behaviour>>{}, kira::Str refusal_ = "");
       Chain(const Chain&) = delete;
       Chain& operator=(const Chain&) = delete;
-      [[nodiscard]] bool load(const kira::Maybe<kira::Rc<Behaviour>>& b, kira::Str& why);
+      [[nodiscard]] kira::Str why() const;
+      [[nodiscard]] bool load(const kira::Maybe<kira::Rc<Behaviour>>& b);
       [[nodiscard]] kira::Size size() const;
       [[nodiscard]] bool has(const kira::Str& wanted) const;
       [[nodiscard]] kira::Maybe<kira::Rc<Behaviour>> at(kira::Size i) const;
   private:
       kira::List<kira::Rc<Behaviour>> loaded;
+      kira::Str refusal;
   };
 
   [[nodiscard]] kira::Maybe<kira::Rc<Behaviour>> make(const kira::Str& wanted);

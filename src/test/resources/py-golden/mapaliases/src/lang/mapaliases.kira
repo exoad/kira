@@ -1,30 +1,30 @@
-// aliases' probes on a Map, a value (D44); expected.txt is the C++ backend's run.
+// aliases' probes on a Map, shared as a List is (stage 4).
 
-mut log: Map<Str, Int32> = Map<Str, Int32> { }
-mut seed: Map<Str, Int32> = Map<Str, Int32> { }
+log: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+seed: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
 
-Holder: Any {
-    pub mut items: Map<Str, Int32>
+Holder: Mutable<Any> {
+    pub items: Mutable<Map<Str, Int32>>
 
     pub snapshot: () Map<Str, Int32> {
         items
     }
 
-    pub mut setItems: (xs: Map<Str, Int32>) Void {
+    pub setItems: (xs: Map<Str, Int32>) Void {
         items = xs
     }
 
-    pub mut poke: (xs: Map<Str, Int32>) Size {
+    pub poke: (xs: Map<Str, Int32>) Size {
         items["poke"] = 9
         xs.size()
     }
 
-    pub mut grow: () Int32 {
+    pub grow: () Int32 {
         items["grow"] = 0
         1
     }
 
-    pub mut reset: (mut xs: Map<Str, Int32>) Size {
+    pub reset: (xs: Map<Str, Int32>) Size {
         items = Map<Str, Int32> { }
         xs["r"] = 1
         items.size()
@@ -36,19 +36,15 @@ count: (xs: Map<Str, Int32>) Size {
     xs.size()
 }
 
-fill: (mut xs: Map<Str, Int32>, n: Int32) Void {
-    mut i: Int32 = 0
+fill: (xs: Map<Str, Int32>, n: Int32) Void {
+    i: Mutable<Int32> = 0
     while i < n {
         xs["f${i}"] = i
         i += 1
     }
 }
 
-replace: (mut xs: Map<Str, Int32>, ys: Map<Str, Int32>) Void {
-    xs = ys
-}
-
-pushTo: (mut xs: Map<Str, Int32>) Int32 {
+pushTo: (xs: Map<Str, Int32>) Int32 {
     xs.put("push", 100)
     1
 }
@@ -62,8 +58,8 @@ echo: (xs: Map<Str, Int32>) Map<Str, Int32> {
 }
 
 fresh: (n: Int32) Map<Str, Int32> {
-    mut out: Map<Str, Int32> = Map<Str, Int32> { }
-    fill(mut out, n)
+    out: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    fill(out, n)
     out
 }
 
@@ -73,8 +69,8 @@ pick: (c: Bool, a: Map<Str, Int32>, b: Map<Str, Int32>) Map<Str, Int32> {
 
 show: (xs: Map<Str, Int32>) Str {
     ks: Arr<Str> = xs.keys()
-    mut s: Str = "{"
-    mut i: Size = 0
+    s: Mutable<Str> = "{"
+    i: Mutable<Size> = 0
     while i < ks.size() {
         if i > 0 {
             s = s + " "
@@ -86,9 +82,9 @@ show: (xs: Map<Str, Int32>) Str {
 }
 
 main: () Void {
-    mut a: Map<Str, Int32> = Map<Str, Int32> { }
+    a: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
     a["one"] = 1
-    mut b: Map<Str, Int32> = a
+    b: Mutable<Map<Str, Int32>> = a
     b["two"] = 2
     trace(show(a))
     trace(show(b))
@@ -97,13 +93,13 @@ main: () Void {
     trace(show(a))
     trace(show(b))
 
-    mut h: Holder = Holder { a }
+    h: Mutable<Holder> = Holder { a }
     a["four"] = 4
     trace(show(h.items))
     h.setItems(b)
     b["five"] = 5
     trace(show(h.items))
-    mut snap: Map<Str, Int32> = h.snapshot()
+    snap: Mutable<Map<Str, Int32>> = h.snapshot()
     snap["six"] = 6
     trace(show(h.items))
     trace(show(snap))
@@ -114,35 +110,34 @@ main: () Void {
     trace(count(log))
     trace(show(log))
 
-    fill(mut a, 3)
+    fill(a, 3)
     trace(show(a))
-    replace(mut a, b)
     b["seven"] = 7
     trace(show(a))
-    trace(h.reset(mut h.items))
+    trace(h.reset(h.items))
     trace(show(h.items))
-    fill(mut h.items, 2)
+    fill(h.items, 2)
     trace(show(h.items))
-    fill(mut seed, 2)
+    fill(seed, 2)
     trace(show(seed))
 
-    trace(lenOf(a, pushTo(mut a)))
+    trace(lenOf(a, pushTo(a)))
     trace(show(a))
     trace(lenOf(h.items, h.grow()))
     trace(show(h.items))
 
-    mut e: Map<Str, Int32> = echo(a)
+    e: Mutable<Map<Str, Int32>> = echo(a)
     e["eight"] = 8
     trace(show(a))
     trace(show(e))
-    mut f: Map<Str, Int32> = fresh(2)
+    f: Mutable<Map<Str, Int32>> = fresh(2)
     f["nine"] = 9
     trace(show(f))
-    mut p: Map<Str, Int32> = pick(true, a, b)
+    p: Mutable<Map<Str, Int32>> = pick(true, a, b)
     p["ten"] = 10
     trace(show(a))
     trace(show(p))
-    mut g: Map<Str, Int32> = seed
+    g: Mutable<Map<Str, Int32>> = seed
     g["eleven"] = 11
     trace(show(seed))
     seed = g
@@ -152,7 +147,7 @@ main: () Void {
 
     h.items = h.items
     trace(show(h.items))
-    mut k: Holder = Holder { g }
+    k: Mutable<Holder> = Holder { g }
     k.items["zero"] = 0
     h.items = k.items
     k.items.remove("f0")

@@ -7,8 +7,8 @@ golden.evalorder.lib.ctr as ctr
 // them into typed temporaries, in order, whenever one has an effect and another is not
 // pure (R19): a call is copied, a read of shared state is copied before the effect runs
 // (a Str, a struct or a container too, which C++ would otherwise hand the callee as the
-// effect left it), and a place (a mut argument, an assignment's target, the receiver a mut
-// fx writes, a place a view is formed of) is never copied and never held by reference: the
+// effect left it), and a place (an assignment's target, the receiver a function of a Mutable
+// type writes, a place a view is formed of) is never copied and never held by reference: the
 // values along its path (each index) are ordered like any other, and the path is applied
 // where the call or assignment uses it. A view is only ever an argument, a receiver or a
 // return (decision 4b), and a view of a temporary is formed inside the lambda that holds its
@@ -20,11 +20,11 @@ golden.evalorder.lib.ctr as ctr
 // when the call runs, W2.9.8 lowers that, and until then rules.exclusivity.order refuses it
 // (40-round3 3.2). Its index spelling, `gl[setFirst()]`, already reads it that way.
 
-mut ticks: Int32 = 0
-mut idx: Size = 0
-mut row: Size = 1
-mut garr: Arr<Int32, 4> = @arrOf(10, 20, 30, 40)
-mut gl: List<Int32> = List<Int32> { }
+ticks: Mutable<Int32> = 0
+idx: Mutable<Size> = 0
+row: Mutable<Size> = 1
+garr: Mutable<Arr<Int32, 4>> = @arrOf(10, 20, 30, 40)
+gl: Mutable<List<Int32>> = List<Int32> { }
 
 next: () Int32 {
     ticks += 1
@@ -40,8 +40,8 @@ sub: (a: Int32, b: Int32) Int32 {
     a - b
 }
 
-store: (mut into: Int32, tens: Int32, ones: Int32) Void {
-    into = tens * 10 + ones
+tensOnes: (tens: Int32, ones: Int32) Int32 {
+    tens * 10 + ones
 }
 
 pub Box: Struct {
@@ -50,8 +50,13 @@ pub Box: Struct {
     pub pair: (a: Int32, b: Int32) Int32 {
         v * 100 + a * 10 + b
     }
+}
 
-    pub mut grow: (a: Int32, b: Int32) Void {
+// What a probe changes in place: a Mutable type, so its elements are references C++ must not copy.
+pub Cell: Mutable<Any> {
+    pub v: Mutable<Int32> = 0
+
+    pub grow: (a: Int32, b: Int32) Void {
         v = v * 100 + a * 10 + b
     }
 }
@@ -66,8 +71,8 @@ setFirst: () Size {
     0
 }
 
-mut gs: Str = "a"
-mut gb: Box = Box { v = 1 }
+gs: Mutable<Str> = "a"
+gb: Mutable<Box> = Box { v = 1 }
 
 changeS: () Int32 {
     gs = "b"
@@ -75,7 +80,7 @@ changeS: () Int32 {
 }
 
 bumpB: () Int32 {
-    gb.v = 9
+    gb = Box { v = 9 }
     0
 }
 
@@ -101,7 +106,7 @@ tail: (xs: View<Int32>, at: Size) View<Int32> {
 }
 
 total: (v: View<Int32>) Int32 {
-    mut s: Int32 = 0
+    s: Mutable<Int32> = 0
     for x: Int32 in v {
         s += x
     }
@@ -126,9 +131,9 @@ main: () Void {
     trace(next() - next())
     // Nested: (5 - 6) - 7.
     trace(sub(sub(next(), next()), next()))
-    // A mut argument is a place and stays one; its siblings are spilled: 8, 9.
-    mut slot: Int32 = 0
-    store(mut slot, next(), next())
+    // An assignment's target is a place and stays one; the call's arguments are spilled: 8, 9.
+    slot: Mutable<Int32> = 0
+    slot = tensOnes(next(), next())
     trace(slot)
     // Interpolation holes are the arguments of kira::cat: 10, then 11.
     trace("${next()}/${next()}")
@@ -146,9 +151,9 @@ main: () Void {
     trace(ticks)
     // An impure receiver runs before the spilled arguments: 30, then 31 and 32.
     trace(makeBox().pair(next(), next()))
-    // A mut argument's index runs before its siblings: slot 1 takes 33 and 34.
-    mut slots: Arr<Int32, 4> = @arrOf(0, 0, 0, 90)
-    store(mut slots[nextSize()], next(), next())
+    // A place assignment's index runs before the value's arguments: slot 1 takes 33 and 34.
+    slots: Mutable<Arr<Int32, 4>> = @arrOf(0, 0, 0, 90)
+    slots[nextSize()] = tensOnes(next(), next())
     trace(slots[1])
     // A place assignment locates its target before the value runs: slot 2 takes 35.
     slots[nextSize()] = next()
@@ -158,26 +163,26 @@ main: () Void {
     slots[nextSize()] /= two
     trace(slots[3])
     trace(idx)
-    // The receiver of a mut fx is the element itself, never a copy: box 0 takes 36 and 37.
-    mut boxes: Arr<Box, 1> = @arrOf(Box { })
+    // The receiver of a function that changes it is the element itself, never a copy: box 0 takes 36 and 37.
+    boxes: Mutable<Arr<Cell, 1>> = @arrOf(Cell { })
     idx = 0
     boxes[nextSize() - 1].grow(next(), next())
     trace(boxes[0].v)
     // A nested element place orders both indexes and writes the element itself, never a
     // copy of the row: grid[1][2] takes 5, then 6.
-    mut grid: Arr<Arr<Int32, 3>, 3> = @arrOf(@arrOf(0, 0, 0), @arrOf(0, 0, 0), @arrOf(0, 0, 0))
+    grid: Mutable<Arr<Arr<Int32, 3>, 3>> = @arrOf(@arrOf(0, 0, 0), @arrOf(0, 0, 0), @arrOf(0, 0, 0))
     idx = 0
     grid[nextSize()][nextSize()] = 5
     trace(grid[1][2] * 10 + grid[2][1])
     idx = 0
     grid[nextSize()][nextSize()] += 1
     trace(grid[1][2] * 10 + grid[2][1])
-    // A mut argument two elements deep, its row a read of shared state: grid[1][1] takes 38 and 39.
+    // A place two elements deep, its row a read of shared state: grid[1][1] takes 38 and 39.
     idx = 0
-    store(mut grid[row][nextSize()], next(), next())
+    grid[row][nextSize()] = tensOnes(next(), next())
     trace(grid[1][1])
-    // The receiver of a mut fx two elements deep is that element: cell [1][2] takes 40 and 41.
-    mut cells: Arr<Arr<Box, 3>, 3> = @arrOf(@arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }), @arrOf(Box { }, Box { }, Box { }))
+    // The receiver two elements deep is that element: cell [1][2] takes 40 and 41.
+    cells: Mutable<Arr<Arr<Cell, 3>, 3>> = @arrOf(@arrOf(Cell { }, Cell { }, Cell { }), @arrOf(Cell { }, Cell { }, Cell { }), @arrOf(Cell { }, Cell { }, Cell { }))
     idx = 0
     cells[nextSize()][nextSize()].grow(next(), next())
     trace(cells[1][2].v)
@@ -208,7 +213,7 @@ main: () Void {
     // A binding that names its receiver twice (StrBuf.set) and a StrBuf interpolation, one
     // call per piece, locate the receiver once: idx ends at 1 both times, and bufs[1] holds
     // a2b, 3 characters.
-    mut bufs: Arr<StrBuf<8>, 3> = @arrOf(StrBuf<8> { }, StrBuf<8> { }, StrBuf<8> { })
+    bufs: Mutable<Arr<StrBuf<8>, 3>> = @arrOf(StrBuf<8> { }, StrBuf<8> { }, StrBuf<8> { })
     idx = 0
     bufs[nextSize()].set("x")
     trace(idx)
@@ -221,30 +226,30 @@ main: () Void {
     gs = "aaa"
     f: Fx<Tuple1<Int32>, Int32> = adder(gs, changeS())
     trace(f(0))
-    // A mut argument writes its variable while the call runs, so a read of that variable
-    // beside the call is made first: x is 5 there (gcc printed 14, clang 4), and xs has
-    // 2 elements: 5 - 1, 2.
-    mut x: Int32 = 5
-    trace(sub(x, inc(mut x)))
-    mut xs: List<Int32> = List<Int32> { values = @arrOf(1, 2) }
-    trace(lenOf(xs, pushTo(mut xs)))
+    // A call writes a global while it runs, so a read of that global beside the call is made
+    // first: gx is 5 there (gcc printed 14, clang 4), and a List the callee changes, which it
+    // shares with its caller, has 2 elements: 5 - 1, 2.
+    gx = 5
+    trace(sub(gx, incGx()))
+    xs: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1, 2) }
+    trace(lenOf(xs, pushTo(xs)))
     // A compound assignment reads its target before a value that writes it: 5 + 1.
-    mut z: Int32 = 5
-    z += inc(mut z)
-    trace(z)
+    gx = 5
+    gx += incGx()
+    trace(gx)
     // A function used as a value takes its Fx parameter as a kira::Fn, never a template: 10.
     g: Fx<Tuple2<Fx<Tuple1<Int32>, Int32>, Int32>, Int32> = applyTo
     trace(g(twice, 5))
-    // The receiver of a mut fx and a mut argument at an element of a List are located after
-    // a sibling that grows the List: C++ bound the element first and wrote into the storage the
-    // growth freed. gll[0] ends [1, 7] beside 64 more rows, and gls[0] takes 71 beside 64 more.
+    // The receiver of a function that changes it, and a place assignment's element of a List, are
+    // located after a sibling that grows the List: C++ bound the element first and wrote into the
+    // storage the growth freed. gll[0] ends [1, 7] beside 64 more rows, and gls[0] takes 71 beside 64 more.
     gll.add(List<Int32> { values = @arrOf(1) })
     gll[0].add(growGll())
     trace(gll[0].size())
     trace(gll[0].get(1))
     trace(gll.size())
     gls.add(100)
-    store(mut gls[0], growGls(), 1)
+    gls[0] = tensOnes(growGls(), 1)
     trace(gls.get(0))
     trace(gls.size())
     // A read through a view is a read of the storage behind it, made before a sibling writes
@@ -252,7 +257,7 @@ main: () Void {
     trace(sub(gv.view().get(0), setGv()))
     // A MutView handed to a callee writes what it is lent from, so a read of that local is
     // made before the call (gcc and MSVC printed 8): 1 - 1.
-    mut ws: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+    ws: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1, 2, 3) }
     trace(sub(ws[0], poke(ws.from(0))))
     // A view of a temporary is formed inside the lambda that holds its owner (design 30, E2:
     // gcc printed garbage for a kira::View copied out of the list's declaration): the list is
@@ -268,17 +273,17 @@ main: () Void {
     // box, a fresh Maybe's value) is copied while the temporary lives: C++'s range reference
     // keeps only a temporary it is bound to itself, and the loop read freed storage (gcc
     // -Werror=dangling-reference, MSVC's ASan a heap-use-after-free). 60, three times.
-    mut rl: Int32 = 0
+    rl: Mutable<Int32> = 0
     for el: Int32 in freshLists()[0] {
         rl += el
     }
     trace(rl)
-    mut rr: Int32 = 0
+    rr: Mutable<Int32> = 0
     for er: Int32 in freshRef().value {
         rr += er
     }
     trace(rr)
-    mut rm: Int32 = 0
+    rm: Mutable<Int32> = 0
     for em: Int32 in freshMaybe().value {
         rm += em
     }
@@ -307,13 +312,13 @@ minus: (v: View<Int32>, k: Int32) Int32 {
     total(v) - k
 }
 
-mut gll: List<List<Int32>> = List<List<Int32>> { }
-mut gls: List<Int32> = List<Int32> { }
-mut gv: List<Int32> = List<Int32> { values = @arrOf(1, 2, 3) }
+gll: Mutable<List<List<Int32>>> = List<List<Int32>> { }
+gls: Mutable<List<Int32>> = List<Int32> { }
+gv: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1, 2, 3) }
 
 // Appends past any capacity gll had: its rows move.
 growGll: () Int32 {
-    mut i: Int32 = 0
+    i: Mutable<Int32> = 0
     while i < 64 {
         gll.add(List<Int32> { values = @arrOf(i) })
         i += 1
@@ -323,7 +328,7 @@ growGll: () Int32 {
 
 // Appends past any capacity gls had: its storage moves.
 growGls: () Int32 {
-    mut i: Int32 = 0
+    i: Mutable<Int32> = 0
     while i < 64 {
         gls.add(i)
         i += 1
@@ -341,12 +346,14 @@ poke: (m: MutView<Int32>) Int32 {
     1
 }
 
-inc: (mut v: Int32) Int32 {
-    v += 10
+gx: Mutable<Int32> = 0
+
+incGx: () Int32 {
+    gx += 10
     1
 }
 
-pushTo: (mut into: List<Int32>) Size {
+pushTo: (into: List<Int32>) Size {
     into.add(7)
     0
 }

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * What the first review of the declaration emitter found wrong, each pinned: the shapes
@@ -76,7 +77,7 @@ class CppDeclFixesTest {
         val h = header(
             """
             pub Cfg: Struct { pub limit: Maybe<Int32> = null }
-            pub mut last: Maybe<Int32> = null
+            pub last: Mutable<Maybe<Int32>> = null
             pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
             """
         )
@@ -124,7 +125,7 @@ class CppDeclFixesTest {
         val h = header(
             """
             pub ORIGIN: Pt = Pt {}
-            pub mut cursor: Pt = Pt {}
+            pub cursor: Mutable<Pt> = Pt {}
             pub Arr<UInt8, N> as Frame
             pub A: Int32 = B
             pub N: Size = 4
@@ -155,7 +156,7 @@ class CppDeclFixesTest {
     fun aCycleThatIsNotByValueContainmentIsAnError() {
         val (emitted, _) = emit(
             """
-            pub S: Struct { pub xs: List<S> = EMPTY }
+            pub S: Mutable<Any> { pub xs: List<S> = EMPTY }
             pub EMPTY: List<S> = @listOf()
             """
         )
@@ -197,38 +198,42 @@ class CppDeclFixesTest {
 
     @Test
     fun aHeaderOnlyModuleDefinesAPrivateStructBeforeThePublicOneHoldingIt() {
-        val h = header(
-            """
-            pub S: Struct { pub i: Inner = Inner {} pub xs: List<Later> = List<Later> {} }
-            Inner: Struct { pub v: Int32 = 1 }
-            Later: Struct { pub v: Int32 = 2 }
-            """,
-            uri = "lib:units",
-            options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:units")),
-        )
-        // Inner is held by value, so it comes first; a List element needs only the forward
-        // declaration, and the empty List default is value-initialized in place (`xs{}`), the
-        // one form libc++ accepts before Later is complete.
-        assertContains(
-            h,
-            "  struct S;\n\n  namespace impl_\n  {\n    struct Later;\n  }\n\n  namespace impl_\n  {\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Inner i = impl_::Inner{};\n      kira::List<impl_::Later> xs{};\n  };\n\n  namespace impl_\n  {\n    struct Later\n    {\n        std::int32_t v = 2;\n    };\n  }",
-        )
+        DialectGates.stage4(false) {
+            val h = header(
+                """
+                pub S: Struct { pub i: Inner = Inner {} pub xs: List<Later> = List<Later> {} }
+                Inner: Struct { pub v: Int32 = 1 }
+                Later: Struct { pub v: Int32 = 2 }
+                """,
+                uri = "lib:units",
+                options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:units")),
+            )
+            // Inner is held by value, so it comes first; a List element needs only the forward
+            // declaration, and the empty List default is value-initialized in place (`xs{}`), the
+            // one form libc++ accepts before Later is complete.
+            assertContains(
+                h,
+                "  struct S;\n\n  namespace impl_\n  {\n    struct Later;\n  }\n\n  namespace impl_\n  {\n    struct Inner\n    {\n        std::int32_t v = 1;\n    };\n  }\n\n  struct S\n  {\n      impl_::Inner i = impl_::Inner{};\n      kira::List<impl_::Later> xs{};\n  };\n\n  namespace impl_\n  {\n    struct Later\n    {\n        std::int32_t v = 2;\n    };\n  }",
+            )
+        }
     }
 
     // ---- issue 6: equality closes over the fields ---------------------------------------------
 
     @Test
     fun comparingAStructDefaultsEqualityOnEveryStructItHolds() {
-        val h = header(
-            """
-            pub Inner: Struct { pub v: Int32 = 0 }
-            pub Outer: Struct { pub a: Inner = Inner {} pub xs: List<Inner> = List<Inner> {} }
-            pub Apart: Struct { pub v: Int32 = 0 }
-            """,
-            usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Outer"] as ClassSymbol)) },
-        )
-        assertContains(h, "      bool operator==(const Inner&) const = default;", "      bool operator==(const Outer&) const = default;")
-        assertTrue(!h.contains("operator==(const Apart&)"), h)
+        DialectGates.stage4(false) {
+            val h = header(
+                """
+                pub Inner: Struct { pub v: Int32 = 0 }
+                pub Outer: Struct { pub a: Inner = Inner {} pub xs: List<Inner> = List<Inner> {} }
+                pub Apart: Struct { pub v: Int32 = 0 }
+                """,
+                usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Outer"] as ClassSymbol)) },
+            )
+            assertContains(h, "      bool operator==(const Inner&) const = default;", "      bool operator==(const Outer&) const = default;")
+            assertTrue(!h.contains("operator==(const Apart&)"), h)
+        }
     }
 
     @Test
@@ -323,20 +328,22 @@ class CppDeclFixesTest {
 
     @Test
     fun aParameterNamedLikeAFieldOrAModuleDeclarationIsRenamed() {
-        val (emitted, ctx) = emit(
-            """
-            pub LIMIT: Int32 = 3
-            pub Pt: Struct { pub x: Int32 = 0 pub mut setX: (mut x: Int32, y: Int32) Void { x = y } }
-            pub g: (LIMIT: Int32, other: Int32) Int32 { LIMIT + other }
-            """
-        )
-        val h = CppWriter.normalize(emitted.header)
-        val s = CppWriter.normalize(emitted.source ?: fail("no source"))
-        assertContains(h, "      void setX(std::int32_t& x_p, std::int32_t y);", "  [[nodiscard]] std::int32_t g(std::int32_t limit_p, std::int32_t other);")
-        assertContains(s, "  void Pt::setX(std::int32_t& x_p, std::int32_t y)", "  std::int32_t g(std::int32_t limit_p, std::int32_t other)")
-        val g = ctx.symbol.members["g"] as FnSymbol
-        assertEquals("limit_p", ctx.paramName(g.params[0]))
-        assertEquals("other", ctx.paramName(g.params[1]))
+        DialectGates.stage4(false) {
+            val (emitted, ctx) = emit(
+                """
+                pub LIMIT: Int32 = 3
+                pub Pt: Struct { pub x: Int32 = 0 pub mut setX: (mut x: Int32, y: Int32) Void { x = y } }
+                pub g: (LIMIT: Int32, other: Int32) Int32 { LIMIT + other }
+                """
+            )
+            val h = CppWriter.normalize(emitted.header)
+            val s = CppWriter.normalize(emitted.source ?: fail("no source"))
+            assertContains(h, "      void setX(std::int32_t& x_p, std::int32_t y);", "  [[nodiscard]] std::int32_t g(std::int32_t limit_p, std::int32_t other);")
+            assertContains(s, "  void Pt::setX(std::int32_t& x_p, std::int32_t y)", "  std::int32_t g(std::int32_t limit_p, std::int32_t other)")
+            val g = ctx.symbol.members["g"] as FnSymbol
+            assertEquals("limit_p", ctx.paramName(g.params[0]))
+            assertEquals("other", ctx.paramName(g.params[1]))
+        }
     }
 
     // ---- issue 15: #line before every definition -----------------------------------------------
@@ -425,35 +432,39 @@ class CppDeclFixesTest {
 
     @Test
     fun aContainerOfALaterStructIsOrderedOrValueInitializedAsTheCompilersNeed() {
-        val h = header(
-            """
-            pub Early: Struct { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
-            pub Queued: Struct { pub d: Deque<Later> = Deque<Later> {} }
-            pub Later: Struct { pub v: Int32 = 0 }
-            pub Node: Any { pub v: Int32 = 0 }
-            """,
-            usageOf = { CppUsage.NONE },
-        )
-        // A List or Map value needs only the forward declaration, and its empty default is `xs{}`
-        // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack or
-        // Queue element must be complete on libc++ and MSVC, so Later moves up. (A View is never a
-        // field: views are second-class, decision 4b.)
-        assertContains(
-            h,
-            "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };",
-        )
+        DialectGates.stage4(false) {
+            val h = header(
+                """
+                pub Early: Struct { pub xs: List<Later> = List<Later> {} pub m: Map<Str, Later> = Map<Str, Later> {} pub w: Weak<Node> }
+                pub Queued: Struct { pub d: Deque<Later> = Deque<Later> {} }
+                pub Later: Struct { pub v: Int32 = 0 }
+                pub Node: Any { pub v: Int32 = 0 }
+                """,
+                usageOf = { CppUsage.NONE },
+            )
+            // A List or Map value needs only the forward declaration, and its empty default is `xs{}`
+            // (the prvalue form makes libc++ instantiate the temporary's destructor); a Deque, Stack or
+            // Queue element must be complete on libc++ and MSVC, so Later moves up. (A View is never a
+            // field: views are second-class, decision 4b.)
+            assertContains(
+                h,
+                "  struct Early\n  {\n      kira::List<Later> xs{};\n      kira::Map<kira::Str, Later> m{};\n      kira::Weak<Node> w{};\n  };\n\n  struct Later\n  {\n      std::int32_t v = 0;\n  };\n\n  struct Queued\n  {\n      kira::Deque<Later> d{};\n  };",
+            )
+        }
     }
 
     @Test
     fun structsHoldingEachOtherInListsAreFineAndInDequesAreACycle() {
-        val h = header("pub A: Struct { pub bs: List<B> = List<B> {} }\npub B: Struct { pub items: List<A> = List<A> {} }")
-        assertContains(h, "  struct A\n  {\n      kira::List<B> bs{};\n  };\n\n  struct B\n  {\n      kira::List<A> items{};\n  };")
-        val (emitted, _) = emit("pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
-        val cycle = emitted.diagnostics.filter { it.code == CppPlacement.DECL_CYCLE_CODE }
-        assertEquals(2, cycle.size, emitted.diagnostics.joinToString("\n") { it.render() })
-        assertTrue(cycle.all { it.message.contains("container") && it.message.contains("class") }, cycle.joinToString { it.message })
-        val self = header("pub S: Struct { pub kids: List<S> = List<S> {} pub v: Int32 = 0 }")
-        assertContains(self, "  struct S\n  {\n      kira::List<S> kids{};\n      std::int32_t v = 0;\n  };")
+        DialectGates.stage4(false) {
+            val h = header("pub A: Struct { pub bs: List<B> = List<B> {} }\npub B: Struct { pub items: List<A> = List<A> {} }")
+            assertContains(h, "  struct A\n  {\n      kira::List<B> bs{};\n  };\n\n  struct B\n  {\n      kira::List<A> items{};\n  };")
+            val (emitted, _) = emit("pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
+            val cycle = emitted.diagnostics.filter { it.code == CppPlacement.DECL_CYCLE_CODE }
+            assertEquals(2, cycle.size, emitted.diagnostics.joinToString("\n") { it.render() })
+            assertTrue(cycle.all { it.message.contains("container") && it.message.contains("class") }, cycle.joinToString { it.message })
+            val self = header("pub S: Struct { pub kids: List<S> = List<S> {} pub v: Int32 = 0 }")
+            assertContains(self, "  struct S\n  {\n      kira::List<S> kids{};\n      std::int32_t v = 0;\n  };")
+        }
     }
 
     @Test
@@ -563,24 +574,26 @@ class CppDeclFixesTest {
 
     @Test
     fun aCyclicModuleEmittedAfterAModuleThatNamesItStillReportsItsCycle() {
-        // The backend emits modules in URI order, so app:a comes first and spells ::z::A, which
-        // builds lib:z's placement before lib:z's own emission; the cycle it finds must reach
-        // lib:z's diagnostics all the same, or `kira --target cpp` writes a header C++ rejects
-        // and exits 0.
-        val z = DeclTestSupport.module("lib:z", "pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
-        val a = DeclTestSupport.module("app:a", "lib.z as z\n\npub H: Struct { pub a: A = A {} }")
-        val emitted = DeclTestSupport.emit(a, z, parts = fakeBodies)
-        assertTrue(!emitted.module("app:a").hasErrors, emitted.render(emitted.diagnostics("app:a")))
-        val cycle = emitted.diagnostics("lib:z").filter { it.code == CppPlacement.DECL_CYCLE_CODE }
-        assertEquals(2, cycle.size, emitted.render(emitted.diagnostics("lib:z")))
-        assertTrue(emitted.module("lib:z").hasErrors)
-        // the same for a by-value cycle
-        val zv = DeclTestSupport.module("lib:z", "pub A: Struct { pub b: Maybe<B> = null }\npub B: Struct { pub a: Maybe<A> = null }")
-        val byValue = DeclTestSupport.emit(a, zv, parts = fakeBodies)
-        assertEquals(2, byValue.diagnostics("lib:z").count { it.code == CppPlacement.STRUCT_CYCLE_CODE }, byValue.render(byValue.diagnostics("lib:z")))
-        // and the errors are lib:z's, at lib:z's declarations, reported once
-        assertTrue(byValue.diagnostics("lib:z").all { it.file?.replace('\\', '/')?.endsWith("src/lib/z.kira") == true }, byValue.render(byValue.diagnostics("lib:z")))
-        assertEquals(0, byValue.diagnostics("app:a").count { it.code == CppPlacement.STRUCT_CYCLE_CODE })
+        DialectGates.stage4(false) {
+            // The backend emits modules in URI order, so app:a comes first and spells ::z::A, which
+            // builds lib:z's placement before lib:z's own emission; the cycle it finds must reach
+            // lib:z's diagnostics all the same, or `kira --target cpp` writes a header C++ rejects
+            // and exits 0.
+            val z = DeclTestSupport.module("lib:z", "pub A: Struct { pub bs: Deque<B> = Deque<B> {} }\npub B: Struct { pub items: Deque<A> = Deque<A> {} }")
+            val a = DeclTestSupport.module("app:a", "lib.z as z\n\npub H: Struct { pub a: A = A {} }")
+            val emitted = DeclTestSupport.emit(a, z, parts = fakeBodies)
+            assertTrue(!emitted.module("app:a").hasErrors, emitted.render(emitted.diagnostics("app:a")))
+            val cycle = emitted.diagnostics("lib:z").filter { it.code == CppPlacement.DECL_CYCLE_CODE }
+            assertEquals(2, cycle.size, emitted.render(emitted.diagnostics("lib:z")))
+            assertTrue(emitted.module("lib:z").hasErrors)
+            // the same for a by-value cycle
+            val zv = DeclTestSupport.module("lib:z", "pub A: Struct { pub b: Maybe<B> = null }\npub B: Struct { pub a: Maybe<A> = null }")
+            val byValue = DeclTestSupport.emit(a, zv, parts = fakeBodies)
+            assertEquals(2, byValue.diagnostics("lib:z").count { it.code == CppPlacement.STRUCT_CYCLE_CODE }, byValue.render(byValue.diagnostics("lib:z")))
+            // and the errors are lib:z's, at lib:z's declarations, reported once
+            assertTrue(byValue.diagnostics("lib:z").all { it.file?.replace('\\', '/')?.endsWith("src/lib/z.kira") == true }, byValue.render(byValue.diagnostics("lib:z")))
+            assertEquals(0, byValue.diagnostics("app:a").count { it.code == CppPlacement.STRUCT_CYCLE_CODE })
+        }
     }
 
     @Test

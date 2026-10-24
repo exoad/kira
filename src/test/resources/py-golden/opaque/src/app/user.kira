@@ -3,9 +3,9 @@
 golden.py.opaque.app.conn as conn
 golden.py.opaque.app.opaque as opaque
 
-Pair: Any {
+Pair: Mutable<Any> {
     pub left: Counter
-    pub mut spare: Maybe<Counter> = null
+    pub spare: Mutable<Maybe<Counter>> = null
 }
 
 labelOf: (c: Counter) Str {
@@ -17,14 +17,14 @@ labelOf: (c: Counter) Str {
 }
 
 main: () Void {
-    mut a: Counter = counter("a")
-    mut all: List<Counter> = @listOf(a, counter(""))
+    a: Mutable<Counter> = counter("a")
+    all: Mutable<List<Counter>> = @listOf(a, counter(""))
     trace(a.bump(2))
     trace(all[0].bump(3))
     trace(sameObject(a, all[0]))
     copied: List<Counter> = all
     trace(sameObject(copied[1], all[1]))
-    mut p: Pair = Pair { a }
+    p: Mutable<Pair> = Pair { a }
     p.spare = maybeCounter("")
     trace(p.spare.isNone())
     p.spare = maybeCounter("c")

@@ -13,11 +13,6 @@ KIRA_EXTERN_CHECK((std::declval<ImDrawList&>().AddRectFilled(std::declval<const 
 KIRA_EXTERN_CHECK(std::declval<const ImDrawList&>().VtxCount(), std::int32_t, "DrawList.vertexCount");
 KIRA_EXTERN_CHECK(ImGui::Button(kira::ffi::in(std::declval<const kira::Str&>())), bool, "button");
 KIRA_EXTERN_CHECK(ImGui::Button(kira::ffi::in(std::declval<const kira::Str&>()), std::declval<const ImVec2&>()), bool, "buttonSized");
-KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), kira::ffi::arg<float>(), kira::ffi::arg<float>()), bool, "sliderFloat");
-KIRA_EXTERN_CHECK(ImGui::SliderFloat(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<float&>()), kira::ffi::arg<float>(), kira::ffi::arg<float>(), std::declval<const char*>(), kira::ffi::arg<std::int32_t>()), bool, "sliderFloatFmt");
-KIRA_EXTERN_CHECK(ImGui::Checkbox(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<bool&>())), bool, "checkbox");
-KIRA_EXTERN_CHECK(ImGui::Checkbox(kira::ffi::in(std::declval<const kira::Str&>()), kira::ffi::out(std::declval<std::int32_t&>()), kira::ffi::arg<std::int32_t>()), bool, "checkboxFlags");
-KIRA_EXTERN_CHECK(ImGui::InputText(kira::ffi::in(std::declval<const kira::Str&>()), std::declval<char*>(), kira::ffi::arg<kira::Size>()), bool, "inputText");
 KIRA_EXTERN_CHECK(ImGui::GetWindowDrawList(), ImDrawList*, "getWindowDrawList");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_None, std::int32_t, "WINDOW_FLAGS_NONE");
 KIRA_EXTERN_CHECK(ImGuiWindowFlags_NoTitleBar, std::int32_t, "WINDOW_FLAGS_NO_TITLE_BAR");

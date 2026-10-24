@@ -408,7 +408,7 @@ namespace jsondoc
       const kira::Rc<kira::json::Json> other = shared;
       other->put("x", kira::json::ofInt(1));
       const kira::List<kira::Rc<kira::json::Json>> xs = {shared};
-      kira::List<kira::Rc<kira::json::Json>> ys = xs;
+      kira::List<kira::Rc<kira::json::Json>> ys = kira::list::clone(kira::view(xs));
       ys.push_back(kira::json::null());
       kira::at(ys, 0)->put("y", kira::json::ofInt(2));
       const kira::Rc<Holder> h = std::make_shared<Holder>(shared);

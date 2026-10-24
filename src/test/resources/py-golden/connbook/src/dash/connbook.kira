@@ -10,12 +10,12 @@ LIDAR: Int32 = 255
 VIDEO_IN_FLIGHT: Size = 1
 LIDAR_IN_FLIGHT: Size = 2
 
-pub Out: Any {
+pub Out: Mutable<Any> {
     pub opcode: Int32
     pub payload: List<UInt8>
 }
 
-pub Slot: Any {
+pub Slot: Mutable<Any> {
     pub msg: List<UInt8>
     pub ms: Float64
 }
@@ -25,17 +25,17 @@ pub Sent: Any {
     pub ms: Float64
 }
 
-pub Flight: Any {
-    pub mut items: List<Sent> = List<Sent> { }
+pub Flight: Mutable<Any> {
+    pub items: Mutable<List<Sent>> = List<Sent> { }
 }
 
-pub Frag: Any {
+pub Frag: Mutable<Any> {
     pub msg: List<UInt8>
 }
 
-pub Stream: Any {
-    pub mut q: List<Frag> = List<Frag> { }
-    pub mut key: Bool = true
+pub Stream: Mutable<Any> {
+    pub q: Mutable<List<Frag>> = List<Frag> { }
+    pub key: Mutable<Bool> = true
 }
 
 pub Offer: Any {
@@ -43,30 +43,30 @@ pub Offer: Any {
     pub dropped: Int32
 }
 
-pub Conn: Any {
-    pub mut text: Map<Str, Str> = Map<Str, Str> { }
-    pub mut latest: Map<Int32, Slot> = Map<Int32, Slot> { }
-    pub mut unacked: Map<Int32, Flight> = Map<Int32, Flight> { }
-    pub mut h264: Map<Int32, Stream> = Map<Int32, Stream> { }
-    pub mut pong: Bool = false
+pub Conn: Mutable<Any> {
+    pub text: Mutable<Map<Str, Str>> = Map<Str, Str> { }
+    pub latest: Mutable<Map<Int32, Slot>> = Map<Int32, Slot> { }
+    pub unacked: Mutable<Map<Int32, Flight>> = Map<Int32, Flight> { }
+    pub h264: Mutable<Map<Int32, Stream>> = Map<Int32, Stream> { }
+    pub pong: Mutable<Bool> = false
 
-    pub mut putText: (key: Str, t: Str) Void {
+    pub putText: (key: Str, t: Str) Void {
         text[key] = t
     }
 
-    pub mut putPong: () Void {
+    pub putPong: () Void {
         pong = true
     }
 
     // True when it replaced a frame that never went out: a drop.
-    pub mut putFrame: (feed: Int32, msg: List<UInt8>, ms: Float64) Bool {
+    pub putFrame: (feed: Int32, msg: List<UInt8>, ms: Float64) Bool {
         dropped: Bool = latest.containsKey(feed)
         latest[feed] = Slot { msg, ms }
         dropped
     }
 
     pub room: (feed: Int32) Bool {
-        mut cap: Size = VIDEO_IN_FLIGHT
+        cap: Mutable<Size> = VIDEO_IN_FLIGHT
         if feed >= H264_BASE && feed != LIDAR {
             cap = H264_IN_FLIGHT
         } else if feed == LIDAR {
@@ -81,9 +81,9 @@ pub Conn: Any {
             true
         } else {
             fs: Arr<Int32> = latest.keys()
-            mut i: Size = 0
-            mut result: Bool = false
-            mut found: Bool = false
+            i: Mutable<Size> = 0
+            result: Mutable<Bool> = false
+            found: Mutable<Bool> = false
             while i < fs.size() {
                 if room(fs[i]) {
                     result = true
@@ -97,7 +97,7 @@ pub Conn: Any {
             } else {
                 hs: Arr<Int32> = h264.keys()
                 i = 0
-                mut result2: Bool = false
+                result2: Mutable<Bool> = false
                 while i < hs.size() {
                     if !h264.get(hs[i]).unwrap().q.isEmpty() && room(hs[i]) {
                         result2 = true
@@ -110,31 +110,31 @@ pub Conn: Any {
         }
     }
 
-    mut flight: (feed: Int32) Flight {
+    flight: (feed: Int32) Flight {
         if !unacked.containsKey(feed) {
             unacked[feed] = Flight { }
         }
         unacked.get(feed).unwrap()
     }
 
-    mut takeText: (mut out: List<Out>, key: Str) Void {
+    takeText: (out: List<Out>, key: Str) Void {
         t: Maybe<Str> = text.remove(key)
         if t.isSome() {
             out.add(Out { 1, t.value.bytes() })
         }
     }
 
-    pub mut take: () List<Out> {
-        mut out: List<Out> = List<Out> { }
+    pub take: () List<Out> {
+        out: Mutable<List<Out>> = List<Out> { }
         if pong {
             out.add(Out { 10, List<UInt8> { } })
             pong = false
         }
-        takeText(mut out, "P")
-        takeText(mut out, "h")
-        takeText(mut out, "status")
+        takeText(out, "P")
+        takeText(out, "h")
+        takeText(out, "status")
         fs: Arr<Int32> = latest.keys()
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < fs.size() {
             feed: Int32 = fs[i]
             if room(feed) {
@@ -159,17 +159,17 @@ pub Conn: Any {
         out
     }
 
-    pub mut ack: (feed: Int32) Maybe<Sent> {
+    pub ack: (feed: Int32) Maybe<Sent> {
         f: Maybe<Flight> = unacked.get(feed)
         f.isNone() || f.unwrap().items.isEmpty() ? null
             : f.unwrap().items.removeAt(0)
     }
 
     pub oldestUnackedMs: () Maybe<Float64> {
-        mut best: Float64 = 0.0
-        mut found: Bool = false
+        best: Mutable<Float64> = 0.0
+        found: Mutable<Bool> = false
         fs: Arr<Int32> = unacked.keys()
-        mut i: Size = 0
+        i: Mutable<Size> = 0
         while i < fs.size() {
             q: Flight = unacked.get(fs[i]).unwrap()
             if !q.items.isEmpty() && fs[i] != LIDAR && q.items[0].ms != 0.0 {
@@ -185,7 +185,7 @@ pub Conn: Any {
     }
 
     // A feed switched off and on again: frames in flight then are never drawn.
-    pub mut reset: (feed: Int32) Void {
+    pub reset: (feed: Int32) Void {
         unacked.remove(feed)
         latest.remove(feed)
     }
@@ -195,10 +195,10 @@ pub Conn: Any {
     }
 
     // An empty initMsg is init_msg None.
-    pub mut wantH264: (f: Int32, wanted: Bool, initMsg: List<UInt8>) Void {
+    pub wantH264: (f: Int32, wanted: Bool, initMsg: List<UInt8>) Void {
         unacked.remove(f)
         if wanted {
-            mut st: Stream = Stream { }
+            st: Mutable<Stream> = Stream { }
             if !initMsg.isEmpty() {
                 st.q.add(Frag { initMsg })
             }
@@ -209,15 +209,15 @@ pub Conn: Any {
     }
 
     // kind 0 is an init segment (a new encoder: the page starts over), 1 a keyframe, 2 not.
-    pub mut offerH264: (f: Int32, kind: Int32, msg: List<UInt8>) Offer {
+    pub offerH264: (f: Int32, kind: Int32, msg: List<UInt8>) Offer {
         found: Maybe<Stream> = h264.get(f)
         if found.isNone() {
             Offer { false, 0 }
         } else {
             st: Stream = found.unwrap()
-            mut dropped: Int32 = 0
-            mut result: Maybe<Offer> = null
-            mut found2: Bool = false
+            dropped: Mutable<Int32> = 0
+            result: Mutable<Maybe<Offer>> = null
+            found2: Mutable<Bool> = false
             if kind == 0 {
                 st.q.clear()
                 st.q.add(Frag { msg })
@@ -232,8 +232,8 @@ pub Conn: Any {
                     st.q.add(Frag { msg })
                     if st.q.size() > H264_BACKLOG {
                         n: Size = st.q.size()
-                        mut kept: List<Frag> = List<Frag> { }
-                        mut i: Size = 0
+                        kept: Mutable<List<Frag>> = List<Frag> { }
+                        i: Mutable<Size> = 0
                         while i < n {
                             if st.q[i].msg[1] == 0 {
                                 kept.add(st.q[i])
@@ -252,8 +252,8 @@ pub Conn: Any {
 }
 
 frame: (n: Size, first: UInt8) List<UInt8> {
-    mut b: List<UInt8> = List<UInt8> { }
-    mut i: Size = 0
+    b: Mutable<List<UInt8>> = List<UInt8> { }
+    i: Mutable<Size> = 0
     while i < n {
         b.add(first + (i as UInt8))
         i += 1
@@ -263,15 +263,15 @@ frame: (n: Size, first: UInt8) List<UInt8> {
 
 // feed, kind, capture ms as a little-endian double, a tail.
 fragment: (kind: UInt8, ms: Float64) List<UInt8> {
-    mut b: List<UInt8> = frame(12, 0)
+    b: Mutable<List<UInt8>> = frame(12, 0)
     b.set(1, kind)
     writeF64Le(b.slice(2, 8), 0, ms)
     b
 }
 
 outs: (xs: List<Out>) Str {
-    mut s: Str = ""
-    mut i: Size = 0
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
     while i < xs.size() {
         s = s + " ${xs[i].opcode}:${xs[i].payload.size()}"
         i += 1
@@ -283,8 +283,8 @@ feeds: (c: Conn) Str {
     lk: Arr<Int32> = c.latest.keys()
     uk: Arr<Int32> = c.unacked.keys()
     hk: Arr<Int32> = c.h264.keys()
-    mut s: Str = "latest"
-    mut i: Size = 0
+    s: Mutable<Str> = "latest"
+    i: Mutable<Size> = 0
     while i < lk.size() {
         s = s + " ${lk[i]}"
         i += 1
@@ -305,7 +305,7 @@ feeds: (c: Conn) Str {
 }
 
 main: () Void {
-    mut c: Conn = Conn { }
+    c: Mutable<Conn> = Conn { }
     trace(c.hasWork())
     c.putText("status", "ok")
     c.putText("P", "p 1")
@@ -347,8 +347,8 @@ main: () Void {
     trace(outs(c.take()))
     trace(feeds(c))
     trace(c.oldestUnackedMs().unwrapOr(-1.0))
-    mut k: Int32 = 0
-    mut last: Offer = Offer { false, 0 }
+    k: Mutable<Int32> = 0
+    last: Mutable<Offer> = Offer { false, 0 }
     while k < 40 {
         last = c.offerH264(129, 2, fragment(2, 30.0 + (k as Float64)))
         if last.dropped > 1 {

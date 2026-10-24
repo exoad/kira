@@ -10,6 +10,8 @@ import org.junit.jupiter.api.TestFactory
 import java.nio.file.Files
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import net.exoad.kira.StageThreeText
+import org.junit.jupiter.api.extension.ExtendWith
 
 /**
  * Copy by default at the FFI boundary (50-round4 1.2, 6.5). Every row is a Kira function that
@@ -28,6 +30,8 @@ import kotlin.test.assertTrue
  * w2-4 #1 (a prototype's call in a module no `@_extern` brings `kira/ffi.hxx` to, t13 and t13b:
  * no compiler built it).
  */
+// What this class tests (D4's `mut` arguments and parameters, D44's copies) only stage 3's text spells.
+@ExtendWith(StageThreeText::class)
 class ExternCallRunTest {
     private val calls = Module(
         "app:w",

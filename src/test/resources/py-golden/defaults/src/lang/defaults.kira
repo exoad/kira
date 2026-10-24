@@ -2,7 +2,7 @@ pub STEP: Int32 = 7
 pub LABEL: Str = "dflt"
 pub ROW: List<Int32> = @listOf(1, 2, 3)
 
-mut made: Int32 = 0
+made: Mutable<Int32> = 0
 
 tick: (v: Int32) Int32 {
     made += 1
@@ -19,7 +19,7 @@ mid: (a: Int32, b: Int32 = STEP, c: Int32 = 1) Int32 {
 }
 
 words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, m: Maybe<Int32> = null) Str {
-    mut out: Str = s
+    out: Mutable<Str> = s
     if loud {
         out = out.toUpper()
     }
@@ -27,20 +27,20 @@ words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, 
 }
 
 total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
-    mut t: Int32 = extra
+    t: Mutable<Int32> = extra
     for x: Int32 in xs {
         t += x
     }
     t
 }
 
-Knob: Any {
+Knob: Mutable<Any> {
     pub name: Str
-    pub mut level: Int32 = tick(1)
-    pub mut tags: List<Int32> = List<Int32> { }
-    pub mut limit: Maybe<Int32> = null
-    pub mut zero: Int32 = 0
-    mut hidden: Int32 = tick(9)
+    pub level: Mutable<Int32> = tick(1)
+    pub tags: Mutable<List<Int32>> = List<Int32> { }
+    pub limit: Mutable<Maybe<Int32>> = null
+    pub zero: Mutable<Int32> = 0
+    hidden: Mutable<Int32> = tick(9)
 
     pub shift: (by: Int32 = 1, twice: Bool = false) Int32 {
         twice ? level + by * 2 : level + by
@@ -52,7 +52,7 @@ Knob: Any {
 }
 
 show: (xs: List<Int32>) Str {
-    mut s: Str = "["
+    s: Mutable<Str> = "["
     for i: Size in 0..xs.size() {
         if i > 0 {
             s = s + " "
@@ -81,8 +81,8 @@ main: () Void {
     a: Knob = Knob { "a" }
     trace(a.level)
     trace(made)
-    mut src: List<Int32> = @listOf(4, 5)
-    b: Knob = Knob { "b", tick(3), src }
+    src: Mutable<List<Int32>> = @listOf(4, 5)
+    b: Knob = Knob { "b", tick(3), List<Int32> { values = src.toArr() } }
     src.add(6)
     trace(b.level)
     trace(show(b.tags))

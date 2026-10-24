@@ -19,13 +19,13 @@ class NamingPassTest {
             snippet(
                 """
                 pub MAX_SIZE: Int32 = 3
-                pub mut counter: Int32 = 0
-                pub mut BUF: Arr<UInt8, 2> = @arrOf(0, 0)
+                pub counter: Mutable<Int32> = 0
+                pub BUF: Mutable<Arr<UInt8, 2>> = @arrOf(0, 0)
                 pub Comparable<T>: Any {
                     pub compareTo: (other: T) Int32;
                 }
-                pub HttpClient: Any {
-                    pub mut retryCount: Int32 = 0
+                pub HttpClient: Mutable<Any> {
+                    pub retryCount: Mutable<Int32> = 0
                     pub fetchAll: (maxItems: Int32) Int32 {
                         totalCount: Int32 = maxItems
                         for i: Int32 in 0..totalCount {

@@ -1,18 +1,18 @@
-Pt: Struct {
-    pub x: Int32 = 0
+Pt: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
     pub tags: List<Int32> = List<Int32> { }
 }
 
-Holder: Any {
-    pub mut at: Pt = Pt { }
+Holder: Mutable<Any> {
+    pub at: Mutable<Pt> = Pt { }
 }
 
-World: Any {
-    pub mut pts: List<Pt> = List<Pt> { }
+World: Mutable<Any> {
+    pub pts: Mutable<List<Pt>> = List<Pt> { }
 
     pub above: (n: Int32) Pt {
-        mut result: Maybe<Pt> = null
-        mut found: Bool = false
+        result: Mutable<Maybe<Pt>> = null
+        found: Mutable<Bool> = false
         for p: Pt in pts {
             if p.x > n {
                 result = p
@@ -24,7 +24,7 @@ World: Any {
     }
 
     pub sum: () Int32 {
-        mut t: Int32 = 0
+        t: Mutable<Int32> = 0
         for p: Pt in pts {
             t += p.x
         }
@@ -35,8 +35,8 @@ World: Any {
 GRID: List<List<Int32>> = @listOf(@listOf(1, 2), @listOf(3))
 
 first: (xs: List<Pt>) Pt {
-    mut result: Maybe<Pt> = null
-    mut found: Bool = false
+    result: Mutable<Maybe<Pt>> = null
+    found: Mutable<Bool> = false
     for p: Pt in xs {
         result = p
         found = true
@@ -46,8 +46,8 @@ first: (xs: List<Pt>) Pt {
 }
 
 firstOf: (v: View<Pt>) Pt {
-    mut result: Maybe<Pt> = null
-    mut found: Bool = false
+    result: Mutable<Maybe<Pt>> = null
+    found: Mutable<Bool> = false
     for p: Pt in v {
         result = p
         found = true
@@ -57,8 +57,8 @@ firstOf: (v: View<Pt>) Pt {
 }
 
 pick: (xs: List<Pt>, want: Int32) Pt {
-    mut result: Maybe<Pt> = null
-    mut found: Bool = false
+    result: Mutable<Maybe<Pt>> = null
+    found: Mutable<Bool> = false
     for p: Pt in xs {
         if p.x == want {
             result = want > 0 ? p : Pt { }
@@ -70,8 +70,8 @@ pick: (xs: List<Pt>, want: Int32) Pt {
 }
 
 firstRow: (g: List<List<Int32>>) List<Int32> {
-    mut result: List<Int32> = List<Int32> { }
-    mut found: Bool = false
+    result: Mutable<List<Int32>> = List<Int32> { }
+    found: Mutable<Bool> = false
     for r: List<Int32> in g {
         result = r
         found = true
@@ -81,8 +81,8 @@ firstRow: (g: List<List<Int32>>) List<Int32> {
 }
 
 gridRow: () List<Int32> {
-    mut result: List<Int32> = List<Int32> { }
-    mut found: Bool = false
+    result: Mutable<List<Int32>> = List<Int32> { }
+    found: Mutable<Bool> = false
     for r: List<Int32> in GRID {
         result = r
         found = true
@@ -92,34 +92,34 @@ gridRow: () List<Int32> {
 }
 
 main: () Void {
-    mut pts: List<Pt> = List<Pt> { }
+    pts: Mutable<List<Pt>> = List<Pt> { }
     pts.add(Pt { 1 })
     pts.add(Pt { 2 })
-    mut q: Pt = first(pts)
+    q: Mutable<Pt> = first(pts)
     q.x = 99
-    mut v: Pt = firstOf(pts)
+    v: Mutable<Pt> = firstOf(pts)
     v.x = 98
-    mut s: Pt = pick(pts, 2)
+    s: Mutable<Pt> = pick(pts, 2)
     s.x = 50
     trace("${pts[0].x} ${pts[1].x}")
 
-    mut g: List<List<Int32>> = List<List<Int32>> { }
+    g: Mutable<List<List<Int32>>> = List<List<Int32>> { }
     g.add(@listOf(1, 2))
-    mut r: List<Int32> = firstRow(g)
+    r: Mutable<List<Int32>> = firstRow(g)
     r.add(3)
-    mut c: List<Int32> = gridRow()
+    c: Mutable<List<Int32>> = gridRow()
     c.add(9)
     trace("${g[0].size()} ${GRID[0].size()} ${gridRow().size()}")
 
-    mut h: Holder = Holder { }
+    h: Mutable<Holder> = Holder { }
     h.at = first(pts)
     h.at.tags.add(5)
     h.at.x = 7
     trace("${pts[0].x} ${pts[0].tags.size()} ${h.at.x} ${h.at.tags.size()}")
 
-    mut w: World = World { }
+    w: Mutable<World> = World { }
     w.pts = pts
-    mut a: Pt = w.above(1)
+    a: Mutable<Pt> = w.above(1)
     a.x = 40
     a.tags.add(6)
     trace("${w.pts[1].x} ${w.pts[1].tags.size()} ${a.x} ${w.sum()}")
