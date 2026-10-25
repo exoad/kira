@@ -62,7 +62,7 @@ object KiraTyper {
      * and whatever the failing step was resolving stays [KType.Error].
      */
     fun run(unit: CompilationUnit, mode: TyperMode, options: TyperOptions = TyperOptions()): TypedProgram {
-        net.exoad.kira.compiler.DialectLink.link(unit)
+        net.exoad.kira.compiler.UnitLink.link(unit)
         val modules = mutableListOf<ModuleSymbol>()
         val program = TypedProgram(unit, modules, TypedModel(), mode)
         program.options = options
@@ -81,13 +81,11 @@ object KiraTyper {
         guard(program, "body typing") {
             bodyTyper.type(program)
         }
-        if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) {
-            guard(program, "changing functions") {
-                ChangingFunctions(program).run()
-            }
-            guard(program, "written parameters") {
-                WrittenParams(program).run()
-            }
+        guard(program, "changing functions") {
+            ChangingFunctions(program).run()
+        }
+        guard(program, "written parameters") {
+            WrittenParams(program).run()
         }
         guard(program, "key check") {
             KeyCheck(program).run()

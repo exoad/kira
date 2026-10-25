@@ -880,20 +880,19 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val iterExpr = forIterationStatement.forIterationExpr
         if (iterExpr.target is RangeExpr) {
             val name = iterExpr.initializer.value
-            // Legacy `for mut i: a..b` is inclusive (design 2.2); the spec
-            // form `for i: T in a..b` is exclusive (D37).
+            // `for i: T in a..b` is exclusive (D37).
             appendIndented("for (let ")
             buffer.append(name)
             buffer.append(" = ")
             iterExpr.target.begin.accept(this)
             buffer.append("; ")
             buffer.append(name)
-            buffer.append(if (iterExpr.isLegacy) " <= " else " < ")
+            buffer.append(" < ")
             iterExpr.target.end.accept(this)
             buffer.append("; ++")
             buffer.append(name)
             buffer.appendLine(") {")
-            iterExpr.declaredType?.takeIf { !iterExpr.isLegacy }?.let { knownValueTypes[name] = typeNameOf(it) }
+            iterExpr.declaredType?.let { knownValueTypes[name] = typeNameOf(it) }
             indentLevel++
             forIterationStatement.body.forEach { it.accept(this) }
             indentLevel--

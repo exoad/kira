@@ -3,16 +3,15 @@ package net.exoad.kira.compiler.frontend.parser.ast.expressions
 import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 
-/** What a [BuilderExpr] builds; [INFER] is stage 1's `[...]` literal, which only kira-dialect reads. */
+/** What a [BuilderExpr] builds. */
 enum class Builder(val intrinsic: String) {
     LIST("listOf"),
     ARR("arrOf"),
     SET("setOf"),
-    MAP("mapOf"),
-    INFER("[...]");
+    MAP("mapOf");
 
     companion object {
-        fun byIntrinsic(name: String): Builder? = entries.firstOrNull { it != INFER && it.intrinsic == name }
+        fun byIntrinsic(name: String): Builder? = entries.firstOrNull { it.intrinsic == name }
     }
 }
 

@@ -1299,7 +1299,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
-    /** A List or Arr builder (stage 1's `[...]` too), whose elements are a braced list. */
+    /** A List or Arr builder, whose elements are a braced list. */
     fun isSequence(e: BuilderExpr): Boolean = e.kind != Builder.SET && e.kind != Builder.MAP
 
     /** A sequence builder's elements as a braced list (a local's copy-list-initializer). */

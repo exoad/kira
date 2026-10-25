@@ -71,20 +71,9 @@ tasks.register<CreateStartScripts>("startLspScripts") {
     outputDir = layout.buildDirectory.dir("scripts-lsp").get().asFile
 }
 
-// Third: the converter from the old dialect to the clean one (kira-dialect convert|kt [--check] PATH...).
-tasks.register<CreateStartScripts>("startDialectScripts") {
-    applicationName = "kira-dialect"
-    mainClass.set("net.exoad.kira.dialect.DialectMain")
-    classpath = tasks.jar.get().outputs.files + configurations.runtimeClasspath.get()
-    outputDir = layout.buildDirectory.dir("scripts-dialect").get().asFile
-}
-
 tasks.named<Sync>("installDist") {
-    dependsOn("startLspScripts", "startDialectScripts")
+    dependsOn("startLspScripts")
     from(tasks.named("startLspScripts")) {
-        into("bin")
-    }
-    from(tasks.named("startDialectScripts")) {
         into("bin")
     }
 }

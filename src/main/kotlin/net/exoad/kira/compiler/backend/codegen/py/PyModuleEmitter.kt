@@ -401,14 +401,10 @@ class PyModuleEmitter(
             body += indent(init)
         }
         if (c.kind == ClassKind.STRUCT) {
-            // A struct is a value (D1): until stage 4 the emitter copies it where a second name could see a write;
-            // from stage 4 a `with`, a lambda's `this` and a sidecar (D68) copy one, sharing all but an Arr ([cloneField]).
+            // A struct is a value (D1): a `with`, a lambda's `this` and a sidecar (D68) copy one, sharing all but an
+            // Arr ([cloneField]).
             val copied = c.fields.map { cloneField(it) }
             body += listOf("", "def _k_clone(self):") + indent(listOf("c = object.__new__(self.__class__)") + copied + "return c")
-            if (!shares) {
-                val set = c.fields.map { "self.${pyName(it)} = o.${pyName(it)}" }.ifEmpty { listOf("pass") }
-                body += listOf("", "def _k_set(self, o):") + indent(set)
-            }
             if (usage.needsEquality(c)) {
                 val same = c.fields.joinToString(" and ") { "self.${pyName(it)} == o.${pyName(it)}" }.ifEmpty { "True" }
                 body += listOf("", "def __eq__(self, o):") + indent(listOf("return $same"))
@@ -429,10 +425,10 @@ class PyModuleEmitter(
         return out + indent(body)
     }
 
-    /** A `_k_clone`'s copy of the field [f]: a copy, or from stage 4 the value itself, but for an Arr (`set` changes one in place) or what holds one. */
+    /** A `_k_clone`'s copy of the field [f]: the value itself, but for an Arr (`set` changes one in place) or what holds one. */
     private fun cloneField(f: FieldSymbol): String {
         val self = Py("self.${pyName(f)}", PyPrec.POSTFIX)
-        return "c.${pyName(f)} = ${if (shares && !holdsValue(f.type)) self.text else copyOf(self, f.type).text}"
+        return "c.${pyName(f)} = ${if (!holdsValue(f.type)) self.text else copyOf(self, f.type).text}"
     }
 
     /** The def's own default when it and every later one fold to a literal; a call names any other. */
@@ -771,10 +767,6 @@ class PyModuleEmitter(
         val fe = s.forIterationExpr
         val plan = model.loop(s) ?: return refuse(fe, "a for loop the typer did not resolve").let { emptyList() }
         val v = plan.variable as? LocalSymbol ?: return refuse(fe, "a for loop without its variable").let { emptyList() }
-        if (plan.isLegacy) {
-            refuse(fe, "the legacy `for mut ${v.name}: ...` loop (D17: write `for ${v.name}: T in ...`)")
-            return emptyList()
-        }
         checkLocal(v.name, fe)
         checkType(v.type, fe, "the loop variable '${v.name}'")
         if (f.scopes.any { v.name in it }) {
@@ -914,18 +906,7 @@ class PyModuleEmitter(
         val spill = op != null || model.effect(value) != Effect.PURE
         val lhs = placeText(target, f, spill, pre) ?: return emptyList()
         if (op == null) {
-            val tt = model.typeOrNull(target)
             // Stage 4 binds the name to the value: a shared value is never written over in place.
-            if (!shares && tt != null && (isValue(tt) || isStruct(tt)) && target !is ArrayIndexExpr && !(target is Identifier && model.symbolOf(target) is LocalSymbol)) {
-                // A field, global or mut parameter keeps its object: a mut parameter may be bound to it (C++'s T&).
-                val v = if (isStruct(tt) || holdsValue(elementOf(tt))) asValue(value, f, Use.STORE) else expr(value, f)
-                return pre + when {
-                    isStruct(tt) -> "$lhs._k_set(${v.text})"
-                    isMap(tt) || isSet(tt) -> call("_k_mapset", lhs, v.text).text
-                    isQueue(tt) -> call("_k_dqset", lhs, v.text).text
-                    else -> "$lhs[:] = ${v.text}"
-                }
-            }
             return pre + "$lhs = ${asValue(value, f, Use.STORE).text}"
         }
         val t = typeOf(target) ?: return emptyList()
@@ -2339,12 +2320,12 @@ class PyModuleEmitter(
     } == true
 
     /**
-     * Whether a value of [t] is copied where a second name could see a write: a container, a struct, a Maybe of one
-     * (D44). Stage 4 shares every Mutable value; of the rest, an Arr changes in place, and a stdlib struct holding a
-     * container (a user's is Mutable once it holds one) holds it by value on C++, so those two are still copied.
+     * Whether a value of [t] is copied where a second name could see a write, or a Maybe of one. Stage 4 shares
+     * every Mutable value; of the rest, an Arr changes in place, and a stdlib struct holding a container (a user's
+     * is Mutable once it holds one) holds it by value on C++, so those two are still copied.
      */
     private fun holdsValue(t: KType?): Boolean =
-        t != null && (if (shares) magicName(t) == "Arr" || holdsContainer(t, HashSet()) else isValue(t) || isStruct(t)) ||
+        t != null && (magicName(t) == "Arr" || holdsContainer(t, HashSet())) ||
             t != null && isMaybe(t) && holdsValue((t as KType.Nominal).typeArgs().firstOrNull())
 
     /** A struct with a container among its fields, at any depth of structs and Maybes. */
@@ -2356,9 +2337,6 @@ class PyModuleEmitter(
             isValue(ft) || holdsContainer(ft, seen) || (isMaybe(ft) && (ft as KType.Nominal).typeArgs().firstOrNull()?.let { isValue(it) || holdsContainer(it, seen) } == true)
         }
     }
-
-    /** Stage 4's rule (its gate on): a List, a Map, a Set and a Mutable type are shared, never copied. */
-    private val shares: Boolean = net.exoad.kira.compiler.frontend.parser.DialectGates.mutability
 
     private fun elementOf(t: KType): KType? = (t as? KType.Nominal)?.typeArgs()?.let { if (isMap(t)) it.getOrNull(1) else it.firstOrNull() }
 

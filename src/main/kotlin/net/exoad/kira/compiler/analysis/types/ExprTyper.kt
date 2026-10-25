@@ -326,15 +326,6 @@ internal class ExprTyper(private val c: PhaseC) {
         return when (val found = c.program.graph.lookup(ctx.module, name) { it is GlobalSymbol || it is FnSymbol }) {
             is ModuleGraph.Lookup.Found -> moduleValue(id, found.symbol)
             is ModuleGraph.Lookup.NotVisible -> moduleValue(id, found.symbol)
-            is ModuleGraph.Lookup.Ambiguous -> {
-                c.report(
-                    "types.name.ambiguous",
-                    "'$name' is exported by more than one used module: " +
-                        (listOf(found.first) + found.others).joinToString(", ") { it.from.uri } + ".",
-                    id,
-                )
-                moduleValue(id, found.first.symbol)
-            }
             ModuleGraph.Lookup.Missing -> {
                 val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol || it is AliasSymbol }
                 val bare = c.program.graph.outOfScope(ctx.module, name)

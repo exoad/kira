@@ -2317,17 +2317,15 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val iterExpr = forIterationStatement.forIterationExpr
         if (iterExpr.target is RangeExpr) {
             val name = cName(iterExpr.initializer.value)
-            // Legacy `for mut i: a..b` is an inclusive Int32 loop (design 2.2);
-            // the spec form `for i: T in a..b` is exclusive with a typed
-            // variable (D37).
-            val declared = iterExpr.declaredType?.takeIf { !iterExpr.isLegacy }?.let { typeNameOf(it) }
+            // `for i: T in a..b` is exclusive with a typed variable (D37).
+            val declared = iterExpr.declaredType?.let { typeNameOf(it) }
             appendIndented("for(${declared?.let { mapTypeName(it) } ?: "Int32"} ")
             buffer.append(name)
             buffer.append(" = ")
             iterExpr.target.begin.accept(this)
             buffer.append("; ")
             buffer.append(name)
-            buffer.append(if (iterExpr.isLegacy) " <= " else " < ")
+            buffer.append(" < ")
             iterExpr.target.end.accept(this)
             buffer.append("; ++")
             buffer.append(name)

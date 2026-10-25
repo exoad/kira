@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.analysis.types.AstTree
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
@@ -32,7 +31,7 @@ import java.util.IdentityHashMap
  * once a unit is parsed, before anything reads it; again only when the unit has changed, from
  * the trees as parsed.
  */
-object DialectLink {
+object UnitLink {
     private val linked = java.util.WeakHashMap<CompilationUnit, Int>()
 
     /** Each source's tree as linked, and as parsed: a later link starts from the parsed one. */
@@ -82,14 +81,13 @@ object DialectLink {
     /**
      * What a type name means from inside each module, as the typer's scope reads it: the
      * module's own types, a name imported alone, then the stdlib's; `alias.Name` through an
-     * import (old text also sees its imports' pub types bare, as ModuleGraph has it).
+     * import.
      */
     private class Scopes(sources: List<SourceContext>) {
         class Module(val uri: String) {
             val types = LinkedHashMap<String, Decl>()
             val aliases = HashMap<String, String>()
             val named = HashMap<String, Pair<String, String>>()
-            val imports = mutableListOf<String>()
         }
 
         val modules = LinkedHashMap<String, Module>()
@@ -112,7 +110,6 @@ object DialectLink {
                             m.named.putIfAbsent(alias, target to member)
                         } else {
                             m.aliases.putIfAbsent(alias, target)
-                            if (target !in m.imports) m.imports += target
                         }
                         continue
                     }
@@ -141,13 +138,6 @@ object DialectLink {
                 val owner = modules[uri] ?: return null
                 return owner.types[member]?.takeIf(::isPub)?.let { follow(owner, it, depth) }
             }
-            // Old text (`use`) also sees its imports' pub types bare, a project's first.
-            if (!DialectGates.aliasOnlyImports) {
-                val found = m.imports.mapNotNull { modules[it] }.mapNotNull { u -> u.types[id.value]?.takeIf(::isPub)?.let { u to it } }
-                (found.firstOrNull { !it.first.uri.startsWith("${ModuleNames.STDLIB}:") } ?: found.firstOrNull())?.let { (u, d) ->
-                    return follow(u, d, depth)
-                }
-            }
             for (std in stdlib) {
                 if (std === m) continue
                 std.types[id.value]?.takeIf(::isPub)?.let { return follow(std, it, depth) }
@@ -161,13 +151,10 @@ object DialectLink {
             return null
         }
 
-        /** The module whose type [name] names from inside [m]: its own, a member alias's, an import's (old text), the stdlib's. */
+        /** The module whose type [name] names from inside [m]: its own, a member alias's, the stdlib's. */
         private fun homeOf(m: Module, name: String): Module? {
             if (name in m.types) return m
             m.named[name]?.let { (uri, member) -> return modules[uri]?.takeIf { member in it.types } }
-            if (!DialectGates.aliasOnlyImports) {
-                m.imports.mapNotNull { modules[it] }.firstOrNull { name in it.types }?.let { return it }
-            }
             return stdlib.firstOrNull { it !== m && name in it.types }
         }
 

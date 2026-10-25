@@ -119,12 +119,8 @@ internal class WithTyper(private val c: PhaseC) {
             }
         }
         val chain = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.take(64).toList()
-        // Stage 4: a Mutable value is edited in place, any other value copied.
-        val copy = if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) {
-            !cls.isMutableType
-        } else {
-            cls.kind == ClassKind.STRUCT || chain.none { k -> k.fields.any { it.isMut } }
-        }
+        // A Mutable value is edited in place, any other value copied.
+        val copy = !cls.isMutableType
         val temp = LocalSymbol("_k_w${temps++}", ctx.module, e, t, isMut = copy, fn = ctx.fn, builds = copy)
         ctx.lambda?.let { c.declaredIn[temp] = it }
         val self = Identifier(temp.name)

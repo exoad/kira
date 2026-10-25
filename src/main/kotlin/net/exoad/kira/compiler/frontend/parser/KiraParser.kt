@@ -26,18 +26,9 @@ import kotlin.properties.Delegates
  *
  * It will then pass this AST onto the [net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
- *
- * [literals]: kira-dialect reads stage 1's text, whose old `[...]` literals it parses as
- * [Builder.INFER] builders, and stage 2's `x is T`; the clean dialect refuses both.
- * [returns]: kira-dialect reads stage 2's text, its `return`s and its if values of one
- * expression an arm, which the clean dialect refuses.
- * [muts]: kira-dialect reads stage 3's text, its `mut`s, which stage 4 refuses ([DialectGates.noMut]).
  */
 class KiraParser(
     private val context: SourceContext,
-    private val literals: Boolean = false,
-    private val returns: Boolean = literals,
-    private val muts: Boolean = returns,
 ) {
     /** Every name a nested type is known by here (`Outer_Inner`): its `Outer.Inner` collapsed, or its bare name renamed. */
     private val nestedTypeNames = HashSet<String>()
@@ -597,9 +588,8 @@ class KiraParser(
     private fun hasFinalElse(s: IfSelectionStatement): Boolean =
         s.elseBranches.lastOrNull() is ElseBranchStatement && s.elseBranches.dropLast(1).all { it is ElseIfBranchStatement }
 
-    /** The refusal of an `if` value that is a ternary's shape, once [DialectGates.ternaryOnly] is on. */
-    private fun refuseTernaryShapedIf(at: ASTNode) {
-        if (!DialectGates.ternaryOnly || returns) return
+    /** The refusal of an `if` value that is a ternary's shape. */
+    private fun refuseTernaryShapedIf(at: ASTNode): Nothing {
         Diagnostics.panic(
             "parse.if.ternary",
             "An `if` whose value is one expression per arm is written `c ? a : b`; `if` as a value is for arms that need statements.",
@@ -617,16 +607,6 @@ class KiraParser(
         val last = block.lastOrNull() ?: return block
         val tail = resultOf(last)
         if (tail === last) return block
-        // `return a` then `b`: b would never be the value, so the pair is refused rather than read one way.
-        if (block.dropLast(1).any { it is ReturnStatement }) {
-            Diagnostics.panic(
-                "parse.return.tail",
-                "This block's last expression comes after a `return` that always leaves first, so it is never the value: keep one of the two.",
-                location = originOf(last),
-                selectorLength = 1,
-                context = context
-            )
-        }
         return block.dropLast(1) + tail
     }
 
@@ -776,13 +756,14 @@ class KiraParser(
 
     // ---- stage 4: Mutable<> -------------------------------------------------------------------
 
-    /** Whether `mut` is refused: stage 4 spells it `Mutable<>`; kira-dialect's reading of old text keeps it. */
-    private fun mutRefused(): Boolean = !muts && DialectGates.noMut
-
-    /** `mut` at [at] refused, with what replaces it there ([help]), once stage 4's gate is on. */
-    private fun refuseMut(at: SourcePosition?, help: String) {
-        if (at == null || !mutRefused()) return
+    /** `mut` at [at] refused, with what replaces it there ([help]). */
+    private fun refuseMut(at: SourcePosition, help: String): Nothing {
         Diagnostics.panic("parse.removed", "'mut' is not part of Kira any more: $help.", location = at, selectorLength = 3, context = context)
+    }
+
+    /** A written `mut` among [modifiers], refused as [refuseMut] does; none, nothing. */
+    private fun refuseMut(modifiers: Map<Modifier, SourcePosition>?, help: String) {
+        modifiers?.get(Modifier.MUTABLE)?.let { refuseMut(it, help) }
     }
 
     /** The `T` of a `Mutable<T>` as written (never qualified), or null; a `Mutable` of no or two types is refused. */
@@ -993,13 +974,13 @@ class KiraParser(
         val ident = name as Identifier
         val written = parseType()
         if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL)) {
-            refuseMut(modifiers?.get(Modifier.MUTABLE), MUT_TYPE)
+            refuseMut(modifiers, MUT_TYPE)
             return parseTypeDecl(origin, ident, generics, written, modifiers, marks)
         }
         if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE)) {
             refuseValueShapedType(ident, written, origin)
         }
-        refuseMut(modifiers?.get(Modifier.MUTABLE), MUT_BINDING)
+        refuseMut(modifiers, MUT_BINDING)
         // `x: Mutable<T>` is a binding that changes: the tree `mut x: T` was.
         val inner = mutableInner(written)
         val first = inner ?: written
@@ -1037,7 +1018,7 @@ class KiraParser(
         val returnType = parseType()
         if (at(Token.Type.S_EQUAL) && name is Identifier && name !is IntrinsicExpr) {
             // `cb: (x: Int32) Void = value`: a variable whose type is the function type.
-            refuseMut(modifier?.get(Modifier.MUTABLE), "$MUT_BINDING, here 'name: Mutable<(...) R> = value'")
+            refuseMut(modifier, "$MUT_BINDING, here 'name: Mutable<(...) R> = value'")
             expectModifiers(modifier, WrappingContext.VARIABLE)
             val type = functionTypeOf(params, returnType, signatureAt)
             advancePointer()
@@ -1045,7 +1026,7 @@ class KiraParser(
             attachIntrinsics(decl)
             return putOrigin(decl, origin)
         }
-        refuseMut(modifier?.get(Modifier.MUTABLE), MUT_FUNCTION)
+        refuseMut(modifier, MUT_FUNCTION)
         expectModifiers(modifier, WrappingContext.FUNCTION)
         if (modifier?.containsKey(Modifier.OVERRIDE) == true && typeBodyDepth == 0) {
             Diagnostics.panic(
@@ -1084,7 +1065,7 @@ class KiraParser(
         return putOrigin(Type(putOrigin(Identifier("Fx"), at), null, listOf(tuple, ret)), at)
     }
 
-    /** `(a: T, mut b: U) R` in a type position: the function type `Fx<Tuple2<T, mut U>, R>`. */
+    /** `(a: T, b: U) R` in a type position: the function type `Fx<Tuple2<T, U>, R>`. */
     private fun parseFunctionType(namesOptional: Boolean = false): Type {
         val at = here()
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
@@ -1093,10 +1074,8 @@ class KiraParser(
             if (args.isNotEmpty()) {
                 expectThenAdvance(Token.Type.S_COMMA)
             }
-            val isMut = at(Token.Type.K_MODIFIER_MUTABLE)
-            if (isMut) {
+            if (at(Token.Type.K_MODIFIER_MUTABLE)) {
                 refuseMut(here(), MUT_PARAM)
-                advancePointer()
             }
             // A function shape after `==` may leave its parameters unnamed: `(Int32) Int32`.
             if (!namesOptional || peek(1).type == Token.Type.S_COLON) {
@@ -1106,7 +1085,7 @@ class KiraParser(
             val paramAt = here()
             val t = parseType()
             refuseMutableParam(t, paramAt)
-            args += if (isMut) putOrigin(Type(t.identifier, t.constraint, t.children, true), context.astOrigins[t] ?: at) else t
+            args += t
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val ret = parseType()
@@ -1303,31 +1282,15 @@ class KiraParser(
         return TypeBody(members, initially, holdsTypes)
     }
 
-    fun parseReturnStatement(): Statement // y dont they just call it a return expr? lol beats me tho, just another way to represent an astnode
-    {
-        val origin = here()
-        // Stage 3: a block's last expression is its value; only kira-dialect's reading of old text keeps `return`.
-        if (!returns && DialectGates.noReturn) {
-            Diagnostics.panic(
-                "parse.removed",
-                "'return' is not part of Kira any more: a block's last expression is its value (`if c { a } else { b }`, `c ? a : b`); a loop's answer goes in a `mut` local, then `break`.",
-                location = origin,
-                selectorLength = 6,
-                context = context
-            )
-        }
-        expectThenAdvance(Token.Type.K_RETURN)
-        // A bare `return` (Void functions) carries NoExpr. Newlines are not
-        // tokens, so "bare" means the next token closes the statement: `}`,
-        // `;` or end of input. `return` followed by an expression on the next
-        // line still returns that expression.
-        val expr = if (at(Token.Type.S_CLOSE_BRACE) || at(Token.Type.S_SEMICOLON) || at(Token.Type.S_EOF)) {
-            NoExpr
-        } else {
-            parseExpr()
-        }
-        expectOptionalThenAdvance(Token.Type.S_SEMICOLON)
-        return putOrigin(ReturnStatement(expr), origin)
+    /** `return` at the pointer, refused: a block's last expression is its value. */
+    fun parseReturnStatement(): Nothing {
+        Diagnostics.panic(
+            "parse.removed",
+            "'return' is not part of Kira any more: a block's last expression is its value (`if c { a } else { b }`, `c ? a : b`); a loop's answer goes in a `mut` local, then `break`.",
+            location = here(),
+            selectorLength = 6,
+            context = context
+        )
     }
 
     fun parseBreakStatement(): Statement {
@@ -1345,28 +1308,21 @@ class KiraParser(
     fun parseForIterationStatement(): Statement {
         val origin = here()
         expectThenAdvance(Token.Type.K_FOR)
-        // support both: `for (mut x: expr) {}` and `for mut x: expr {}`
+        // `for x: T in e {}`, or `for (x: T in e) {}`
         val hasParens = at(Token.Type.S_OPEN_PARENTHESIS)
         if (hasParens) expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        val forExpr = if (at(Token.Type.K_MODIFIER_MUTABLE)) {
-            // Legacy `for mut i: a..b { }`: an untyped variable over an
-            // inclusive range (design 2.2); it keeps its meaning.
+        if (at(Token.Type.K_MODIFIER_MUTABLE)) {
+            // The old `for mut i: a..b { }`, an untyped variable over an inclusive range (design 2.2).
             refuseMut(here(), "a loop variable is never Mutable: 'for i: Int32 in a..(b + 1)' is this loop, whose range excludes its end")
-            advancePointer()
-            val identifier = parseIdentifier()
-            expectThenAdvance(Token.Type.S_COLON)
-            val target = withNoObjectInit(!hasParens) { parseExpr() }
-            ForIterationExpr(identifier, target, emptyList())
-        } else {
-            // Spec `for i: T in e { }`: a typed variable; a range is exclusive
-            // (design D37). The iterable is a condition head (D36).
-            val identifier = parseIdentifier()
-            expectThenAdvance(Token.Type.S_COLON)
-            val declaredType = parseType()
-            expectThenAdvance(Token.Type.K_IN)
-            val target = withNoObjectInit(!hasParens) { parseExpr() }
-            ForIterationExpr(identifier, target, emptyList(), declaredType, isLegacy = false)
         }
+        // Spec `for i: T in e { }`: a typed variable; a range is exclusive
+        // (design D37). The iterable is a condition head (D36).
+        val identifier = parseIdentifier()
+        expectThenAdvance(Token.Type.S_COLON)
+        val declaredType = parseType()
+        expectThenAdvance(Token.Type.K_IN)
+        val target = withNoObjectInit(!hasParens) { parseExpr() }
+        val forExpr = ForIterationExpr(identifier, target, emptyList(), declaredType)
         if (hasParens) expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val body = parseStatementBlock()
         return putOrigin(ForIterationStatement(putOrigin(forExpr, origin), body), origin)
@@ -1442,7 +1398,7 @@ class KiraParser(
             }
         }
         while (true) {
-            val binOpTokens = tryBinaryOps() ?: arrayOf(removedIs() ?: peek().type)
+            val binOpTokens = tryBinaryOps() ?: arrayOf(peek().type).also { refuseIs() }
             val binaryOpType = BinaryOp.byTokenTypeMaybe(binOpTokens)
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
@@ -1455,10 +1411,6 @@ class KiraParser(
                 advancePointer() // consume the operators
             }
             // the following binary operators require special parsing of the right hand side so they are put before the others
-            if (binaryOpType == BinaryOp.TYPE_CHECK) {
-                left = putOrigin(TypeCheckExpr(left, parseType()), origin)
-                continue
-            }
             if ((binaryOpType == BinaryOp.EQUALS || binaryOpType == BinaryOp.NOT_EQUAL) && startsIdentity()) {
                 val identity = parseIdentity()
                 left = putOrigin(TypeCheckExpr(left, identity, binaryOpType == BinaryOp.NOT_EQUAL, parseTestBlock()), origin)
@@ -1553,11 +1505,10 @@ class KiraParser(
         return putOrigin(TypeCastExpr(operand, parseType()), origin)
     }
 
-    /** `x is T` at the pointer: K_IS for kira-dialect's older text ([literals]), else refused. */
-    private fun removedIs(): Token.Type? {
-        if (!at(Token.Type.IDENTIFIER) || peek().content != "is") return null
-        if (peek(1).type != Token.Type.IDENTIFIER && peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return null
-        if (literals) return Token.Type.K_IS
+    /** `x is T` at the pointer, refused. */
+    private fun refuseIs() {
+        if (!at(Token.Type.IDENTIFIER) || peek().content != "is") return
+        if (peek(1).type != Token.Type.IDENTIFIER && peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return
         Diagnostics.panic(
             "parse.removed",
             "'is' is not part of Kira any more: a type test is 'x == T', and 'x != T' its negation.",
@@ -1976,7 +1927,7 @@ class KiraParser(
             // Loops stay statements (stage 3): their answer goes through a local.
             Token.Type.K_WHILE, Token.Type.K_FOR -> Diagnostics.panic(
                 "parse.loop.value",
-                "A loop is a statement, not a value: put its answer in a ${if (mutRefused()) "Mutable" else "`mut`"} local before the loop, assign it inside, then `break`.",
+                "A loop is a statement, not a value: put its answer in a Mutable local before the loop, assign it inside, then `break`.",
                 location = here(),
                 selectorLength = peek().content.length,
                 context = context
@@ -1997,7 +1948,7 @@ class KiraParser(
      * `if c { a } else { b }` in expression position (design 2.4). The else is
      * required, since the expression must have a value for both outcomes; an
      * `else if` nests another [IfExpr] as the single else statement. Each arm is a value
-     * arm ([valueTail]); a chain whose every arm is one expression is a ternary's ([DialectGates]).
+     * arm ([valueTail]); a chain whose every arm is one expression is a ternary's, and refused.
      */
     private fun parseIfExpr(nested: Boolean = false): Expr {
         val origin = here()
@@ -2192,7 +2143,7 @@ class KiraParser(
                 expectThenAdvance(Token.Type.S_COMMA)
             }
             val modifiers = parseModifiers()
-            refuseMut(modifiers[Modifier.MUTABLE], MUT_PARAM)
+            refuseMut(modifiers, MUT_PARAM)
             val origin = here()
             val name = parseIdentifier()
             expectConventionalName(name.value, origin, "Parameter", "camelCase")
@@ -2241,14 +2192,9 @@ class KiraParser(
                     expectThenAdvance(Token.Type.S_COMMA)
                 }
                 val startToken = peek()
-                // Call-site `mut` (design D4): `f(x, mut y)` passes y for
-                // mutation. A named argument takes it after the `=`
-                // (`f(out = mut y)`); `f(mut out = y)` is accepted as well.
-                var isMut = false
+                // The old call-site `mut` (design D4), `f(x, mut y)` or `f(out = mut y)`, is refused.
                 if (at(Token.Type.K_MODIFIER_MUTABLE)) {
                     refuseMut(here(), MUT_ARG)
-                    advancePointer()
-                    isMut = true
                 }
                 if (at(Token.Type.IDENTIFIER) && peek(1).type == Token.Type.S_EQUAL) {
                     seenNamed = true
@@ -2257,8 +2203,6 @@ class KiraParser(
                     expectThenAdvance(Token.Type.S_EQUAL)
                     if (at(Token.Type.K_MODIFIER_MUTABLE)) {
                         refuseMut(here(), MUT_ARG)
-                        advancePointer()
-                        isMut = true
                     }
                     val expr = parseExpr()
                     if (expr is CompoundAssignmentExpr || expr is AssignmentExpr || expr is PlaceAssignmentExpr) {
@@ -2270,7 +2214,7 @@ class KiraParser(
                             selectorLength = startToken.content.length
                         )
                     }
-                    named.add(putOrigin(FunctionCallNamedParameterExpr(identifier, expr, isMut), origin))
+                    named.add(putOrigin(FunctionCallNamedParameterExpr(identifier, expr), origin))
                 } else {
                     if (seenNamed) {
                         Diagnostics.panic(
@@ -2295,7 +2239,7 @@ class KiraParser(
                             selectorLength = startToken.content.length
                         )
                     }
-                    positional.add(putOrigin(FunctionCallPositionalParameterExpr(positionalIndex++, expr, isMut), origin))
+                    positional.add(putOrigin(FunctionCallPositionalParameterExpr(positionalIndex++, expr), origin))
                 }
             }
         }
@@ -2559,31 +2503,16 @@ class KiraParser(
         return sb.toString()
     }
 
-    /** `[a, b]`: stage 1's literal, read only for kira-dialect ([literals]); the clean dialect refuses it. */
-    fun parseArrayLiteral(): BuilderExpr {
-        if (!literals) {
-            Diagnostics.panic(
-                "parse.removed",
-                "`[...]` literals are not part of Kira any more: write @listOf(a, b) for a List, @arrOf(a, b) for an Arr, " +
-                    "@setOf(a, b) for a Set or @mapOf(k1, v1, k2, v2) for a Map.",
-                location = here(),
-                selectorLength = 1,
-                context = context
-            )
-        }
-        val origin = here()
-        expectThenAdvance(Token.Type.S_OPEN_BRACKET)
-        val elements = mutableListOf<Expr>()
-        withNoObjectInit(false) {
-            while (!at(Token.Type.S_CLOSE_BRACKET) && !at(Token.Type.S_EOF)) {
-                elements.add(parsePrimaryExpr(null))
-                if (!at(Token.Type.S_CLOSE_BRACKET)) {
-                    expectThenAdvance(Token.Type.S_COMMA)
-                }
-            }
-        }
-        expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
-        return putOrigin(BuilderExpr(Builder.INFER, emptyList(), elements), origin)
+    /** `[a, b]`, the old literal, refused. */
+    fun parseArrayLiteral(): Nothing {
+        Diagnostics.panic(
+            "parse.removed",
+            "`[...]` literals are not part of Kira any more: write @listOf(a, b) for a List, @arrOf(a, b) for an Arr, " +
+                "@setOf(a, b) for a Set or @mapOf(k1, v1, k2, v2) for a Map.",
+            location = here(),
+            selectorLength = 1,
+            context = context
+        )
     }
 
     /** `@listOf<T>(a, b)` and its kin, the pointer on the intrinsic: its type arguments, then its elements (a trailing comma allowed). */
@@ -2679,9 +2608,7 @@ class KiraParser(
         if (!declaring && at(Token.Type.S_OPEN_PARENTHESIS)) {
             return parseFunctionType()
         }
-        // `mut T` inside Tuple*<...> marks an Fx parameter passed for
-        // mutation (design D24); anywhere else it means nothing.
-        var isMutParam = false
+        // `mut T` in a type argument list is refused: outside Tuple*<...> it never meant anything.
         if (!declaring && at(Token.Type.K_MODIFIER_MUTABLE)) {
             if (enclosing == null || !enclosing.startsWith("Tuple")) {
                 Diagnostics.panic(
@@ -2694,8 +2621,6 @@ class KiraParser(
                 )
             }
             refuseMut(baseLocation, MUT_PARAM)
-            advancePointer()
-            isMutParam = true
         }
         var bound: Type? = null
         fun acquireTypeBound() {
@@ -2733,7 +2658,7 @@ class KiraParser(
             acquireTypeBound()
         }
 
-        return putOrigin(Type(baseIdentifier, bound, children, isMutParam), baseLocation)
+        return putOrigin(Type(baseIdentifier, bound, children), baseLocation)
     }
 
 

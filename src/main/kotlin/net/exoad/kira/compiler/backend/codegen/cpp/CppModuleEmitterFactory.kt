@@ -66,8 +66,7 @@ class TypedCppModuleEmitter(
 
     /** Stage 4's copy-then-change sites of a value C++ holds by value ([CppSharedCopies]), each by its module's source. */
     private val sharedCopies: Map<SourceContext, List<Pair<net.exoad.kira.compiler.frontend.parser.ast.ASTNode, String>>> by lazy {
-        if (!net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) emptyMap()
-        else CppSharedCopies(program).run().hand.groupBy { (n, _) -> program.locate(n)?.first }.filterKeys { it != null }.mapKeys { it.key!! }
+        CppSharedCopies(program).run().hand.groupBy { (n, _) -> program.locate(n)?.first }.filterKeys { it != null }.mapKeys { it.key!! }
     }
 
     private var placements = CppPlacements()

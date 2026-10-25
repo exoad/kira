@@ -236,7 +236,7 @@ object KiraCppBackend {
         out: (String) -> Unit = { println(it) },
     ): CppBackendResult {
         // Imports and type roles first: the plan below reads each module's uses.
-        net.exoad.kira.compiler.DialectLink.link(unit)
+        net.exoad.kira.compiler.UnitLink.link(unit)
         val root = projectRoot.toAbsolutePath().normalize()
         val options = buildOptions(manifest, outDirOverride)
         val manifestPath = manifestPath(root, options, outDirOverride)

@@ -76,7 +76,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     fun validateAST(): SemanticAnalyzerResults {
-        net.exoad.kira.compiler.DialectLink.link(compilationUnit)
+        net.exoad.kira.compiler.UnitLink.link(compilationUnit)
         try {
             // Callable signatures first, so a named-argument call can bind
             // against a function declared later or in another source.

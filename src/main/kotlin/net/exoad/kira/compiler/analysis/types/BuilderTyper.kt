@@ -11,16 +11,12 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
  * against it, and with neither a type argument nor an expected type each element has exactly
  * the first one's type (no conversion). An empty builder needs one of the two. `@arrOf` under
  * an expected `Arr<T, N>` is that type and holds exactly N elements.
- *
- * [Builder.INFER] is stage 1's `[...]`, typed by stage 1's rule (a List where a List is
- * expected, else an Arr); kira-dialect reads what it became off [TypedModel.inferred].
  */
 internal class BuilderTyper(private val c: PhaseC) {
     private val model get() = c.model
     private val facts get() = c.facts
 
     fun builder(e: BuilderExpr, hint: KType?, ctx: BodyContext, scope: Scope): KType = when (e.kind) {
-        Builder.INFER -> legacy(e, hint, ctx, scope)
         Builder.MAP -> map(e, hint, ctx, scope)
         else -> sequence(e, hint, ctx, scope)
     }
@@ -157,32 +153,5 @@ internal class BuilderTyper(private val c: PhaseC) {
         if (!isKeyType(t)) {
             c.report("types.type.key", "@${e.kind.intrinsic} makes ${t.display()} $what; $KEY_RULE.", e)
         }
-    }
-
-    /** Stage 1's `[a, b]`: an Arr or List from the context (an Arr<T, N>'s count must match), else an Arr of the first element's type. */
-    private fun legacy(e: BuilderExpr, hint: KType?, ctx: BodyContext, scope: Scope): KType {
-        val arr = hint?.takeIf { facts.isArr(it) || facts.isList(it) } as? KType.Nominal
-        if (arr != null) {
-            val element = facts.elementOf(arr) ?: KType.Error
-            val size = arr.constArgs().firstOrNull()
-            if (size != null && e.elements.size.toLong() != size) {
-                c.report(
-                    "types.const.arr-size",
-                    "This literal has ${e.elements.size} element${if (e.elements.size == 1) "" else "s"}, but ${arr.display()} holds exactly $size.",
-                    e,
-                )
-            }
-            e.elements.forEachIndexed { i, v -> c.exprs.check(v, element, ctx, scope, "element ${i + 1} of the array") }
-            model.inferred[e] = if (facts.isList(arr)) Builder.LIST else Builder.ARR
-            return arr
-        }
-        model.inferred[e] = Builder.ARR
-        if (e.elements.isEmpty()) {
-            c.report("types.array.untyped", "An empty array literal needs its type from the context, like xs: Arr<Int32> = [].", e)
-            return KType.Error
-        }
-        val first = c.exprs.synth(e.elements.first(), ctx, scope)
-        e.elements.drop(1).forEachIndexed { i, v -> c.exprs.check(v, first, ctx, scope, "element ${i + 2} of the array") }
-        return if (first.containsError()) KType.Error else facts.arrOf(first)
     }
 }

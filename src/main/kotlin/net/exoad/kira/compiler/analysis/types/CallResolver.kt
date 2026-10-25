@@ -161,20 +161,11 @@ internal class CallResolver(private val c: PhaseC) {
                 return KType.Error
             }
         }
-        // 3-5. The module, then what it uses (project modules before stdlib ones), then the ambient stdlib.
+        // 3-5. The module, then its member aliases, then the ambient stdlib (ModuleGraph.lookup).
         val found = c.program.graph.lookup(ctx.module, name) { it is FnSymbol || it is GlobalSymbol }
         val sym = when (found) {
             is ModuleGraph.Lookup.Found -> found.symbol
             is ModuleGraph.Lookup.NotVisible -> found.symbol
-            is ModuleGraph.Lookup.Ambiguous -> {
-                c.report(
-                    "types.call.ambiguous",
-                    "'$name' is exported by more than one used module: " +
-                        (listOf(found.first) + found.others).joinToString(", ") { it.from.uri } + ".",
-                    id,
-                )
-                found.first.symbol
-            }
             ModuleGraph.Lookup.Missing -> null
         }
         when (sym) {
@@ -261,7 +252,6 @@ internal class CallResolver(private val c: PhaseC) {
     private fun staticCall(e: FunctionCallExpr, origin: Identifier, member: Identifier, hint: KType?, ctx: BodyContext, scope: Scope): KType? {
         val asType = c.program.graph.lookup(ctx.module, origin.value) { it is ClassSymbol || it is TraitSymbol }
         val typeSym = (asType as? ModuleGraph.Lookup.Found)?.symbol ?: (asType as? ModuleGraph.Lookup.NotVisible)?.symbol
-            ?: (asType as? ModuleGraph.Lookup.Ambiguous)?.first?.symbol
             ?: if (Builtins.isBuiltinName(origin.value)) c.builtins.classFor(origin.value) else null
         if (typeSym != null) {
             model.refs[origin] = typeSym
@@ -425,7 +415,7 @@ internal class CallResolver(private val c: PhaseC) {
         c.report(
             "types.lambda.assign-capture",
             "$what is captured by this lambda, and a capture is an immutable copy (spec): '${fn.name}' " +
-                (if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "changes its receiver, a value. Share state that changes through a Mutable type instead." else "is a `mut fx`, which writes its receiver. Share mutable state through a Ref<T> instead."),
+                "changes its receiver, a value. Share state that changes through a Mutable type instead.",
             receiver ?: nameNode,
         )
     }

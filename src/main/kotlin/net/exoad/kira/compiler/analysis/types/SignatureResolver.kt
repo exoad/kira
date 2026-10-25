@@ -11,7 +11,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import java.math.BigInteger
 import java.util.IdentityHashMap
 
@@ -69,7 +68,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
         traits.forEach { t -> each(t) { flatten(t, IdentityHashMap()) } }
         classes.forEach { c -> each(c) { overrides(c) } }
         traits.forEach { t -> each(t) { traitOverrides(t) } }
-        if (DialectGates.mutability) step("mutable types") { MutableTypes(program, classes, traits).run() }
+        step("mutable types") { MutableTypes(program, classes, traits).run() }
         step("body types") { bodyTypes() }
         globals.forEach { g -> each(g) { constEval.valueOf(g) } }
         step("defaults") { defaults() }
@@ -685,23 +684,18 @@ internal class SignatureResolver(private val program: TypedProgram) {
     /**
      * True when [a] (reached under [aSub]) and [b] (reached under [bSub]) declare the same
      * signature once both are read in the inheriting class's own context: same arity, same
-     * `mut`-ness (`isMutMethod` decides C++ `const`, so a mismatch is a different signature, not
-     * an overload), same parameter types and byRef-ness in order, the same return type, and the
-     * same bounds on the method's own type parameters (own type parameters mapped positionally,
-     * as [checkOverride] does). Used to tell two inherited methods of one name apart
-     * (`types.member.conflict`) from two that happen to agree -- this is where 1.3.2's "never
-     * first-found" rule actually lives: every candidate pair is compared with this, so two
-     * declarations differing only in `mut fx` or in a bound (round 5 of this package's bug: this
-     * function used to ignore both, so `checkOverride`'s first-found target decided the outcome
-     * instead of this order-independent comparison) are correctly seen as a conflict regardless
-     * of which one a caller happens to find first.
+     * parameter types and byRef-ness in order, the same return type, and the same bounds on the
+     * method's own type parameters (own type parameters mapped positionally, as [checkOverride]
+     * does). Whether a function changes its receiver is its type's, not its signature's. Used to
+     * tell two inherited methods of one name apart (`types.member.conflict`) from two that happen
+     * to agree -- this is where 1.3.2's "never first-found" rule actually lives: every candidate
+     * pair is compared with this, so two declarations differing only in a bound (round 5 of this
+     * package's bug: this function used to ignore it, so `checkOverride`'s first-found target
+     * decided the outcome instead of this order-independent comparison) are correctly seen as a
+     * conflict regardless of which one a caller happens to find first.
      */
     private fun sameSignature(a: FnSymbol, aSub: Map<TypeParamSymbol, KType>, b: FnSymbol, bSub: Map<TypeParamSymbol, KType>): Boolean {
         if (a.typeParams.size != b.typeParams.size || a.params.size != b.params.size) {
-            return false
-        }
-        // Stage 4: whether a function changes its receiver is its type's, not its signature's.
-        if (a.isMutMethod != b.isMutMethod && !DialectGates.mutability) {
             return false
         }
         val ownMap = a.typeParams.zip(b.typeParams).associate { (x, y) -> x to KType.Param(y) }
@@ -767,14 +761,6 @@ internal class SignatureResolver(private val program: TypedProgram) {
                 "types.override.signature",
                 "$where.${m.name} must bound its type parameters as ${base.qualifiedName} does, " +
                     "${typeParamsText(m.typeParams, bounds)}; it has ${typeParamsText(m.typeParams)}.",
-                m.decl,
-            )
-        } else if (m.isMutMethod != base.isMutMethod && !DialectGates.mutability) {
-            // `mut fx` decides C++ `const`: a mismatch would declare a second function, not an override.
-            program.report(
-                "types.override.signature",
-                "$where.${m.name} must be ${if (base.isMutMethod) "a `mut fx`" else "a plain `fx` (not `mut`)"}, " +
-                    "like ${base.qualifiedName}.",
                 m.decl,
             )
         }

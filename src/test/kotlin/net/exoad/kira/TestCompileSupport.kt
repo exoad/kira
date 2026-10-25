@@ -54,7 +54,7 @@ object TestCompileSupport {
 
         KiraSourceParsers.from(srcWithTokens).parse()
         // Each import's module and each type's role, as every reader of a parsed unit sees them.
-        net.exoad.kira.compiler.DialectLink.link(cu)
+        net.exoad.kira.compiler.UnitLink.link(cu)
 
         val semantics = if (runSemantic) {
             KiraSemanticAnalyzer(cu).validateAST()

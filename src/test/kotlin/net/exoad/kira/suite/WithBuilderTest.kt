@@ -6,7 +6,6 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.Stage2
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -15,7 +14,6 @@ import net.exoad.kira.types.TyperTestSupport.module
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.io.File
-import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -248,32 +246,12 @@ class WithBuilderTest {
     }
 
     @Test
-    fun theConverterRewritesARetiredCopyAndLeavesAMethodNamedCopy() {
-        val dir = Files.createTempDirectory("stage2-copy").toFile()
-        try {
-            File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
-            val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
-            file.writeText(
-                "$types\n\nRow: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    pub copy: () Row {\n        Row { n }\n    }\n}\n\n" +
-                    "main: () Void {\n    p: P = P { 1, 2 }\n    q: P = p.copy(x = 4, y = p.y + 1)\n    r: Row = Row { }\n    s: Row = r.copy()\n}\n",
-            )
-            assertEquals(0, Stage2.convertAll(listOf(dir.path), check = false))
-            val text = file.readText()
-            assertTrue(text.contains("    q: P = p with {\n        x = 4\n        y = p.y + 1\n    }\n"), text)
-            assertTrue(text.contains("    s: Row = r.copy()\n"), text)
-            assertEquals(0, Stage2.convertAll(listOf(dir.path), check = true), "a converted file converts to itself")
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test
     fun theWithsPyGoldenIsConvertedText() {
         // The golden is written in the new form; nothing in it is old.
         val src = File("src/test/resources/py-golden/withs/src/lang/withs.kira").readText()
         assertTrue(src.contains(" with {\n") && !src.contains(".copy("))
         val parsed = TyperTestSupport.unitOf(TyperTestSupport.Src("lang/withs.kira", src, "golden.py.withs:lang.withs"))
-        val withs = parsed.allSources().first { it.file == "lang/withs.kira" }.let { ctx -> net.exoad.kira.dialect.AstWalk.all(ctx.ast).filterIsInstance<WithExpr>() }
+        val withs = parsed.allSources().first { it.file == "lang/withs.kira" }.let { ctx -> TyperTestSupport.nodes(ctx.ast).filterIsInstance<WithExpr>() }
         assertTrue(withs.size >= 10, "the golden holds ${withs.size} withs")
     }
 }

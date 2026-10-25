@@ -31,7 +31,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TernaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
@@ -510,7 +509,7 @@ object KiraUnparser {
         is StringLiteral -> quote(e.value)
         is CharLiteral -> "'${charText(e.value)}'"
         is NullLiteral -> "null"
-        is BuilderExpr -> if (e.kind == Builder.INFER) e.elements.joinToString(", ", "[", "]") { expr(it, 0) } else
+        is BuilderExpr ->
             "@${e.kind.intrinsic}${if (e.typeArgs.isEmpty()) "" else e.typeArgs.joinToString(", ", "<", ">") { type(it) }}" +
                 e.elements.joinToString(", ", "(", ")") { expr(it, 0) }
         is InterpolatedStringLiteral -> e.parts.joinToString("", "\"", "\"") { part ->
@@ -573,7 +572,7 @@ object KiraUnparser {
         is WithExpr -> "${expr(e.receiver, 0)} with { ... }"
         is ForIterationExpr -> {
             val declared = e.declaredType?.let { ": ${type(it)}" } ?: ""
-            if (e.isLegacy) "mut ${e.initializer.value}$declared: ${expr(e.target, 0)}" else "${e.initializer.value}$declared in ${expr(e.target, 0)}"
+            "${e.initializer.value}$declared in ${expr(e.target, 0)}"
         }
         is FunctionCallPositionalParameterExpr -> (if (e.isMut) "mut " else "") + expr(e.value, parent)
         is FunctionCallNamedParameterExpr -> "${e.name.value} = " + (if (e.isMut) "mut " else "") + expr(e.value, 0)

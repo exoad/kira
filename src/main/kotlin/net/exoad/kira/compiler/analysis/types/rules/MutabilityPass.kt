@@ -2,7 +2,6 @@ package net.exoad.kira.compiler.analysis.types.rules
 
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.Capture
-import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.IndexKind
 import net.exoad.kira.compiler.analysis.types.KType
@@ -12,7 +11,6 @@ import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.typeArgs
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
@@ -23,30 +21,23 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 
 /**
- * Writes need a mutable place (design 3.4, D29, D44).
+ * Writes need a place that changes (stage 4: Mutable bindings and types).
  *
- * - `rules.mutability.local`, `.param`, `.global`: assigning a local, parameter or global
- *   declared without `mut`.
- * - `rules.mutability.field`: assigning a non-`mut` field of a class (a reference: `mut` on
- *   the field decides), or any field of a struct reached through an immutable place.
- * - `rules.mutability.this`: a plain `fx` writing its receiver's own state: a struct's, or a
- *   class's own field (`count = count + 1`; the spec's "methods that modify instance state
- *   must be marked `mut`", and a `const` member function in C++, design 5.5). It needs `mut
- *   fx`. A field of another object reached through a class-typed field (`child.n = 1`) is
- *   that object's, which any reference may write, and so is `this` captured by a lambda of a
- *   class method (`self = shared_from_this()`, design 5.6): the method that wrote the lambda
- *   down modifies nothing itself.
- * - `rules.mutability.element`: writing an element of a container held in an immutable place.
- * - `rules.mutability.method`: a `mut fx` (a struct's own, or a stdlib mutator such as
- *   `List.add`) called on an immutable place or on a lent result (`ys.get(0).add(1)`: R-A makes
- *   it a read-only place, never a write), or a class's own `mut fx` called on `this`
- *   in the body of a plain `fx` of the class (its instance state changes). A class's `mut
- *   fx` is callable through any other reference (D29), and so is a stdlib handle's (a
- *   Suite, a Mutex).
+ * - `rules.mutability.local`, `.global`: assigning a local or a global that is not Mutable.
+ * - `rules.mutability.param`: assigning a parameter, which is never Mutable.
+ * - `rules.mutability.field`: writing a field that is not Mutable (a value type's never is),
+ *   but in a `with`'s copy and in `initially`, which still build the value.
+ * - `rules.mutability.element`: writing an element of a value that does not change; a shared
+ *   container's element changes through any binding.
+ * - `rules.mutability.this`: a function writing the receiver of a type that is not Mutable.
+ * - `rules.mutability.method`: a value's own changing function (an Arr's `set`) called on a
+ *   binding that is not Mutable, or a changing function called on a lent result
+ *   (`ys.get(0).add(1)`: R-A makes it a read-only place, never a write). A Mutable type's
+ *   functions change it through any binding: its value is shared.
  *
- * Phase C already reports a write to a lambda's capture (types.lambda.assign-capture), a
- * `mut` argument that is not writable (types.call.mut-immutable), and writes into a View or a
- * Str (types.index.view-write, .str-write): those are not repeated here.
+ * A change only sharing allows goes to the model's sharedWrites, which the cpp target refuses.
+ * Phase C already reports a write to a lambda's capture (types.lambda.assign-capture) and
+ * writes into a View or a Str (types.index.view-write, .str-write): those are not repeated here.
  */
 internal class MutabilityPass : RulePass {
     override val name: String = "mutability"
@@ -61,7 +52,7 @@ internal class MutabilityPass : RulePass {
                     is PlaceAssignmentExpr -> write(r, b, n.target, lambdas)
                     is FunctionCallExpr -> {
                         mutMethod(r, b, n, lambdas)
-                        if (DialectGates.mutability) byRef(r, b, n, lambdas)
+                        byRef(r, b, n, lambdas)
                     }
                     else -> {}
                 }
@@ -74,16 +65,7 @@ internal class MutabilityPass : RulePass {
         if (place is Place.Index && (place.kind == IndexKind.VIEW || place.kind == IndexKind.STR)) {
             return
         }
-        if (DialectGates.mutability) {
-            stage4Write(r, b, target, place, lambdas)
-            return
-        }
-        if (r.isMutablePlace(place, thisMutable(b, lambdas)) || isCaptureWrite(r, place, b, lambdas)) {
-            return
-        }
-        val text = KiraUnparser.text(target)
-        val (code, message) = explain(r, b, place, text)
-        r.report("rules.mutability.$code", message, target)
+        stage4Write(r, b, target, place, lambdas)
     }
 
     /**
@@ -165,36 +147,6 @@ internal class MutabilityPass : RulePass {
         }
     }
 
-    /** The reason a place is immutable: the first immutable step from the root. */
-    private fun explain(r: Rules, b: Body, place: Place, text: String): Pair<String, String> = when (place) {
-        is Place.Local -> "local" to "'${place.sym.name}' is not mut, so $text cannot be written; declare it `mut ${place.sym.name}: ${place.sym.type.display()}`."
-        is Place.Param -> "param" to "Parameter '${place.sym.name}' is passed by value and cannot be written; take it as `mut ${place.sym.name}: ${place.sym.type.display()}` (D4) to write the caller's variable, or copy it into a mut local."
-        is Place.Global -> "global" to "'${place.sym.name}' is a module constant; a module-level binding without `mut` is fixed at compile time. Declare it `pub mut ${place.sym.name}` for state."
-        is Place.This -> "this" to "${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}, so its receiver is read-only; declare it `mut fx` to write $text."
-        is Place.Field -> {
-            val owner = place.sym.owner
-            val receiver = place.receiver
-            when {
-                owner is ClassSymbol && owner.kind == ClassKind.STRUCT && receiver != null && !r.isMutablePlace(receiver, b.thisMutable) ->
-                    if (receiver is Place.This) {
-                        "this" to "${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}, so its receiver is read-only; declare it `mut fx` to write $text."
-                    } else {
-                        val (inner, why) = explain(r, b, receiver, text)
-                        (if (inner == "this") "this" else "field") to why
-                    }
-                receiver is Place.This && !b.thisMutable && place.sym.isMut ->
-                    "this" to "${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}, so its own state is read-only (a `const` method in C++); declare it `mut fx` to write $text."
-                else -> "field" to "Field '${place.sym.name}' of ${owner.name} is not mut, so $text cannot be written; declare it `mut ${place.sym.name}: ${place.sym.type.display()}`."
-            }
-        }
-        is Place.Index -> {
-            val (inner, why) = explain(r, b, place.container, text)
-            (if (inner == "this") "this" else "element") to why
-        }
-    }
-
-    private fun ownerKind(b: Body): String = if (b.isStructOwner) "struct" else "class"
-
     /**
      * Whether the receiver's own state may be written here: in the body, [Body.thisMutable];
      * inside a lambda of a class method, always. The lambda captures `this` as a reference
@@ -248,18 +200,11 @@ internal class MutabilityPass : RulePass {
             // A lent result (R-A: `ys.get(0)` is `ys[0]`, and C++'s `kira::at` hands back a reference into ys) is no
             // temporary: a `mut fx` on it would write ys through an accessor, a write capability R-A never grants.
             val lent = rc.receiver?.let { r.model.lentPlaces[it] }
-            if (lent != null && DialectGates.mutability) {
+            if (lent != null) {
                 r.report(
                     "rules.mutability.method",
                     "'${fn.name}' changes its receiver '${KiraUnparser.text(rc.receiver!!)}', which is '${r.describe(lent)}' lent by an accessor, not a place " +
                         "to change (R-A). Change the place itself (`${r.describe(lent)}.${fn.name}(...)` on a Mutable binding).",
-                    rc.receiver,
-                )
-            } else if (lent != null) {
-                r.report(
-                    "rules.mutability.method",
-                    "'${fn.name}' is a `mut fx` and writes its receiver '${KiraUnparser.text(rc.receiver!!)}', which is '${r.describe(lent)}' lent by an " +
-                        "accessor, not a place to write (R-A). Write the place itself (`${r.describe(lent)}.${fn.name}(...)` on a `mut` binding).",
                     rc.receiver,
                 )
             }
@@ -271,17 +216,7 @@ internal class MutabilityPass : RulePass {
         }
         val at: ASTNode = rc.receiver ?: (e.name as? MemberAccessExpr)?.member ?: e.name
         val receiverText = rc.receiver?.let { KiraUnparser.text(it) } ?: "the receiver"
-        if (DialectGates.mutability) {
-            // Stage 4: only a value's own changing function (an Arr's `set`) reaches here; it needs a Mutable binding.
-            r.report("rules.mutability.method", "'${fn.name}' changes its ${receiverType.display()}, a value, so it runs on a Mutable binding only, which $receiverText is not.", at)
-            return
-        }
-        val (code, why) = explain(r, b, place, receiverText)
-        val message = if (code == "this") {
-            "'${fn.name}' is a `mut fx` and writes its receiver, but ${b.what} is a plain `fx` of the ${ownerKind(b)} ${b.owner?.name}; declare it `mut fx`."
-        } else {
-            "'${fn.name}' is a `mut fx` of ${receiverType.display()} and writes its receiver, which must be a mutable place (D44). $why"
-        }
-        r.report("rules.mutability.method", message, at)
+        // Stage 4: only a value's own changing function (an Arr's `set`) reaches here; it needs a Mutable binding.
+        r.report("rules.mutability.method", "'${fn.name}' changes its ${receiverType.display()}, a value, so it runs on a Mutable binding only, which $receiverText is not.", at)
     }
 }

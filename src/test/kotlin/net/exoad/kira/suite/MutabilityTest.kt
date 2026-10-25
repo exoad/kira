@@ -4,22 +4,21 @@ import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
+import net.exoad.kira.compiler.frontend.lexer.KiraLexer
+import net.exoad.kira.compiler.frontend.parser.KiraParser
+import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.ProjectUnits
-import net.exoad.kira.dialect.Stage4
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
-import java.io.File
 import java.nio.file.Files
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -29,18 +28,27 @@ import kotlin.test.fail
 
 /** Stage 4, Mutability: `Mutable<T>` bindings and types, contagion, sharing, `with` in place, `== Mutable<..>`, `mut` gone. */
 class MutabilityTest {
-    private fun parse(text: String, old: Boolean = false): net.exoad.kira.source.SourceContext {
-        val read = { ProjectUnits.read(CompilationUnit(bootstrap = false), "probe.kira", text, "test:main", literals = false, returns = false) }
-        val (ctx, err) = if (old) DialectGates.stage4(false, read) else read()
+    /** [text] as module test:main, parsed: its context, or the parse error's first line and where. */
+    private fun read(text: String): Pair<net.exoad.kira.source.SourceContext?, String?> = try {
+        val unit = CompilationUnit(bootstrap = false)
+        val processed = KiraPreprocessor(text).process().processedContent
+        val bare = unit.addSource("probe.kira", processed, emptyList(), "test:main")
+        val ctx = unit.addSource("probe.kira", processed, KiraLexer(bare).tokenize())
+        KiraParser(ctx).parse()
+        ctx to null
+    } catch (e: DiagnosticsException) {
+        null to ((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + " at ${e.location}")
+    }
+
+    private fun parse(text: String): net.exoad.kira.source.SourceContext {
+        val (ctx, err) = read(text)
         return ctx ?: fail("does not parse: $err")
     }
 
-    private fun refusal(text: String): String = try {
-        val (ctx, err) = ProjectUnits.read(CompilationUnit(bootstrap = false), "probe.kira", text, "test:main", literals = false, returns = false)
+    private fun refusal(text: String): String {
+        val (ctx, err) = read(text)
         if (ctx != null) fail("parsed, but should be refused:\n$text")
-        err ?: ""
-    } catch (e: DiagnosticsException) {
-        e.message
+        return err ?: ""
     }
 
     // The [i]th declaration of [ctx], past the module the reader names it as.
@@ -66,10 +74,7 @@ class MutabilityTest {
     @Test
     fun aMutableBindingIsTheTreeMutWas() {
         val new = decl(parse("x: Mutable<List<Int32>> = List<Int32> { }\n")) as VariableDecl
-        val old = decl(parse("mut x: List<Int32> = List<Int32> { }\n", old = true)) as VariableDecl
-        assertEquals(old.modifiers, new.modifiers)
-        assertTrue(Modifier.MUTABLE in new.modifiers)
-        assertEquals((old.type.identifier as Identifier).value, (new.type.identifier as Identifier).value)
+        assertEquals(listOf(Modifier.MUTABLE), new.modifiers)
         assertEquals("List", (new.type.identifier as Identifier).value)
         // A field the same way, with its modifiers.
         val field = (decl(parse("C: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n}\n")) as ClassDecl).members.single() as VariableDecl
@@ -93,8 +98,6 @@ class MutabilityTest {
         assertContains(refusal("f: (mut xs: List<Int32>) Void {\n}\n"), "a parameter is never Mutable")
         assertContains(refusal("f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    f(mut ys)\n}\n"), "pass the value itself")
         assertContains(refusal("f: (each: Fx<Tuple1<mut Int32>, Void>) Void {\n}\n"), "a parameter is never Mutable")
-        // Old text still reads, as kira-dialect reads it.
-        parse("f: () Void {\n    mut x: Int32 = 0\n}\n", old = true)
     }
 
     @Test
@@ -422,88 +425,5 @@ class MutabilityTest {
         assertContains(text, "fill(kira::List<std::int32_t>& xs)")
         assertTrue(Regex("""read\(\) const""").containsMatchIn(text), text)
         assertFalse(Regex("""bump\(\) const""").containsMatchIn(text), text)
-    }
-
-    // ---- the converter ------------------------------------------------------------------------
-
-    @Test
-    fun stage4ConvertsAndListsACopyThenChange() {
-        val dir = Files.createTempDirectory("stage4-convert").toFile()
-        try {
-            val old = """
-                Pt: Struct {
-                    pub x: Int32 = 0
-
-                    pub mut shift: (d: Int32) Void {
-                        x += d
-                    }
-                }
-
-                Log: Any {
-                    pub mut lines: List<Str> = List<Str> { }
-                }
-
-                keep: (mut xs: List<Int32>) Void {
-                    xs.add(1)
-                }
-
-                main: () Void {
-                    mut a: List<Int32> = List<Int32> { }
-                    mut b: List<Int32> = a
-                    b.add(2)
-                    keep(mut a)
-                    mut p: Pt = Pt { }
-                    p.shift(1)
-                    trace(a.size())
-                }
-            """.trimIndent() + "\n"
-            val f = File(dir, "probe.kira")
-            f.writeText(old)
-            val out = java.io.ByteArrayOutputStream()
-            val saved = System.out
-            val code = try {
-                System.setOut(java.io.PrintStream(out, true))
-                Stage4.convertAll(listOf(dir.path), check = false)
-            } finally {
-                System.setOut(saved)
-            }
-            val log = out.toString()
-            val new = f.readText()
-            assertEquals(1, code, "a hand check is listed, so the run says so:\n$log")
-            assertContains(log, "HAND")
-            assertContains(log, "copied from 'a' into 'b', then changed")
-            assertContains(new, "Pt: Mutable<Any> {")
-            assertContains(new, "    pub x: Mutable<Int32> = 0")
-            assertContains(new, "    pub shift: (d: Int32) Void {")
-            assertContains(new, "Log: Mutable<Any> {")
-            assertContains(new, "keep: (xs: List<Int32>) Void {")
-            assertContains(new, "    a: Mutable<List<Int32>> = List<Int32> { }")
-            assertContains(new, "    keep(a)")
-            assertFalse(Regex("""\bmut\b""").containsMatchIn(new), new)
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun stage4LeavesAnOutParameterForAHandFix() {
-        val dir = Files.createTempDirectory("stage4-out").toFile()
-        try {
-            val old = "setTo: (mut out: Int32, v: Int32) Void {\n    out = v\n}\n"
-            val f = File(dir, "probe.kira")
-            f.writeText(old)
-            val out = java.io.ByteArrayOutputStream()
-            val saved = System.out
-            try {
-                System.setOut(java.io.PrintStream(out, true))
-                Stage4.convertAll(listOf(dir.path), check = false)
-            } finally {
-                System.setOut(saved)
-            }
-            assertContains(out.toString(), "the `mut` parameter 'out' is assigned")
-            assertEquals(old, f.readText(), "a file that does not prove is left as it is")
-        } finally {
-            dir.deleteRecursively()
-        }
     }
 }

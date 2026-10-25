@@ -16,8 +16,6 @@ import kotlin.properties.Delegates
  */
 class KiraLexer(
     private val context: SourceContext,
-    // The keyword table: the clean dialect's, or Keywords.legacy for the converter's old reader.
-    private val keywords: Map<String, Token.Type> = Keywords.reserved,
 ) {
     private val buffer = CharacterBuffer(context.content)
 
@@ -289,7 +287,7 @@ class KiraLexer(
 
     /** Whether the identifier at [at] is in the path of a top-level import, before its `as`. */
     private fun onImportLine(at: Int): Boolean {
-        if (keywords !== Keywords.reserved || braceDepth != 0) return false
+        if (braceDepth != 0) return false
         val from = context.content.lastIndexOf('\n', at - 1) + 1
         val to = context.content.indexOf('\n', at).let { if (it < 0) context.content.length else it }
         val m = importLine.matchEntire(context.content.substring(from, to).trimEnd('\r')) ?: return false
@@ -329,7 +327,7 @@ class KiraLexer(
             val startLoc = SourcePosition(lineNumber, column)
             if (char.isLetter()) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
-                val keywordTokenType = keywords[identifier.content]
+                val keywordTokenType = Keywords.reserved[identifier.content]
                 if (keywordTokenType != null) {
                     return Token.Raw(
                         keywordTokenType,

@@ -113,15 +113,6 @@ class TypeResolver(private val program: TypedProgram) {
                 }
                 return symbolType(found.symbol, t, id, scope)
             }
-            is ModuleGraph.Lookup.Ambiguous -> {
-                program.report(
-                    "types.type.ambiguous",
-                    "'$name' is exported by more than one used module: " +
-                        (listOf(found.first) + found.others).joinToString(", ") { it.from.uri } + ".",
-                    t,
-                )
-                return symbolType(found.first.symbol, t, id, scope)
-            }
             is ModuleGraph.Lookup.NotVisible -> notVisible = found
             ModuleGraph.Lookup.Missing -> {}
         }
@@ -257,7 +248,6 @@ class TypeResolver(private val program: TypedProgram) {
                         )
                         asValue.symbol as GlobalSymbol
                     }
-                    is ModuleGraph.Lookup.Ambiguous -> asValue.first.symbol as GlobalSymbol
                     ModuleGraph.Lookup.Missing -> null
                 }
                 if (global != null) {

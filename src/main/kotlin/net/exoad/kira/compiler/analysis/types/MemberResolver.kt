@@ -208,11 +208,10 @@ internal class MemberResolver(private val c: PhaseC) {
     /** `module.member`: the origin names a module, or a type (refused), not a value. */
     private fun staticAccess(e: MemberAccessExpr, origin: Identifier, member: Identifier, ctx: BodyContext): KType? {
         when (val found = c.program.graph.lookup(ctx.module, origin.value) { it is ClassSymbol || it is TraitSymbol }) {
-            is ModuleGraph.Lookup.Found, is ModuleGraph.Lookup.NotVisible, is ModuleGraph.Lookup.Ambiguous -> {
+            is ModuleGraph.Lookup.Found, is ModuleGraph.Lookup.NotVisible -> {
                 val sym = when (found) {
                     is ModuleGraph.Lookup.Found -> found.symbol
                     is ModuleGraph.Lookup.NotVisible -> found.symbol
-                    is ModuleGraph.Lookup.Ambiguous -> found.first.symbol
                     else -> null
                 }!!
                 model.refs[origin] = sym

@@ -11,7 +11,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
  * its members: `a.b.Decoder as Decoder`.
  */
 open class UseStatement(val uri: StringLiteral, val alias: Identifier? = null) : Statement(uri) {
-    /** The URI of the module [uri] names, once every file is read (DialectLink); null before, or for none. */
+    /** The URI of the module [uri] names, once every file is read (UnitLink); null before, or for none. */
     var resolvedUri: String? = null
 
     /** For a member import, the member's name; null when the whole module is imported. */

@@ -82,10 +82,10 @@ internal class TypeFacts(private val builtins: Builtins) {
     }
 
     /**
-     * Whether a value of [t] is shared and changes through any binding (stage 4's rule, its gate on): a Mutable
+     * Whether a value of [t] is shared and changes through any binding (stage 4's rule): a Mutable
      * type's value is held by reference, so `xs.add(v)` needs no Mutable binding, only `xs = ...` does.
      */
-    fun shares(t: KType?): Boolean = net.exoad.kira.compiler.frontend.parser.DialectGates.mutability && isMutableType(t)
+    fun shares(t: KType?): Boolean = isMutableType(t)
 
     /**
      * Whether a value of [t] changes, or holds one that does (stage 4's contagion): a Mutable type, or a Maybe, a

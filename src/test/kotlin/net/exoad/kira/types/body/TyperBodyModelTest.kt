@@ -37,7 +37,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * The tables TypedModelDumper does not print, checked one fact at a time: captures, loop
@@ -134,25 +133,6 @@ class TyperBodyModelTest {
         expectNoErrors(p)
     }
 
-    @Test
-    fun aStructLambdaWritingAFieldWritesItsCopy() {
-        DialectGates.stage4(false) {
-            val p = snippet(
-                """
-                pub S: Struct {
-                    pub k: Int32 = 0
-                    pub mut f: () Fx<Tuple0, Void> {
-                        () Void {
-                            k = 1
-                        }
-                    }
-                }
-                """
-            )
-            TyperTestSupport.expectDiagnostic(p, "types.lambda.assign-capture")
-        }
-    }
-
     // ---- loops (design 5.4) ------------------------------------------------------------------
 
     @Test
@@ -176,7 +156,6 @@ class TyperBodyModelTest {
             plans.map { it.kind },
         )
         assertEquals(listOf("Size", "Int32", "UInt8", "Char", "Tuple2<Str, Int32>", "Int64"), plans.map { it.element.display() })
-        assertEquals(listOf(false, false, false, false, false, false), plans.map { it.isLegacy })
         val vars = plans.map { it.variable as LocalSymbol }
         assertEquals(listOf("i", "x", "b", "c", "e", "k"), vars.map { it.name })
         assertEquals(listOf(false, false, false, false, false, false), vars.map { it.isMut }, "a loop variable is not mut")

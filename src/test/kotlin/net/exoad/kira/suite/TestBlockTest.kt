@@ -9,7 +9,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.AstWalk
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
@@ -53,7 +52,7 @@ class TestBlockTest {
 
     /** The initializer of the local `a` in a function with a Pt, a Line, a Maybe and an Int32 at hand. */
     private fun init(test: String): Expr =
-        AstWalk.all(parsed("f: (p: Pt, line: Line, m: Maybe<Pt>, k: Int32) Void {\n    a: Bool = $test\n}"))
+        TyperTestSupport.nodes(parsed("f: (p: Pt, line: Line, m: Maybe<Pt>, k: Int32) Void {\n    a: Bool = $test\n}"))
             .filterIsInstance<VariableDecl>().first { it.name.value == "a" }.value!!
 
     // ---- the parser --------------------------------------------------------------------------
@@ -76,7 +75,7 @@ class TestBlockTest {
 
     @Test
     fun inAConditionTheBraceIsATestBlockOnlyWhenTheConditionGoesOn() {
-        val ifs = AstWalk.all(
+        val ifs = TyperTestSupport.nodes(
             parsed(
                 """
                 f: (p: Pt, k: Int32) Int32 {

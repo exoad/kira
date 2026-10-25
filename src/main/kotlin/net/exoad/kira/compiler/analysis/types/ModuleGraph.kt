@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.ModuleNames
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 
 /**
@@ -12,9 +11,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
  * Scope order: a module's own members, then its member aliases (`a.b.Name as Name`), then the
  * `pub` members of the ambient stdlib (every `kira:*` module, by URI), unless an imported project
  * module has that name pub too: old text meant the project's, so bare it is refused. An imported
- * module's names are reached through its alias (`b.Name`); with [DialectGates.aliasOnlyImports]
- * off (old text) they are also seen bare, a project's before the stdlib's, as `use` had them. Type
- * parameters come before all of these; TypeResolver handles them.
+ * module's names are reached through its alias (`b.Name`). Type parameters come before all of
+ * these; TypeResolver handles them.
  */
 class ModuleGraph(private val program: TypedProgram) {
     /** The result of a name lookup. */
@@ -24,9 +22,6 @@ class ModuleGraph(private val program: TypedProgram) {
 
         /** Only a non-`pub` member of a used module has this name. */
         data class NotVisible(val symbol: Symbol, val from: ModuleSymbol) : Lookup
-
-        /** Two used modules export this name. The first is [first]. */
-        data class Ambiguous(val first: Found, val others: List<Found>) : Lookup
 
         data object Missing : Lookup
     }
@@ -112,9 +107,6 @@ class ModuleGraph(private val program: TypedProgram) {
     fun lookup(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean = { true }): Lookup {
         module.members[name]?.takeIf(accept)?.let { return Lookup.Found(it, module) }
         module.memberImports[name]?.takeIf(accept)?.let { return Lookup.Found(it, it.module) }
-        if (!DialectGates.aliasOnlyImports) {
-            return bareImports(module, name, accept)
-        }
         for (std in ambient()) {
             if (std === module) {
                 continue
@@ -144,37 +136,6 @@ class ModuleGraph(private val program: TypedProgram) {
     }
 
     /**
-     * Old text's rule (`use`): after a module's own names, every pub name of the modules it
-     * imports, a project's before the stdlib's, then the ambient stdlib. Each answer the imports
-     * give goes to [importTierHits].
-     */
-    private fun bareImports(module: ModuleSymbol, name: String, accept: (Symbol) -> Boolean): Lookup {
-        val exported = mutableListOf<Lookup.Found>()
-        for (used in module.imports) {
-            val s = used.members[name]?.takeIf { accept(it) && isPub(it) } ?: continue
-            if (exported.none { it.symbol === s }) {
-                exported.add(Lookup.Found(s, used))
-            }
-        }
-        // A used project module's name beats a used stdlib module's, as it beats the ambient stdlib's: the stdlib grows under a project.
-        val tier = exported.filter { !it.from.isStdlib }.ifEmpty { exported }
-        if (tier.size > 1) {
-            return Lookup.Ambiguous(tier.first(), tier.drop(1)).also { importTierHits?.invoke(module, name, it) }
-        }
-        tier.firstOrNull()?.let { found -> return found.also { importTierHits?.invoke(module, name, it) } }
-        for (std in ambient()) {
-            if (std === module) {
-                continue
-            }
-            std.members[name]?.takeIf { accept(it) && isPub(it) }?.let { return Lookup.Found(it, std) }
-        }
-        for (used in module.imports) {
-            used.members[name]?.takeIf(accept)?.let { return Lookup.NotVisible(it, used).also { hit -> importTierHits?.invoke(module, name, hit) } }
-        }
-        return Lookup.Missing
-    }
-
-    /**
      * Why [name] means nothing bare in [module] though an import has it: the message naming both
      * fixes, a member alias or the qualified name, and the stdlib's when it has the name too; null
      * when no imported module has it.
@@ -198,10 +159,6 @@ class ModuleGraph(private val program: TypedProgram) {
     }
 
     companion object {
-        /** kira-dialect's ear on old text: each bare name an import answered, in its module, with the answer. */
-        @Volatile
-        var importTierHits: ((ModuleSymbol, String, Lookup) -> Unit)? = null
-
         /** Whether a top-level symbol is `pub`. */
         fun isPub(symbol: Symbol): Boolean = when (symbol) {
             is ClassSymbol -> symbol.isPub

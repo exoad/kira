@@ -8,46 +8,9 @@ import net.exoad.kira.types.rules.RulesTestSupport.snippet
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 class ConstEligibilityPassTest {
     // ---- positive ----------------------------------------------------------------------------
-
-    @Test
-    fun aStructMachineWithLoopsIsConstant() {
-        DialectGates.stage4(false) {
-            // hall's shape: a struct's mut @_const fx writing its fields, a global Arr<T, N>, loops.
-            expectClean(
-                snippet(
-                    """
-                    pub INDEX_OF: Arr<Int8, 4> = @arrOf(-1, 0, 2, 1)
-                    pub Decoder: Struct {
-                        pub ticks: Int32 = 0
-                        pub state: UInt8 = 0
-                        pub @_const errors: () Int32 {
-                            ticks
-                        }
-                        pub mut @_const feed: (next: UInt8) Void {
-                            idx: Int8 = INDEX_OF[(next & 3) as Size]
-                            if idx < 0 {
-                                state = next
-                            } else {
-                                ticks += idx as Int32
-                            }
-                        }
-                    }
-                    pub @_const settle: (steps: Arr<UInt8, 4>) Decoder {
-                        mut d: Decoder = Decoder {}
-                        for s: UInt8 in steps {
-                            d.feed(s)
-                        }
-                        d
-                    }
-                    """,
-                ),
-            )
-        }
-    }
 
     @Test
     fun viewsMaybeAndConstexprBindings() {

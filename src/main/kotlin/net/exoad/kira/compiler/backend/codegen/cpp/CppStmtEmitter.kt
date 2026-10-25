@@ -51,8 +51,7 @@ import java.util.IdentityHashMap
  *   (`const Reply r = e;`), which avoids the `initializer_list` trap. A local without `mut` is
  *   `const`.
  * - `for i: T in a..b` evaluates its bound once (`i_end`), unless the bound is a literal or a
- *   constant; `for x: T in xs` is a range-for (by value for a scalar, by `const&` otherwise);
- *   the legacy `for mut i: a..b` keeps its inclusive bound (D17, the typer warns).
+ *   constant; `for x: T in xs` is a range-for (by value for a scalar, by `const&` otherwise).
  * - A place assignment writes the lvalue (`kira::at(p, 30) = ...`); a discarded non-Void
  *   result is `static_cast<void>(...)` (R8: every non-Void function is `[[nodiscard]]`).
  * - `throw` is `throw kira::Error{...}` hosted and `kira::panic(...)` freestanding (D41);
@@ -184,10 +183,10 @@ class CppStmtEmitter : CppStmtPart {
         return state.block {
             val name = state.declare(variable, ctx.names.escape(fe.initializer.value)) { taken(ctx, it) }
             val head = when (plan.kind) {
-                LoopKind.RANGE, LoopKind.RANGE_INCLUSIVE -> {
+                LoopKind.RANGE -> {
                     val range = fe.target as? RangeExpr ?: return@block listOf(lower.internal(fe, "a range loop without a range").text + ";")
                     val start = lower.emit(range.begin, CppPrec.ASSIGN)
-                    val cmp = if (plan.kind == LoopKind.RANGE) "<" else "<="
+                    val cmp = "<"
                     if (model.const(range.end) != null) {
                         // A literal or constant bound needs no temporary.
                         "$typeText $name = $start; $name $cmp ${lower.emit(range.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"

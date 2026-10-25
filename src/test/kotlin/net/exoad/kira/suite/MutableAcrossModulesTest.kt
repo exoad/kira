@@ -1,8 +1,6 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.Stage4
-import net.exoad.kira.dialect.Stage5
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -10,9 +8,7 @@ import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import net.exoad.kira.types.TyperTestSupport.module
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.PrintStream
 import java.nio.file.Files
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -201,75 +197,6 @@ class MutableAcrossModulesTest {
         assertTrue(Regex("""cost\(\) const""").containsMatchIn(text), text)
     }
 
-    /** bibo's order: stage 3's text through stage 4 (`mut` to Mutable<>), then stage 5 (member aliases, project.kira). */
-    @Test
-    fun stage4ThenStage5ConvertBibosWay() {
-        val root = Files.createTempDirectory("stage45").toFile()
-        try {
-            File(root, "kira.yaml").writeText(
-                "project:\n  name: app\nsrcDir: src\nbuild:\n  target: py\ncompiler:\n  types: strict\n" +
-                    "dependencies:\n  kira_stdlib:\n    path: ${File("kira").absoluteFile.path.replace('\\', '/')}\n",
-            )
-            write(
-                root,
-                mapOf(
-                    "lib/counter.kira" to "pub Counter: Any {\n    pub mut n: Int32 = 0\n\n    pub mut bump: () Void {\n        n += 1\n    }\n\n    pub mut log: List<Int32> = List<Int32> { }\n}\n",
-                    // A copy of a List read off a bare import's type, then changed: stage 4 lists it only if it types the old text.
-                    "app/main.kira" to "app.lib.counter as counter\n\npub main: () Void {\n    mut c: Counter = Counter { }\n    c.bump()\n" +
-                        "    mut total: Int32 = 0\n    total += c.n\n    println(\"${'$'}{total}\")\n}\n\n" +
-                        "pub tally: (c: Counter) Int32 {\n    mut copy: List<Int32> = c.log\n    copy.add(2)\n    c.log.size() as Int32\n}\n",
-                ),
-            )
-            val (four, log4) = captured { Stage4.convertAll(listOf(root.path), check = false) }
-            assertEquals(1, four, log4)
-            assertContains(log4, "into 'copy', then changed")
-            assertContains(File(root, "src/lib/counter.kira").readText(), "pub Counter: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    pub bump: () Void {")
-            val (five, log5) = captured { Stage5.convertAll(listOf(root.path), check = false, keepYaml = false) }
-            assertEquals(0, five, log5)
-            assertContains(log5, "1 changed (1 member aliases, 0 uses written qualified), 1 kira.yaml became project.kira")
-            val main = File(root, "src/app/main.kira").readText()
-            assertTrue(main.startsWith("app.lib.counter as counter\napp.lib.counter.Counter as Counter\n\npub main: () Void {\n    c: Mutable<Counter> = Counter { }\n"), main)
-            assertFalse(File(root, "kira.yaml").exists())
-            // Each converter's fixed point, and the program runs with every gate on.
-            assertEquals(0, captured { Stage5.convertAll(listOf(root.path), check = true, keepYaml = false) }.first)
-            val (again, log4again) = captured { Stage4.convertAll(listOf(root.path), check = true) }
-            assertEquals(0, again, log4again)
-            // project.kira is no module of stage 4's.
-            assertContains(log4again, "kira-dialect stage4: 2 files")
-            if (PyTestSupport.python != null) assertEquals("1\n", runPy(root))
-        } finally {
-            root.deleteRecursively()
-        }
-    }
-
-    /** Stage 5 on stage 4's text: a bare Mutable type and a Mutable nested type's outer get their member aliases, proved. */
-    @Test
-    fun stage5AddsMemberAliasesToStage4sText() {
-        val root = project(
-            mapOf(
-                "lib/counter.kira" to counter + "\n",
-                "lib/shapes.kira" to plainShapes,
-                "app/main.kira" to "app.lib.counter as counter\napp.lib.shapes as shapes\n\npub main: () Void {\n    c: Counter = Counter { }\n    c.bump()\n" +
-                    "    p: Shape.Pen = Shape.Pen { }\n    p.draw(c.read())\n    total: Mutable<Int32> = p.ink\n    total += 1\n    println(\"${'$'}{total}\")\n}\n",
-            ),
-        )
-        try {
-            val (code, log) = captured { Stage5.convertAll(listOf(File(root, "src").path), check = false, keepYaml = false) }
-            assertEquals(0, code, log)
-            assertContains(log, "(2 member aliases, 0 uses written qualified)")
-            assertTrue(
-                File(root, "src/app/main.kira").readText().startsWith(
-                    "app.lib.counter as counter\napp.lib.counter.Counter as Counter\napp.lib.shapes as shapes\napp.lib.shapes.Shape as Shape\n\n",
-                ),
-                File(root, "src/app/main.kira").readText(),
-            )
-            assertEquals(0, captured { Stage5.convertAll(listOf(File(root, "src").path), check = true, keepYaml = false) }.first)
-            if (PyTestSupport.python != null) assertEquals("100\n", runPy(root))
-        } finally {
-            root.deleteRecursively()
-        }
-    }
-
     // ---- helpers ------------------------------------------------------------------------------
 
     private fun write(root: File, files: Map<String, String>) =
@@ -296,16 +223,5 @@ class MutableAcrossModulesTest {
         val r = PyTestSupport.run(listOf(PyTestSupport.python!!, mains.single().absolutePath), root)
         assertEquals(0, r.exitCode, r.all)
         return r.stdout.replace("\r", "")
-    }
-
-    private fun <T> captured(block: () -> T): Pair<T, String> {
-        val saved = System.out
-        val buf = ByteArrayOutputStream()
-        System.setOut(PrintStream(buf, true, Charsets.UTF_8))
-        try {
-            return block() to buf.toString(Charsets.UTF_8)
-        } finally {
-            System.setOut(saved)
-        }
     }
 }

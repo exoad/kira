@@ -2,7 +2,6 @@ package net.exoad.kira.suite
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
@@ -14,8 +13,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStateme
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.DialectConverter
-import net.exoad.kira.dialect.TreeProof
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -101,37 +98,6 @@ class BlockValueTest {
         // A Void function's bare one, and a lambda's.
         assertEquals("parse.removed", parseError("f: () Void {\n    trace(1)\n    return\n}").tag)
         assertEquals("parse.removed", parseError("f: () Int32 {\n    g: () Int32 = () Int32 {\n        return 1\n    }\n    g()\n}").tag)
-    }
-
-    @Test
-    fun oldTextWithItsRefusalsOffStillMixesAnEarlyReturnAndATail() {
-        // kira-dialect reads stage 2's text so: a return, and a value after one, as they were.
-        DialectGates.stage3(false) {
-            val ok = "f: (x: Int32) Int32 {\n    if x < 0 {\n        return 0\n    }\n    x * 2\n}"
-            expectNoErrors(TyperTestSupport.snippet(ok))
-            // One arm returns and the other ends in its value: both are the function's result.
-            expectNoErrors(TyperTestSupport.snippet("f: (x: Int32) Int32 {\n    if x < 0 {\n        return 0\n    } else {\n        x\n    }\n}"))
-            assertEquals("parse.return.tail", parseError("f: (x: Int32) Int32 {\n    return x\n    x + 1\n}").tag)
-            assertEquals("parse.return.tail", parseError("f: (x: Int32) Int32 {\n    if x < 0 {\n        return 0\n        1\n    } else {\n        x\n    }\n}").tag)
-            // `return x` as the last statement is the result too, unchanged.
-            assertIs<ReturnStatement>(body("f: (x: Int32) Int32 {\n    return x\n}").single()).also { assertFalse(it.implicit) }
-            // A lambda's body is read the same way.
-            assertEquals("parse.return.tail", parseError("f: () Int32 {\n    g: () Int32 = () Int32 {\n        return 1\n        2\n    }\n    g()\n}").tag)
-            // A try's block that returns, then a value after the try, is a guard and a tail.
-            expectNoErrors(TyperTestSupport.snippet("h: () Int32 {\n    return 1\n}\n\nf: () Int32 {\n    try {\n        return h()\n    } on e: Str {\n        trace(e)\n    }\n    0\n}"))
-        }
-    }
-
-    @Test
-    fun theStageOneProofReadsANeverTailAsTheStatementItWas() {
-        val old = "module \"p:a\"\n\nfx fail: (m: Str) Never {\n    throw m\n}\n\nfx f: (x: Int32) Int32 {\n    if x > 0 {\n        return x\n    }\n    fail(\"no\")\n}\n"
-        val r = DialectConverter.convert(old, "a.kira")
-        assertEquals(emptyList(), r.problems.map { it.toString() })
-        val (nc, err) = TreeProof.parseNew(r.text, "a.kira", "p.a")
-        assertEquals(null, err)
-        val f = (nc!!.ast as RootASTNode).let { fn(it, "f") }
-        tail(f.def.body!!.last())
-        assertEquals(null, TreeProof.compare(r.old!!, nc, DialectConverter.Renames()))
     }
 
     // ---- if, try and with as expressions -----------------------------------------------------
@@ -257,68 +223,9 @@ class BlockValueTest {
         ast("P: Struct {\n    pub x: Int32 = 0\n}\n\nf: (c: Bool, q: P) P {\n    if c {\n        q with {\n            x = 1\n        }\n    } else {\n        q\n    }\n}")
         // A throw is no expression either.
         ast("f: (c: Bool) Int32 {\n    x: Int32 = if c {\n        1\n    } else {\n        throw \"no\"\n    }\n    x\n}")
-        // With the rule off, as kira-dialect reads stage 2's text, the old spelling parses.
-        DialectGates.ternaryOnly(false) {
-            ast(value)
-            ast(bodyTail)
-            ast(armTail)
-        }
     }
 
     // ---- py ----------------------------------------------------------------------------------
-
-    @Test
-    fun aReturnAtTheEndAndTheBareLastExpressionGiveTheSamePython() {
-        val explicit = """
-            h: (s: Str) Int32 {
-                if s == "x" {
-                    throw "bad"
-                }
-                return s.size() as Int32
-            }
-
-            pick: (x: Int32) Str {
-                if x < 0 {
-                    return "neg"
-                } else if x == 0 {
-                    z: Str = "zero"
-                    return z
-                } else {
-                    return "pos"
-                }
-            }
-
-            safe: (s: Str) Int32 {
-                try {
-                    return h(s)
-                } on e: Str {
-                    return -1
-                }
-            }
-
-            twice: (x: Int32) Int32 {
-                if x > 100 {
-                    return 100
-                }
-                f: (n: Int32) Int32 = (n: Int32) Int32 {
-                    return n * 2
-                }
-                return f(x)
-            }
-        """.trimIndent()
-        // Every `return` that ends a block dropped; the guard's early return stays.
-        val bare = explicit.lines().joinToString("\n") { line ->
-            if (line.trimStart().startsWith("return ") && !line.contains("return 100")) line.replaceFirst("return ", "") else line
-        }
-        assertEquals(8, Regex("return ").findAll(explicit).count() - Regex("return ").findAll(bare).count(), bare)
-        // `return` is refused now; with the refusals off this is what kira-dialect's last-return rewrite rests on.
-        DialectGates.stage3(false) {
-            assertEquals(PyTestSupport.emit(explicit).python(), PyTestSupport.emit(bare).python())
-            // And the same C++.
-            val cpp = { text: String -> DeclTestSupport.emit(DeclTestSupport.module("app:main", text)).source("app:main") }
-            assertEquals(cpp(explicit), cpp(bare))
-        }
-    }
 
     @Test
     fun onPyAnIfWithStatementArmsIsADefCalledInPlace() {
@@ -380,9 +287,6 @@ class BlockValueTest {
 
     @Test
     fun onPyAJumpOutOfAValueArmIsRefused() {
-        // A return is refused by the parser now; with the refusals off the backend still refuses it here.
-        val returns = DialectGates.stage3(false) { PyTestSupport.emit("f: (c: Bool, d: Bool) Int32 {\n    v: Int32 = if c {\n        if d {\n            return 1\n        }\n        2\n    } else {\n        3\n    }\n    v\n}") }
-        assertTrue(returns.errors.any { it.contains("a return inside an arm of an if or try used as a value") }, returns.errors.joinToString("\n"))
         val breaks = PyTestSupport.emit(
             "f: (d: Bool) Int32 {\n    s: Mutable<Int32> = 0\n    for i: Int32 in 0..3 {\n        s += try {\n            if d {\n                break\n            }\n            i\n        } on e: Str {\n            0\n        }\n    }\n    s\n}",
         )
@@ -390,10 +294,6 @@ class BlockValueTest {
         // A loop inside the arm keeps its own break.
         val inner = PyTestSupport.emit("f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        n: Mutable<Int32> = 0\n        while true {\n            n += 1\n            if n > 2 {\n                break\n            }\n        }\n        n\n    } else {\n        0\n    }\n    v\n}")
         assertTrue(inner.errors.isEmpty(), inner.errors.joinToString("\n"))
-        // As the arm's last statement a return is no value: the typer says so first.
-        DialectGates.stage3(false) {
-            expectDiagnostic(TyperTestSupport.snippet("f: (c: Bool) Int32 {\n    v: Int32 = if c {\n        return 1\n    } else {\n        2\n    }\n    v\n}"), "types.if.branch-value")
-        }
     }
 
     @Test

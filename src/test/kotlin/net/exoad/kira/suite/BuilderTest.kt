@@ -5,8 +5,6 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.AstWalk
-import net.exoad.kira.dialect.Stage2
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -15,7 +13,6 @@ import net.exoad.kira.types.TyperTestSupport.module
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.io.File
-import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -30,7 +27,7 @@ class BuilderTest {
         val p = snippet(body)
         expectNoErrors(p)
         val ctx = p.module("test:main")!!.source
-        return AstWalk.all(ctx.ast).filterIsInstance<BuilderExpr>().sortedWith(compareBy({ ctx.astOrigins[it]?.lineNumber }, { ctx.astOrigins[it]?.column }))
+        return TyperTestSupport.nodes(ctx.ast).filterIsInstance<BuilderExpr>().sortedWith(compareBy({ ctx.astOrigins[it]?.lineNumber }, { ctx.astOrigins[it]?.column }))
             .map { p.model.types[it]!!.display() }
     }
 
@@ -49,7 +46,7 @@ class BuilderTest {
     fun aBuilderTakesTypeArgumentsAndATrailingComma() {
         val p = snippet("main: () Void {\n    xs: List<Int64> = @listOf<Int64>(\n        1,\n        2,\n    )\n}")
         expectNoErrors(p)
-        val b = AstWalk.all(p.module("test:main")!!.source.ast).filterIsInstance<BuilderExpr>().single()
+        val b = TyperTestSupport.nodes(p.module("test:main")!!.source.ast).filterIsInstance<BuilderExpr>().single()
         assertEquals(Builder.LIST, b.kind)
         assertEquals(2, b.elements.size)
     }
@@ -124,32 +121,9 @@ class BuilderTest {
         assertTrue(out.contains("const kira::List<std::int32_t> xs = {1, 2};"), out)
     }
 
-    // ---- the converter -----------------------------------------------------------------------
-
-    @Test
-    fun theConverterWritesEachLiteralAsTheBuilderOfItsType() {
-        val dir = Files.createTempDirectory("stage2-literals").toFile()
-        try {
-            File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
-            val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
-            file.writeText(
-                "total: (xs: List<Int64>) Int64 {\n    xs.size() as Int64\n}\n\n" +
-                    "main: () Void {\n    a: List<Int32> = [1, 2]\n    b: Arr<Int32> = []\n    n: Int64 = total([3])\n" +
-                    "    for w: Str in [\"x\", \"y\"] {\n        println(w)\n    }\n}\n",
-            )
-            assertEquals(0, Stage2.convertAll(listOf(dir.path), check = false))
-            val text = file.readText()
-            assertTrue(text.contains("    a: List<Int32> = @listOf(1, 2)\n    b: Arr<Int32> = @arrOf()\n    n: Int64 = total(@listOf(3))\n"), text)
-            assertTrue(text.contains("    for w: Str in @arrOf(\"x\", \"y\") {\n"), text)
-            assertEquals(0, Stage2.convertAll(listOf(dir.path), check = true), "a converted file converts to itself")
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
     @Test
     fun theBuildersPyGoldenHoldsEveryBuilder() {
         val src = File("src/test/resources/py-golden/builders/src/lang/builders.kira").readText()
-        Builder.entries.filter { it != Builder.INFER }.forEach { assertTrue(src.contains("@${it.intrinsic}("), "no @${it.intrinsic} in the golden") }
+        Builder.entries.forEach { assertTrue(src.contains("@${it.intrinsic}("), "no @${it.intrinsic} in the golden") }
     }
 }

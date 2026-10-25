@@ -13,13 +13,11 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import org.junit.jupiter.api.Test
@@ -627,7 +625,7 @@ class ParserSuiteTest {
     }
 
     @Test
-    fun aReturnIsRefusedButOldTextStillReadsABareOne() {
+    fun aBareReturnIsRefused() {
         val src = """
             stop: (n: Int32) Void {
                 if n < 0 {
@@ -639,19 +637,6 @@ class ParserSuiteTest {
             """
         val refused = assertThrows<DiagnosticsException> { parseModule(src) }
         assertEquals("parse.removed", refused.tag)
-        // With the refusal off, as kira-dialect reads stage 2's text: a bare return is NoExpr.
-        val ast = net.exoad.kira.compiler.frontend.parser.DialectGates.stage3(false) { parseModule(src) }
-        val fn = declsOf(ast).filterIsInstance<FunctionDecl>().single()
-        val returns = mutableListOf<ReturnStatement>()
-        fun walk(statements: List<Statement>?) {
-            statements?.forEach { stmt ->
-                if (stmt is ReturnStatement) returns.add(stmt)
-                if (stmt is IfSelectionStatement) walk(stmt.thenStatements)
-            }
-        }
-        walk(fn.def.body)
-        assertEquals(2, returns.size, ast.toString())
-        assertTrue(returns.all { it.expr is NoExpr }, returns.toString())
     }
 
     @Test

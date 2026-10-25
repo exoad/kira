@@ -3,7 +3,6 @@ package net.exoad.kira.suite
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.analysis.types.display
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TernaryExpr
@@ -98,12 +97,8 @@ class NarrowedValueTest {
     fun theTernaryLaneCWritesForAnIfValueNarrowsAsTheIfDid() {
         val ternary = "f: (s: Shape) Int32 {\n    v: Int32 = s == Circle ? s.radius : 0\n    v\n}"
         val ifValue = "f: (s: Shape) Int32 {\n    v: Int32 = if s == Circle {\n        s.radius\n    } else {\n        0\n    }\n    v\n}"
-        DialectGates.ternaryOnly(true) {
-            assertEquals(listOf("s:Shape->Circle"), narrowed(ternary))
-            assertEquals("parse.if.ternary", assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", text(ifValue))) }.tag)
-        }
-        // With the rule off, as kira-dialect reads stage 2's text, the if it was narrows the same.
-        assertEquals(DialectGates.ternaryOnly(false) { narrowed(ifValue) }, narrowed(ternary))
+        assertEquals(listOf("s:Shape->Circle"), narrowed(ternary))
+        assertEquals("parse.if.ternary", assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", text(ifValue))) }.tag)
         // A Maybe test of a ternary binds below it, so py tests the ternary whole.
         val py = PyTestSupport.emit("f: (m: Maybe<Int32>, n: Maybe<Int32>, k: Int32) Bool {\n    e: Bool = (k > 0 ? m : n) != Int32\n    e\n}").python()
         assertTrue(py.contains("    e = (m if k > 0 else n) is None\n"), py)
@@ -146,7 +141,7 @@ class NarrowedValueTest {
 
     @Test
     fun onPyANarrowingGuardAsATernaryNarrowsItsElseArm() {
-        // The guard `if m != Int32 { return -k }` and its tail, as kira-dialect stage3 writes them.
+        // A narrowing guard and its tail as one ternary.
         val src = "f: (m: Maybe<Int32>, k: Int32) Int32 {\n    m != Int32 ? -k : m * k\n}\n\n" +
             "g: (m: Maybe<Int32>) Int32 {\n    m == Int32 ? m + 1 : 0\n}"
         val py = PyTestSupport.emit(src).python()

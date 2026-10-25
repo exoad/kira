@@ -13,7 +13,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 
 abstract class KiraCodeGenerator(compilationUnit: CompilationUnit) : KiraASTVisitor() {
     init {
-        net.exoad.kira.compiler.DialectLink.link(compilationUnit)
+        net.exoad.kira.compiler.UnitLink.link(compilationUnit)
     }
 
     open val compilationUnit: CompilationUnit = compilationUnit

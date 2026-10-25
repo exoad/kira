@@ -10,7 +10,6 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
-import net.exoad.kira.dialect.DialectMain
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.Src
@@ -22,9 +21,6 @@ import net.exoad.kira.types.TyperTestSupport.render
 import net.exoad.kira.types.TyperTestSupport.type
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.PrintStream
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -73,24 +69,6 @@ class DialectFixTest {
         expectNoErrors(p)
         assertIs<TraitSymbol>(p.module("probe:b.shapes")!!.members["Handler"])
         assertIs<ClassSymbol>(p.module("probe:a.model")!!.members["Handler"])
-    }
-
-    @Test
-    fun theConvertersRoleCheckReadsTheProjectWithItsDependencies() {
-        // T is stateless and a parent, but its own parent P (in a dependency) holds state: a class.
-        // Read with its project alone, T would be a trait, and the check would call it a change.
-        val root = fresh("dialect-roles")
-        val stdlib = File("kira").absolutePath.replace('\\', '/')
-        project(root.resolve("q"), "q", stdlib, "", "src/lib.kira" to "module \"q:lib\"\n\npub class P {\n    pub x: Int32 = 0\n}\n")
-        project(
-            root.resolve("p"), "p", stdlib, "  q: { path: ../q }\n",
-            "src/main.kira" to "module \"p:main\"\n\nuse \"q:lib\"\n\npub class T: P {\n    pub fx tag: () Int32 {\n        return 1\n    }\n}\n\n" +
-                "pub class U: T {\n    pub y: Int32 = 0\n}\n\nfx main: () Void {\n    u: U = U { }\n}\n",
-        )
-        val (code, out) = captured { DialectMain.convertKira(listOf(root.resolve("p").path), check = false) }
-        assertEquals(0, code, out)
-        assertTrue(!out.contains("ROLE"), out)
-        assertTrue(root.resolve("p/src/main.kira").readText().contains("pub T: P {"), out)
     }
 
     // ---- 2. import aliases -------------------------------------------------------------------------
@@ -147,39 +125,6 @@ class DialectFixTest {
         assertEquals(2, warnings.size, warnings.joinToString("\n") { it.message })
         assertTrue(warnings.all { !it.isError && it.message.contains("'bibo.firmware.lib.**'") }, warnings.joinToString("\n") { it.message })
         assertTrue(warnings.any { it.message.startsWith("build.cpp.headerOnly['firmware:lib.**'] matches no module") })
-    }
-
-    @Test
-    fun theYamlCommandRewritesEachGlobAndProvesItByItsModules() {
-        val root = fresh("dialect-yaml")
-        root.resolve("kira.yaml").writeText(
-            "project: { name: bibo }\nsrcDir: .\nbuild:\n  target: cpp\n  cpp:\n" +
-                "    namespaces:\n      \"firmware:lib.text\": bibo::text   # the text module\n" +
-                "    headerOnly: [\"firmware:lib.**\", \"firmware:pilot.src.{scan,imu}\"]\n" +
-                "    freestanding: [\"firmware:lib.**\"]   # firmware:lib.** stays in a comment\n",
-        )
-        for ((path, uri) in listOf("firmware/lib/text.kira" to "firmware:lib.text", "firmware/pilot/src/scan.kira" to "firmware:pilot.src.scan", "firmware/pilot/src/car.kira" to "firmware:pilot.src.car")) {
-            root.resolve(path).apply { parentFile.mkdirs() }.writeText("module \"$uri\"\n\npub f: () Int32 {\n    return 1\n}\n")
-        }
-        val (code, out) = captured { net.exoad.kira.dialect.YamlGlobs.convertAll(listOf(root.path), check = false) }
-        assertEquals(0, code, out)
-        val yaml = root.resolve("kira.yaml").readText()
-        assertTrue(yaml.contains("\"bibo.firmware.lib.text\": bibo::text   # the text module"), yaml)
-        assertTrue(yaml.contains("headerOnly: [\"bibo.firmware.lib.**\", \"bibo.firmware.pilot.src.{scan,imu}\"]"), yaml)
-        assertTrue(yaml.contains("freestanding: [\"bibo.firmware.lib.**\"]   # firmware:lib.** stays in a comment"), yaml)
-
-        // Two packages one glob names, each mapped another way: no one rewrite proves it, so none is made.
-        val modules = listOf(
-            net.exoad.kira.dialect.YamlGlobs.Module("a.kira", "a:x.m", "p:one.x.m"),
-            net.exoad.kira.dialect.YamlGlobs.Module("b.kira", "b:x.n", "p:two.x.n"),
-        )
-        val manifest = net.exoad.kira.kim.ProjectManifest(
-            net.exoad.kira.kim.ProjectSpec("p"),
-            build = net.exoad.kira.kim.BuildOptions(cpp = CppOptions(headerOnly = listOf("*:x.*"))),
-        )
-        val r = net.exoad.kira.dialect.YamlGlobs.rewrite("headerOnly: [\"*:x.*\"]\n", manifest, Path.of("."), modules)
-        assertEquals(emptyList(), r.rewrites)
-        assertEquals(1, r.problems.size, r.problems.toString())
     }
 
     // ---- 5. a slot is one rule ---------------------------------------------------------------------
@@ -327,44 +272,5 @@ class DialectFixTest {
         assertTrue(e.message.contains("'my_x'"), e.message)
         assertEquals("KiraLexer::lexIdentifier", refused("kira.math as my_math").tag)
         TyperTestSupport.unitOf(module("test:main", "net.exoad.bibo.dash.webdrive_fake as webdriveFake"))
-    }
-
-    // ---- 12. the removed forms: refused, never lowered ----------------------------------------------
-
-    @Test
-    fun theConverterNamesAFileHoldingARemovedForm() {
-        val root = fresh("dialect-removed")
-        val stdlib = File("kira").absolutePath.replace('\\', '/')
-        project(
-            root, "p", stdlib, "",
-            "src/a.kira" to "module \"p:a\"\n\nenum Kind { A, B }\n",
-            "src/b.kira" to "module \"p:b\"\n\npub class C {\n    pub x: Int32 = 1\n    finally {\n        trace(1)\n    }\n}\n",
-        )
-        val (code, out) = captured { DialectMain.convertKira(listOf(root.path), check = true) }
-        assertEquals(1, code, out)
-        assertTrue(out.contains("cannot convert an enum, which the clean dialect removes at 3:1"), out)
-        assertTrue(out.contains("cannot convert a 'finally' block, which the clean dialect removes at 5:5"), out)
-        assertTrue(out.contains("2 not converted"), out)
-    }
-
-    // ---- helpers ------------------------------------------------------------------------------------
-
-    private fun fresh(name: String): File = File("build/tmp/$name").absoluteFile.also { it.deleteRecursively(); it.mkdirs() }
-
-    private fun project(dir: File, name: String, stdlib: String, deps: String, vararg files: Pair<String, String>) {
-        dir.mkdirs()
-        dir.resolve("kira.yaml").writeText("project: { name: $name }\nsrcDir: src\nbuild:\n  target: py\ndependencies:\n  kira_stdlib: { path: $stdlib }\n$deps")
-        files.forEach { (path, text) -> dir.resolve(path).apply { parentFile.mkdirs() }.writeText(text) }
-    }
-
-    private fun <T> captured(block: () -> T): Pair<T, String> {
-        val saved = System.out
-        val buf = ByteArrayOutputStream()
-        System.setOut(PrintStream(buf, true, Charsets.UTF_8))
-        try {
-            return block() to buf.toString(Charsets.UTF_8)
-        } finally {
-            System.setOut(saved)
-        }
     }
 }

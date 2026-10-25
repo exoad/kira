@@ -126,7 +126,7 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         is UnaryExpr -> unary(e, expected, module)
         is BinaryExpr -> binary(e, expected, module)
         is TypeCastExpr -> cast(e, module)
-        is BuilderExpr -> if (e.kind == Builder.ARR || e.kind == Builder.INFER) array(e, expected, module) else null
+        is BuilderExpr -> if (e.kind == Builder.ARR) array(e, expected, module) else null
         else -> null
     }
 
@@ -162,7 +162,6 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         val global = when (found) {
             is ModuleGraph.Lookup.Found -> found.symbol as GlobalSymbol
             is ModuleGraph.Lookup.NotVisible -> found.symbol as GlobalSymbol
-            is ModuleGraph.Lookup.Ambiguous -> found.first.symbol as GlobalSymbol
             ModuleGraph.Lookup.Missing -> return null
         }
         if (!global.isConstant) {
@@ -411,7 +410,7 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         if (size != null && e.elements.size.toLong() != size) {
             program.report(
                 "types.const.arr-size",
-                "This ${if (e.kind == Builder.INFER) "literal" else "@arrOf"} has ${e.elements.size} element${if (e.elements.size == 1) "" else "s"}, " +
+                "This @arrOf has ${e.elements.size} element${if (e.elements.size == 1) "" else "s"}, " +
                     "but ${arr.display()} holds exactly $size.",
                 e,
             )

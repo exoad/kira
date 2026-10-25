@@ -279,7 +279,7 @@ class FnSymbol(
     var ret: KType = KType.Error,
     /** The class, struct or trait that declares this method; null for a free function. */
     val owner: TypeSymbol? = null,
-    /** The method may change its receiver: `mut fx` in old text; a function of a Mutable type, or a `@_mutates` one. */
+    /** The method may change its receiver: a function of a Mutable type, or a `@_mutates` one. */
     var isMutMethod: Boolean = false,
     var foreign: Foreign? = null,
     val hasBody: Boolean = false,
@@ -326,7 +326,7 @@ class ParamSymbol(
     override val module: ModuleSymbol,
     override val decl: ASTNode?,
     var type: KType = KType.Error,
-    /** `mut p: T` (D4) in old text; from stage 4, a value-held Mutable one its function changes (WrittenParams). */
+    /** A value-held Mutable parameter its function changes (WrittenParams), passed by reference. */
     var byRef: Boolean = false,
     /** The default value, kept as the expression (D48: a literal or a pub constant). */
     val default: Expr? = null,

@@ -216,10 +216,9 @@ object ProjectKira {
 
     /**
      * The typer's findings in the project file at [path], typed with the [CHECK_MODULES] of
-     * [stdlib] (the dependency sources its configuration names), each as `file:line:col: error: code: message`;
-     * [text] is the file's, unless given (a converter's, before it is written).
+     * [stdlib] (the dependency sources its configuration names), each as `file:line:col: error: code: message`.
      */
-    fun check(path: Path, stdlib: List<String>, text: String? = null): List<String> {
+    fun check(path: Path, stdlib: List<String>): List<String> {
         val unit = CompilationUnit(bootstrap = false)
         val wanted = stdlib.filter { java.io.File(it).name.removeSuffix(".kira") in CHECK_MODULES }
         if (wanted.none { java.io.File(it).name == "config.kira" }) {
@@ -232,7 +231,7 @@ object ProjectKira {
             KiraParser(unit.addSource(canonical, processed, KiraLexer(bare).tokenize())).parse()
         }
         val ctx = try {
-            read(unit, text ?: Files.readString(path), path.toAbsolutePath().normalize().toString())
+            read(unit, Files.readString(path), path.toAbsolutePath().normalize().toString())
         } catch (e: IllegalArgumentException) {
             return listOf("$path: error: project.parse: ${e.message}")
         }

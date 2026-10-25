@@ -11,8 +11,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.dialect.AstWalk
-import net.exoad.kira.dialect.Stage3
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
@@ -20,8 +18,6 @@ import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import net.exoad.kira.types.TyperTestSupport.module
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.io.File
-import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -59,7 +55,7 @@ class ConformanceTest {
     private fun initOf(body: String, name: String = "a"): Expr {
         val unit = TyperTestSupport.unitOf(module("test:main", text(body)))
         val ast = unit.allSources().first { it.file == "test/main.kira" }.ast
-        return AstWalk.all(ast).filterIsInstance<VariableDecl>().first { it.name.value == name }.value!!
+        return TyperTestSupport.nodes(ast).filterIsInstance<VariableDecl>().first { it.name.value == name }.value!!
     }
 
     /** `a: Bool = <rhs side>` inside a function that has a Shape, a Maybe, a Pt and a function at hand. */
@@ -119,28 +115,6 @@ class ConformanceTest {
         expectNoErrors(snippet("f: () Int32 {\n    is: Int32 = 2\n    is + 1\n}"))
     }
 
-    @Test
-    fun theConverterRewritesIsToAConformanceTest() {
-        val dir = Files.createTempDirectory("stage3-is").toFile()
-        try {
-            File(dir, "kira.yaml").writeText("project:\n  name: probe\nsrcDir: src\ndependencies:\n  kira_stdlib:\n    path: ${File("kira").absolutePath.replace('\\', '/')}\n")
-            val file = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
-            val body = "f: (s: Shape) Bool {\n    // s is Circle, said a comment\n    t: Str = \"it is so\"\n    return s is Circle && !(s is Pt)\n}\n"
-            file.writeText("$types\n\n$body")
-            val untouched = File(dir, "src/app/other.kira").apply { writeText("g: () Int32 {\n    1\n}\n") }
-            assertEquals(1, Stage3.convertAll(listOf(dir.path), check = true), "--check sees the change")
-            assertEquals(0, Stage3.convertAll(listOf(dir.path), check = false))
-            val text = file.readText()
-            // And, stage 3's returns going with it, the last return is the body's value.
-            assertTrue(text.contains("    s == Circle && !(s == Pt)\n") && !text.contains("return"), text)
-            assertTrue(text.contains("// s is Circle, said a comment") && text.contains("\"it is so\""), text)
-            assertEquals("g: () Int32 {\n    1\n}\n", untouched.readText())
-            assertEquals(0, Stage3.convertAll(listOf(dir.path), check = true), "a converted file converts to itself")
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
     // ---- the typer ---------------------------------------------------------------------------
 
     @Test
@@ -160,7 +134,7 @@ class ConformanceTest {
         )
         expectNoErrors(p)
         val ast = p.unit.allSources().first { it.file == "test/main.kira" }.ast
-        val decls = AstWalk.all(ast).filterIsInstance<VariableDecl>().associateBy { it.name.value }
+        val decls = TyperTestSupport.nodes(ast).filterIsInstance<VariableDecl>().associateBy { it.name.value }
         assertTrue(p.model.opCalls[decls.getValue("a").value!!] != null, "c == d calls @op_eq")
         val test = assertIs<TypeCheckExpr>(decls.getValue("b").value)
         assertNull(p.model.opCalls[test])

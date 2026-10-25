@@ -24,9 +24,9 @@ import java.util.IdentityHashMap
 
 /**
  * The copy-then-change sites of [p] for a value [turns] names: where a copy went on and one name then sees a change in
- * place the other makes. Every body is read (a callee in another file counts); what is in [reportedIn] (null: all) is listed.
+ * place the other makes. Every body is read (a callee in another file counts); what is in [reportedIn] is listed.
  */
-abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: Set<SourceContext>?) {
+abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: Set<SourceContext>) {
     /** Each site: where, and what to look at. */
     val hand = mutableListOf<Pair<ASTNode, String>>()
 
@@ -38,9 +38,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
 
     /** The sentence a site of [kind] is listed with, from what [what] says. */
     protected abstract fun says(kind: Kind, what: String): String
-
-    /** Checks of a node besides the flows (the converter's `with` and `==`), on the reporting pass only. */
-    protected open fun checks(n: ASTNode) {}
 
     /** The variables and fields whose value changes in place somewhere: a field only assigned is not one (its value is replaced). */
     private val inPlace: MutableSet<Symbol> = Collections.newSetFromMap(IdentityHashMap())
@@ -81,7 +78,7 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
 
     fun run(): CopyFlows {
         val all = bodies(p)
-        val reported = if (reportedIn == null) all else all.filter { b -> p.locate(b)?.first?.let { it in reportedIn } == true }
+        val reported = all.filter { b -> p.locate(b)?.first?.let { it in reportedIn } == true }
         all.forEach { b -> AstTree.walk(b) { n -> scan(n) } }
         // A function returning a place another name holds is aliasing, and so is one returning a call to one.
         var grew = true
@@ -276,7 +273,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
             is LambdaExpr -> captures(n)
             else -> {}
         }
-        if (reporting) checks(n)
     }
 
     private fun call(n: FunctionCallExpr) {

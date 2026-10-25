@@ -563,7 +563,7 @@ internal class ExclusivityPass : RulePass {
 
         private fun loop(s: ForIterationStatement) {
             val plan = model.loops[s] ?: return
-            if (plan.kind == LoopKind.RANGE || plan.kind == LoopKind.RANGE_INCLUSIVE) {
+            if (plan.kind == LoopKind.RANGE) {
                 return
             }
             val target = s.forIterationExpr.target

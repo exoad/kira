@@ -54,7 +54,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /**
  * Every syntax form design section 2 adds (W1.1, step 3), parsed into the
@@ -185,14 +184,11 @@ class ParserGrowthTest {
         ).single<FunctionDecl>()
         val loops = body(fn).map { assertIs<ForIterationStatement>(it).forIterationExpr }
         assertEquals(3, loops.size)
-        assertFalse(loops[0].isLegacy)
         assertEquals("Int32", typeName(loops[0].declaredType))
         assertEquals("i", loops[0].initializer.value)
         assertIs<RangeExpr>(loops[0].target)
-        assertFalse(loops[1].isLegacy)
         assertEquals("Str", typeName(loops[1].declaredType))
         assertEquals("names", (loops[1].target as Identifier).value)
-        assertFalse(loops[2].isLegacy)
         assertEquals("Size", typeName(loops[2].declaredType))
     }
 
@@ -411,31 +407,6 @@ class ParserGrowthTest {
 
     // --- call-site mut ----------------------------------------------------------
 
-    @Test
-    fun callSiteMutMarksArguments() {
-        DialectGates.stage4(false) {
-            val fn = parse(
-                """
-                f: (line: Str) Void {
-                    wordAt(line, 0, mut b, mut e)
-                    field(text, key, out = mut raw)
-                    field(text, key, mut out = raw)
-                    if !field(text, key, mut raw) { }
-                }
-                """
-            ).single<FunctionDecl>()
-            val stmts = body(fn)
-            val c1 = assertIs<FunctionCallExpr>(stmts[0].expr)
-            assertEquals(listOf(false, false, true, true), c1.positionalParameters.map { it.isMut })
-            val c2 = assertIs<FunctionCallExpr>(stmts[1].expr)
-            assertEquals("out", c2.namedParameters.single().name.value)
-            assertTrue(c2.namedParameters.single().isMut)
-            assertTrue(assertIs<FunctionCallExpr>(stmts[2].expr).namedParameters.single().isMut)
-            val cond = assertIs<UnaryExpr>(assertIs<IfSelectionStatement>(stmts[3]).expr)
-            assertTrue(assertIs<FunctionCallExpr>(cond.operand).positionalParameters[2].isMut)
-        }
-    }
-
     // --- initially, finally, override -----------------------------------------
 
     @Test
@@ -487,20 +458,6 @@ class ParserGrowthTest {
         val named: Type = alias.target.children[1]
         assertFalse(named is ConstTypeArg)
         assertEquals("USER_CMD_BYTES", typeName(named))
-    }
-
-    @Test
-    fun mutInsideTupleTypeArgumentsSetsIsMutParam() {
-        DialectGates.stage4(false) {
-            val fn = parse("f: (each: Fx<Tuple2<mut Str, Int32>, Void>) Void { }").single<FunctionDecl>()
-            val fx = fn.def.parameters.single().typeSpecifier
-            val tuple = fx.children[0]
-            assertEquals("Tuple2", typeName(tuple))
-            assertTrue(tuple.children[0].isMutParam)
-            assertFalse(tuple.children[1].isMutParam)
-            assertFalse(fx.isMutParam)
-            refusedAs("f: (xs: Arr<mut Str>) Void { }", "KiraParser::parseTypeParameter", "'mut' in a type argument is only meaningful inside a Tuple")
-        }
     }
 
     @Test
@@ -784,7 +741,7 @@ class ParserGrowthTest {
             """
         ).single<FunctionDecl>()
         val stmts = body(fn)
-        assertFalse(assertIs<ForIterationStatement>(stmts[0]).forIterationExpr.isLegacy)
+        assertIs<ForIterationStatement>(stmts[0])
         val init = assertIs<ObjectInitExpr>(assertIs<VariableDecl>(stmts[1].expr).value)
         assertEquals(2, init.positionalArgs.size)
         assertTrue(init.namedArgs.isEmpty())
@@ -828,7 +785,7 @@ class ParserGrowthTest {
 
     @Test
     fun aReturnedTernaryIsTheIfElseOfReturnsOnCAndJs() {
-        // A body's last `c ? a : d ? b : e` (kira-dialect writes one for each if/else of returns), and nothing else of an if value.
+        // A body's last `c ? a : d ? b : e`, and nothing else of an if value.
         val src = "f: (a: Int32) Int32 { a < 0 ? -1 : a > 0 ? 1 : 0 }"
         val c = emitC(src)
         assertTrue(c.contains("if((a < 0))") && c.contains("else if((a > 0))") && c.contains("return 0;"), c)

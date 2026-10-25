@@ -197,4 +197,7 @@ object TyperTestSupport {
 
     fun render(program: TypedProgram): String =
         program.diagnostics.joinToString("\n") { it.render() }.ifEmpty { "(no diagnostics)" }
+
+    /** Every node under [root], [root] first, each once, in AstTree's pre-order. */
+    fun nodes(root: ASTNode): List<ASTNode> = buildList { net.exoad.kira.compiler.analysis.types.AstTree.walk(root) { add(it) } }
 }

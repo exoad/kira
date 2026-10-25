@@ -61,8 +61,7 @@ internal object KiraBodyTyper : BodyTyper {
  *   constants, since C++ callers see it in the header.
  * - **Loops.** `for i: T in a..b` is exclusive and `T` types both bounds; `for x: T in xs`
  *   iterates an Arr, List, Set, View or Map (as `Tuple2<K, V>`), and `T` is the element type
- *   exactly. The legacy `for mut i: a..b` keeps its inclusive meaning with a deprecation
- *   warning (D17). Each gets a [LoopPlan].
+ *   exactly. Each gets a [LoopPlan].
  * - **Assignment** targets are places; writing a lambda's capture is an error.
  */
 internal class StmtChecker(private val c: PhaseC) {
@@ -179,7 +178,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 c.report(
                     "types.const.not-constant",
                     "'${g.name}' is a module constant, so its value is fixed at compile time; ${KiraUnparser.text(init)} is not" +
-                        "$why. Declare it ${if (net.exoad.kira.compiler.frontend.parser.DialectGates.mutability) "'${g.name}: Mutable<${g.type.display()}>'" else "`mut`"} for state, or compute it where it is used.",
+                        "$why. Declare it '${g.name}: Mutable<${g.type.display()}>' for state, or compute it where it is used.",
                     init,
                 )
             }
@@ -644,66 +643,37 @@ internal class StmtChecker(private val c: PhaseC) {
         val name = fe.initializer.value
         val kind: LoopKind
         val element: KType
-        if (fe.isLegacy) {
-            c.report(
-                "types.for.legacy",
-                "`for mut $name: a..b` includes b and is deprecated (D17); write `for $name: T in a..(b + 1)`, whose range excludes its end.",
-                fe,
-                Severity.WARNING,
-            )
-            if (target is RangeExpr) {
-                val (lt, rt) = c.exprs.operands(target.begin, target.end, null, ctx, scope)
-                element = rangeElement(target, lt, rt)
-                kind = LoopKind.RANGE_INCLUSIVE
-            } else {
-                val (k, el) = iteration(target, c.exprs.synth(target, ctx, scope))
-                kind = k
-                element = el
+        val declared = fe.declaredType?.let { c.typeOf(it) } ?: KType.Error
+        if (target is RangeExpr) {
+            c.exprs.check(target.begin, declared, ctx, scope, "the start of the range")
+            c.exprs.check(target.end, declared, ctx, scope, "the end of the range")
+            if (!declared.containsError() && !facts.isInteger(declared)) {
+                c.report("types.for.range-type", "A range counts integers; ${declared.display()} is not an integer type.", fe)
             }
+            kind = LoopKind.RANGE
+            element = declared
         } else {
-            val declared = fe.declaredType?.let { c.typeOf(it) } ?: KType.Error
-            if (target is RangeExpr) {
-                c.exprs.check(target.begin, declared, ctx, scope, "the start of the range")
-                c.exprs.check(target.end, declared, ctx, scope, "the end of the range")
-                if (!declared.containsError() && !facts.isInteger(declared)) {
-                    c.report("types.for.range-type", "A range counts integers; ${declared.display()} is not an integer type.", fe)
-                }
-                kind = LoopKind.RANGE
-                element = declared
-            } else {
-                val (k, el) = iteration(target, c.exprs.synth(target, ctx, scope))
-                kind = k
-                element = el
-                if (!el.containsError() && !declared.containsError() && el != declared) {
-                    c.report(
-                        "types.for.element",
-                        "The loop variable '$name' is ${declared.display()}, but the elements are ${el.display()}: they must be the same type.",
-                        fe,
-                    )
-                }
+            val (k, el) = iteration(target, c.exprs.synth(target, ctx, scope))
+            kind = k
+            element = el
+            if (!el.containsError() && !declared.containsError() && el != declared) {
+                c.report(
+                    "types.for.element",
+                    "The loop variable '$name' is ${declared.display()}, but the elements are ${el.display()}: they must be the same type.",
+                    fe,
+                )
             }
         }
-        val varType = if (fe.isLegacy) element else fe.declaredType?.let { c.typeOf(it) } ?: element
-        val variable = LocalSymbol(name, ctx.module, fe, varType, isMut = fe.isLegacy, fn = ctx.fn)
+        val varType = fe.declaredType?.let { c.typeOf(it) } ?: element
+        val variable = LocalSymbol(name, ctx.module, fe, varType, isMut = false, fn = ctx.fn)
         model.declSyms[fe] = variable
         model.refs[fe.initializer] = variable
         ctx.lambda?.let { c.declaredIn[variable] = it }
-        model.loops[s] = LoopPlan(kind, element, variable, fe.isLegacy)
+        model.loops[s] = LoopPlan(kind, element, variable)
         val bodyScope = scope.child()
         bodyScope.declare(name, variable)
         c.withs.declares(name, fe, bodyScope)
         loopBody(s.body, ctx, bodyScope)
-    }
-
-    private fun rangeElement(r: RangeExpr, lt: KType, rt: KType): KType {
-        if (lt.containsError() || rt.containsError()) {
-            return KType.Error
-        }
-        if (lt != rt || !facts.isInteger(lt)) {
-            c.report("types.for.range-type", "A range's ends are integers of one type; this one is ${lt.display()}..${rt.display()}.", r)
-            return KType.Error
-        }
-        return lt
     }
 
     /** What iterating a value of type [t] yields. */

@@ -3,8 +3,6 @@ package net.exoad.kira.compiler.analysis.types
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.Builder
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
@@ -39,9 +37,6 @@ sealed interface Capture {
 enum class LoopKind {
     /** `for i: T in a..b`: exclusive upper bound. */
     RANGE,
-
-    /** The legacy `for mut i: a..b`: inclusive upper bound, with a deprecation warning (D17). */
-    RANGE_INCLUSIVE,
     ARR,
     LIST,
     SET,
@@ -58,13 +53,11 @@ enum class LoopKind {
  *
  * @property element the loop variable's type (the range's integer type, or the element type).
  * @property variable the loop variable.
- * @property isLegacy the `for mut x: e` form.
  */
 data class LoopPlan(
     val kind: LoopKind,
     val element: KType,
     val variable: Symbol?,
-    val isLegacy: Boolean,
 )
 
 /**
@@ -249,9 +242,6 @@ class TypedModel {
 
     /** A bare name in a `with` block that is a member of that `with`'s receiver. */
     val withMembers: IdentityHashMap<Identifier, WithExpr> = IdentityHashMap()
-
-    /** What each stage 1 `[...]` literal ([Builder.INFER]) was typed as: a List or an Arr (kira-dialect reads it). */
-    val inferred: IdentityHashMap<BuilderExpr, Builder> = IdentityHashMap()
 
     /** Each conformance test, `value == Identity` (stage 3), keyed by its node. */
     val conformances: IdentityHashMap<TypeCheckExpr, Conformance> = IdentityHashMap()

@@ -125,15 +125,13 @@ class FfiDriftCompileTest {
     """.trimIndent() + "\n"
 
     /**
-     * Kira's view of `PtCfg` beside the two C functions that return and take it: the C name
-     * (`PtCfg`) differs from the Kira one (`Cfg`), the normal case for C (design 7.3's
-     * snake_case-C, PascalCase-Kira example), so a result's check, a `mut` parameter's check
-     * and the struct's own sizeof/field checks must all spell it the same way. `cfgModule`
-     * declares the same pair of names but never as a function's return or parameter type,
-     * which is exactly the gap that hid the drift (round 5's verdict): the sizeof/field
-     * checks read the C name straight off the marker (`CppExternEmitter.cppName`), while a
-     * result or a `mut` parameter's check went through the type speller, which read only
-     * `cpp =` and the Kira name.
+     * Kira's view of `PtCfg` beside the C function that returns it: the C name (`PtCfg`)
+     * differs from the Kira one (`Cfg`), the normal case for C (design 7.3's snake_case-C,
+     * PascalCase-Kira example), so a result's check and the struct's own sizeof/field checks
+     * must spell it the same way. `cfgModule` declares the same pair of names but never as a
+     * function's return type, which is exactly the gap that hid the drift (round 5's verdict):
+     * the sizeof/field checks read the C name straight off the marker (`CppExternEmitter.cppName`),
+     * while a result's check went through the type speller, which read only `cpp =` and the Kira name.
      */
     private val cfgCallModule = """
         pub @_extern(c = "PtCfg", header = "pt.h") Cfg: Struct {
@@ -142,8 +140,6 @@ class FfiDriftCompileTest {
         }
 
         pub @_extern(c = "pt_cfg_get", header = "pt.h") cfgGet: () Cfg;
-
-        pub @_extern(c = "pt_cfg_put", header = "pt.h") cfgPut: (mut c: Cfg) Void;
     """
 
     /** Kira's view of `pt.h`'s scalar functions and its `int` struct: the declarations as given. */
@@ -675,18 +671,15 @@ class FfiDriftCompileTest {
     }
 
     /**
-     * `PtCfg`, declared `Cfg` through `c =`, beside `pt_cfg_get`/`pt_cfg_put`: the check's
-     * result type, the `mut` parameter's check, and the struct's own sizeof/field checks
-     * must all read `PtCfg`, never the Kira name `Cfg`. Read through `cpp =` alone
-     * (CppTypeSpeller.externName's bug, disclosed pre-existing), the result and parameter
-     * checks spelled `Cfg`, which the real header never declares, and g++ failed with
+     * `PtCfg`, declared `Cfg` through `c =`, beside `pt_cfg_get`: the check's result type and
+     * the struct's own sizeof/field checks must both read `PtCfg`, never the Kira name `Cfg`.
+     * Read through `cpp =` alone (CppTypeSpeller.externName's bug, disclosed pre-existing), the
+     * result check spelled `Cfg`, which the real header never declares, and g++ failed with
      * "'Cfg' was not declared" instead of building.
      */
     private fun cCallSpellingClean(tc: CppToolchain) {
-        // A `mut` (out) parameter of an extern is stage 3's text; stage 4 has no spelling for one.
-        val header = net.exoad.kira.compiler.frontend.parser.DialectGates.stage4(false) { emitHeader("c:cfgcall", cfgCallModule, CppOptions(lineDirectives = false)) }
+        val header = emitHeader("c:cfgcall", cfgCallModule, CppOptions(lineDirectives = false))
         assertTrue(header.contains("KIRA_EXTERN_CHECK(pt_cfg_get(), PtCfg, \"cfgGet\");"), header)
-        assertTrue(header.contains("KIRA_EXTERN_CHECK((pt_cfg_put(kira::ffi::out(std::declval<PtCfg&>())), 0), int, \"cfgPut\");"), header)
         assertTrue(
             "KIRA_EXTERN_CHECK(pt_cfg_get(), Cfg, \"cfgGet\");" !in header &&
                 "std::declval<Cfg&>()" !in header,
@@ -698,7 +691,7 @@ class FfiDriftCompileTest {
             withCarDriver = false,
         )
         if (!result.success) {
-            fail("${tc.id}: PtCfg's C name does not build consistently across its result, mut parameter and sizeof/field checks:\n${result.describe()}")
+            fail("${tc.id}: PtCfg's C name does not build consistently across its result and sizeof/field checks:\n${result.describe()}")
         }
     }
 

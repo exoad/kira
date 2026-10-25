@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.StructDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
@@ -20,7 +19,6 @@ import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /** A declaration intrinsic sits in the modifier slot: after the keyword modifiers, on the declaration's line. */
 class IntrinsicSlotTest {
@@ -66,37 +64,6 @@ class IntrinsicSlotTest {
         assertEquals(listOf("_magic", "_global"), p.marks(assertIs<VariableDecl>(d[6])))
         assertEquals(listOf(Modifier.PUBLIC, Modifier.FINAL), assertIs<ClassDecl>(d[7]).modifiers)
         assertEquals(listOf("_magic"), p.marks(d[7]))
-    }
-
-    @Test
-    fun membersTakeTheSlotAfterEveryModifier() {
-        DialectGates.stage4(false) {
-            val p = parse(
-                """
-                pub @_magic Pair<A, B>: Any {
-                    pub @_magic first: A
-                    pub mut @_extern(cpp = "AddLine") addLine: (color: UInt32) Void;
-                    override pub @_const size: () Int32 { 2 }
-                }
-                pub Hall: Struct {
-                    pub mut @_const feed: (next: UInt8) Void { }
-                }
-                pub Sized: Any {
-                    pub @_magic size: () Int32;
-                }
-                """
-            )
-            val pair = assertIs<ClassDecl>(p.decls[0])
-            val (first, addLine, size) = pair.members
-            assertEquals(listOf("_magic"), p.marks(assertIs<VariableDecl>(first)))
-            assertEquals(listOf(Modifier.PUBLIC), (first as VariableDecl).modifiers)
-            assertEquals(listOf("_extern"), p.marks(assertIs<FunctionDecl>(addLine)))
-            assertEquals(listOf(Modifier.PUBLIC, Modifier.MUTABLE), (addLine as FunctionDecl).modifiers)
-            assertEquals(listOf("_const"), p.marks(assertIs<FunctionDecl>(size)))
-            assertEquals(listOf(Modifier.OVERRIDE, Modifier.PUBLIC), (size as FunctionDecl).modifiers)
-            assertEquals(listOf("_const"), p.marks(assertIs<StructDecl>(p.decls[1]).members.single()))
-            assertEquals(listOf("_magic"), p.marks(assertIs<TraitDecl>(p.decls[2]).members.single()))
-        }
     }
 
     @Test

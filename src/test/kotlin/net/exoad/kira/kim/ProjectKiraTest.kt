@@ -58,7 +58,8 @@ class ProjectKiraTest {
         val m = ProjectKira.parse(text)
         // Every field set, the file types too.
         val sources = stdlib.listFiles()!!.filter { it.extension == "kira" }.map { it.path }
-        assertEquals(emptyList(), ProjectKira.check(Files.createTempDirectory("projectkira_full").resolve(ProjectKira.FILE), sources, text))
+        val file = Files.writeString(Files.createTempDirectory("projectkira_full").resolve(ProjectKira.FILE), text)
+        assertEquals(emptyList(), ProjectKira.check(file, sources))
         val expected = ProjectManifest(
             project = ProjectSpec("net.exoad.app", "exoad", "0.5"),
             srcDir = ".",

@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import net.exoad.kira.compiler.frontend.parser.DialectGates
 
 /** Declarations phases A and B must reject, each with its diagnostic code. */
 class TyperDeclDiagnosticsTest {
@@ -147,36 +146,6 @@ class TyperDeclDiagnosticsTest {
             """
         )
         assertEquals(1, count(p, "types.class.bad-parent"), TyperTestSupport.render(p))
-    }
-
-    @Test
-    fun anOverrideKeepsTheMutOfWhatItOverrides() {
-        DialectGates.stage4(false) {
-            val p = snippet(
-                """
-                pub Stepper: Any {
-                    pub mut step: () Void { }
-                    pub peek: () Int32 {
-                        0
-                    }
-                }
-                pub Good: Stepper {
-                    pub mut step: () Void { }
-                    pub peek: () Int32 {
-                        1
-                    }
-                }
-                pub Bad: Stepper {
-                    pub step: () Void { }
-                    pub mut peek: () Int32 {
-                        1
-                    }
-                }
-                """
-            )
-            assertEquals(2, count(p, "types.override.signature"), TyperTestSupport.render(p))
-            assertTrue(p.diagnostics.filter { it.code == "types.override.signature" }.all { it.message.startsWith("Bad.") })
-        }
     }
 
     // ---- visibility and modules ----------------------------------------------------------
