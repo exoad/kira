@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 class LspPathsTest {
     @Test
     fun roundTripsFileUri() {
-        val path = File("examples/01-hello/src/main.kira").canonicalPath
+        val path = File("src/test/resources/test-projects/01-hello/src/app/main.kira").canonicalPath
         val uri = LspPaths.pathToUri(path)
         assertTrue(uri.startsWith("file:"))
         val back = LspPaths.uriToPath(uri).toString()

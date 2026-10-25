@@ -14,8 +14,9 @@ import kotlin.test.assertTrue
 
 /**
  * Golden dumps of phases A and B: one line per symbol (kind, type, flags) plus the
- * diagnostics, for examples/01..09 and for every fixture in src/test/resources/typer/decls.
- * The stdlib is typed too but left out of the dumps, so a stdlib change does not move them.
+ * diagnostics, for src/test/resources/test-projects/01..09 and for every fixture in
+ * src/test/resources/typer/decls. The stdlib is typed too but left out of the dumps, so a
+ * stdlib change does not move them.
  *
  * To regenerate after an intended change: `KIRA_UPDATE_GOLDENS=1 ./gradlew test --tests
  * 'net.exoad.kira.types.TyperDeclTest'`, then review the diff.
@@ -25,15 +26,15 @@ class TyperDeclTest {
     private val fixtures = File("src/test/resources/typer/decls")
 
     @TestFactory
-    fun examples(): List<DynamicTest> {
-        val dirs = File("examples").listFiles { f -> f.isDirectory && f.name.matches(Regex("0[1-9]-.*")) }!!
+    fun testProjects(): List<DynamicTest> {
+        val dirs = File("src/test/resources/test-projects").listFiles { f -> f.isDirectory && f.name.matches(Regex("0[1-9]-.*")) }!!
             .sortedBy { it.name }
-        assertEquals(9, dirs.size, "examples/01..09: ${dirs.map { it.name }}")
+        assertEquals(9, dirs.size, "test-projects/01..09: ${dirs.map { it.name }}")
         return dirs.map { dir ->
             DynamicTest.dynamicTest(dir.name) {
                 val program = TyperTestSupport.project(dir, TyperMode.STRICT)
                 assertEveryTypeResolved(program)
-                check(File(fixtures, "examples/${dir.name}.txt"), TypedModelDumper.dumpSymbols(program))
+                check(File(fixtures, "test-projects/${dir.name}.txt"), TypedModelDumper.dumpSymbols(program))
             }
         }
     }

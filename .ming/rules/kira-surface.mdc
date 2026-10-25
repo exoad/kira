@@ -1,6 +1,6 @@
 ---
-description: Kira source language surface facts when writing or editing .kira files (stdlib and examples).
-globs: kira/*.kira, examples/**/*.kira, test_kira/**/*.kira
+description: Kira source language surface facts when writing or editing .kira files (stdlib and test programs).
+globs: kira/*.kira, src/test/resources/**/*.kira, test_kira/**/*.kira
 ---
 
 # Kira language surface

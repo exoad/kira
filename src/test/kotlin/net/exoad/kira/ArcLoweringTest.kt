@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 /**
  * Ownership rules the C backend must hold, pinned at the emit level.
  *
- * The behavioural proof is `examples/regenerate.sh --check` plus the
+ * The behavioural proof is TestProjectsRunTest's runs plus the
  * AddressSanitizer / `leaks` sweep; these assertions keep the *shape* honest so
  * a regression shows up as a failing test rather than a corrupted heap.
  */

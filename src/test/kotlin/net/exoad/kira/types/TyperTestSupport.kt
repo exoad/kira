@@ -74,7 +74,7 @@ object TyperTestSupport {
         options: TyperOptions = TyperOptions(),
     ): TypedProgram = type(module(uri, body), mode = mode, options = options)
 
-    /** Every `.kira` file under [dir]`/src` (a project directory such as examples/04-classes), typed. */
+    /** Every `.kira` file under [dir]`/src` (a project directory such as test-projects/04-classes), typed. */
     fun project(dir: File, mode: TyperMode = TyperMode.STRICT, options: TyperOptions = TyperOptions()): TypedProgram {
         val src = File(dir, "src")
         require(src.isDirectory) { "no src/ in $dir" }

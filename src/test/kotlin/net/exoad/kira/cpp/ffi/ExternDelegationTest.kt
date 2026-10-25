@@ -24,8 +24,8 @@ import kotlin.test.assertTrue
  * declared `Int8` then printed C where an Int8 prints 67, and a C `int` result declared
  * `Int32` on arm-none-eabi failed to compile in kira::div, measured). Without the
  * delegation the CStr rules, the declared-type conversions and the macro read are dead
- * code, and nothing under `./gradlew test` or CI says so: examples/cpp/13-ffi-cpp/run.sh,
- * which would, is not run by either.
+ * code, and nothing under `./gradlew test` or CI says so: no test runs a program's emitted
+ * extern calls.
  *
  * So this test states what the lowered body contains. On a branch without the expression
  * part every body is `cpp.unsupported: the body ... is not lowered yet`, and the body checks

@@ -67,7 +67,7 @@ class MinifiedCodegenTest {
                 KiraCCodeGenerator(result.compilationUnit).generate(file.path)
                 val text = file.readText()
                 // The runtime prelude stays readable and byte-identical (its
-                // end marker is what regenerate.sh splits on).
+                // end marker is where the user layer starts).
                 assertTrue(text.contains("#endif /* KIRA_RUNTIME_H */"), text)
                 val marker = "#endif /* KIRA_RUNTIME_H */"
                 val user = text.substring(text.indexOf(marker) + marker.length)

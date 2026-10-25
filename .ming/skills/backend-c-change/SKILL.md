@@ -1,12 +1,12 @@
 ---
 name: backend-c-change
-description: Safe loop for changing the C backend (codegen or runtime prelude), including snapshot refresh and commit.
+description: Safe loop for changing the C backend (codegen or runtime prelude), including the test projects' runs and commit.
 ---
 
 # C backend change loop
 
 Triggers: "change the codegen", "fix lowering", "edit KiraCCodeGenerator",
-"update the runtime", "emitted C looks wrong", "snapshots are stale".
+"update the runtime", "emitted C looks wrong", "a test project's output differs".
 
 The files that affect emitted C:
 
@@ -20,32 +20,25 @@ The files that affect emitted C:
 ## Loop
 
 ```bash
-# 1. Edit, then unit tests (fast feedback, no CLI needed)
+# 1. Edit, then the end-to-end runs: the test projects through C, JS, py and C++,
+#    and ffi-mini through cc (each needs its toolchain on PATH, or skips its run)
+./gradlew test --tests 'net.exoad.kira.TestProjectsRunTest' --tests 'net.exoad.kira.ForeignEdgePipelineTest'
+
+# 2. The whole suite
 ./gradlew test
-
-# 2. Rebuild the CLI so examples use the new compiler
-./gradlew installDist
-
-# 3. Refresh snapshots + verify behavior (NOT --check on purpose)
-./examples/regenerate.sh
-
-# 4. Confirm clean
-./examples/regenerate.sh --check
-./examples/ffi-mini/run.sh
 ```
 
 ## Commit rules
 
-- Commit the code change and the regenerated snapshots (`generated.user.c`,
-  `expected.txt`, `prelude.reference.c`) in the SAME commit - a codegen
-  change without its snapshots breaks CI.
-- Never hand-edit a generated snapshot; regenerate instead.
-- If only docs or tests changed (no emitted-C impact), snapshots stay untouched.
+- A change that deliberately alters what a test project prints updates its
+  `src/test/resources/test-projects/0N-name/expected.txt` in the SAME commit,
+  by hand, from a run you have checked.
+- If only docs or tests changed (no emitted-C impact), expected.txt stays untouched.
 
 ## Gotchas
 
-- The prelude must stay byte-identical across examples; a change that makes
-  it differ is a bug, and regenerate.sh flags it.
+- The prelude must stay byte-identical across programs; a change that makes
+  it differ is a bug, and TestProjectsRunTest flags it.
 - Container elements erase to `KiraSlot`; Float elements are rejected
   up-front. Do not "fix" that by widening the slot silently.
 - Method receivers are `Type* this`; `Str` is already a pointer, so Str

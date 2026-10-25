@@ -7,8 +7,7 @@
 // `::ImGui::Button`, kira::ffi::in around a Str, kira::ffi::out around a mut,
 // `->` on an opaque handle) and checks that the fakes saw what ImGui would. The
 // golden has no Kira bodies, so no emitted call text is compiled here; the
-// spelling is CppExternEmitterTest's, and examples/cpp/13-ffi-cpp compiles a
-// program's emitted calls once the expression part (W2.3) lowers its body.
+// spelling is CppExternEmitterTest's.
 #include "../expected/src/ui/imgui.kira.hxx"
 
 #include <cstdarg>

@@ -25,8 +25,8 @@ kira-lsp                      # stdio language server
 Sanity check:
 
 ```bash
-./gradlew test                # full unit test suite
-./examples/run.sh 01-hello    # needs the CLI installed (or KIRA=/path/to/kira)
+./gradlew test                # full unit test suite, the test projects' runs included
+cd src/test/resources/test-projects/01-hello && kira --out /tmp/hello   # out.kira.c under /tmp/hello
 ```
 
 ## CLI facts

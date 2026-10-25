@@ -32,15 +32,6 @@ jobs:
       - name: Install CLI
         run: ./gradlew installDist
 
-      # Rebuilds every example, compiles the C, runs the binary, and diffs both
-      # generated.user.c and the program's stdout against what is committed.
-      # Examples listed in examples/cpp-legs.txt also get the C++ leg.
-      - name: Verify example C snapshots and output
-        run: ./examples/regenerate.sh --check
-
-      - name: Verify foreign-edge example
-        run: ./examples/ffi-mini/run.sh
-
   # The C++ backend's harness (src/test/kotlin/net/exoad/kira/cpp): the golden
   # corpus and the warning contract under every toolchain the design's build
   # matrix names. KIRA_REQUIRE_TOOLCHAINS=1 makes a missing toolchain a

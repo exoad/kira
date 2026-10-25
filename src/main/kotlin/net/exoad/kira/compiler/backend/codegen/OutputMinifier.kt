@@ -18,8 +18,8 @@ package net.exoad.kira.compiler.backend.codegen
  *  - prelude symbols, language keywords, entry points (`main`), and foreign
  *    edges (extern / opaque names) are never renamed: build the map with
  *    [buildRenameMap] and pass the prelude identifiers + keywords as reserved
- *  - same input + same maps => byte-identical output, so example snapshots
- *    and `regenerate.sh --check` stay stable
+ *  - same input + same maps => byte-identical output, so a build is the same
+ *    from run to run
  */
 enum class MinifyLanguage { C, JS }
 

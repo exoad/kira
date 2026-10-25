@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class FrontendServiceTest {
     @Test
     fun compilesHelloExampleCleanly() {
-        val root = Path.of("examples/01-hello").toAbsolutePath().normalize()
+        val root = Path.of("src/test/resources/test-projects/01-hello").toAbsolutePath().normalize()
         val result = FrontendService.compileProject(root)
         assertTrue(
             result.diagnostics.none { it.severity == FrontendService.Diagnostic.Severity.ERROR },

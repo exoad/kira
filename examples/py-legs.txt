@@ -1,3 +1,0 @@
-# The examples regenerate.sh also runs through the py backend, one per line.
-01-hello
-04-classes
