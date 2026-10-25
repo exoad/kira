@@ -1,9 +1,8 @@
 package net.exoad.kira.cpp.plumbing
 
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ProjectManifest
-import net.exoad.kira.kim.ProjectSpec
-import net.exoad.kira.kim.SourceGlob
+import net.exoad.kira.compiler.Project
+import net.exoad.kira.compiler.ProjectSources
+import net.exoad.kira.compiler.SourceGlob
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,12 +19,11 @@ class SrcExcludeTest {
         PlumbingTestSupport.write(root, "viewer/assets/car.kira", "")
         PlumbingTestSupport.write(root, "viewer/src/link.kira", "")
 
-        val manifest = ProjectManifest(
-            ProjectSpec("bibo"),
+        val project = Project("bibo",
             srcDir = ".",
             srcExclude = listOf("build", "third_party", "**/build", "viewer/assets"),
         )
-        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+        val sources = ProjectSources.workspace(project, root)
             .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
             .sorted()
         assertEquals(listOf("builder/keep.kira", "src/app/main.kira", "viewer/src/link.kira"), sources)
@@ -36,8 +34,8 @@ class SrcExcludeTest {
         val root = PlumbingTestSupport.tempProject("srcexclude-none")
         PlumbingTestSupport.write(root, "src/app/main.kira", "")
         PlumbingTestSupport.write(root, "src/build/gen.kira", "")
-        val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = "src")
-        assertEquals(2, DependencyResolver.resolveProjectSources(manifest, root).size)
+        val project = Project("demo", srcDir = "src")
+        assertEquals(2, ProjectSources.workspace(project, root).size)
     }
 
     @Test
@@ -45,13 +43,13 @@ class SrcExcludeTest {
         val root = PlumbingTestSupport.tempProject("srcexclude-root")
         PlumbingTestSupport.write(root, "src/app/main.kira", "")
         PlumbingTestSupport.write(root, "src/gen/x.kira", "")
-        val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = "src", srcExclude = listOf("src/gen"))
-        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+        val project = Project("demo", srcDir = "src", srcExclude = listOf("src/gen"))
+        val sources = ProjectSources.workspace(project, root)
         assertEquals(1, sources.size)
         assertTrue(sources.single().replace('\\', '/').endsWith("src/app/main.kira"))
         // `gen` alone names <root>/gen, which is not <root>/src/gen
-        val wrong = ProjectManifest(ProjectSpec("demo"), srcDir = "src", srcExclude = listOf("gen"))
-        assertEquals(2, DependencyResolver.resolveProjectSources(wrong, root).size)
+        val wrong = Project("demo", srcDir = "src", srcExclude = listOf("gen"))
+        assertEquals(2, ProjectSources.workspace(wrong, root).size)
     }
 
     @Test
@@ -100,10 +98,10 @@ class SrcExcludeTest {
         val root = PlumbingTestSupport.tempProject("srcexclude-below")
         val excludes = listOf("build", "**/build")
         val inside = root.resolve("build/gen/app").toString()
-        assertTrue(DependencyResolver.isExcluded(inside, root, excludes))
-        assertFalse(DependencyResolver.isExcluded(inside, root, excludes, below = root.resolve("build/gen")))
-        assertTrue(DependencyResolver.isExcluded(root.resolve("build/gen/app/build").toString(), root, excludes, below = root.resolve("build/gen")))
-        assertTrue(DependencyResolver.isExcluded(inside, root, excludes, below = root))
+        assertTrue(ProjectSources.isExcluded(inside, root, excludes))
+        assertFalse(ProjectSources.isExcluded(inside, root, excludes, below = root.resolve("build/gen")))
+        assertTrue(ProjectSources.isExcluded(root.resolve("build/gen/app/build").toString(), root, excludes, below = root.resolve("build/gen")))
+        assertTrue(ProjectSources.isExcluded(inside, root, excludes, below = root))
     }
 
     @Test
@@ -111,8 +109,8 @@ class SrcExcludeTest {
         val root = PlumbingTestSupport.tempProject("srcexclude-dotslash")
         PlumbingTestSupport.write(root, "src/app/main.kira", "")
         PlumbingTestSupport.write(root, "build/gen.kira", "")
-        val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = ".", srcExclude = listOf("./build"))
-        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+        val project = Project("demo", srcDir = ".", srcExclude = listOf("./build"))
+        val sources = ProjectSources.workspace(project, root)
             .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
         assertEquals(listOf("src/app/main.kira"), sources)
     }
@@ -138,8 +136,8 @@ class SrcExcludeTest {
         val root = PlumbingTestSupport.tempProject("srcexclude-root-build")
         PlumbingTestSupport.write(root, "src/app/main.kira", "")
         PlumbingTestSupport.write(root, "build/kira-toolchain/kira/core.kira", "")
-        val manifest = ProjectManifest(ProjectSpec("bibo"), srcDir = ".", srcExclude = listOf("**/build"))
-        val sources = DependencyResolver.resolveProjectSources(manifest, root)
+        val project = Project("bibo", srcDir = ".", srcExclude = listOf("**/build"))
+        val sources = ProjectSources.workspace(project, root)
             .map { root.relativize(java.nio.file.Path.of(it)).toString().replace('\\', '/') }
         assertEquals(listOf("src/app/main.kira"), sources)
     }

@@ -13,9 +13,7 @@ import net.exoad.kira.cpp.support.CppCompileSupport
 import net.exoad.kira.cpp.support.CppProfile
 import net.exoad.kira.cpp.support.CppToolchain
 import net.exoad.kira.cpp.support.CppToolchains
-import net.exoad.kira.kim.BuildOptions
-import net.exoad.kira.kim.ProjectManifest
-import net.exoad.kira.kim.ProjectSpec
+import net.exoad.kira.compiler.Project
 import org.junit.jupiter.api.Assumptions
 import java.io.File
 import java.nio.file.Files
@@ -102,10 +100,10 @@ object CppExprTestSupport {
             ctx = unit.addSource(canonical, ctx.content, tokens)
             KiraSourceParsers.from(ctx).parse()
         }
-        val manifest = ProjectManifest(ProjectSpec(name), srcDir = "src", build = BuildOptions(target = "cpp", cpp = options))
+        val project = Project(name, srcDir = "src", target = "cpp", cpp = options)
         val report = mutableListOf<String>()
         val result = KiraCppBackend.run(
-            unit, manifest, check = false, projectRoot = root,
+            unit, project, check = false, projectRoot = root,
             emitterFactory = emitterFactory,
             version = "dev",
             stdlibCppDir = Path.of("kira/cpp").toAbsolutePath().normalize(),

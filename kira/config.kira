@@ -1,7 +1,7 @@
 // A project's configuration: project.kira at its root holds `PROJECT: Project = Project { } with { ... }`,
-// typed against these declarations and read before anything else. Each default is kira.yaml's.
+// typed against these declarations and read before anything else; a field it leaves out takes the default here.
 
-// How `--target cpp` lays out and names its files (kira.yaml's build.cpp).
+// How `--target cpp` lays out and names its files.
 pub Cpp: Any {
     // "beside" (X.kira.hxx next to X.kira) or "tree" (under outDir, mirroring each module's name)
     pub layout: Str = "beside"

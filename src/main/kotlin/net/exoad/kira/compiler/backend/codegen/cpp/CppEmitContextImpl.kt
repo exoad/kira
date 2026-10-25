@@ -451,7 +451,7 @@ class CppEmitContextImpl(
     /** The generated header (and source, unless header-only) of this module. */
     val files: CppModuleFiles = layout.filesFor(symbol.uri, sourcePath)
 
-    /** `build.cpp.headerOnly` or a `kira:*` module: no source file, every function inline. */
+    /** `cpp.headerOnly` or a `kira:*` module: no source file, every function inline. */
     val isHeaderOnly: Boolean get() = options.isHeaderOnly(symbol.uri)
 
     /**

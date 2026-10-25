@@ -93,7 +93,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             op.decl?.let { ctx.unsupported(it, "the operator overload '${op.name}'") }
         }
         if (main != null && ctx.isHeaderOnly) {
-            main.decl?.let { ctx.diag(it, CppModuleEmitterFactory.UNSUPPORTED_CODE, "main in a header-only module has no source file to hold int main; drop the module from build.cpp.headerOnly") }
+            main.decl?.let { ctx.diag(it, CppModuleEmitterFactory.UNSUPPORTED_CODE, "main in a header-only module has no source file to hold int main; drop the module from cpp.headerOnly") }
         }
         refuseBodilessPrivates()
 

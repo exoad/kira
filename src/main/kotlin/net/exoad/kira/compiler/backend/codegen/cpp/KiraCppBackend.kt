@@ -3,8 +3,8 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ProjectManifest
+import net.exoad.kira.compiler.Project
+import net.exoad.kira.compiler.ProjectSources
 import net.exoad.kira.source.SourceContext
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -176,7 +176,7 @@ data class CppBackendResult(
  * **The tree.** Every generated file lies under one directory, the *base*:
  * the project root, or `<dir>` under `--out <dir>`. `kira.gen.manifest`
  * sits in the base and records each file relative to it, never absolute
- * and never through `..`; a `build.cpp.outDir` or `runtimeDir` that leaves
+ * and never through `..`; a `cpp.outDir` or `runtimeDir` that leaves
  * the root is an error, and a manifest entry that would leave the base is
  * ignored with a warning. A write removes only files under the base.
  *
@@ -208,7 +208,7 @@ data class CppBackendResult(
  *
  * `--out <dir>` puts every generated file under `<dir>`: the tree layout
  * rooted there, the runtime in `<dir>/kira/` and the manifest at
- * `<dir>/kira.gen.manifest`, whatever the manifest's `build.cpp` says.
+ * `<dir>/kira.gen.manifest`, whatever the project's `cpp` says.
  */
 object KiraCppBackend {
     const val DRIFT_PREFIX = "drift: "
@@ -218,13 +218,13 @@ object KiraCppBackend {
     const val MANIFEST_ENTRY_CODE = "cpp.manifest-entry"
 
     /** The design's entry: the project root is the process working directory. */
-    fun run(unit: CompilationUnit, manifest: ProjectManifest?, check: Boolean): Int {
-        return run(unit, manifest, check, Paths.get(".")).exitCode
+    fun run(unit: CompilationUnit, project: Project?, check: Boolean): Int {
+        return run(unit, project, check, Paths.get(".")).exitCode
     }
 
     fun run(
         unit: CompilationUnit,
-        manifest: ProjectManifest?,
+        project: Project?,
         check: Boolean,
         projectRoot: Path,
         outDirOverride: String? = null,
@@ -238,7 +238,7 @@ object KiraCppBackend {
         // Imports and type roles first: the plan below reads each module's uses.
         net.exoad.kira.compiler.UnitLink.link(unit)
         val root = projectRoot.toAbsolutePath().normalize()
-        val options = buildOptions(manifest, outDirOverride)
+        val options = buildOptions(project, outDirOverride)
         val manifestPath = manifestPath(root, options, outDirOverride)
         val base: Path = manifestPath.parent
         val diagnostics = mutableListOf<CppDiagnostic>()
@@ -310,8 +310,8 @@ object KiraCppBackend {
         diagnostics += checkPlannedCollisions(planned, layout)
 
         // 4. Stale generated files: recorded, or generated-shaped where the backend writes, and not planned.
-        val shapes = GeneratedShapes(layout, manifest, install.files, show)
-        val found = findStale(base, manifestPath, planned, layout, manifest, stdlibCppDir, shapes, show)
+        val shapes = GeneratedShapes(layout, project, install.files, show)
+        val found = findStale(base, manifestPath, planned, layout, project, stdlibCppDir, shapes, show)
         diagnostics += found.diagnostics
         val stale = found.stale
 
@@ -438,13 +438,13 @@ object KiraCppBackend {
     }
 
     /**
-     * The manifest's `build.cpp`, or with `--out <dir>` the tree layout with
+     * The project's `cpp`, or with `--out <dir>` the tree layout with
      * everything under `<dir>`: the beside layout has no other place to put
-     * a module, and a runtime left in `build.cpp.runtimeDir` would make
+     * a module, and a runtime left in `cpp.runtimeDir` would make
      * `--out` a half-truth.
      */
-    fun buildOptions(manifest: ProjectManifest?, outDirOverride: String?): CppOptions {
-        val base = manifest?.build?.cpp ?: CppOptions()
+    fun buildOptions(project: Project?, outDirOverride: String?): CppOptions {
+        val base = project?.cpp ?: CppOptions()
         if (outDirOverride.isNullOrBlank()) {
             return base
         }
@@ -475,7 +475,7 @@ object KiraCppBackend {
 
     /**
      * Every planned file must lie under the base; one error per setting
-     * that sends files elsewhere (`build.cpp.runtimeDir: ../lib`, say),
+     * that sends files elsewhere (`runtimeDir = "../lib"`, say),
      * naming the first such file, since `kira.gen.manifest` could not
      * record it and a later write could not safely remove it.
      */
@@ -493,8 +493,8 @@ object KiraCppBackend {
         val where = if (outDirOverride.isNullOrBlank()) "the project root" else "--out ${options.outDir}"
         return outside.groupBy { file ->
             when {
-                file.path.startsWith(layout.runtimeKiraDir) -> "build.cpp.runtimeDir '${options.effectiveRuntimeDir}'"
-                options.layout == CppLayout.TREE -> "build.cpp.outDir '${options.outDir}'"
+                file.path.startsWith(layout.runtimeKiraDir) -> "cpp.runtimeDir '${options.effectiveRuntimeDir}'"
+                options.layout == CppLayout.TREE -> "cpp.outDir '${options.outDir}'"
                 else -> "the beside layout (its source is outside the project)"
             }
         }.map { (blame, files) ->
@@ -533,14 +533,14 @@ object KiraCppBackend {
      */
     private class GeneratedShapes(
         layout: CppModuleLayout,
-        manifest: ProjectManifest?,
+        project: Project?,
         runtimeFiles: List<CppPlannedFile>,
         private val show: (Path) -> String,
     ) {
         private val options = layout.options
         val runtimeKiraDir: Path = layout.runtimeKiraDir
         val outDir: Path = layout.outDir
-        val workspace: Path = layout.projectRoot.resolve(manifest?.srcDir ?: "src").normalize()
+        val workspace: Path = layout.projectRoot.resolve(project?.srcDir ?: "src").normalize()
         private val distinctiveExts = listOf(options.headerExt, options.sourceExt).filter { it.contains(".kira.") }
         private val generatedExts = listOf(options.headerExt, options.sourceExt)
         private val runtimeExts = runtimeFiles.map { it.path.fileName.toString() }
@@ -578,14 +578,14 @@ object KiraCppBackend {
      * generated-shaped files where the backend writes, minus everything
      * planned now. The stdlib's own directory and `.git` are never scanned,
      * and `srcExclude` prunes below each scanned directory (never the
-     * directory itself, which the manifest chose as a place to write).
+     * directory itself, which the project chose as a place to write).
      */
     private fun findStale(
         base: Path,
         manifestPath: Path,
         planned: List<CppPlannedFile>,
         layout: CppModuleLayout,
-        manifest: ProjectManifest?,
+        project: Project?,
         stdlibCppDir: Path?,
         shapes: GeneratedShapes,
         show: (Path) -> String,
@@ -612,7 +612,7 @@ object KiraCppBackend {
 
         val candidates = LinkedHashMap<Path, String>()
         recorded.keys.forEach { candidates[it] = "recorded" }
-        val excludes = manifest?.srcExclude.orEmpty()
+        val excludes = project?.srcExclude.orEmpty()
         val stdlibRoot = stdlibCppDir?.toAbsolutePath()?.normalize()?.parent
 
         fun scan(dir: Path) {
@@ -624,7 +624,7 @@ object KiraCppBackend {
                     val absolute = sub.toAbsolutePath().normalize()
                     val skip = absolute.fileName?.toString() == ".git" ||
                         (stdlibRoot != null && absolute.startsWith(stdlibRoot)) ||
-                        DependencyResolver.isExcluded(absolute.toString(), root, excludes, below = dir)
+                        ProjectSources.isExcluded(absolute.toString(), root, excludes, below = dir)
                     return if (skip) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                 }
 

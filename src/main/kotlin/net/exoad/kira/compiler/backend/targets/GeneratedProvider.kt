@@ -30,7 +30,7 @@ object GeneratedProvider {
 
     /**
      * When true (default), the user layer of generated C/JS is minified and
-     * obfuscated. Set false via `--readable` or `build.minify: false`.
+     * obfuscated. Set false via `--readable` or project.kira's `minify = false`.
      */
     var minifyOutput: Boolean = true
 }

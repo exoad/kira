@@ -483,7 +483,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      * By default the user layer (everything after the runtime prelude) is
      * minified and obfuscated via [OutputMinifier]. The prelude itself stays
      * byte-identical and readable. `GeneratedProvider.minifyOutput = false`
-     * (the `--readable` CLI flag, or `build.minify: false`) restores the
+     * (the `--readable` CLI flag, or `minify = false`) restores the
      * pretty Jack-style formatting.
      */
     fun generate(outputPath: String = DEFAULT_OUTPUT): String {

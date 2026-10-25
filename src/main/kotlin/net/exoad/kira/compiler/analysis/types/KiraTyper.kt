@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.CompilationUnit
-import net.exoad.kira.kim.SourceGlob
+import net.exoad.kira.compiler.SourceGlob
 
 /**
  * - [OFF]: the typer does not run (C and JS until the W2 gate): an empty program.
@@ -11,14 +11,14 @@ import net.exoad.kira.kim.SourceGlob
 enum class TyperMode { OFF, LENIENT, STRICT }
 
 /**
- * Per-project inputs. The globs match module URIs (`firmware:lib.**`) by the manifest's own
- * rules ([net.exoad.kira.kim.SourceGlob]): `*` matches within one dotted segment, a `**`
+ * Per-project inputs. The globs match module URIs (`firmware:lib.**`) by the project's own
+ * rules ([net.exoad.kira.compiler.SourceGlob]): `*` matches within one dotted segment, a `**`
  * segment matches zero or more segments, `?` one character, `{a,b}` either alternative. A
  * trailing `.**` therefore also matches the prefix module itself.
  *
- * @property freestanding `build.cpp.freestanding`: modules typed against the Pico subset.
- * @property headerOnly `build.cpp.headerOnly`: modules that emit an inline-only header.
- * @property namespaces `build.cpp.namespaces`: URI (or glob) to C++ namespace, resolved as
+ * @property freestanding `cpp.freestanding`: modules typed against the Pico subset.
+ * @property headerOnly `cpp.headerOnly`: modules that emit an inline-only header.
+ * @property namespaces `cpp.namespaces`: URI (or glob) to C++ namespace, resolved as
  *   CppModuleLayout.namespaceOf resolves it: an exact URI first, then the glob with the most
  *   literal text, then the longer glob.
  */
@@ -121,7 +121,7 @@ object KiraTyper {
 }
 
 /**
- * Glob matching over module URIs, for [TyperOptions]. It is the manifest's matcher
+ * Glob matching over module URIs, for [TyperOptions]. It is the project's matcher
  * ([SourceGlob], which CppOptions and CppModuleLayout use), so a module the typer marks
  * header-only or freestanding is the one the C++ backend lays out that way.
  */

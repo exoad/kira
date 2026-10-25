@@ -19,21 +19,7 @@ class CppCliTest {
 
     private fun tempProject(name: String, target: String = "c"): File {
         val dir = File(repoRoot, "build/tmp/cpp-plumbing-cli/$name").apply { deleteRecursively(); mkdirs() }
-        File(dir, "kira.yaml").writeText(
-            """
-            project:
-              name: cli-cpp
-
-            srcDir: src
-
-            build:
-              target: $target
-
-            dependencies:
-              kira_stdlib:
-                path: $kiraStdlib
-            """.trimIndent()
-        )
+        File(dir, "project.kira").writeText(net.exoad.kira.ProjectText.of("cli-cpp", target = target, stdlib = kiraStdlib))
         File(dir, "src/app").mkdirs()
         File(dir, "src/app/main.kira").writeText(
             """
@@ -91,7 +77,7 @@ class CppCliTest {
         val dir = tempProject("manifest-target", target = "cpp")
         val result = runCli(dir)
         assertEquals(0, result.exitCode, result.all)
-        assertTrue(!result.all.contains("Manifest validation failed"), result.all)
+        assertTrue(!result.all.contains("project.kira has issues"), result.all)
         assertTrue(generatedSource(dir).contains(tracedLine), generatedSource(dir))
     }
 

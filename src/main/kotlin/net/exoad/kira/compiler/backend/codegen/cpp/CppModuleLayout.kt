@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
-import net.exoad.kira.kim.ManifestValidator
-import net.exoad.kira.kim.SourceGlob
+import net.exoad.kira.compiler.SourceGlob
 import java.nio.file.Path
 
 /** A module the layout knows about: its URI and the `.kira` file it came from. */
@@ -20,7 +19,7 @@ data class CppModuleFiles(val header: Path, val source: Path?)
  *   in namespace `kira::x`; a nested `kira:a.b` keeps its path, `kira::a::b`,
  *   so two stdlib modules with one last segment never merge.
  *
- * A module's namespace is the last URI segment unless `build.cpp.namespaces`
+ * A module's namespace is the last URI segment unless `cpp.namespaces`
  * names it, exactly or by glob (`firmware:pilot.src.bibowire.*`); an exact key
  * wins over a glob, a longer glob over a shorter one. A derived segment that
  * is a C++ keyword, an object-like macro (D35) or a global the C library or
@@ -79,7 +78,7 @@ class CppModuleLayout(
     /**
      * Why [namespace] cannot head a module's declarations, or null: a segment
      * that is not a C++ identifier (or is a keyword or an object-like macro
-     * the manifest spelled out), `std`, or `kira` under a module that is not
+     * the project spelled out), `std`, or `kira` under a module that is not
      * the stdlib's.
      */
     fun namespaceProblem(uri: String, namespace: String): String? {
@@ -170,7 +169,7 @@ class CppModuleLayout(
             diagnostics += CppDiagnostic(
                 "cpp.output-collision",
                 "module '${refs.first().uri}' would write ${relativeToRoot(source.sourcePath)}, the Kira source of " +
-                    "module '${source.uri}' (build.cpp.$ext); no generated file may replace a source",
+                    "module '${source.uri}' (cpp.$ext); no generated file may replace a source",
                 file = source.sourcePath.toString(),
             )
         }
@@ -187,15 +186,15 @@ class CppModuleLayout(
         }
 
         options.namespaces.forEach { (pattern, ns) ->
-            if (!ManifestValidator.isNamespacePath(ns)) {
+            if (!CppOptions.isNamespacePath(ns)) {
                 diagnostics += CppDiagnostic(
                     "cpp.namespace-invalid",
-                    "build.cpp.namespaces['$pattern'] = '$ns' is not a C++ namespace path",
+                    "cpp.namespaces['$pattern'] = '$ns' is not a C++ namespace path",
                 )
             } else if (modules.none { SourceGlob.matchesUri(pattern, it.uri) }) {
                 diagnostics += CppDiagnostic(
                     "cpp.namespace-unused",
-                    "build.cpp.namespaces['$pattern'] matches no module${dottedHint(pattern)}",
+                    "cpp.namespaces['$pattern'] matches no module${dottedHint(pattern)}",
                     CppSeverity.WARNING,
                 )
             }
@@ -205,7 +204,7 @@ class CppModuleLayout(
             globs.filter { pattern -> modules.none { SourceGlob.matchesUri(pattern, it.uri) } }.forEach { pattern ->
                 diagnostics += CppDiagnostic(
                     "cpp.glob-unused",
-                    "build.cpp.$key['$pattern'] matches no module${dottedHint(pattern)}",
+                    "cpp.$key['$pattern'] matches no module${dottedHint(pattern)}",
                     CppSeverity.WARNING,
                 )
             }
@@ -274,7 +273,7 @@ class CppModuleLayout(
         fun uriSegments(uri: String): List<String> = splitUri(uri).second
 
         /**
-         * The namespace of module [uri] under the manifest's [namespaces] overrides (see the
+         * The namespace of module [uri] under the project's [namespaces] overrides (see the
          * class comment). The typer's ModuleSymbol.cppNamespace is this same function, so the
          * namespace the typer records and the one the emitter writes cannot disagree.
          */

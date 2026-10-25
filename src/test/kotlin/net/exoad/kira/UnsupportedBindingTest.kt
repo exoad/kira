@@ -19,9 +19,7 @@ class UnsupportedBindingTest {
             "onlyPy: { cpp: { unsupported: \"a rule of Python's\" }, py: { expr: \"7\" } }\n" +
                 "onlyCpp: { cpp: { expr: \"7\" }, py: { unsupported: \"a rule of C++'s\" } }\n"
         )
-        File(dir, "kira.yaml").writeText(
-            "project:\n  name: unsupported\nsrcDir: src\nbuild:\n  target: py\ndependencies:\n  kira_stdlib:\n    path: ${stdlib.absolutePath.replace('\\', '/')}\n"
-        )
+        File(dir, "project.kira").writeText(ProjectText.of("unsupported", target = "py", stdlib = stdlib.absolutePath.replace('\\', '/')))
         val main = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
         main.writeText("kira.extra as extra\n\nmain: () Int32 {\n    onlyPy() + onlyCpp()\n}\n")
 
@@ -44,7 +42,7 @@ class UnsupportedBindingTest {
     fun kiraOsPyOnlyCallsAreRefusedOnCppByName() {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-os").apply { deleteRecursively(); mkdirs() }
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
-        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedos\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "project.kira").writeText(ProjectText.of("unsupportedos", target = "cpp", stdlib = stdlib))
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
             "kira.os as os\n\nmain: () Int32 {\n    d: Maybe<Str> = tempDir(\"x\")\n    p: Str = pythonExecutable()\n    runInherit(@listOf(p))\n}\n"
         )
@@ -63,7 +61,7 @@ class UnsupportedBindingTest {
     fun thePythonSemanticsModulesAreRefusedOnCppByName() {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-pymods").apply { deleteRecursively(); mkdirs() }
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
-        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpymods\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "project.kira").writeText(ProjectText.of("unsupportedpymods", target = "cpp", stdlib = stdlib))
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
             "kira.path as path\nkira.pytext as pytext\nkira.regex as regex\nkira.random as random\nkira.csv as csv\n\n" +
                 "main: () Int32 {\n    line: Str = csvLine(@listOf(\"b\"))\n    p: Str = joinPath(\"a\", line)\n    ok: Bool = compile(p, 0).isSome()\n" +
@@ -87,7 +85,7 @@ class UnsupportedBindingTest {
     fun aPyOnlyClassNamedAloneIsRefusedOnCppWithItsReason() {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-pyclasses").apply { deleteRecursively(); mkdirs() }
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
-        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedpyclasses\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "project.kira").writeText(ProjectText.of("unsupportedpyclasses", target = "cpp", stdlib = stdlib))
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }.writeText(
             "kira.regex as regex\nkira.random as random\nkira.csv as csv\nkira.http as http\nkira.args as args\n\n" +
                 "keep: (r: Regex, m: Maybe<Match>, g: Random, c: Maybe<CsvReader>) Int32 {\n    0\n}\n\n" +
@@ -114,7 +112,7 @@ class UnsupportedBindingTest {
     fun kiraHttpAndArgsAreRefusedOnCppByName() {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-httpargs").apply { deleteRecursively(); mkdirs() }
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
-        File(dir, "kira.yaml").writeText("project:\n  name: unsupportedhttpargs\nsrcDir: src\nbuild:\n  target: cpp\ndependencies:\n  kira_stdlib:\n    path: $stdlib\n")
+        File(dir, "project.kira").writeText(ProjectText.of("unsupportedhttpargs", target = "cpp", stdlib = stdlib))
         val main = File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
         main.writeText(
             "kira.http as http\nkira.args as args\n\n" +

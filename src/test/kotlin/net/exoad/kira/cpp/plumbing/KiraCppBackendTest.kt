@@ -1,6 +1,7 @@
 package net.exoad.kira.cpp.plumbing
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.Project
 import net.exoad.kira.compiler.backend.codegen.cpp.CppBackendResult
 import net.exoad.kira.compiler.backend.codegen.cpp.CppGenManifest
 import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
@@ -8,9 +9,6 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
-import net.exoad.kira.kim.BuildOptions
-import net.exoad.kira.kim.ProjectManifest
-import net.exoad.kira.kim.ProjectSpec
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -20,7 +18,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class KiraCppBackendTest {
-    private class Project(val root: Path, val unit: CompilationUnit, val manifest: ProjectManifest, val stdlibCpp: Path) {
+    private class Tree(val root: Path, val unit: CompilationUnit, val project: Project, val stdlibCpp: Path) {
         val outLines = mutableListOf<String>()
         val reportLines = mutableListOf<String>()
 
@@ -29,7 +27,7 @@ class KiraCppBackendTest {
             factory: (CompilationUnit, CppOptions) -> CppModuleEmitter = { _, o -> FakeCppModuleEmitter(o) },
             version: String = "abc123",
         ) = KiraCppBackend.run(
-            unit, manifest, check, root,
+            unit, project, check, root,
             emitterFactory = factory,
             version = version,
             stdlibCppDir = stdlibCpp,
@@ -42,11 +40,11 @@ class KiraCppBackendTest {
         fun rel(path: Path): String = root.relativize(path).toString().replace('\\', '/')
 
         /** The same project seen with only some of its sources, as after a module is deleted. */
-        fun with(vararg relativeSources: String): Project {
+        fun with(vararg relativeSources: String): Tree {
             val unit = PlumbingTestSupport.compilationUnit(
-                relativeSources.associate { root.resolve(it) to Files.readString(root.resolve(it)) }, manifest, root,
+                relativeSources.associate { root.resolve(it) to Files.readString(root.resolve(it)) }, project, root,
             )
-            return Project(root, unit, manifest, stdlibCpp)
+            return Tree(root, unit, project, stdlibCpp)
         }
     }
 
@@ -58,7 +56,7 @@ class KiraCppBackendTest {
         return Files.readString(root.resolve(at)).lines().first { it.startsWith("$key ") }
     }
 
-    private fun project(name: String, options: CppOptions = CppOptions(runtimeDir = "lib", headerOnly = listOf("demo:lib.**"))): Project {
+    private fun project(name: String, options: CppOptions = CppOptions(runtimeDir = "lib", headerOnly = listOf("demo:lib.**"))): Tree {
         val root = PlumbingTestSupport.tempProject(name)
         val stdlibCpp = PlumbingTestSupport.fakeStdlib(root)
         val proto = PlumbingTestSupport.write(root, "src/pilot/proto.kira", PlumbingTestSupport.source("""
@@ -71,11 +69,11 @@ class KiraCppBackendTest {
                 c == 32
             }
         """))
-        val manifest = ProjectManifest(ProjectSpec("demo"), srcDir = ".", build = BuildOptions(target = "cpp", cpp = options))
+        val project = Project("demo", srcDir = ".", target = "cpp", cpp = options)
         val unit = PlumbingTestSupport.compilationUnit(
-            mapOf(proto to Files.readString(proto), text to Files.readString(text)), manifest, root,
+            mapOf(proto to Files.readString(proto), text to Files.readString(text)), project, root,
         )
-        return Project(root, unit, manifest, stdlibCpp)
+        return Tree(root, unit, project, stdlibCpp)
     }
 
     @Test
@@ -195,7 +193,7 @@ class KiraCppBackendTest {
         val p = project("backend-noruntime")
         val before = p.files()
         val result = KiraCppBackend.run(
-            p.unit, p.manifest, false, p.root,
+            p.unit, p.project, false, p.root,
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
             stdlibCppDir = p.root.resolve("stdlib/absent"),
             log = { }, report = { p.reportLines += it }, out = { },
@@ -322,10 +320,10 @@ class KiraCppBackendTest {
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
             kira.geometry as geometry
         """))
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.manifest, p.root)
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.project, p.root)
         val before = p.files()
         val result = KiraCppBackend.run(
-            unit, p.manifest, false, p.root,
+            unit, p.project, false, p.root,
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
             stdlibCppDir = p.stdlibCpp,
             log = { }, report = { p.reportLines += it }, out = { },
@@ -361,7 +359,7 @@ class KiraCppBackendTest {
         val p = project("backend-out-beside", CppOptions(layout = net.exoad.kira.compiler.backend.codegen.cpp.CppLayout.BESIDE, runtimeDir = "lib"))
         val before = p.files()
         val result = KiraCppBackend.run(
-            p.unit, p.manifest, false, p.root,
+            p.unit, p.project, false, p.root,
             outDirOverride = "gen",
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
             stdlibCppDir = p.stdlibCpp,
@@ -378,7 +376,7 @@ class KiraCppBackendTest {
         assertFalse(Files.exists(p.root.resolve("lib/kira")))
         // and --check honours the same place
         val check = KiraCppBackend.run(
-            p.unit, p.manifest, true, p.root, outDirOverride = "gen",
+            p.unit, p.project, true, p.root, outDirOverride = "gen",
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) }, stdlibCppDir = p.stdlibCpp,
             log = { }, report = { }, out = { p.outLines += it },
         )
@@ -389,7 +387,7 @@ class KiraCppBackendTest {
     fun outDirOverrideMovesTheTreeLayout() {
         val p = project("backend-out", CppOptions(layout = net.exoad.kira.compiler.backend.codegen.cpp.CppLayout.TREE))
         val result = KiraCppBackend.run(
-            p.unit, p.manifest, false, p.root,
+            p.unit, p.project, false, p.root,
             outDirOverride = "generated",
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
             stdlibCppDir = p.stdlibCpp,
@@ -415,9 +413,9 @@ class KiraCppBackendTest {
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
             kira.geometry as geometry
         """))
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.manifest, p.root)
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.project, p.root)
         val result = KiraCppBackend.run(
-            unit, p.manifest, false, p.root,
+            unit, p.project, false, p.root,
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) },
             stdlibCppDir = p.stdlibCpp,
             log = { }, report = { p.reportLines += it }, out = { },
@@ -439,10 +437,10 @@ class KiraCppBackendTest {
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
             pub LIMIT: Int32 = 3
         """))
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.manifest, p.root)
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.project, p.root)
         val fake = FakeCppModuleEmitter(CppOptions(runtimeDir = "lib"))
         val result = KiraCppBackend.run(
-            unit, p.manifest, false, p.root,
+            unit, p.project, false, p.root,
             emitterFactory = { _, _ -> fake },
             stdlibCppDir = p.stdlibCpp,
             log = { }, report = { p.reportLines += it }, out = { },
@@ -454,11 +452,11 @@ class KiraCppBackendTest {
 
     // --- the generated tree shares a directory with other files -------------------
 
-    private fun runWithOut(p: Project, out: String, check: Boolean): CppBackendResult {
+    private fun runWithOut(p: Tree, out: String, check: Boolean): CppBackendResult {
         p.outLines.clear()
         p.reportLines.clear()
         return KiraCppBackend.run(
-            p.unit, p.manifest, check, p.root, outDirOverride = out,
+            p.unit, p.project, check, p.root, outDirOverride = out,
             emitterFactory = { _, o -> FakeCppModuleEmitter(o) }, stdlibCppDir = p.stdlibCpp,
             log = { }, report = { p.reportLines += it }, out = { p.outLines += it },
         )
@@ -561,9 +559,9 @@ class KiraCppBackendTest {
         val bRoot = bParent.resolve("proj")
         val bUnit = PlumbingTestSupport.compilationUnit(
             listOf("src/pilot/proto.kira", "lib/text.kira").associate { bRoot.resolve(it) to Files.readString(bRoot.resolve(it)) },
-            a.manifest, bRoot,
+            a.project, bRoot,
         )
-        val b = Project(bRoot, bUnit, a.manifest, bRoot.resolve("stdlib/cpp"))
+        val b = Tree(bRoot, bUnit, a.project, bRoot.resolve("stdlib/cpp"))
         val bCheck = runWithOut(b, "../gen", check = true)
         assertEquals(0, bCheck.exitCode, b.outLines.joinToString("\n"))
         val bWrite = runWithOut(b, "../gen", check = false)
@@ -652,12 +650,12 @@ class KiraCppBackendTest {
         val root = PlumbingTestSupport.tempProject("backend-excluded-outdir")
         val stdlibCpp = PlumbingTestSupport.fakeStdlib(root)
         val main = PlumbingTestSupport.write(root, "src/app/main.kira", PlumbingTestSupport.source())
-        val manifest = ProjectManifest(
-            ProjectSpec("demo"), srcDir = "src", srcExclude = listOf("build", "**/build"),
-            build = BuildOptions(target = "cpp", cpp = CppOptions(layout = CppLayout.TREE, outDir = "build/gen")),
+        val project = Project(
+            "demo", srcDir = "src", srcExclude = listOf("build", "**/build"),
+            target = "cpp", cpp = CppOptions(layout = CppLayout.TREE, outDir = "build/gen"),
         )
-        val unit = PlumbingTestSupport.compilationUnit(mapOf(main to Files.readString(main)), manifest, root)
-        val p = Project(root, unit, manifest, stdlibCpp)
+        val unit = PlumbingTestSupport.compilationUnit(mapOf(main to Files.readString(main)), project, root)
+        val p = Tree(root, unit, project, stdlibCpp)
         assertEquals(0, p.run(check = false).exitCode, p.reportLines.joinToString("\n"))
         assertTrue("build/gen/app/main.kira.hxx" in p.files(), p.files().toString())
 

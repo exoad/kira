@@ -836,22 +836,7 @@ class ParserGrowthTest {
     private fun runCli(name: String, target: String, program: String): CliRun {
         val repoRoot = File(System.getProperty("user.dir"))
         val dir = File(repoRoot, "build/tmp/parser-growth/cli/$name-$target").apply { deleteRecursively(); mkdirs() }
-        File(dir, "kira.yaml").writeText(
-            listOf(
-                "project:",
-                "  name: growth",
-                "",
-                "srcDir: src",
-                "",
-                "build:",
-                "  target: c",
-                "",
-                "dependencies:",
-                "  kira_stdlib:",
-                "    path: ${File(repoRoot, "kira").absolutePath}",
-                "",
-            ).joinToString("\n")
-        )
+        File(dir, "project.kira").writeText(net.exoad.kira.ProjectText.of("growth", target = "c", stdlib = File(repoRoot, "kira").absolutePath.replace('\\', '/')))
         File(dir, "src/app/main.kira").apply { parentFile.mkdirs() }
             .writeText("" + program.trimIndent() + "\n")
         val java = System.getProperty("java.home") + "/bin/java"

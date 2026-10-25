@@ -18,7 +18,7 @@ Triggers: "how do I build kira", "fresh clone setup", "install the compiler",
 ```bash
 ./gradlew installDist          # builds CLI + LSP
 export PATH="$(pwd)/build/install/kira/bin:$PATH"
-kira                          # run inside a project dir with kira.yaml
+kira                          # run inside a project dir with project.kira
 kira-lsp                      # stdio language server
 ```
 
@@ -31,10 +31,10 @@ cd src/test/resources/test-projects/01-hello && kira --out /tmp/hello   # out.ki
 
 ## CLI facts
 
-- `kira` always loads `kira.yaml` from the current working directory - cd
+- `kira` loads `project.kira` from the current working directory: cd
   into the project first.
 - Rebuild with `./gradlew installDist` after any codegen change, or the CLI
   keeps using the stale compiler.
 - `./gradlew run` compiles the `test_kira/` smoke project.
-- Legacy `kira.toml` is removed; a project with one panics with a migration
-  message. Use `kira.yaml`.
+- A project is configured by `project.kira` alone: `PROJECT: Project = Project { } with { ... }`,
+  typed against the stdlib's `kira:config`.

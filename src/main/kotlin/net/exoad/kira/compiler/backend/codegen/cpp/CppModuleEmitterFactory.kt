@@ -16,7 +16,7 @@ import java.nio.file.Paths
 /**
  * Where [KiraCppBackend] gets its [CppModuleEmitter].
  *
- * [create] types the unit STRICT with the manifest's globs (design 3.5: the C++ target always
+ * [create] types the unit STRICT with the project's globs (design 3.5: the C++ target always
  * types strictly). A typer error makes an emitter that carries the diagnostics and emits no
  * file; otherwise the real emitter lowers every module through [CppDeclEmitter] and the parts
  * registered in [CppEmitParts.standard].

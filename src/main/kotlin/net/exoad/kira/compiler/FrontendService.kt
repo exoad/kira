@@ -7,11 +7,6 @@ import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ProjectFiles
-import net.exoad.kira.kim.ProjectKira
-import net.exoad.kira.kim.ManifestValidator
-import net.exoad.kira.kim.ProjectManifest
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourcePosition
 import java.io.File
@@ -43,14 +38,14 @@ object FrontendService {
         val compilationUnit: CompilationUnit?,
         val diagnostics: List<Diagnostic>,
         val projectRoot: Path?,
-        val manifest: ProjectManifest?,
+        val project: Project?,
     ) {
         val isOk: Boolean get() = diagnostics.none { it.severity == Diagnostic.Severity.ERROR }
     }
 
     /**
-     * Compile a project rooted at [projectRoot] (directory containing `project.kira` or `kira.yaml`
-     * or a folder of `.kira` files). [overlays] maps absolute/canonical paths to
+     * Compile a project rooted at [projectRoot] (a directory holding `project.kira`, or a folder
+     * of `.kira` files). [overlays] maps absolute/canonical paths to
      * unsaved buffer text, used by the language server for open documents.
      */
     fun compileProject(
@@ -60,17 +55,16 @@ object FrontendService {
         val root = projectRoot.toAbsolutePath().normalize()
         val diagnostics = mutableListOf<Diagnostic>()
 
-        // project.kira, else kira.yaml (stage 6 retires it).
-        val yamlPath = ProjectFiles.find(root) ?: root.resolve(ProjectFiles.YAML)
-        val manifest: ProjectManifest? = if (Files.exists(yamlPath)) {
+        val projectFile = ProjectFile.find(root)
+        val project: Project? = if (projectFile != null) {
             try {
-                val loaded = ProjectFiles.loadFromPath(yamlPath)
-                val issues = ManifestValidator.validate(loaded, root)
+                val loaded = ProjectFile.load(projectFile)
+                val issues = loaded.issues(root)
                 issues.forEach { issue ->
                     diagnostics += Diagnostic(
-                        file = yamlPath.toString(),
-                        message = "Manifest [${issue.field}]: ${issue.message}",
-                        tag = "Manifest",
+                        file = projectFile.toString(),
+                        message = "Project [${issue.field}]: ${issue.message}",
+                        tag = "Project",
                         start = SourcePosition(1, 1),
                         end = SourcePosition(1, 1),
                     )
@@ -81,9 +75,9 @@ object FrontendService {
                 loaded
             } catch (e: Exception) {
                 diagnostics += Diagnostic(
-                    file = yamlPath.toString(),
-                    message = "Failed to load ${yamlPath.fileName}: ${e.message}",
-                    tag = "Manifest",
+                    file = projectFile.toString(),
+                    message = "Failed to load ${projectFile.fileName}: ${e.message}",
+                    tag = "Project",
                     start = SourcePosition(1, 1),
                     end = SourcePosition(1, 1),
                 )
@@ -93,7 +87,7 @@ object FrontendService {
             null
         }
 
-        val stdlib = DependencyResolver.resolveDependencySources(manifest, root).toMutableList()
+        val stdlib = ProjectSources.dependencies(project, root).toMutableList()
         if (stdlib.isEmpty()) {
             // Fall back relative to project, then process cwd.
             val local = root.resolve("kira")
@@ -105,17 +99,17 @@ object FrontendService {
         }
         Public.Builtin.intrinsicalStandardLibrarySources =
             stdlib.distinct().sorted().toTypedArray()
-        if (manifest != null && yamlPath.fileName.toString() == ProjectKira.FILE) {
-            val findings = ProjectKira.check(yamlPath, stdlib.distinct().sorted())
+        if (project != null && projectFile != null) {
+            val findings = ProjectFile.check(projectFile, stdlib.distinct().sorted())
             findings.forEach { f ->
-                diagnostics += Diagnostic(file = yamlPath.toString(), message = f, tag = "Manifest", start = SourcePosition(1, 1), end = SourcePosition(1, 1))
+                diagnostics += Diagnostic(file = projectFile.toString(), message = f, tag = "Project", start = SourcePosition(1, 1), end = SourcePosition(1, 1))
             }
             if (findings.isNotEmpty()) {
-                return FrontendResult(null, diagnostics, root, manifest)
+                return FrontendResult(null, diagnostics, root, project)
             }
         }
 
-        val workspace = DependencyResolver.resolveProjectSources(manifest, root)
+        val workspace = ProjectSources.workspace(project, root)
         if (workspace.isEmpty() && stdlib.isEmpty()) {
             diagnostics += Diagnostic(
                 file = root.toString(),
@@ -124,11 +118,11 @@ object FrontendService {
                 start = SourcePosition(1, 1),
                 end = SourcePosition(1, 1),
             )
-            return FrontendResult(null, diagnostics, root, manifest)
+            return FrontendResult(null, diagnostics, root, project)
         }
 
         val sources = (stdlib + workspace).distinct().sorted()
-        return compileSources(sources, overlays, root, manifest, diagnostics, ModuleNames.assign(manifest, root, stdlib, workspace))
+        return compileSources(sources, overlays, root, project, diagnostics, ModuleNames.assign(project, root, stdlib, workspace))
     }
 
     /**
@@ -139,7 +133,7 @@ object FrontendService {
         sourcePaths: List<String>,
         overlays: Map<String, String> = emptyMap(),
         projectRoot: Path? = null,
-        manifest: ProjectManifest? = null,
+        project: Project? = null,
         seedDiagnostics: MutableList<Diagnostic> = mutableListOf(),
         moduleNames: Map<String, String> = emptyMap(),
     ): FrontendResult {
@@ -230,7 +224,7 @@ object FrontendService {
 
         semantic?.diagnostics?.forEach { diagnostics += fromException(it) }
 
-        return FrontendResult(compilationUnit, diagnostics.toList(), projectRoot, manifest)
+        return FrontendResult(compilationUnit, diagnostics.toList(), projectRoot, project)
     }
 
     private fun parseOne(cu: CompilationUnit, path: String, text: String, moduleName: String? = null) {
@@ -265,7 +259,7 @@ object FrontendService {
         }
         var walk: Path? = cur
         while (walk != null) {
-            if (ProjectFiles.isProject(walk)) {
+            if (ProjectFile.isProject(walk)) {
                 return walk
             }
             walk = walk.parent

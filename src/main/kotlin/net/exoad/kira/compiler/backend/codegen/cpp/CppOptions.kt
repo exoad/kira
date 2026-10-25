@@ -1,6 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
-import net.exoad.kira.kim.SourceGlob
+import net.exoad.kira.compiler.SourceGlob
 
 /** Where a module's generated files land. */
 enum class CppLayout {
@@ -16,7 +16,7 @@ enum class CppLayout {
                 "beside" -> BESIDE
                 "tree" -> TREE
                 else -> throw IllegalArgumentException(
-                    "Field 'build.cpp.layout' must be one of beside, tree (got '$raw')"
+                    "Field 'cpp.layout' must be one of beside, tree (got '$raw')"
                 )
             }
         }
@@ -24,9 +24,8 @@ enum class CppLayout {
 }
 
 /**
- * project.kira's `cpp` (kira.yaml's `build.cpp`), as the C++ backend consumes it. Every
- * field has the manifest's default so a project with no `cpp:` block still
- * builds.
+ * project.kira's `cpp`, as the C++ backend consumes it. Every field has
+ * kira:config's default, so a project that sets no `cpp` still builds.
  *
  * Module globs (`headerOnly`, `freestanding`, and the keys of `namespaces`)
  * match a module's dotted name, its project then its path: `*` matches one
@@ -72,5 +71,10 @@ data class CppOptions(
         const val DEFAULT_HEADER_EXT = ".kira.hxx"
         const val DEFAULT_SOURCE_EXT = ".kira.cxx"
         const val STDLIB_URI_PREFIX = "kira:"
+
+        private val namespaceSegment = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+        /** Whether [ns] is a C++ namespace path: identifiers joined by `::`. */
+        fun isNamespacePath(ns: String): Boolean = ns.isNotBlank() && ns.split("::").all { namespaceSegment.matches(it) }
     }
 }

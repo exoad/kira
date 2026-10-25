@@ -64,13 +64,13 @@ class RulesCorpusTest {
 
     /** The typer options the case's project file asks for: its cpp freestanding globs (hall, text), so ProfilePass runs as the CLI would run it. */
     private fun options(dir: File): TyperOptions {
-        val cpp = net.exoad.kira.kim.ProjectFiles.load(dir.toPath())?.build?.cpp ?: return TyperOptions()
+        val cpp = net.exoad.kira.compiler.ProjectFile.loadIn(dir.toPath())?.cpp ?: return TyperOptions()
         return TyperOptions(freestanding = cpp.freestanding, headerOnly = cpp.headerOnly)
     }
 
     @Test
     fun hallAndTextAreTypedFreestanding() {
-        // The corpus test reads each case's kira.yaml; these two declare freestanding modules, so ProfilePass runs on them.
+        // The corpus test reads each case's project.kira; these two declare freestanding modules, so ProfilePass runs on them.
         assertEquals(listOf("golden.hall.pico.hall"), options(File(corpus, "hall")).freestanding)
         assertEquals(listOf("golden.text.lib.text"), options(File(corpus, "text")).freestanding)
     }

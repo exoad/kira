@@ -213,7 +213,7 @@ for name in "${names[@]}"; do
     for f in case.yaml expected.txt driver/main.cxx; do
         [ -f "$dir/$f" ] || missing="$missing $f"
     done
-    [ -f "$dir/project.kira" ] || [ -f "$dir/kira.yaml" ] || missing="$missing project.kira"
+    [ -f "$dir/project.kira" ] || missing="$missing project.kira"
     [ -n "$(find "$dir/src" -name '*.kira' 2> /dev/null)" ] || missing="$missing src/**.kira"
     [ -n "$(find "$dir/expected" -type f 2> /dev/null)" ] || missing="$missing expected/**"
     if [ -n "$missing" ]; then

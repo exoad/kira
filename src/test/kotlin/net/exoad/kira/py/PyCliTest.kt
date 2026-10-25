@@ -12,21 +12,7 @@ class PyCliTest {
 
     private fun project(name: String, target: String): File {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/py-cli/$name").apply { deleteRecursively(); mkdirs() }
-        File(dir, "kira.yaml").writeText(
-            """
-            project:
-              name: cli.py
-
-            srcDir: src
-
-            build:
-              target: $target
-
-            dependencies:
-              kira_stdlib:
-                path: $kiraStdlib
-            """.trimIndent()
-        )
+        File(dir, "project.kira").writeText(net.exoad.kira.ProjectText.of("cli.py", target = target, stdlib = kiraStdlib))
         File(dir, "src/app").mkdirs()
         File(dir, "src/app/main.kira").writeText(
             """

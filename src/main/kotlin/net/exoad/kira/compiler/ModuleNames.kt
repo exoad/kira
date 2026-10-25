@@ -27,15 +27,12 @@ object ModuleNames {
     fun stdlib(file: String): String = "$STDLIB:${stem(Paths.get(file).fileName.toString())}"
 
     /**
-     * A dependency's file: under a dependency with a project file (project.kira or kira.yaml), that
-     * project's name and srcDir; under one without (the stdlib), `kira` and the path under [depRoot].
+     * A dependency's file: under a dependency with a project.kira, that project's name and srcDir;
+     * under one without (the stdlib), `kira` and the path under [depRoot].
      */
     fun dependency(depRoot: Path, file: Path): String {
-        val manifest = net.exoad.kira.kim.ProjectFiles.find(depRoot)
-        if (manifest != null) {
-            cached(manifest)?.let { m ->
-                return project(m.project.name, depRoot.resolve(m.srcDir), file)
-            }
+        ProjectFile.find(depRoot)?.let(ProjectFile::cached)?.let { p ->
+            return project(p.name, depRoot.resolve(p.srcDir), file)
         }
         return project(STDLIB, depRoot, file)
     }
@@ -63,25 +60,25 @@ object ModuleNames {
      * [workspace] under the project's srcDir (its `src`, or its root, without a project file).
      */
     fun assign(
-        manifest: net.exoad.kira.kim.ProjectManifest?,
+        project: Project?,
         projectRoot: Path,
         stdlib: Collection<String>,
         workspace: Collection<String>,
     ): Map<String, String> {
         val root = projectRoot.toAbsolutePath().normalize()
         val depRoots = buildList {
-            manifest?.dependencies?.values?.forEach { spec ->
-                spec.path?.let { net.exoad.kira.kim.DependencyResolver.resolvePath(root, it) }?.let { add(it.toAbsolutePath().normalize()) }
+            project?.dependencies?.values?.forEach { path ->
+                ProjectSources.resolvePath(root, path)?.let { add(it.toAbsolutePath().normalize()) }
             }
             add(root.resolve("kira"))
             add(Paths.get("kira").toAbsolutePath().normalize())
         }
         val srcRoot = when {
-            manifest != null -> root.resolve(manifest.srcDir).normalize()
+            project != null -> root.resolve(project.srcDir).normalize()
             Files.isDirectory(root.resolve("src")) -> root.resolve("src")
             else -> root
         }
-        val projectName = manifest?.project?.name ?: (root.fileName?.toString() ?: "main")
+        val projectName = project?.name ?: (root.fileName?.toString() ?: "main")
         val out = LinkedHashMap<String, String>()
         for (f in stdlib) {
             val p = Paths.get(f).toAbsolutePath().normalize()
@@ -96,31 +93,20 @@ object ModuleNames {
 
     private fun canonical(f: String): String = runCatching { java.io.File(f).canonicalPath }.getOrDefault(f)
 
-    /** Each project file read, by its path and when it was last written: a rewritten one is read again. */
-    private val manifests = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<net.exoad.kira.kim.ProjectManifest>>()
-
-    /** The configuration in the project file [file] (project.kira or kira.yaml); null when it does not load. */
-    fun cached(file: Path): net.exoad.kira.kim.ProjectManifest? {
-        val key = "$file|${Files.getLastModifiedTime(file).toMillis()}|${Files.size(file)}"
-        return manifests.computeIfAbsent(key) {
-            java.util.Optional.ofNullable(runCatching { net.exoad.kira.kim.ProjectFiles.loadFromPath(file) }.getOrNull())
-        }.orElse(null)
-    }
-
     /** [file]'s URI by what holds it: the stdlib's folder, or the nearest project file whose srcDir has it. */
     private fun enclosing(file: Path): String? {
         val abs = file.toAbsolutePath().normalize()
         val dir = abs.parent ?: return null
-        if (Files.isRegularFile(dir.resolve("core.kira")) && !net.exoad.kira.kim.ProjectFiles.isProject(dir)) {
+        if (Files.isRegularFile(dir.resolve("core.kira")) && !ProjectFile.isProject(dir)) {
             return stdlib(abs.toString())
         }
         var d: Path? = dir
         while (d != null) {
-            val found = net.exoad.kira.kim.ProjectFiles.find(d)
+            val found = ProjectFile.find(d)
             if (found != null) {
-                val m = cached(found) ?: return null
-                val src = d.resolve(m.srcDir).normalize()
-                return if (abs.startsWith(src)) project(m.project.name, src, abs) else null
+                val p = ProjectFile.cached(found) ?: return null
+                val src = d.resolve(p.srcDir).normalize()
+                return if (abs.startsWith(src)) project(p.name, src, abs) else null
             }
             d = d.parent
         }

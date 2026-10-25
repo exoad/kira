@@ -1,17 +1,9 @@
-package net.exoad.kira.kim
-
-import java.io.IOException
-import java.nio.file.FileVisitResult
-import java.nio.file.Files
-import java.nio.file.NoSuchFileException
-import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
+package net.exoad.kira.compiler
 
 /**
- * Glob matching for the two shapes the manifest uses: file paths (separator
+ * Glob matching for the two shapes a project uses: file paths (separator
  * `/`, as in `srcExclude`) and module URIs (separator `.`, as in
- * `build.cpp.headerOnly`).
+ * `cpp.headerOnly`).
  *
  * `*` matches within one segment, `?` one character and `{a,b}` either
  * alternative. A segment that is exactly `**` matches zero or more whole
@@ -102,7 +94,7 @@ object SourceGlob {
     /**
      * The value of the key in [map] that names [uri]: an exact key first, then the
      * matching glob with the most literal text, then the longer glob. Key order
-     * never matters. `build.cpp.namespaces` resolves through this, in the layout
+     * never matters. `cpp.namespaces` resolves through this, in the layout
      * and in the typer alike.
      */
     fun <V> lookupUri(map: Map<String, V>, uri: String): V? {
@@ -175,119 +167,5 @@ object SourceGlob {
                 else -> return p
             }
         }
-    }
-}
-
-object DependencyResolver {
-    fun resolveProjectSources(manifest: ProjectManifest?, projectRoot: Path): List<String> {
-        val root = when {
-            manifest != null -> projectRoot.resolve(manifest.srcDir).normalize()
-            Files.exists(projectRoot.resolve("src")) -> projectRoot.resolve("src").normalize()
-            else -> projectRoot
-        }
-        val excludes = manifest?.srcExclude.orEmpty()
-        val absoluteRoot = projectRoot.toAbsolutePath().normalize()
-
-        // The root's project.kira configures the project; it is none of its modules.
-        val primary = scanKiraFiles(root) { isExcluded(it.toString(), absoluteRoot, excludes) }
-            .filterNot { isExcluded(it, absoluteRoot, excludes) || ProjectFiles.isProjectKira(Path.of(it), absoluteRoot) }
-        if (primary.isNotEmpty()) {
-            return primary
-        }
-
-        if (manifest == null && root != projectRoot) {
-            return scanKiraFiles(projectRoot).filterNot { ProjectFiles.isProjectKira(Path.of(it), absoluteRoot) }
-        }
-        return emptyList()
-    }
-
-    /**
-     * True when [file] sits under a path that one of [excludes] names,
-     * relative to [projectRoot]. [below] is a directory the caller is
-     * already scanning: an exclude that covers it (or one of its parents)
-     * does not count, only one matched underneath it (see
-     * [SourceGlob.matchesPath]).
-     */
-    fun isExcluded(file: String, projectRoot: Path, excludes: List<String>, below: Path? = null): Boolean {
-        if (excludes.isEmpty()) {
-            return false
-        }
-        val absolute = Path.of(file).toAbsolutePath().normalize()
-        val root = projectRoot.toAbsolutePath().normalize()
-        if (!absolute.startsWith(root)) {
-            return false
-        }
-        val relative = root.relativize(absolute).toString().replace('\\', '/')
-        val scanned = below?.toAbsolutePath()?.normalize()
-        val belowSegments = when {
-            scanned == null || scanned == root || !scanned.startsWith(root) -> 0
-            else -> root.relativize(scanned).nameCount
-        }
-        return excludes.any { SourceGlob.matchesPath(it, relative, belowSegments) }
-    }
-
-    fun resolveDependencySources(manifest: ProjectManifest?, projectRoot: Path): List<String> {
-        if (manifest == null || manifest.dependencies.isEmpty()) {
-            return scanKiraFiles(projectRoot.resolve("kira").normalize())
-        }
-
-        val sources = mutableListOf<String>()
-        manifest.dependencies.values.forEach { spec ->
-            val path = spec.path ?: return@forEach
-            val resolved = resolvePath(projectRoot, path) ?: return@forEach
-            sources.addAll(scanKiraFiles(resolved))
-        }
-
-        return sources.distinct().sorted()
-    }
-
-    fun resolvePath(projectRoot: Path, rawPath: String): Path? {
-        val direct = projectRoot.resolve(rawPath).normalize()
-        if (Files.exists(direct)) {
-            return direct
-        }
-
-        val parent = projectRoot.parent ?: return null
-        val parentResolved = parent.resolve(rawPath).normalize()
-        return if (Files.exists(parentResolved)) parentResolved else null
-    }
-
-    /** The .kira files under [path] (a linked file too); a directory [prune] names is never entered, one that vanishes mid-walk is skipped. */
-    private fun scanKiraFiles(path: Path, prune: (Path) -> Boolean = { false }): List<String> {
-        if (!Files.exists(path)) {
-            return emptyList()
-        }
-
-        if (Files.isRegularFile(path)) {
-            return if (path.toString().endsWith(".kira")) {
-                listOf(path.toAbsolutePath().toString())
-            } else {
-                emptyList()
-            }
-        }
-
-        if (!Files.isDirectory(path)) {
-            return emptyList()
-        }
-
-        val entries = mutableListOf<String>()
-        Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                if (dir != path && prune(dir)) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (file.toString().endsWith(".kira") && Files.isRegularFile(file)) {
-                    entries.add(file.toAbsolutePath().toString())
-                }
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult =
-                if (exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
-
-            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult =
-                if (exc == null || exc is NoSuchFileException) FileVisitResult.CONTINUE else throw exc
-        })
-        return entries.distinct().sorted()
     }
 }

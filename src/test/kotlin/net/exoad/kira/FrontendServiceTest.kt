@@ -25,18 +25,7 @@ class FrontendServiceTest {
     fun reportsParseErrorOnBrokenOverlay() {
         val dir = Files.createTempDirectory("kira-frontend-")
         try {
-            dir.resolve("kira.yaml").writeText(
-                """
-                project:
-                  name: tmp
-                srcDir: src
-                build:
-                  target: c
-                dependencies:
-                  kira_stdlib:
-                    path: ${Path.of("kira").toAbsolutePath().normalize()}
-                """.trimIndent()
-            )
+            dir.resolve("project.kira").writeText(ProjectText.of("tmp", target = "c"))
             val srcDir = dir.resolve("src")
             Files.createDirectories(srcDir)
             val main = srcDir.resolve("main.kira")
@@ -79,18 +68,7 @@ class FrontendServiceTest {
         val previous = GeneratedProvider.outputMode
         try {
             GeneratedProvider.outputMode = GeneratedProvider.OutputTarget.NONE
-            dir.resolve("kira.yaml").writeText(
-                """
-                project:
-                  name: tmp
-                srcDir: src
-                build:
-                  target: py
-                dependencies:
-                  kira_stdlib:
-                    path: ${Path.of("kira").toAbsolutePath().normalize()}
-                """.trimIndent()
-            )
+            dir.resolve("project.kira").writeText(ProjectText.of("tmp", target = "py"))
             Files.createDirectories(dir.resolve("src/app"))
             dir.resolve("src/app/main.kira").writeText(
                 """

@@ -123,7 +123,7 @@ class ModuleSymbol(
     override val module: ModuleSymbol get() = this
     override val qualifiedName: String get() = uri
 
-    /** A `build.cpp.headerOnly` module, or any `kira:*` one: an inline-only header and no source file. */
+    /** A `cpp.headerOnly` module, or any `kira:*` one: an inline-only header and no source file. */
     var isHeaderOnly: Boolean = false
 
     /** Every declaration in source order, duplicates and operator overloads included. */
@@ -157,7 +157,7 @@ class ModuleSymbol(
     val pathSegments: List<String> get() = uri.substringAfter(':').split('.')
 
     companion object {
-        /** D14 with no manifest overrides: [namespaceOf] with an empty map. */
+        /** D14 with no project overrides: [namespaceOf] with an empty map. */
         fun defaultNamespace(uri: String): String = namespaceOf(emptyMap(), uri)
 
         /**

@@ -55,8 +55,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.cpp.support.CppGoldenCase
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.compiler.ProjectFile
+import net.exoad.kira.compiler.ProjectSources
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Path
@@ -355,15 +355,15 @@ object OopTestSupport {
     data class GeneratedFile(val relative: String, val text: String)
 
     /**
-     * Emits the golden [case] the way CppGoldenEmitTest does (its kira.yaml, the semantic
+     * Emits the golden [case] the way CppGoldenEmitTest does (its project.kira, the semantic
      * pass, the typer STRICT, the module emitter over the case's layout), but with [parts]
      * and after [tweak], and returns every file it writes for the case's own modules.
      */
     fun emitCase(case: CppGoldenCase, parts: CppEmitParts = partsOverStandard(), tweak: (TypedProgram) -> Unit = {}): List<GeneratedFile> {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val manifest = net.exoad.kira.kim.ProjectFiles.load(caseRoot)!!
-        val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
-        val names = net.exoad.kira.compiler.ModuleNames.assign(manifest, caseRoot, emptyList(), workspace)
+        val project = ProjectFile.loadIn(caseRoot)!!
+        val workspace = ProjectSources.workspace(project, caseRoot)
+        val names = net.exoad.kira.compiler.ModuleNames.assign(project, caseRoot, emptyList(), workspace)
         val unit = CompilationUnit()
         workspace.sorted().forEach { file ->
             val text = File(file).readText()
@@ -378,7 +378,7 @@ object OopTestSupport {
         if (semantic.diagnostics.isNotEmpty()) {
             fail("${case.name}: the semantic pass refused the case:\n${semantic.diagnostics.joinToString("\n")}")
         }
-        val options = KiraCppBackend.buildOptions(manifest, null)
+        val options = KiraCppBackend.buildOptions(project, null)
         val emitted = emitUnit(unit, caseRoot, options, parts, tweak) { uri -> !uri.startsWith("kira:") }
         val out = mutableListOf<GeneratedFile>()
         unit.allSources().forEach { source: SourceContext ->

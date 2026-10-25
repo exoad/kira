@@ -23,7 +23,7 @@ The emitted artifact is one ISO C17 translation unit, three layers:
 - Generated user code is **minified + obfuscated by default** (`OutputMinifier`):
   the prelude stays readable, the user layer loses comments/whitespace and
   gets user identifiers renamed. `main`, `@_extern` symbols, and `@_opaque`
-  names are never renamed. `kira --readable` / `build.minify: false` restore
+  names are never renamed. `kira --readable` / `minify = false` restore
   the pretty form. A change to OutputMinifier.kt must leave every test
   project's output as it was (see snapshots rule).
 - `KiraSlot` is the uniform 64-bit erased element: integer, Bool, or pointer

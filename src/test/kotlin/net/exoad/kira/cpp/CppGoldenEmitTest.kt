@@ -11,9 +11,8 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.cpp.support.CppGoldenCase
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
-import net.exoad.kira.kim.ManifestValidator
+import net.exoad.kira.compiler.ProjectFile
+import net.exoad.kira.compiler.ProjectSources
 import org.junit.jupiter.api.DynamicNode
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -25,11 +24,11 @@ import kotlin.test.fail
 
 /**
  * Design 5.10: for every golden case marked `emit: required`, run the compiler's C++ emitter
- * on the case's `src/` under its `kira.yaml` and diff every generated file against
+ * on the case's `src/` under its `project.kira` and diff every generated file against
  * `expected/` byte for byte, with a unified diff on a mismatch. An expected file the
  * emitter does not produce, or a produced file `expected/` lacks, fails the case.
  *
- * What runs is the CLI's path: the manifest, the semantic pass, the typer (STRICT) and the
+ * What runs is the CLI's path: the project file, the semantic pass, the typer (STRICT) and the
  * module emitter over the real layout, through [KiraCppBackend.emitModules], so exactly the
  * Kira-written stdlib modules the case reaches (`kira/std/<x>.kira.hxx` under the runtime
  * directory) are emitted and diffed, and a case that reaches one must claim its header in
@@ -66,11 +65,11 @@ class CppGoldenEmitTest {
 
     private fun check(case: CppGoldenCase) {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val manifest = net.exoad.kira.kim.ProjectFiles.load(caseRoot)!!
-        val issues = ManifestValidator.validate(manifest, caseRoot)
+        val project = ProjectFile.loadIn(caseRoot)!!
+        val issues = project.issues(caseRoot)
         assertTrue(issues.isEmpty(), "${case.name}: project file issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
 
-        val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
+        val workspace = ProjectSources.workspace(project, caseRoot)
         assertTrue(workspace.isNotEmpty(), "${case.name}: no Kira sources under src/")
         val unit = CompilationUnit()
         workspace.sorted().forEach { file ->
@@ -85,7 +84,7 @@ class CppGoldenEmitTest {
         val semantic = KiraSemanticAnalyzer(unit).validateAST()
         assertTrue(semantic.diagnostics.isEmpty(), "${case.name}: the semantic pass refused the case:\n${semantic.diagnostics.joinToString("\n")}")
 
-        val options = KiraCppBackend.buildOptions(manifest, null)
+        val options = KiraCppBackend.buildOptions(project, null)
         val refs = unit.allSources().mapNotNull { src ->
             val uri = runCatching { src.getModuleUri() }.getOrNull() ?: return@mapNotNull null
             if (uri.startsWith("(unknown)")) null else CppModuleRef(uri, Path.of(src.file))

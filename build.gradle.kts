@@ -57,7 +57,7 @@ tasks.test {
     }
 }
 
-// Compiler reads kira.yaml from the process working directory.
+// The compiler reads project.kira from the process working directory.
 tasks.named<JavaExec>("run") {
     workingDir = rootProject.file("test_kira")
 }

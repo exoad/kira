@@ -11,9 +11,8 @@ import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
-import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
-import net.exoad.kira.kim.ManifestValidator
+import net.exoad.kira.compiler.ProjectFile
+import net.exoad.kira.compiler.ProjectSources
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -21,7 +20,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Runs the CLI's C++ path (manifest, semantic pass, typer, the real layout, every part)
+ * Runs the CLI's C++ path (project file, semantic pass, typer, the real layout, every part)
  * over one golden case, the way CppGoldenEmitTest does, and hands back what each module
  * emitted by URI, so the FFI tests can look at one module of a case whose other modules
  * still wait for a part (forward's program body is W2.3's).
@@ -51,10 +50,10 @@ object FfiGoldenSupport {
     fun emit(caseName: String): CaseEmission {
         val caseRoot = File(corpus, caseName).toPath().toAbsolutePath().normalize()
         assertTrue(Files.isDirectory(caseRoot), "no golden case at $caseRoot")
-        val manifest = net.exoad.kira.kim.ProjectFiles.load(caseRoot)!!
-        val issues = ManifestValidator.validate(manifest, caseRoot)
+        val project = ProjectFile.loadIn(caseRoot)!!
+        val issues = project.issues(caseRoot)
         assertTrue(issues.isEmpty(), "$caseName: project file issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
-        val workspace = DependencyResolver.resolveProjectSources(manifest, caseRoot)
+        val workspace = ProjectSources.workspace(project, caseRoot)
         assertTrue(workspace.isNotEmpty(), "$caseName: no Kira sources under src/")
         val unit = CompilationUnit()
         workspace.sorted().forEach { file ->
@@ -69,7 +68,7 @@ object FfiGoldenSupport {
         val semantic = KiraSemanticAnalyzer(unit).validateAST()
         assertTrue(semantic.diagnostics.isEmpty(), "$caseName: the semantic pass refused the case:\n${semantic.diagnostics.joinToString("\n")}")
 
-        val options = KiraCppBackend.buildOptions(manifest, null)
+        val options = KiraCppBackend.buildOptions(project, null)
         val refs = unit.allSources().mapNotNull { src ->
             val uri = runCatching { src.getModuleUri() }.getOrNull() ?: return@mapNotNull null
             if (uri.startsWith("(unknown)")) null else CppModuleRef(uri, Path.of(src.file))

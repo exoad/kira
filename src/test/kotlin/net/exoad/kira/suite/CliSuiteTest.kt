@@ -1,5 +1,6 @@
 package net.exoad.kira.suite
 
+import net.exoad.kira.ProjectText
 import net.exoad.kira.TestCompileSupport
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -10,7 +11,7 @@ import kotlin.test.assertTrue
 
 /**
  * CLI coverage: runs the real `net.exoad.kira.cli.MainKt` as a subprocess on
- * throwaway project directories (each with its own `kira.yaml`), then verifies
+ * throwaway project directories (each with its own `project.kira`), then verifies
  * exit codes, emitted output, and behavior of the produced C binary.
  *
  * This is the same entry point CI exercises via `kira`, without needing the
@@ -20,20 +21,19 @@ class CliSuiteTest {
 
     companion object {
         private val repoRoot: File = File(System.getProperty("user.dir"))
-        private val kiraStdlib: String = File(repoRoot, "kira").absolutePath
+        private val kiraStdlib: String = File(repoRoot, "kira").absolutePath.replace('\\', '/')
     }
 
     private data class CliResult(val exitCode: Int, val stdout: String, val stderr: String)
 
-    /** Create a temp project under build/tmp/cli-suite/<name> with kira.yaml + src/. */
+    /** Create a temp project under build/tmp/cli-suite/<name> with [project] as its project.kira (none for null) + src/. */
     private fun tempProject(
         name: String,
-        manifest: String,
+        project: String?,
         sources: Map<String, String>,
     ): File {
         val dir = File(repoRoot, "build/tmp/cli-suite/$name").apply { deleteRecursively(); mkdirs() }
-        val resolvedManifest = manifest.replace("\${kira_stdlib}", kiraStdlib)
-        File(dir, "kira.yaml").writeText(resolvedManifest)
+        project?.let { File(dir, "project.kira").writeText(it) }
         for ((relPath, content) in sources) {
             val file = File(dir, relPath)
             file.parentFile.mkdirs()
@@ -58,19 +58,7 @@ class CliSuiteTest {
         return CliResult(code, stdout, stderr)
     }
 
-    private fun basicManifest(): String = """
-        project:
-          name: cli-test
-
-        srcDir: src
-
-        build:
-          target: c
-
-        dependencies:
-          kira_stdlib:
-            path: ${'$'}{kira_stdlib}
-    """.trimIndent()
+    private fun basicProject(target: String = "c"): String = ProjectText.of("cli-test", target = target, stdlib = kiraStdlib)
 
     // --- happy path -----------------------------------------------------------
 
@@ -78,7 +66,7 @@ class CliSuiteTest {
     fun compilesProjectAndEmitsC() {
         val dir = tempProject(
             "happy",
-            basicManifest(),
+            basicProject(),
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
@@ -105,7 +93,7 @@ class CliSuiteTest {
         }
         val dir = tempProject(
             "run",
-            basicManifest(),
+            basicProject(),
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
@@ -140,7 +128,7 @@ class CliSuiteTest {
     fun exitsNonZeroOnSemanticDiagnostics() {
         val dir = tempProject(
             "diagnostics",
-            basicManifest(),
+            basicProject(),
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
@@ -164,7 +152,7 @@ class CliSuiteTest {
     fun anUnknownStringEscapeIsADiagnosticNotACrash() {
         val dir = tempProject(
             "unknown-escape",
-            basicManifest(),
+            basicProject(),
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
@@ -189,7 +177,7 @@ class CliSuiteTest {
     fun aMaybeParametersMisuseIsTheTypersCodedDiagnostic() {
         val dir = tempProject(
             "maybe-param",
-            basicManifest().replace("target: c", "target: py"),
+            basicProject(target = "py"),
             mapOf(
                 "src/app/main.kira" to """
                     f: (s: Maybe<Str>) Size {
@@ -209,7 +197,7 @@ class CliSuiteTest {
     @Test
     fun anEmptySourceFileIsAnEmptyModuleNotACrash() {
         // The file is the module, so an empty file is an empty module.
-        val dir = tempProject("empty-source", basicManifest(), mapOf("src/app/main.kira" to ""))
+        val dir = tempProject("empty-source", basicProject(), mapOf("src/app/main.kira" to ""))
         val result = runCli(dir)
         val output = result.stdout + result.stderr
         assertEquals(0, result.exitCode, output)
@@ -218,44 +206,10 @@ class CliSuiteTest {
     }
 
     @Test
-    fun panicsOnLegacyTomlManifest() {
-        val dir = tempProject(
-            "legacy-toml",
-            basicManifest(),
-            mapOf(
-                "kira.toml" to """
-                    [project]
-                    name = "legacy"
-                """.trimIndent(),
-            )
-        )
-        // kira.toml must take precedence over kira.yaml for the panic path.
-        File(dir, "kira.yaml").delete()
-        val result = runCli(dir)
-        assertEquals(1, result.exitCode)
-        assertTrue(
-            result.stderr.contains("kira.toml") || result.stdout.contains("kira.toml"),
-            "migration message should mention kira.toml. stdout:\n${result.stdout}\nstderr:\n${result.stderr}"
-        )
-    }
-
-    @Test
     fun panicsWhenNoSourcesFound() {
-        val dir = tempProject(
-            "no-sources",
-            """
-            project:
-              name: empty
-
-            srcDir: src
-
-            build:
-              target: c
-            """.trimIndent(),
-            mapOf()
-        )
-        // srcDir must exist for validation to pass; an empty src then triggers
-        // the "no source files" panic.
+        // No project file and no stdlib: an empty src then triggers the "no source files" panic. (A project.kira
+        // project always has a stdlib, the one it is typed against.)
+        val dir = tempProject("no-sources", null, mapOf())
         File(dir, "src").mkdirs()
         val result = runCli(dir)
         assertEquals(1, result.exitCode)
@@ -266,20 +220,8 @@ class CliSuiteTest {
     }
 
     @Test
-    fun rejectsMissingSrcDirDuringManifestValidation() {
-        val dir = tempProject(
-            "missing-srcdir",
-            """
-            project:
-              name: empty
-
-            srcDir: src
-
-            build:
-              target: c
-            """.trimIndent(),
-            mapOf()
-        )
+    fun rejectsAMissingSrcDirAsAProjectIssue() {
+        val dir = tempProject("missing-srcdir", ProjectText.of("empty", target = "c", stdlib = null), mapOf())
         val result = runCli(dir)
         assertEquals(1, result.exitCode)
         assertTrue(

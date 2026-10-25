@@ -1,6 +1,5 @@
-package net.exoad.kira.kim
+package net.exoad.kira.compiler
 
-import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TyperMode
@@ -8,6 +7,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraParser
+import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -24,17 +24,17 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
-import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.source.SourceContext
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * project.kira, which replaces kira.yaml: one `PROJECT: Project = Project { } with { ... }`. [parse]
- * evaluates that value (strings, true/false, @listOf, @mapOf, `T { }` and `with`); [check] types the
- * file against the stdlib's `kira:config`, as any code is typed.
+ * project.kira, a project's one file: `PROJECT: Project = Project { } with { ... }`. It is Kira,
+ * read by the compiler's own lexer and parser; [parse] evaluates that value (strings, true/false,
+ * @listOf, @mapOf, `T { }` and `with`) into a [Project], and [check] types the file against the
+ * stdlib's `kira:config`, as any code is typed.
  */
-object ProjectKira {
+object ProjectFile {
     const val FILE = "project.kira"
 
     /** The module the file is typed as: no project's, so no source can import it. */
@@ -43,7 +43,7 @@ object ProjectKira {
     /** The constant the file declares. */
     const val CONSTANT = "PROJECT"
 
-    /** Every field of the stdlib's Project and Cpp, as [manifest] reads them. */
+    /** Every field of the stdlib's Project and Cpp, as [parse] reads them. */
     val PROJECT_FIELDS = listOf(
         "name", "author", "version", "srcDir", "srcExclude", "target", "cSources", "linkFlags", "minify", "cpp",
         "types", "emitIr", "dependencies",
@@ -52,18 +52,39 @@ object ProjectKira {
         "layout", "outDir", "runtimeDir", "lineDirectives", "namespaces", "headerOnly", "freestanding", "headerExt", "sourceExt",
     )
 
+    /** [dir]'s project file; null for none. */
+    fun find(dir: Path): Path? = dir.resolve(FILE).takeIf { Files.isRegularFile(it) }
+
+    fun isProject(dir: Path): Boolean = find(dir) != null
+
+    /** Whether [file] is [root]'s project.kira, which configures the project and is none of its modules. */
+    fun isProjectFile(file: Path, root: Path): Boolean =
+        file.toAbsolutePath().normalize() == root.toAbsolutePath().normalize().resolve(FILE)
+
     /** A Kira string literal of [s]: `\`, `"` and `${` escaped. */
     fun quote(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\${", "\\\${") + "\""
 
-    fun loadFromPath(path: Path): ProjectManifest {
+    fun load(path: Path): Project {
         require(Files.exists(path)) { "Project file not found: $path" }
         return parse(Files.readString(path), path.toString())
     }
 
-    /** [text]'s configuration; an [IllegalArgumentException] names what is wrong and where. */
-    fun parse(text: String, file: String = FILE): ProjectManifest {
+    /** [dir]'s project, its project.kira read; null when it has none. */
+    fun loadIn(dir: Path): Project? = find(dir)?.let(::load)
+
+    /** Each project file read, by its path and when it was last written: a rewritten one is read again. */
+    private val loaded = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<Project>>()
+
+    /** The project the file [file] configures, read once while it is unchanged; null when it does not load. */
+    fun cached(file: Path): Project? {
+        val key = "$file|${Files.getLastModifiedTime(file).toMillis()}|${Files.size(file)}"
+        return loaded.computeIfAbsent(key) { java.util.Optional.ofNullable(runCatching { load(file) }.getOrNull()) }.orElse(null)
+    }
+
+    /** [text]'s project; an [IllegalArgumentException] names what is wrong and where. */
+    fun parse(text: String, file: String = FILE): Project {
         val ctx = read(CompilationUnit(bootstrap = false), text, file)
-        return manifest(evaluate(ctx), ctx)
+        return project(evaluate(ctx), ctx)
     }
 
     /** [text] parsed as the source [file] of [unit]. */
@@ -138,28 +159,26 @@ object ProjectKira {
         }
     }
 
-    private fun manifest(p: Obj, ctx: SourceContext): ProjectManifest {
+    private fun project(p: Obj, ctx: SourceContext): Project {
         known(ctx, p, PROJECT_FIELDS)
-        val defaults = ProjectManifest(ProjectSpec(""))
+        val defaults = Project("")
         val f = Fields(ctx, p)
         val types = f.str("types") ?: "off"
         val cpp = (p.fields["cpp"] as? Obj)?.let { cppOf(ctx, it, p) } ?: if ("cpp" in p.fields) refuse(ctx, p.where["cpp"], "Field 'cpp' is a Cpp: 'Cpp { } with { ... }'.") else CppOptions()
-        return ProjectManifest(
-            project = ProjectSpec(name = f.str("name") ?: "", author = f.str("author") ?: "", version = f.str("version") ?: ""),
+        return Project(
+            name = f.str("name") ?: "",
+            author = f.str("author") ?: "",
+            version = f.str("version") ?: "",
             srcDir = f.str("srcDir") ?: defaults.srcDir,
             srcExclude = f.strs("srcExclude") ?: defaults.srcExclude,
-            build = BuildOptions(
-                target = f.str("target") ?: defaults.build.target,
-                cSources = f.strs("cSources") ?: defaults.build.cSources,
-                linkFlags = f.strs("linkFlags") ?: defaults.build.linkFlags,
-                minify = f.bool("minify") ?: defaults.build.minify,
-                cpp = cpp,
-            ),
-            compiler = CompilerOptions(
-                emitIr = f.str("emitIr")?.takeIf { it.isNotEmpty() },
-                types = runCatching { TypeCheckMode.parse(types) }.getOrElse { refuse(ctx, p.where["types"], "Field 'types' must be one of off, lenient, strict (got '$types').") },
-            ),
-            dependencies = (f.map("dependencies") ?: emptyMap()).mapValues { (_, path) -> DependencySpec(path = path) },
+            target = f.str("target") ?: defaults.target,
+            cSources = f.strs("cSources") ?: defaults.cSources,
+            linkFlags = f.strs("linkFlags") ?: defaults.linkFlags,
+            minify = f.bool("minify") ?: defaults.minify,
+            cpp = cpp,
+            types = runCatching { TypeCheckMode.parse(types) }.getOrElse { refuse(ctx, p.where["types"], "Field 'types' must be one of off, lenient, strict (got '$types').") },
+            emitIr = f.str("emitIr")?.takeIf { it.isNotEmpty() },
+            dependencies = f.map("dependencies") ?: emptyMap(),
         )
     }
 
@@ -186,7 +205,7 @@ object ProjectKira {
         o.fields.keys.firstOrNull { it !in fields }?.let { refuse(ctx, o.where[it] ?: o.at, "${o.type} has no field '$it' (its fields: ${fields.joinToString(", ")}).") }
     }
 
-    /** [o]'s fields by kind, each value trimmed as kira.yaml's loader trims, empty list entries dropped. */
+    /** [o]'s fields by kind, each value trimmed, empty list entries dropped. */
     private class Fields(val ctx: SourceContext, val o: Obj) {
         fun str(k: String): String? = o.fields[k]?.let { it as? String ?: wrong(k, "a Str") }?.trim()
 
@@ -227,7 +246,7 @@ object ProjectKira {
         for (s in wanted) {
             val canonical = runCatching { java.io.File(s).canonicalPath }.getOrDefault(s)
             val processed = KiraPreprocessor(java.io.File(s).readText()).process().processedContent
-            val bare = unit.addSource(canonical, processed, emptyList(), net.exoad.kira.compiler.ModuleNames.stdlib(s))
+            val bare = unit.addSource(canonical, processed, emptyList(), ModuleNames.stdlib(s))
             KiraParser(unit.addSource(canonical, processed, KiraLexer(bare).tokenize())).parse()
         }
         val ctx = try {

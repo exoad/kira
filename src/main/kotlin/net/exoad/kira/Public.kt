@@ -17,7 +17,7 @@ object Public {
     object Builtin {
         var intrinsicalStandardLibrarySources: Array<String> = emptyArray()
 
-        // fallback discovery in case no manifest is provided or manifest has no kira deps
+        // fallback discovery when there is no project.kira, or it names no kira dependency
         fun discoverLegacyKiraFolder(): Array<String> {
             val rootPath = Paths.get("kira").toAbsolutePath().normalize()
             if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {

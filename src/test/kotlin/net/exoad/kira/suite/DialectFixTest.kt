@@ -114,7 +114,7 @@ class DialectFixTest {
         assertEquals(2, codes(p).count { it == "types.class.final" }, render(p))
     }
 
-    // ---- 4. kira.yaml globs ------------------------------------------------------------------------
+    // ---- 4. a project's module globs -----------------------------------------------------------------
 
     @Test
     fun aGlobThatNamesNoModuleIsWarnedWithTheDottedSpellingItMeant() {
@@ -124,7 +124,7 @@ class DialectFixTest {
         val warnings = CppModuleLayout(options, root, listOf(text)).checkCollisions().filter { it.code == "cpp.glob-unused" }
         assertEquals(2, warnings.size, warnings.joinToString("\n") { it.message })
         assertTrue(warnings.all { !it.isError && it.message.contains("'bibo.firmware.lib.**'") }, warnings.joinToString("\n") { it.message })
-        assertTrue(warnings.any { it.message.startsWith("build.cpp.headerOnly['firmware:lib.**'] matches no module") })
+        assertTrue(warnings.any { it.message.startsWith("cpp.headerOnly['firmware:lib.**'] matches no module") })
     }
 
     // ---- 5. a slot is one rule ---------------------------------------------------------------------

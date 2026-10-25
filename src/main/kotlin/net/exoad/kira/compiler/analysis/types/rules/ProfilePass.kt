@@ -30,7 +30,7 @@ import java.util.IdentityHashMap
 
 /**
  * The freestanding profile (design section 10, D22): a module matched by
- * `build.cpp.freestanding`, and every module it `use`s, stays within the Pico subset. Each
+ * `cpp.freestanding`, and every module it `use`s, stays within the Pico subset. Each
  * refusal names the replacement.
  *
  * - `rules.profile.type`: a `Str`, a `List`/`Map`/`Set`/`Deque`/`Stack`/`Queue`, an `Arr<T>`

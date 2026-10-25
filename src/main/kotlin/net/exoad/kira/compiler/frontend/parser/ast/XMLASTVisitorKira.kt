@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
  * usually this is just generated right after the parser phase, but you can always pass in a root ast node
  * or something, and it will traverse and spit something out.
  *
- * it is dumped when the project manifest sets compiler.emitIr.
+ * it is dumped when project.kira sets emitIr.
  *
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */

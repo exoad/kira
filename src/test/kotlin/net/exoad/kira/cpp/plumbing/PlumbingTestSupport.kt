@@ -2,6 +2,7 @@ package net.exoad.kira.cpp.plumbing
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.ModuleNames
+import net.exoad.kira.compiler.Project
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.backend.codegen.cpp.CppDiagnostic
 import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitter
@@ -12,7 +13,6 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
-import net.exoad.kira.kim.ProjectManifest
 import net.exoad.kira.source.SourceContext
 import java.io.File
 import java.nio.file.Files
@@ -72,14 +72,14 @@ object PlumbingTestSupport {
     }
 
     /**
-     * Parses [files] (absolute path to Kira text) the way the CLI does, each named as [manifest]'s
-     * project under [root] names it; a file under `<root>/stdlib` is a stdlib module.
+     * Parses [files] (absolute path to Kira text) the way the CLI does, each named as
+     * [project] under [root] names it; a file under `<root>/stdlib` is a stdlib module.
      */
-    fun compilationUnit(files: Map<Path, String>, manifest: ProjectManifest? = null, root: Path? = null): CompilationUnit {
+    fun compilationUnit(files: Map<Path, String>, project: Project? = null, root: Path? = null): CompilationUnit {
         val unit = CompilationUnit()
         val names = if (root == null) emptyMap() else {
             val (std, own) = files.keys.partition { it.toAbsolutePath().normalize().startsWith(root.resolve("stdlib").toAbsolutePath().normalize()) }
-            ModuleNames.assign(manifest, root, std.map { it.toString() }, own.map { it.toString() })
+            ModuleNames.assign(project, root, std.map { it.toString() }, own.map { it.toString() })
         }
         files.forEach { (path, text) ->
             val processed = KiraPreprocessor(text).process()

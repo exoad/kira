@@ -1,5 +1,9 @@
-package net.exoad.kira.kim
+package net.exoad.kira.project
 
+import net.exoad.kira.compiler.Project
+import net.exoad.kira.compiler.ProjectFile
+import net.exoad.kira.compiler.ProjectSources
+import net.exoad.kira.compiler.TypeCheckMode
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
 import net.exoad.kira.compiler.backend.codegen.cpp.CppLayout
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
@@ -18,13 +22,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Stage 5's project.kira: what it holds, what it refuses, its types, and the compiler reading it. */
-class ProjectKiraTest {
+/** project.kira: what it holds, what it refuses, its types, and the compiler reading it. */
+class ProjectFileTest {
     private val stdlib = File("kira").absoluteFile
 
     private fun project(body: String) = "PROJECT: Project = Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
 
-    private fun refused(text: String): String = assertThrows<IllegalArgumentException> { ProjectKira.parse(text) }.message!!
+    private fun refused(text: String): String = assertThrows<IllegalArgumentException> { ProjectFile.parse(text) }.message!!
 
     @Test
     fun everyFieldLoads() {
@@ -55,36 +59,35 @@ class ProjectKiraTest {
                 dependencies = @mapOf("kira_stdlib", "../kira", "other", "../other")
                 """,
             )
-        val m = ProjectKira.parse(text)
+        val m = ProjectFile.parse(text)
         // Every field set, the file types too.
         val sources = stdlib.listFiles()!!.filter { it.extension == "kira" }.map { it.path }
-        val file = Files.writeString(Files.createTempDirectory("projectkira_full").resolve(ProjectKira.FILE), text)
-        assertEquals(emptyList(), ProjectKira.check(file, sources))
-        val expected = ProjectManifest(
-            project = ProjectSpec("net.exoad.app", "exoad", "0.5"),
+        val file = Files.writeString(Files.createTempDirectory("projectkira_full").resolve(ProjectFile.FILE), text)
+        assertEquals(emptyList(), ProjectFile.check(file, sources))
+        val expected = Project(
+            name = "net.exoad.app", author = "exoad", version = "0.5",
             srcDir = ".",
             srcExclude = listOf("build", "**/build", "vendor"),
-            build = BuildOptions(
-                target = "cpp", cSources = listOf("native/a.c"), linkFlags = emptyList(), minify = false,
-                cpp = CppOptions(
-                    CppLayout.TREE, "gen", "firmware/lib", false, mapOf("net.exoad.app.lib.text" to "app::text"),
-                    listOf("net.exoad.app.lib.**"), listOf("net.exoad.app.pico.**"), ".hh", ".cc",
-                ),
+            target = "cpp", cSources = listOf("native/a.c"), linkFlags = emptyList(), minify = false,
+            cpp = CppOptions(
+                CppLayout.TREE, "gen", "firmware/lib", false, mapOf("net.exoad.app.lib.text" to "app::text"),
+                listOf("net.exoad.app.lib.**"), listOf("net.exoad.app.pico.**"), ".hh", ".cc",
             ),
-            compiler = CompilerOptions(emitIr = "dump.txt", types = TypeCheckMode.STRICT),
-            dependencies = mapOf("kira_stdlib" to DependencySpec("../kira"), "other" to DependencySpec("../other")),
+            types = TypeCheckMode.STRICT,
+            emitIr = "dump.txt",
+            dependencies = mapOf("kira_stdlib" to "../kira", "other" to "../other"),
         )
         assertEquals(expected, m)
     }
 
     @Test
-    fun aFieldNotGivenIsKiraYamlsDefault() {
-        assertEquals(ManifestLoader.parse("project:\n  name: a.b\n"), ProjectKira.parse(project("name = \"a.b\"")))
+    fun aFieldNotGivenIsItsDefault() {
+        assertEquals(Project("a.b"), ProjectFile.parse(project("name = \"a.b\"")))
         // A named construction says the same as a `with` block.
-        assertEquals(ProjectKira.parse(project("name = \"a.b\"\nsrcDir = \".\"")), ProjectKira.parse("PROJECT: Project = Project { name = \"a.b\", srcDir = \".\" }\n"))
+        assertEquals(ProjectFile.parse(project("name = \"a.b\"\nsrcDir = \".\"")), ProjectFile.parse("PROJECT: Project = Project { name = \"a.b\", srcDir = \".\" }\n"))
     }
 
-    /** kira:config is the schema: its fields are the ones read, its defaults ProjectManifest's. */
+    /** kira:config is the schema: its fields are the ones read, its defaults Project's. */
     @Test
     fun theStdlibsProjectHasEveryFieldWithItsDefault() {
         val unit = TyperTestSupport.unitOf(TyperTestSupport.Src("kira/config.kira", File(stdlib, "config.kira").readText(), "kira:config"))
@@ -92,19 +95,19 @@ class ProjectKiraTest {
         fun fields(type: String): Map<String, String> = ast.statements.mapNotNull { (it as? Statement)?.expr as? ClassDecl }
             .first { (it.name.identifier as Identifier).value == type }.members.filterIsInstance<VariableDecl>()
             .associate { it.name.value to KiraUnparser.text(it.value!!) }
-        val d = ProjectManifest(ProjectSpec(""))
+        val d = Project("")
         val c = CppOptions()
-        val str = ProjectKira::quote
+        val str = ProjectFile::quote
         assertEquals(
             linkedMapOf(
-                "name" to str(d.project.name), "author" to str(d.project.author), "version" to str(d.project.version), "srcDir" to str(d.srcDir),
-                "srcExclude" to "List<Str> { }", "target" to str(d.build.target), "cSources" to "List<Str> { }", "linkFlags" to "List<Str> { }",
-                "minify" to d.build.minify.toString(), "cpp" to "Cpp { }", "types" to str(d.compiler.types.name.lowercase()),
-                "emitIr" to str(d.compiler.emitIr ?: ""), "dependencies" to "Map<Str, Str> { }",
+                "name" to str(d.name), "author" to str(d.author), "version" to str(d.version), "srcDir" to str(d.srcDir),
+                "srcExclude" to "List<Str> { }", "target" to str(d.target), "cSources" to "List<Str> { }", "linkFlags" to "List<Str> { }",
+                "minify" to d.minify.toString(), "cpp" to "Cpp { }", "types" to str(d.types.name.lowercase()),
+                "emitIr" to str(d.emitIr ?: ""), "dependencies" to "Map<Str, Str> { }",
             ),
             fields("Project"),
         )
-        assertEquals(ProjectKira.PROJECT_FIELDS, fields("Project").keys.toList())
+        assertEquals(ProjectFile.PROJECT_FIELDS, fields("Project").keys.toList())
         assertEquals(
             linkedMapOf(
                 "layout" to str(c.layout.name.lowercase()), "outDir" to str(c.outDir), "runtimeDir" to str(c.runtimeDir ?: ""),
@@ -134,43 +137,40 @@ class ProjectKiraTest {
     @Test
     fun theTyperChecksTheFile() {
         val dir = Files.createTempDirectory("projectkira_typed")
-        val file = dir.resolve(ProjectKira.FILE)
+        val file = dir.resolve(ProjectFile.FILE)
         Files.writeString(file, project("name = 3\nminify = \"no\""))
         val sources = stdlib.listFiles()!!.filter { it.extension == "kira" }.map { it.path }
-        val found = ProjectKira.check(file, sources)
+        val found = ProjectFile.check(file, sources)
         assertEquals(2, found.size, found.joinToString("\n"))
         assertTrue(found.all { it.startsWith("$file:") && ": error: types." in it }, found.joinToString("\n"))
         Files.writeString(file, project("name = \"fine\""))
-        assertEquals(emptyList(), ProjectKira.check(file, sources))
+        assertEquals(emptyList(), ProjectFile.check(file, sources))
         // A stdlib from before project.kira has no Project to type it with.
-        assertTrue(ProjectKira.check(file, sources.filter { !it.endsWith("config.kira") }).single().contains("project.stdlib"))
+        assertTrue(ProjectFile.check(file, sources.filter { !it.endsWith("config.kira") }).single().contains("project.stdlib"))
     }
 
     @Test
-    fun projectKiraIsReadBeforeKiraYamlAndIsNoModule() {
+    fun projectKiraIsTheProjectAndNoModule() {
         val dir = Files.createTempDirectory("projectkira_files")
-        assertNull(ProjectFiles.find(dir))
-        Files.writeString(dir.resolve("kira.yaml"), "project:\n  name: from.yaml\nsrcDir: .\n")
-        assertEquals("from.yaml", ProjectFiles.load(dir)!!.project.name)
-        assertNull(ProjectFiles.note(dir))
-        Files.writeString(dir.resolve(ProjectKira.FILE), project("name = \"from.kira\"\nsrcDir = \".\""))
-        assertEquals("from.kira", ProjectFiles.load(dir)!!.project.name)
-        assertTrue(ProjectFiles.note(dir)!!.contains("project.kira is read, kira.yaml is not"))
+        assertNull(ProjectFile.find(dir))
+        Files.writeString(dir.resolve(ProjectFile.FILE), project("name = \"from.kira\"\nsrcDir = \".\""))
+        assertEquals("from.kira", ProjectFile.load(ProjectFile.find(dir)!!).name)
         // With srcDir ".", the root's project.kira is the configuration, never a module; one deeper is a module.
         Files.writeString(dir.resolve("app.kira"), "pub f: () Int32 {\n    1\n}\n")
         Files.createDirectories(dir.resolve("sub"))
         Files.writeString(dir.resolve("sub/project.kira"), "pub g: () Int32 {\n    2\n}\n")
-        val sources = DependencyResolver.resolveProjectSources(ProjectFiles.load(dir), dir).map { Path.of(it).fileName.toString() }
+        val loaded = ProjectFile.load(dir.resolve(ProjectFile.FILE))
+        val sources = ProjectSources.workspace(loaded, dir).map { Path.of(it).fileName.toString() }
         assertEquals(listOf("app.kira", "project.kira"), sources.sorted())
-        assertTrue(DependencyResolver.resolveProjectSources(ProjectFiles.load(dir), dir).none { Path.of(it) == dir.resolve(ProjectKira.FILE) })
+        assertTrue(ProjectSources.workspace(loaded, dir).none { Path.of(it) == dir.resolve(ProjectFile.FILE) })
     }
 
     /** The CLI on a project.kira project: its name names each module, and the file itself emits nothing. */
     @Test
     fun theCliBuildsAProjectKiraProject() {
         val dir = Files.createTempDirectory("projectkira_cli").toFile()
-        File(dir, ProjectKira.FILE).writeText(
-            "// a tool\n" + project("name = \"net.exoad.tool\"\nsrcDir = \".\"\ntarget = \"py\"\ntypes = \"strict\"\ndependencies = @mapOf(\"kira_stdlib\", ${ProjectKira.quote(stdlib.path.replace('\\', '/'))})"),
+        File(dir, ProjectFile.FILE).writeText(
+            "// a tool\n" + project("name = \"net.exoad.tool\"\nsrcDir = \".\"\ntarget = \"py\"\ntypes = \"strict\"\ndependencies = @mapOf(\"kira_stdlib\", ${ProjectFile.quote(stdlib.path.replace('\\', '/'))})"),
         )
         File(dir, "app").mkdirs()
         File(dir, "app/main.kira").writeText("pub main: () Void {\n    println(\"hi\")\n}\n")
@@ -181,7 +181,7 @@ class ProjectKiraTest {
         assertEquals(listOf("main_kira.py"), generated)
         assertTrue(File(out, "app/main_kira.py").readText().lineSequence().first().endsWith("module net.exoad.tool.app.main."))
         // A file the typer refuses stops the build before anything is written.
-        File(dir, ProjectKira.FILE).writeText("PROJECT: Project = Project { } with {\n    name = \"net.exoad.tool\"\n    srcDir = 3\n}\n")
+        File(dir, ProjectFile.FILE).writeText("PROJECT: Project = Project { } with {\n    name = \"net.exoad.tool\"\n    srcDir = 3\n}\n")
         val bad = PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out2").path)
         assertTrue(bad.exitCode != 0 && bad.all.contains("Field 'srcDir' of Project is a Str"), bad.all)
     }

@@ -7,7 +7,7 @@ import java.io.File
  * One golden case in the design 5.10 format:
  *
  * ```
- * <case>/project.kira         the project the emitter is run on (W2.2's CppGoldenEmitTest; or a kira.yaml)
+ * <case>/project.kira         the project the emitter is run on (W2.2's CppGoldenEmitTest)
  * <case>/src/...kira          its sources
  * <case>/expected/...         the generated tree, relative to the case root
  * <case>/driver/main.cxx      a driver printing bibo's check format, plus optional .hxx fakes beside it
@@ -37,7 +37,6 @@ data class CppGoldenCase(
     val expectedDir: File get() = File(dir, "expected")
     val driverDir: File get() = File(dir, "driver")
     val expectedText: File get() = File(dir, "expected.txt")
-    val kiraYaml: File get() = net.exoad.kira.kim.ProjectFiles.find(dir.toPath())?.toFile() ?: File(dir, "kira.yaml")
 
     /** The generated sources and the driver's, in a stable order. */
     fun sources(): List<File> {

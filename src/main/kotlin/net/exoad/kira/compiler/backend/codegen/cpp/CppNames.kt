@@ -79,7 +79,7 @@ class CppNames {
          * `namespace exit {` is "redeclared as different kind of entity" the
          * moment `<cstdlib>` (which `kira/core.hxx` includes) or the program's
          * own `int main` sits beside it, so a derived namespace never spells
-         * one; a manifest override that does is an error instead.
+         * one; a project's override that does is an error instead.
          */
         fun escapeNamespaceSegment(name: String): String {
             return if (isKeyword(name) || isObjectLikeMacro(name) || isCGlobal(name)) "${name}_" else name

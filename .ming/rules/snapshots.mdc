@@ -21,7 +21,7 @@ missing toolchain skips that leg's run, never its compile.
 Generated user layers are **minified + obfuscated by default** (`OutputMinifier`):
 comments/whitespace stripped, user identifiers renamed, `main` + extern/opaque
 names preserved, prelude untouched and readable. `--readable` /
-`build.minify: false` produce the pretty form for inspection.
+`minify = false` in project.kira produce the pretty form for inspection.
 
 ## The rule
 
