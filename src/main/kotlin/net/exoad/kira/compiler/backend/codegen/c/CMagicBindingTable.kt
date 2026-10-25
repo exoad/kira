@@ -9,8 +9,8 @@ import java.nio.file.Path
  * Magic binding manifest for the C backend.
  *
  * `@_magic` declarations in the `kira/` stdlib modules carry only the
- * signature the typechecker needs. The C symbol a declaration lowers to --
- * and any include the call site must bring into the translation unit --
+ * signature the typechecker needs. The C symbol a declaration lowers to
+ * (and any include the call site must bring into the translation unit)
  * lives in a sibling `*.bind.yaml` manifest next to the module.
  *
  * Loading the table from disk instead of hardcoding it in Kotlin means adding
@@ -20,8 +20,8 @@ import java.nio.file.Path
  * type-directed intrinsics (print family): their format string is synthesized
  * from the Kira argument type at each call site, so they stay in codegen.
  *
- * Resolution is keyed by the canonical Kira name -- lowercased, with a leading
- * `@` and surrounding `_` stripped -- the same canonicalization
+ * Resolution is keyed by the canonical Kira name: lowercased, with a leading
+ * `@` and surrounding `_` stripped, the same canonicalization
  * [KiraCCodeGenerator.mapIntrinsicName] applies to intrinsic spellings.
  */
 object CMagicBindingTable {
@@ -61,7 +61,7 @@ object CMagicBindingTable {
     /**
      * Includes a magic call site must bring into the translation unit.
      *
-     * Null when [name] is unbound -- callers fall back to their previous
+     * Null when [name] is unbound: callers fall back to their previous
      * resolution source. A bound name with no includes returns the empty set,
      * which is distinct from unbound.
      */

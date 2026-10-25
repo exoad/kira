@@ -30,9 +30,9 @@ import net.exoad.kira.source.SourceContext
  * and the name a non-primitive operator expression desugars to.
  *
  * Only the operators listed here are overloadable. Things that are syntax
- * rather than operators -- member access `.`, range `..`, type checks
- * `is`/`as`, `&&`/`||` (short-circuiting, so no method call can replace them,
- * 1.3.1) -- deliberately have no entry and stay non-overloadable.
+ * rather than operators (member access `.`, range `..`, type checks
+ * `is`/`as`) and `&&`/`||` (short-circuiting, so no method call can replace them,
+ * 1.3.1) deliberately have no entry and stay non-overloadable.
  *
  * Naming rule: a free name starts with `op_` and uses underscores to
  * separate the operator words (never a bare `@add`); a member name is

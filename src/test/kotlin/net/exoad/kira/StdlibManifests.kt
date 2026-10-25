@@ -53,8 +53,8 @@ object StdlibManifests {
     fun targetMapOf(value: Any?, target: String): Map<*, *>? = ((value as? Map<*, *>)?.get(target)) as? Map<*, *>
 
     /**
-     * `Type.method` for every method of a `@_magic` class -- declared in its body or taken from a
-     * trait it lists as a parent, transitively through the trait's own parents -- and the bare
+     * `Type.method` for every method of a `@_magic` class (declared in its body or taken from a
+     * trait it lists as a parent, transitively through the trait's own parents), and the bare
      * name of every `@_magic` free function, across every stdlib module, the print family left out.
      *
      * A parent that is a class (`Int32: Num`) adds nothing here: the entries are keyed on the

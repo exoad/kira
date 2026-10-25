@@ -3,7 +3,7 @@
 # Every entry here is a map with a `cpp` sub-map and no `symbol` key, so the
 # C loader (CMagicBindingTable) skips all of them: the C backend keeps
 # lowering Str and Num methods through its own Str_* / prelude helpers. The
-# C++ backend reads the `cpp` map -- see design section 7.4. A `py` map beside
+# C++ backend reads the `cpp` map. See design section 7.4. A `py` map beside
 # it is the py target's binding, as collections.bind.yaml describes.
 #
 # Keys: methods as `Type.method`, free functions by name. A method a magic

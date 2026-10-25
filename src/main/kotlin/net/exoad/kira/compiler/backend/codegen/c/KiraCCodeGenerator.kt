@@ -34,7 +34,7 @@ import java.nio.file.Files
  *
  * Emits one translation unit:
  *  1. Jack-style runtime prelude (shared types + print helpers)
- *  2. User / non-magic declarations only -- `@_magic` and `kira:*` stdlib
+ *  2. User / non-magic declarations only: `@_magic` and `kira:*` stdlib
  *     bodies are skipped; their types already live in the prelude
  *
  * Formatting follows Jack's C style guide: Allman braces, PascalCase types,
@@ -42,9 +42,9 @@ import java.nio.file.Files
  */
 class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCodeGenerator(compilationUnit) {
     companion object {
-        /** Layer 0 -- cupup-style compiler bundle substrate (mangle hooks). */
+        /** Layer 0: cupup-style compiler bundle substrate (mangle hooks). */
         const val BUNDLE_FILE = "c_bundle.h"
-        /** Layer 1 -- Kira facade types + thin Arr/Map runtime. */
+        /** Layer 1: Kira facade types + thin Arr/Map runtime. */
         const val TEMPLATE_FILE = "c_generator.c"
         const val DEFAULT_OUTPUT = "out.kira.c"
         /** C keywords: never renamed by the minifier. */
@@ -92,7 +92,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      * User-declared identifiers that the minifier may rename in the emitted
      * user layer. Registered at the exact points where codegen creates names,
      * so the set is always precisely what was emitted (missing a name only
-     * leaves it readable -- never breaks the build).
+     * leaves it readable; never breaks the build).
      */
     private val userSymbols = linkedSetOf<String>()
     private val requiredIncludes = linkedSetOf<String>()
@@ -158,7 +158,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private var emittingClassMembers = false
     /** When emitting a method body, the receiver type name (for bare field refs). */
     private var currentMethodClass: String? = null
-    /** True while emitting the `.member` side of MemberAccess -- no this-> rewrite. */
+    /** True while emitting the `.member` side of MemberAccess: no this-> rewrite. */
     private var suppressThisRewrite = false
 
     /**
@@ -217,7 +217,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     /**
      * Emit the cleanup for one scope entry. Class references are refcounted;
-     * containers own a buffer and are disposed. `Arr` is deliberately absent --
+     * containers own a buffer and are disposed. `Arr` is deliberately absent;
      * an Arr literal points at a stack compound literal, so freeing it by type
      * alone would be wrong.
      */
@@ -258,7 +258,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     /**
-     * Releases for every open scope, innermost first, *without* popping --
+     * Releases for every open scope, innermost first, *without* popping:
      * used just before an early `return`, where the C block braces have not
      * been closed yet.
      */
@@ -336,7 +336,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 rawTraits[baseTypeNameOf(parent)]?.let { out.addAll(flattenTrait(it)) }
             }
             // Trait members are signature declarations (no body), so isStub()
-            // is true by design -- include every member regardless.
+            // is true by design; include every member regardless.
             t.members.forEach { member ->
                 out.add(
                     TraitMethodSig(
@@ -656,7 +656,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     /**
-     * Build C text without writing a file -- used by tests.
+     * Build C text without writing a file, used by tests.
      */
     fun emitToString(): String {
         clean()
@@ -665,10 +665,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun buildTranslationUnit(): String {
         // Cupup-style layering: substrate first, then facade/runtime, then user.
-        // Layer 0 -- compiler bundle (fixed-width types + named hooks)
+        // Layer 0: compiler bundle (fixed-width types + named hooks)
         buffer.appendLine(fetchBundleFileContents().trimEnd())
         buffer.appendLine()
-        // Layer 1 -- Kira-facing typedefs + thin collections
+        // Layer 1: Kira-facing typedefs + thin collections
         buffer.appendLine(fetchTemplateFileContents().trimEnd())
         buffer.appendLine()
 
@@ -685,13 +685,13 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         collectUserClasses()
         collectTraits()
 
-        // Layer 2 -- user program
+        // Layer 2: user program
         // 1) Forward-declare structs (concrete + specialized)
         // 2) Emit full struct bodies (complete types before prototypes)
         // 3) Trait interface + vtable structs
         // 4) Forward-declare free functions + methods (+ specialized generics)
         // 5) Trait trampolines + static vtables (needs registered methods)
-        // 6) Emit everything else -- classes/specialized already emitted
+        // 6) Emit everything else: classes/specialized already emitted
         emitStructForwardDecls()
         emitStructBodies()
         emitSpecializedClassBodies()
@@ -715,7 +715,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             }
             buffer.delete(bodyStart, buffer.length)
             buffer.insert(bodyStart, header)
-            // body already appended after delete+insert? no -- re-append
+            // body already appended after delete+insert? no, re-append
             buffer.append(body)
         }
 
@@ -1044,7 +1044,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun emitSpecializedClassBodies() {
-        // Snapshot keys -- specialization set is fixed after collection.
+        // Snapshot keys: specialization set is fixed after collection.
         classSpecializations.entries.toList().forEach { (mangled, pair) ->
             val (template, args) = pair
             emitSpecializedClass(mangled, template, args)
@@ -1423,7 +1423,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     private fun shouldSkipSource(source: SourceContext): Boolean {
-        // Skip kira:* stdlib modules entirely -- magic types live in the prelude.
+        // Skip kira:* stdlib modules entirely: magic types live in the prelude.
         // getModuleUri panics if AST is missing; treat that as skippable noise.
         val uri = runCatching { source.getModuleUri() }.getOrNull() ?: return true
         return uri == "kira:stl" || uri.startsWith("kira:")
@@ -1434,8 +1434,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      *
      * `@_magic` declarations are typechecker-only signatures (the runtime
      * prelude defines them), so a stdlib module full of magic stays skipped.
-     * A module with non-magic function bodies -- the stdlib written in Kira
-     * itself -- must be walked like user code: `visitFunctionDecl` emits the
+     * A module with non-magic function bodies (the stdlib written in Kira
+     * itself) must be walked like user code: `visitFunctionDecl` emits the
      * body and skips the magic members.
      */
     private fun hasEmittableStdlibFunctions(source: SourceContext): Boolean {
@@ -1961,12 +1961,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     private fun isMagicDecl(decl: Decl): Boolean {
         // Marks live on SourceContext.astIntrinsicMarked, not decl.attachedIntrinsics
-        // (that list is rarely populated). Treat @_magic only -- not @_opaque/@_extern.
+        // (that list is rarely populated). Treat @_magic only, not @_opaque/@_extern.
         if (declHasIntrinsic(decl, "_magic")) {
             return true
         }
-        // Also treat known magic type names as skippable even if marker missed
-        // -- but only for a declaration the stdlib itself made. A user module
+        // Also treat known magic type names as skippable even if marker missed.
+        // But only for a declaration the stdlib itself made. A user module
         // may declare its own `Ref` or `parseInt64` (module members shadow the
         // ambient `kira:*` names), and that declaration must be emitted, not
         // mistaken for the stdlib's signature of the same name.
@@ -2115,7 +2115,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 knownValueTypes[expr.value] ?: fieldTypes[expr.value]
             }
             is MemberAccessExpr -> {
-                // nested.field -- look up field type if known
+                // nested.field: look up field type if known
                 val memberName = (expr.member as? Identifier)?.value
                 memberName?.let { fieldTypes[it] } ?: knownValueTypes[memberName]
             }
@@ -2288,7 +2288,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             return
         }
         // Releases must precede the `return`, or they are dead code. The
-        // returned local (if any) keeps its +1 -- ownership moves to the caller.
+        // returned local (if any) keeps its +1: ownership moves to the caller.
         val moved = if (returnStatement.expr !is NoExpr) {
             returnedArcLocal(returnStatement.expr)
         } else {
@@ -2347,7 +2347,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // Iteration over a container. The target is evaluated once into a
         // view local (a shallow struct copy: the original keeps ownership),
         // each element is unslotted into a loop variable of the declared
-        // element type, and that read is borrowed -- it is never registered
+        // element type, and that read is borrowed: it is never registered
         // as an ARC local of the body. (This path used to be a stub that ran
         // the body exactly once.)
         val target = iterExpr.target
@@ -3102,7 +3102,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
         }
         // Compound-literal backed Arr view over KiraSlot elements. Lifetime is
-        // the enclosing block -- fine for locals and immediate call arguments.
+        // the enclosing block: fine for locals and immediate call arguments.
         val n = builderExpr.elements.size
         if (n == 0) {
             // (KiraSlot[]){ } is a GCC extension with zero size; prefer the helper.
@@ -3138,7 +3138,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         recordContainerTypeArgs(variableDecl.name.value, typeName, variableDecl.type)
         if (emittingClassMembers) {
             fieldTypes[variableDecl.name.value] = typeName
-            // Field only -- no initializer inside struct
+            // Field only: no initializer inside struct
             appendIndented("")
             variableDecl.type.accept(this)
             buffer.append(" ")

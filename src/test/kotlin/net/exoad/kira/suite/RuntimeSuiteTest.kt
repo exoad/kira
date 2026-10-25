@@ -285,7 +285,7 @@ class RuntimeSuiteTest {
     fun nestedGenericArrayIsRejectedByCToolchain() {
         // Pinned gap: codegen emits nested Arr literals (an Arr value is wider
         // than the 64-bit KiraSlot a container stores), so `cc` rejects the
-        // emitted C. This was previously a silently *skipped* test -- a known
+        // emitted C. This was previously a silently *skipped* test: a known
         // limit dressed as green. Fixing nested containers (slot the struct or
         // heap-box it) flips this to expect success.
         val cc = compiler ?: return
@@ -306,7 +306,7 @@ class RuntimeSuiteTest {
         assertNotEquals(
             0,
             result.compileResult.exitCode,
-            "nested Arr now compiles -- the pinned gap is fixed, update this test"
+            "nested Arr now compiles; the pinned gap is fixed, update this test"
         )
         // The emitted shape is still worth pinning even though cc rejects it.
         assertTrue(generated.contains("Arr_lit((KiraSlot[]){ Arr_lit("), generated)

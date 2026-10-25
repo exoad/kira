@@ -112,7 +112,7 @@ object TestCompileSupport {
     /**
      * The C compiler the runtime tests drive: `$CC` when set, otherwise the
      * first of clang / cc / gcc found on PATH. Returns a path
-     * [ProcessBuilder] can run on the host OS -- on Windows that is the
+     * [ProcessBuilder] can run on the host OS. On Windows that is the
      * `.exe`, never the MSYS `/c/...` spelling `which` prints.
      */
     fun findCCompiler(): String? {

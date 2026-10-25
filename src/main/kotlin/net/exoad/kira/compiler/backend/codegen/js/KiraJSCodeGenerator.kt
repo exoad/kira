@@ -32,8 +32,8 @@ import java.nio.file.Files
  * JavaScript backend.
  *
  * Emits one self-contained Node script:
- *  1. Runtime prelude (`js_generator.js`) -- the stdlib surface as plain JS
- *  2. User / non-magic declarations only -- `@_magic` and `kira:*` stdlib
+ *  1. Runtime prelude (`js_generator.js`): the stdlib surface as plain JS
+ *  2. User / non-magic declarations only: `@_magic` and `kira:*` stdlib
  *     bodies are skipped; their runtime already lives in the prelude
  *
  * Design notes (the deltas from the C backend are the point):
@@ -48,7 +48,7 @@ import java.nio.file.Files
  */
 class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCodeGenerator(compilationUnit) {
     companion object {
-        /** Layer 1 -- Kira stdlib surface as plain JS (see js_generator.js). */
+        /** Layer 1: Kira stdlib surface as plain JS (see js_generator.js). */
         const val TEMPLATE_FILE = "js_generator.js"
         const val DEFAULT_OUTPUT = "out.kira.js"
         /**
@@ -134,13 +134,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodParamNames = mutableMapOf<String, List<String>>()
     /** Method simple name -> the distinct parameter-name lists declared under it (classes and traits). */
     private val methodParamNamesBySimpleName = mutableMapOf<String, MutableSet<List<String>>>()
-    /** Non-magic user class names (generic templates included -- erased in JS). */
+    /** Non-magic user class names (generic templates included, erased in JS). */
     private val userClassNames = mutableSetOf<String>()
     private var indentLevel = 0
     private var emittingClassMembers = false
-    /** True while emitting a method body -- bare field names become this.field. */
+    /** True while emitting a method body: bare field names become this.field. */
     private var currentMethodClass: String? = null
-    /** True on the `.member` side of MemberAccess -- no this-> rewrite. */
+    /** True on the `.member` side of MemberAccess: no this-> rewrite. */
     private var suppressThisRewrite = false
     private var hasMain = false
 
@@ -378,14 +378,14 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         return userSymbols.toSet()
     }
 
-    /** Build JS text without writing a file -- used by tests. */
+    /** Build JS text without writing a file (used by tests). */
     fun emitToString(): String {
         clean()
         return buildTranslationUnitOrFail()
     }
 
     private fun buildTranslationUnit(): String {
-        // Layer 1 -- stdlib runtime, then Layer 2 -- user program.
+        // Layer 1 is the stdlib runtime, then Layer 2 is the user program.
         buffer.append(fetchTemplateFileContents().trimEnd())
         buffer.appendLine()
         buffer.appendLine()
@@ -1650,7 +1650,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             appendIndentedLine("}")
         }
 
-        // Methods: plain prototype methods -- JS dispatch is natural.
+        // Methods: plain prototype methods; JS dispatch is natural.
         methods.forEach { method ->
             if (method.isStub()) return@forEach
             val methodName = functionLikeName(method.name)
@@ -1688,7 +1688,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
-        // Traits are erased at runtime -- duck typing does the dispatch.
+        // Traits are erased at runtime; duck typing does the dispatch.
         appendIndentedLine("// trait ${baseTypeNameOf(traitDecl.name)}")
     }
 

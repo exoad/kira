@@ -2,7 +2,7 @@
 // this folder; this module pulls all of them into one module so `kira.stl` stays
 // the single name that describes "everything the language ships with".
 //
-// You do not normally write `kira.stl as stl` in application code -- every
+// You do not normally write `kira.stl as stl` in application code. Every
 // `kira.*` module is loaded as a dependency and its magic types are ambient.
 //
 //   kira.core         Any / Void / Never / Bool / Str / Char / Num + fixed-width scalars, Size, bitCast

@@ -7,7 +7,7 @@ object CIntrinsicsTable {
     )
 
     private val bindings = mapOf(
-        // I/O -- Jack style print/println macros from the runtime prelude
+        // I/O: Jack style print/println macros from the runtime prelude
         "trace" to CIntrinsicBinding("print"),
         "print" to CIntrinsicBinding("print"),
         "println" to CIntrinsicBinding("println"),
@@ -36,7 +36,7 @@ object CIntrinsicsTable {
         return bindings[name]?.functionName ?: name
     }
 
-    /** Null when [name] is not a known intrinsic -- callers should keep the original spelling. */
+    /** Null when [name] is not a known intrinsic; callers should keep the original spelling. */
     fun resolveFunctionOrNull(name: String): String? {
         return bindings[name]?.functionName
     }

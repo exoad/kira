@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  *
  * Rules pinned here:
  *  - Operator intrinsics are real, registry-known names (`@op_add`, ...) that
- *    start with `op_` and use underscores between words -- never a bare
+ *    start with `op_` and use underscores between words, never a bare
  *    `@add`.
  *  - Only operators with a table entry are overloadable; syntax (`is`, `as`,
  *    `.`, `..`) has none.
@@ -88,7 +88,7 @@ class OperatorOverloadTest {
     fun memberOperatorTableIsExactlyThe1_3_1List() {
         // w2-9-1-parse round 8, significant issue #4: `memberTableNamesAreUnderscoredOnBothEnds`
         // below, and the two `OperatorMemberParseTest` parse sweeps, all iterate
-        // `OperatorIntrinsics.allMembers` -- the implementation's own generated list -- so a
+        // `OperatorIntrinsics.allMembers`, the implementation's own generated list, so a
         // mutant that renames one entry (V20: `_op_lte_` -> `_op_le_`) or maps one to null (V21:
         // `BinaryOp.USHR`; V22: `UnaryOp.POS`) survives every one of them: `allMembers` is built
         // FROM `memberName`, so it just contains whatever the corrupted table produces, and nothing

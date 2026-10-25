@@ -21,7 +21,7 @@ import kotlin.test.fail
  *  2. no C++-only entry is a bare string, because [CMagicBindingTable] reads
  *     a bare string as a C symbol;
  *  3. the C table resolves exactly what it resolved before the `cpp` maps
- *     arrived -- the C backend must not gain or lose a binding by accident.
+ *     arrived: the C backend must not gain or lose a binding by accident.
  */
 class StdlibCppBindingsTest {
     /**

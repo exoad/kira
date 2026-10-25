@@ -315,8 +315,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
-        // Walk the callee and arguments so checks that live on inner nodes --
-        // notably the Maybe member-access guard -- also apply inside calls
+        // Walk the callee and arguments so checks that live on inner nodes,
+        // notably the Maybe member-access guard, also apply inside calls
         // like `trace(p.name)`.
         functionCallExpr.name.accept(this)
         functionCallExpr.positionalParameters.forEach { it.value.accept(this) }
@@ -533,7 +533,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             return
         }
         pump(
-            "'$member' is not available on a 'Maybe' -- the value may be absent",
+            "'$member' is not available on a 'Maybe': the value may be absent",
             location = context.astOrigins[memberAccessExpr.member] ?: SourcePosition.UNKNOWN,
             selectorLength = member.length,
             help = "Unwrap it first: '${receiver.value}.unwrapOr(default).$member', " +
@@ -708,7 +708,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 } else {
                     typeName
                 }
-                // A literal initializing Maybe<T> is checked against T -- the
+                // A literal initializing Maybe<T> is checked against T; the
                 // backend wraps it as the present case.
                 val expectedTypeName = if (typeName == "Maybe") {
                     (variableDecl.type.children.firstOrNull()?.identifier as? Identifier)?.value
@@ -766,8 +766,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
             } else if (OperatorIntrinsics.isMemberOperatorName(opName)) {
                 // `@_op_add_` (1.3.1's *member* spelling) names a method, not the deprecated
                 // free form above. Neither backend's free-operator lowering ever emits this
-                // spelling for `a + a` -- it always calls the free name (`OperatorIntrinsics
-                // .binaryName`/`unaryName`, e.g. `op_add`) -- so a module-level declaration under
+                // spelling for `a + a`: it always calls the free name (`OperatorIntrinsics
+                // .binaryName`/`unaryName`, e.g. `op_add`); so a module-level declaration under
                 // the member spelling would otherwise pass this whole pass clean and then call a
                 // function that does not exist under that name on either target (a C link error
                 // or a JS ReferenceError). This is refused, not merely warned: `pump` fails the

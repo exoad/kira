@@ -333,7 +333,7 @@ class KiraParser(
                                 // `fx name(params): Ret` is the pre-migration form; point at
                                 // the colon-binds-the-name shape instead of the generic hint.
                                 Token.Type.S_OPEN_PARENTHESIS -> {
-                                    append("Missing ':' after the function name. Kira function syntax is: name: (params) ReturnType { ... } -- the colon binds the name to its signature, the same way 'value: Int32' binds a variable to its type.")
+                                    append("Missing ':' after the function name. Kira function syntax is: name: (params) ReturnType { ... }. The colon binds the name to its signature, the same way 'value: Int32' binds a variable to its type.")
                                 }
                                 else -> {
                                     append("Missing ':' for type annotation. Variables and functions require type specifications.")
@@ -1688,7 +1688,7 @@ class KiraParser(
 
     /**
      * Place assignment (design 2.5). After a postfix expression shaped as a
-     * member access or an index -- `a.b`, `a[i]`, `this.x` -- an `=` or a
+     * member access or an index (`a.b`, `a[i]`, `this.x`), an `=` or a
      * compound operator assigns to that place. Identifier targets keep
      * [AssignmentExpr] and [CompoundAssignmentExpr]. Only the outermost
      * expression (precedence 0) can be an assignment.
@@ -2366,7 +2366,7 @@ class KiraParser(
         // Full precedence-climbing parse, matching declaration initializers and
         // compound assignment. The old flat parseBinaryExpr() had no precedence
         // and treated '.' as a binary operator, so `n = n + p.get()` built
-        // MemberAccess(BinaryExpr(n, p), get) -- i.e. `(n + p).get()`.
+        // MemberAccess(BinaryExpr(n, p), get), i.e. `(n + p).get()`.
         val value = parseExpr()
 //        if (identifier !is Identifier) {
 //            Diagnostics.panic(

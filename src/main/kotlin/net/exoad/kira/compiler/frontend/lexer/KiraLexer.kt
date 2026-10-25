@@ -103,7 +103,7 @@ class KiraLexer(
      * Maximal Munch approach to reading floating point and integer types by preferring
      * reading floating point first. Forms: `42`, `0xFF` / `0XFF`, `0b101` / `0B101`,
      * `1.5`, and floats with an exponent (`1e-3`, `2.5E6`). No digit separators,
-     * no suffixes -- the spec defines none.
+     * no suffixes: the spec defines none.
      */
     fun lexNumberLiteral(): Token {
         val start = pointer

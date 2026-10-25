@@ -1,5 +1,5 @@
 // Free functions that touch stdout/stderr or abort the process. `trace` is a
-// compiler intrinsic rather than a declaration here -- it lowers straight to
+// compiler intrinsic rather than a declaration here. It lowers straight to
 // the prelude `print` macro.
 
 pub @_magic print: (value: Any) Void;
