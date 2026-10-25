@@ -13,8 +13,8 @@ package net.exoad.kira.compiler.backend.codegen
  *  - tokens are only ever *separated*, never merged: the output lexes to the
  *    same token stream as the input (modulo comments and identifier renames),
  *    so semantics are preserved
- *  - identifiers listed in the rename map are replaced consistently -- every
- *    declaration and every use -- with short generated names
+ *  - identifiers listed in the rename map are replaced consistently: every
+ *    declaration and every use, with short generated names
  *  - prelude symbols, language keywords, entry points (`main`), and foreign
  *    edges (extern / opaque names) are never renamed: build the map with
  *    [buildRenameMap] and pass the prelude identifiers + keywords as reserved
@@ -89,7 +89,7 @@ object OutputMinifier {
     }
 
     /**
-     * Every identifier-looking token in [text] -- used to build the reserved
+     * Every identifier-looking token in [text], used to build the reserved
      * set from the runtime prelude. Over-reserving is safe: a reserved name is
      * simply never chosen as a rename target or a generated name.
      */
@@ -230,7 +230,7 @@ object OutputMinifier {
                 continue
             }
 
-            // JS template literals -- kept opaque. Codegen does not emit these
+            // JS template literals: kept opaque. Codegen does not emit these
             // today (interpolation lowers to concatenation), but an escaped
             // backtick must not derail the scan if one ever appears.
             if (language == MinifyLanguage.JS && c == '`') {
@@ -287,7 +287,7 @@ object OutputMinifier {
                 continue
             }
 
-            // Identifiers (and keywords -- they are identifier-shaped tokens
+            // Identifiers (and keywords: they are identifier-shaped tokens
             // that simply never appear in the rename map).
             if (isIdentStart(c)) {
                 val start = i

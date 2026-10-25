@@ -17,8 +17,8 @@ import kotlin.test.assertTrue
  * `w2-9-1-parse`: the member operator form takes part in phase A's collection and phase B's
  * member checks (1.3.2) exactly as any method does, and `final` (1.8) is enforced by
  * `SignatureResolver.classParents`. `OperatorMemberParseTest` covers the parser itself; the
- * typer's own resolution of an operator call (`a.@_op_add_(b)`'s type) is `w2-9-7-ops-typer`'s
- * -- these tests only ask that phases A and B see no error in the acceptance snippet.
+ * typer's own resolution of an operator call (`a.@_op_add_(b)`'s type) is `w2-9-7-ops-typer`'s:
+ * these tests only ask that phases A and B see no error in the acceptance snippet.
  */
 class OperatorMemberCollectTest {
 
@@ -334,7 +334,7 @@ class OperatorMemberCollectTest {
     @Test
     fun aSingleTraitOperatorMismatchIsStillTypesOverrideSignature() {
         // Contrast for the test above: with only EqB implemented (no second trait to disagree
-        // with), the class's override is checked against EqB alone and its signature disagrees --
+        // with), the class's override is checked against EqB alone and its signature disagrees:
         // `types.override.signature`, not `types.member.conflict`. Pins that the fix above did
         // not turn every override mismatch into a conflict.
         val program = phasesAAndB {
@@ -385,8 +385,8 @@ class OperatorMemberCollectTest {
         // remove the diagnostic (brief step 4, 20-revision 1.3.2: "never first-found").
         //
         // Round 4, significant issue #2: `T`'s own trait-level check (below) independently
-        // reports this same disagreement at `T`, regardless of `frontierDeclarers`/`traitAncestors`
-        // -- each of `T`'s two *direct* parents is trivial (neither forks on its own), so that
+        // reports this same disagreement at `T`, regardless of `frontierDeclarers`/`traitAncestors`;
+        // each of `T`'s two *direct* parents is trivial (neither forks on its own), so that
         // check alone can never distinguish this fix from a mutant that reverts
         // `frontierDeclarers` to one candidate per root. Only `C`'s own comparison, which treats
         // `T` as a single root and must resolve its internal fork, needs the fix; assert the
@@ -442,8 +442,8 @@ class OperatorMemberCollectTest {
         //
         // Round 4, significant issue #2: as above, `EqBoth`'s own trait-level check independently
         // reports this at `EqBoth` regardless of the fix (neither `EqA` nor `EqB` forks on its
-        // own), so only `Leaf`'s own comparison -- which must resolve `EqBoth`'s internal fork as
-        // a single root -- actually needs `frontierDeclarers` to keep both branches. Assert the
+        // own), so only `Leaf`'s own comparison, which must resolve `EqBoth`'s internal fork as
+        // a single root, actually needs `frontierDeclarers` to keep both branches. Assert the
         // conflict is the one anchored at `Leaf`.
         val program = phasesAAndB {
             snippet(
@@ -477,7 +477,7 @@ class OperatorMemberCollectTest {
         // names both directly), but that call never mentions `Base`. If `frontierDeclarers`
         // regressed to one candidate per root (dropping `B`, since `A` matches `Base` and would be
         // found first), `C`'s comparison would never see a mismatch, even though `T`'s unrelated
-        // report still exists -- so this asserts the specific diagnostic naming `C`.
+        // report still exists, so this asserts the specific diagnostic naming `C`.
         val program = phasesAAndB {
             snippet(
                 """
@@ -505,7 +505,7 @@ class OperatorMemberCollectTest {
     fun aTraitOverridingTwoDisagreeingParentsConflictsRegardlessOfParentOrder() {
         // w2-9-1-parse round 4, significant issue #1: `traitOverrides` only ever checked a
         // trait's own declared method (`m` here) against the *first* parent `traitClosure` finds
-        // (`checkOverride`), and never called `reportConflictIfAny` for `t.methods` at all --
+        // (`checkOverride`), and never called `reportConflictIfAny` for `t.methods` at all;
         // `ownNames` excluded every name `t` redeclares from the `parentNames` loop, so `T: A, B`
         // declaring `m` itself dropped both `A` and `B` from `types.member.conflict` entirely.
         // Measured: this snippet gave 0 typer diagnostics before the fix.
@@ -534,7 +534,7 @@ class OperatorMemberCollectTest {
         // Same shape with the parents swapped (`T: B, A`): before the fix, swapping the parent
         // order changed the result (`types.override.signature` against `B` instead of a
         // conflict, since `checkOverride` compares only against whichever parent
-        // `traitClosure` visits first) -- the conflict must fire either way.
+        // `traitClosure` visits first); the conflict must fire either way.
         val program = phasesAAndB {
             snippet(
                 """
@@ -606,7 +606,7 @@ class OperatorMemberCollectTest {
     @Test
     fun returnTypeMismatchIsAConflictRegardlessOfParentOrder() {
         // w2-9-1-parse round 6, significant issue #1: `sameSignature`'s return-type comparison
-        // (SignatureResolver.kt:754) has no test that isolates it -- every existing conflict
+        // (SignatureResolver.kt:754) has no test that isolates it; every existing conflict
         // test also differs in parameter type or arity. Mutant R8 replaces the whole comparison
         // with `return true`, and the suite still passes 932/0: `A`'s `m: () Int32` and `B`'s
         // `m: () Str` (same arity, same params, same mut-ness, same bounds; only the return type
@@ -659,7 +659,7 @@ class OperatorMemberCollectTest {
         // (SignatureResolver.kt:741) has no test. Mutant R3 drops it, so `A<T>`'s own type
         // parameter `T` is never replaced by the class's actual argument (`Int32` here) before
         // comparing bounds. `A<Int32>`'s `m<U: Marker<T>>` and `B`'s `m<U: Marker<Int32>>` agree
-        // once `T` is substituted to `Int32`, so this must never conflict -- with `aSub` dropped
+        // once `T` is substituted to `Int32`, so this must never conflict; with `aSub` dropped
         // it falsely does, but (the verifier's measurement) only when `A` is the class's first
         // parent, so both orders are asserted.
         val bounds = """
@@ -685,7 +685,7 @@ class OperatorMemberCollectTest {
         // (SignatureResolver.kt:739/741) has no test either. Mutant R4 drops it, so a method's
         // own type parameter is never mapped onto the other side's before comparing bounds.
         // `F`'s `m<U: Marker<U>>` and `G`'s `m<V: Marker<V>>` are the same F-bounded shape under
-        // different names, so this must never conflict -- with `ownMap` dropped it falsely does.
+        // different names, so this must never conflict; with `ownMap` dropped it falsely does.
         val bounds = """
             pub Marker<T>: Any {
                 pub tag: () Int32 { 0 }
@@ -706,13 +706,13 @@ class OperatorMemberCollectTest {
     @Test
     fun aTraitOverridingAMemberOperatorReplacesItInFlatten() {
         // w2-9-1-parse round 5, significant issue #2: `SignatureResolver.flatten` must merge a
-        // member operator by name (`m.isFreeOperator`), like any other method -- mutant M7
+        // member operator by name (`m.isFreeOperator`), like any other method; mutant M7
         // reverted that one line to `m.isOperator` (always false for a member operator, since
         // `isOperator` is set on both forms and only `isFreeOperator` tells them apart) and every
         // one of the suite's 930 tests still passed, because nothing pinned `flatten`'s own
         // output. With the mutant, `Q`'s closure keeps `P`'s un-overridden `@_op_eq_` *ahead of*
-        // `Q`'s own (appended, never replacing it by name), so `Q.method("_op_eq_")` -- which
-        // reads `flatMethods` first -- silently resolves back to `P`'s declaration.
+        // `Q`'s own (appended, never replacing it by name), so `Q.method("_op_eq_")`, which
+        // reads `flatMethods` first, silently resolves back to `P`'s declaration.
         val program = phasesAAndB {
             snippet(
                 """
@@ -746,11 +746,11 @@ class OperatorMemberCollectTest {
     @Test
     fun typeParameterCountMismatchIsAConflictRegardlessOfParentOrder() {
         // w2-9-1-parse round 7, significant issue #1: `sameSignature`'s type-parameter *count*
-        // comparison (SignatureResolver.kt:733) has no test at all -- every existing conflict
+        // comparison (SignatureResolver.kt:733) has no test at all; every existing conflict
         // test compares two methods with the same arity of type parameters. Mutant S1 drops
         // `a.typeParams.size != b.typeParams.size`, and the suite still passes 937/0: `A`'s
         // plain `m` and `B`'s `m<U>` (same value parameters) would then fall through to the
-        // bounds loop, which indexes `b.typeParams[i]` up to `a.typeParams.size` -- with `A`
+        // bounds loop, which indexes `b.typeParams[i]` up to `a.typeParams.size`; with `A`
         // first that reads past the end of `B`'s empty `typeParams` and throws, and with `B`
         // first it silently drops the conflict (0 bounds either way, so the loop never mismatches
         // on its own). Both orders must report the conflict, and neither may throw.
@@ -771,11 +771,11 @@ class OperatorMemberCollectTest {
     @Test
     fun aSubstitutedParameterTypeAgreeingWithTheOtherSideIsNoConflictRegardlessOfParentOrder() {
         // w2-9-1-parse round 7, significant issue #2: `sameSignature`'s `aSub` substitution on an
-        // ordinary parameter type (SignatureResolver.kt:748) has no test -- the only 'agree' test
+        // ordinary parameter type (SignatureResolver.kt:748) has no test; the only 'agree' test
         // (`twoInheritedMethodsOfOneNameAgreeingIsNoConflict`) puts the generic side second (as
         // `b`, never substituted through `aSub`). Mutant S9 drops `.substitute(aSub)` there, so
         // `G<T>.m(t: T)`'s parameter stays the unsubstituted type parameter `T` instead of
-        // becoming `Int32`, and a false conflict appears -- but only when `G` is read first
+        // becoming `Int32`, and a false conflict appears, but only when `G` is read first
         // (`aSub` applies to `a`), so both orders are asserted.
         val bodies = """
             pub G<T>: Any {
@@ -843,7 +843,7 @@ class OperatorMemberCollectTest {
     @Test
     fun aTraitOverrideMismatchAgainstItsSingleParentIsTypesOverrideSignature() {
         // w2-9-1-parse round 7, significant issue #3: `traitOverrides`' own `checkOverride` call
-        // (SignatureResolver.kt:466) has no test that isolates it -- mutant T3 deletes the whole
+        // (SignatureResolver.kt:466) has no test that isolates it; mutant T3 deletes the whole
         // line and the suite still passes 937/0, because `frontierDeclarers`'s ancestor filter
         // then drops `P` from `TBad`'s own `parentNames` loop too (`TBad` extends `P`, so `P` is
         // never an unrelated fork), leaving no diagnostic anywhere, not even on `UsesTBad`.
@@ -867,7 +867,7 @@ class OperatorMemberCollectTest {
     @Test
     fun aGenericDiamondAcrossTwoRootsStillConflicts() {
         // w2-9-1-parse round 7, significant issue #4: `fromTraits` keeps one candidate per
-        // (declaration, substitution) -- mutant F6 appends `.distinctBy { it.first }` to line 674
+        // (declaration, substitution); mutant F6 appends `.distinctBy { it.first }` to line 674
         // and the suite still passes 937/0, because `X.k` is a *single* trait method symbol
         // reached twice, through `A` (substituting `T` to `Int32`) and through `B` (substituting
         // it to `Str`): `it.first` is the same `FnSymbol` both times, so `distinctBy` collapses
@@ -895,7 +895,7 @@ class OperatorMemberCollectTest {
     fun aSuperclassChainsOwnTraitStillConflictsWithADirectTrait() {
         // w2-9-1-parse round 7, significant issue #5 (O3): `overrides`' `traitRoots` includes the
         // superclass chain's own traits (SignatureResolver.kt:565-566), not just the class's
-        // direct ones -- mutant O3 drops that half of the union and the suite still passes
+        // direct ones; mutant O3 drops that half of the union and the suite still passes
         // 937/0. `Base` implements `X` (never overriding `m` itself) and `C` implements `Y`
         // directly; `C` inherits both and must refuse the disagreement even though `X` only
         // reaches `C` through `Base`'s chain, never as one of `C`'s own direct traits.
@@ -922,7 +922,7 @@ class OperatorMemberCollectTest {
     fun aGenericSuperclassChainTraitAgreesWithADirectTraitOnceSubstituted() {
         // w2-9-1-parse round 7, significant issue #5 (O4): the substitution `overrides` carries
         // for a superclass chain's own traits (SignatureResolver.kt:566, the chain's `s`) must
-        // actually be used -- mutant O4 gives those chain roots `emptyMap()` instead, and the
+        // actually be used; mutant O4 gives those chain roots `emptyMap()` instead, and the
         // suite still passes 937/0. `Base<T>: X<T>` reaches `C1` with `T` substituted to `Int32`;
         // with the substitution dropped, `X`'s parameter stays the bare type parameter `T` and a
         // false conflict appears against `Y`'s already-concrete `Int32`. There must be none.
@@ -949,7 +949,7 @@ class OperatorMemberCollectTest {
     fun aClasssOwnOverrideStillConflictsWithATraitBesideItsSuperclass() {
         // w2-9-1-parse round 7, significant issue #5 (O8): the per-method loop's own
         // `reportConflictIfAny` call (SignatureResolver.kt:585) must compare against `base`, not
-        // some name-only lookup -- mutant O8 passes `null` there instead of `base`, and the suite
+        // some name-only lookup; mutant O8 passes `null` there instead of `base`, and the suite
         // still passes 937/0. `D` declares its own `m`, matching its superclass `Bs` exactly, but
         // `Bs` and the trait `Y` disagree; `D`'s own declaration does not resolve which of the two
         // it means, so the conflict must still fire at `D`, not just silently link to `Bs`.
@@ -1012,7 +1012,7 @@ class OperatorMemberCollectTest {
         // `traitAncestors(Leaf)` (reaching past `Mid` to `A`) tells the filter that `Leaf`
         // supersedes `A`. With the mutant, `A` is never filtered out, so `class C: Leaf {}`
         // would falsely see two disagreeing candidates for `m` and report a conflict that must
-        // not exist -- `Leaf` legitimately overrides `A` through `Mid`.
+        // not exist; `Leaf` legitimately overrides `A` through `Mid`.
         val program = phasesAAndB {
             snippet(
                 """
@@ -1072,7 +1072,7 @@ class OperatorMemberCollectTest {
         // sub)` dedupes its `seen` by `TraitSymbol` alone (SignatureResolver.kt:499-503), so when
         // `class C: Base, W {}` names `W` as a *single* root and `W: A, B` itself forks into a
         // generic diamond (`A: X<Int32>`, `B: X<Str>`), whichever of `A`/`B` `traitClosure` visits
-        // first decides which substitution of `X` is kept -- the other is silently dropped. `Base`
+        // first decides which substitution of `X` is kept; the other is silently dropped. `Base`
         // agrees with `X<Int32>` and disagrees with `X<Str>`, so `C`'s own conflict check found no
         // conflict for `W: A, B` (whichever parent order happened to keep `X<Int32>`) but did for
         // `W: B, A`. Fixed by `frontierClosure`, which dedupes by (trait, substitution) instead, so
@@ -1154,7 +1154,7 @@ class OperatorMemberCollectTest {
         // `class C: W { override fx k: (t: Int32) Int32 }`: `overrides()`'s own override-link
         // pick (`base ?: viaTraits.firstOrNull()`, `target`) is order-dependent by a separate,
         // already-documented minor (V17: the link can point at whichever of `X<Int32>`/`X<Str>`
-        // `frontierClosure` happens to list first), so which diagnostic appears can still vary --
+        // `frontierClosure` happens to list first), so which diagnostic appears can still vary;
         // but `W`'s own trait-level check (`traitOverrides`) independently disagrees on `k`
         // regardless of order (both roots `A` and `B` are compared directly, never through a
         // single forking root), so the program as a whole must be refused, with *some*
@@ -1250,7 +1250,7 @@ class OperatorMemberCollectTest {
         // `parentNames` from `t.parents`' own declared methods directly (SignatureResolver.kt:483)
         // instead of `traitClosure(t.parents, ...)`'s whole transitive closure. `A` and `B`
         // (`W`'s direct parents) declare no method of their own; the disagreement is one level
-        // further up, in `P1` and `P2`. Real code must still refuse `W` -- a mutant that only
+        // further up, in `P1` and `P2`. Real code must still refuse `W`; a mutant that only
         // looks at `A`/`B`'s own methods finds nothing to compare and reports nothing.
         val program = phasesAAndB {
             snippet(

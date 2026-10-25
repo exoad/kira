@@ -97,8 +97,8 @@ class OperatorMemberParseTest {
     }
 
     /**
-     * `a.@op_add(b)` (the pre-W2.9 free name, called with member syntax): [M5]'s second failure
-     * -- it panicked in `parsePostfix` because `parseIdentifier` cannot consume an
+     * `a.@op_add(b)` (the pre-W2.9 free name, called with member syntax): [M5]'s second failure:
+     * it panicked in `parsePostfix` because `parseIdentifier` cannot consume an
      * `INTRINSIC_IDENTIFIER`. `OperatorIntrinsics.isOperatorName` covers the free table too, so
      * this now parses; whether it means anything is the typer's question (`w2-9-7-ops-typer`).
      */
@@ -157,8 +157,8 @@ class OperatorMemberParseTest {
     // 1.3.1's whole table: every member name declares in a class and in a trait.
     //
     // w2-9-1-parse round 8, significant issue #4: the two tests below used to iterate
-    // `OperatorIntrinsics.allMembers.map { it.name }` -- the implementation's own generated
-    // list -- so a mutant that renames or drops one entry of `memberName` (V20: `_op_lte_` ->
+    // `OperatorIntrinsics.allMembers.map { it.name }`: the implementation's own generated
+    // list; so a mutant that renames or drops one entry of `memberName` (V20: `_op_lte_` ->
     // `_op_le_`; V21: `BinaryOp.USHR` -> `null`; V22: `UnaryOp.POS` -> `null`) just changes what
     // "every member name" means, and a test that only asks "does each of *whatever this list
     // is* parse" never notices. This is 1.3.1's table (20-revision.md / the brief's BUILD step
@@ -211,7 +211,7 @@ class OperatorMemberParseTest {
     @Test
     fun theLiteralTableMatchesWhatOperatorIntrinsicsActuallyRegisters() {
         // The other half of significant issue #4: the literal list above must still agree with
-        // `OperatorIntrinsics.allMembers` -- so a renamed or dropped entry (V20/V21/V22) is
+        // `OperatorIntrinsics.allMembers`; so a renamed or dropped entry (V20/V21/V22) is
         // caught by *this* comparison, even though the two tests above no longer depend on it.
         assertEquals(
             theOperatorTable1_3_1.toSet(),

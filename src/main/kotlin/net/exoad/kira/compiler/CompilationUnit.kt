@@ -115,7 +115,7 @@ class CompilationUnit(bootstrap: Boolean = true) {
     /**
      * Type names carrying [intrinsicName], across every loaded source.
      *
-     * [sourceFilter] narrows the scan to a subset of sources -- useful when a
+     * [sourceFilter] narrows the scan to a subset of sources, useful when a
      * caller needs to know which *file* a magic type came from, since the
      * `kira/` bootstrap in [CompilationUnit.init] means the stdlib is always
      * present in a unit whether or not the caller asked for it.

@@ -24,7 +24,7 @@ import java.nio.file.Paths
  *
  * Parses every source (stdlib + project, with optional in-memory overlays),
  * then runs the semantic analyzer. Never emits backend code and never
- * process-exits on failure -- callers receive a [FrontendResult].
+ * process-exits on failure: callers receive a [FrontendResult].
  */
 object FrontendService {
 
@@ -51,7 +51,7 @@ object FrontendService {
     /**
      * Compile a project rooted at [projectRoot] (directory containing `project.kira` or `kira.yaml`
      * or a folder of `.kira` files). [overlays] maps absolute/canonical paths to
-     * unsaved buffer text -- used by the language server for open documents.
+     * unsaved buffer text, used by the language server for open documents.
      */
     fun compileProject(
         projectRoot: Path,

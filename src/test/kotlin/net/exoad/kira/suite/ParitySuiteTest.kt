@@ -69,7 +69,7 @@ class ParitySuiteTest {
         assertEquals(expected, runJS(program, uri), "JS backend stdout")
     }
 
-    /** C only -- for what JS cannot represent (64-bit integers). */
+    /** C only: for what JS cannot represent (64-bit integers). */
     private fun assertCPrints(expected: String, uri: String = "test:parity.conly", body: () -> String) {
         assertEquals(expected, runC(body(), uri), "C backend stdout")
     }

@@ -1,5 +1,5 @@
 /*
- * Kira C-as-IR -- language facade + thin runtime (layer 1).
+ * Kira C-as-IR: language facade + thin runtime (layer 1).
  *
  * Assumes layer 0 (c_bundle.h / KIRA_COMPILER_BUNDLE_*) is already in the TU.
  * Maps Kira/Jack-facing names onto the bundle substrate so user lowering and
@@ -44,7 +44,7 @@ typedef CharSeq Str;
 #define eprint(...)  fprintf(stderr, __VA_ARGS__)
 
 /* -------------------------------------------------------------------------- */
-/* Kira ARC hooks (class heap only -- never foreign/opaque pointers)          */
+/* Kira ARC hooks (class heap only, never foreign/opaque pointers)          */
 /* Strong RC v1 foundation; codegen wiring lands incrementally.               */
 /* -------------------------------------------------------------------------- */
 
@@ -132,7 +132,7 @@ simple Void kira_rc_store(Void** slot, Void* value)
 
 /*
  * Store an *owned* reference (a fresh allocation, or one handed over by a
- * callee) into an owning slot. The +1 transfers, so no retain -- only the
+ * callee) into an owning slot. The +1 transfers, so no retain: only the
  * previous occupant is released.
  */
 simple Void kira_rc_store_owned(Void** slot, Void* value)
@@ -146,7 +146,7 @@ simple Void kira_rc_store_owned(Void** slot, Void* value)
 }
 
 /* -------------------------------------------------------------------------- */
-/* KiraSlot -- uniform erased element                                          */
+/* KiraSlot: uniform erased element                                          */
 /*                                                                            */
 /* Containers are generic in Kira but erased in C. One 64-bit slot holds any   */
 /* element the backend can currently represent: an integer, a Bool, or a       */
@@ -165,7 +165,7 @@ typedef Int64 KiraSlot;
 #define KIRA_UNSLOT_PTR(T, s) ((T)(intptr_t)(s))
 
 /* -------------------------------------------------------------------------- */
-/* KiraVec -- owning dynamic array of slots                                    */
+/* KiraVec: owning dynamic array of slots                                    */
 /* Backing store for Set / Stack / Queue / Deque and the Map view helpers.     */
 /* -------------------------------------------------------------------------- */
 
@@ -313,10 +313,10 @@ simple KiraSlot Result_unwrapErr(Result* r)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Str -- immutable UTF-8-ish byte strings                                     */
+/* Str: immutable UTF-8-ish byte strings                                     */
 /*                                                                            */
 /* Every producer here returns freshly malloc'd storage. Kira has no Str       */
-/* ownership model yet, so these are not freed -- the same known limit as      */
+/* ownership model yet, so these are not freed; the same known limit as      */
 /* unowned ARC temporaries.                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -435,7 +435,7 @@ simple Int64 Str_hashCode(Str s)
 }
 
 /* -------------------------------------------------------------------------- */
-/* assert -- Kira's two-argument form (C's assert takes one)                   */
+/* assert: Kira's two-argument form (C's assert takes one)                   */
 /* -------------------------------------------------------------------------- */
 
 simple Void kira_assert(Bool condition, Str message)
@@ -448,11 +448,11 @@ simple Void kira_assert(Bool condition, Str message)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Arr -- fixed-length view over slots                                        */
+/* Arr: fixed-length view over slots                                        */
 /*                                                                            */
 /* Elements are KiraSlot, so one Arr serves Arr<Int32>, Arr<Str>, Arr<Bool>   */
 /* and Arr of class references. The typed macros below keep the emitted C     */
-/* tight for the common cases -- codegen picks one by element type.           */
+/* tight for the common cases; codegen picks one by element type.           */
 /* -------------------------------------------------------------------------- */
 
 typedef struct Arr
@@ -525,7 +525,7 @@ simple Arr Arr_clone(Arr* a)
     return Arr_lit(copy, a->length);
 }
 
-/* Typed element accessors -- pure sugar over the slot form. */
+/* Typed element accessors: pure sugar over the slot form. */
 #define Arr_get_i32(a, i)      ((Int32)Arr_get((a), (i)))
 #define Arr_get_i64(a, i)      ((Int64)Arr_get((a), (i)))
 #define Arr_get_bool(a, i)     ((Bool)Arr_get((a), (i)))
@@ -538,7 +538,7 @@ simple Arr Arr_clone(Arr* a)
 #define Arr_set_ref(a, i, v)   Arr_set((a), (i), KIRA_SLOT_PTR(v))
 
 /* -------------------------------------------------------------------------- */
-/* List -- owning dynamic list of slots                                       */
+/* List: owning dynamic list of slots                                       */
 /* Grows by doubling capacity on overflow; starts at 4.                       */
 /* -------------------------------------------------------------------------- */
 
@@ -655,7 +655,7 @@ simple Arr List_toArr(List* l)
     return Arr_lit(copy, l->length);
 }
 
-/* Typed element accessors -- pure sugar over the slot form. */
+/* Typed element accessors: pure sugar over the slot form. */
 #define List_get_i32(l, i)     ((Int32)List_get((l), (i)))
 #define List_get_i64(l, i)     ((Int64)List_get((l), (i)))
 #define List_get_bool(l, i)    ((Bool)List_get((l), (i)))
@@ -694,7 +694,7 @@ simple List Str_split(Str s, Str delimiter)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Map -- open-addressing hash table (linear probing)                         */
+/* Map: open-addressing hash table (linear probing)                         */
 /*                                                                            */
 /* Keys and values are KiraSlot, so one table serves Str keys (pointer cast    */
 /* into the slot) and integer keys/values alike. `kind` records how to hash    */
@@ -966,7 +966,7 @@ simple Void Map_dispose(Map* m)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Set -- unique slots, linear membership over KiraVec                         */
+/* Set: unique slots, linear membership over KiraVec                         */
 /* Baseline: O(n) contains. Swap for a hash probe when profiles justify it.    */
 /* -------------------------------------------------------------------------- */
 
@@ -1008,7 +1008,7 @@ simple KiraVec Set_toArr(Set* s)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Stack -- LIFO over KiraVec                                                  */
+/* Stack: LIFO over KiraVec                                                  */
 /* -------------------------------------------------------------------------- */
 
 typedef struct Stack { KiraVec items; } Stack;
@@ -1032,7 +1032,7 @@ simple Maybe Stack_peek(Stack* s)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Queue -- FIFO over KiraVec (head offset keeps dequeue O(1) amortized)       */
+/* Queue: FIFO over KiraVec (head offset keeps dequeue O(1) amortized)       */
 /* -------------------------------------------------------------------------- */
 
 typedef struct Queue { KiraVec items; } Queue;
@@ -1060,7 +1060,7 @@ simple Maybe Queue_peek(Queue* q)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Deque -- double-ended over KiraVec                                          */
+/* Deque: double-ended over KiraVec                                          */
 /* -------------------------------------------------------------------------- */
 
 typedef struct Deque { KiraVec items; } Deque;

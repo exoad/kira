@@ -26,7 +26,7 @@ fun main(args: Array<String>) {
     if (args.contains("--help") || args.contains("-h")) {
         System.err.println(
             """
-            kira-lsp -- Language Server Protocol server for Kira
+            kira-lsp: Language Server Protocol server for Kira
 
             Speaks LSP over stdio. Point your editor at this binary.
 

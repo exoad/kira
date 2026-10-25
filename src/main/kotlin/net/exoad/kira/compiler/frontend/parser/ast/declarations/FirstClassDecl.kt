@@ -12,7 +12,7 @@ abstract class FirstClassDecl(
 
     /**
      * True when marked @_magic (stdlib / compiler-owned). Foreign @_opaque / @_extern
-     * are not magic -- they still participate in C-as-IR lowering.
+     * are not magic; they still participate in C-as-IR lowering.
      */
     fun isMagic(): Boolean {
         return attachedIntrinsics.any { it.name == "_magic" || it.name == "magic" }

@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
  * [Binding.Unbound] as a diagnostic, and each backend emits the
  * [Binding.Ordered] list. A backend that meets an Unbound binding (only
  * possible when analysis was skipped) refuses to emit rather than reorder
- * silently -- which is what the old code did: it appended named arguments
+ * silently, which is what the old code did: it appended named arguments
  * in the order written and ignored the names.
  *
  * Rules: positional arguments fill the leading parameters; each named

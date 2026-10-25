@@ -174,7 +174,7 @@ class ArcLoweringTest {
         val release = makeBody.indexOf("kira_rc_release(other)")
         val ret = makeBody.indexOf("return p;")
         assertTrue(release in 1 until ret, "release must precede the return, not follow it:\n$makeBody")
-        // The returned local keeps its +1 -- ownership moves to the caller, and
+        // The returned local keeps its +1: ownership moves to the caller, and
         // nothing may follow the return (that would be unreachable code).
         assertTrue(
             !makeBody.substringAfter("return p;").contains("kira_rc_release"),

@@ -442,7 +442,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
     }
 
     /**
-     * Every trait [t] extends, directly or transitively -- structural ancestry only, no
+     * Every trait [t] extends, directly or transitively: structural ancestry only, no
      * substitution, since [fromTraits] only asks "is this declaration overridden by a
      * more-derived one in the same root's closure", never a typed question. Used to drop a
      * declaration from [fromTraits]'s frontier when some other declarer in the same closure
@@ -567,15 +567,15 @@ internal class SignatureResolver(private val program: TypedProgram) {
         chain.firstNotNullOfOrNull { (sc, s) -> sc.methods.firstOrNull { it.name == name }?.let { it to s } }
 
     /**
-     * Every trait [root]'s own closure reaches, each with the substitution that reaches it --
-     * like [traitClosure], but deduplicated by (trait, substitution) rather than by trait alone.
+     * Every trait [root]'s own closure reaches, each with the substitution that reaches it.
+     * Like [traitClosure], but deduplicated by (trait, substitution) rather than by trait alone.
      * [traitClosure]'s `seen` is an `IdentityHashMap<TraitSymbol, Boolean>`: it visits a trait at
      * most once regardless of the substitution that reached it, which is right for
      * [traitOverrides]' own use (linking `m.overrides` to *a* base) but wrong here, where a
      * generic diamond can reach one trait under two genuinely different substitutions (`trait W:
      * A, B {}` with `A: X<Int32>` and `B: X<Str>`): whichever parent [traitClosure] visits first
      * decides which one is kept, so `class C: Base, W {}`'s own conflict check (a *single* root,
-     * `W`) depended on `W`'s internal parent order -- `W: A, B` and `W: B, A` gave different
+     * `W`) depended on `W`'s internal parent order: `W: A, B` and `W: B, A` gave different
      * results for the very same class (round 8's bug). Deduplicating by the pair instead keeps
      * both: two paths reaching the same trait under the *same* substitution still collapse to
      * one (an ordinary diamond, not a fork), but two under different substitutions both survive,
@@ -602,9 +602,9 @@ internal class SignatureResolver(private val program: TypedProgram) {
 
     /**
      * Every most-derived candidate for [name] within one trait root's own closure: the
-     * declarations of [name] in [root]'s closure ([frontierClosure], never [traitClosure] --
-     * see its doc), minus any declarer some *other* declarer in that same closure extends
-     * (transitively) -- that declarer's own declaration replaces the ancestor's for anything
+     * declarations of [name] in [root]'s closure ([frontierClosure], never [traitClosure]; see its
+     * doc), minus any declarer some *other* declarer in that same closure extends
+     * (transitively). That declarer's own declaration replaces the ancestor's for anything
      * reaching it only through the more-derived one. Two declarers neither of which extends the
      * other (a fork, `trait T: A, B {}` with neither `A: B` nor `B: A`) both survive, so the
      * caller sees the disagreement instead of the first-found declaration silently winning
@@ -627,7 +627,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
     /**
      * One candidate per declaration [name] resolves to across [roots], one root per trait a
      * class or trait names directly (`class C: A, B` gives two roots; `class C: T` where
-     * `T: A, B` gives one, `T`, whose own closure may itself fork into several candidates --
+     * `T: A, B` gives one, `T`, whose own closure may itself fork into several candidates;
      * see [frontierDeclarers]). Used by `reportConflictIfAny` to compare every independent
      * candidate against the others and against a superclass (1.3.2, "never first-found"): two
      * traits that disagree on one name are both seen, however many roots or how much nesting
@@ -644,8 +644,8 @@ internal class SignatureResolver(private val program: TypedProgram) {
      * trait's own check, since a trait has none) and [viaTraits] (from [fromTraits], one entry
      * per candidate) name the same method but disagree on signature, and nothing at [anchor] (a
      * declared member, the class or trait itself when it declares no member of that name) says
-     * which one is meant. Every pair is compared -- not just a superclass against the first
-     * trait -- so two traits that disagree with each other, and neither disagrees with a
+     * which one is meant. Every pair is compared, not just a superclass against the first
+     * trait, so two traits that disagree with each other, and neither disagrees with a
      * superclass (or there is none), still conflict, and [owner] is [ClassSymbol] or
      * [TraitSymbol]: a trait that names two disagreeing parents inherits the same conflict
      * (`traitOverrides`), not only the classes that later implement it.
@@ -688,7 +688,7 @@ internal class SignatureResolver(private val program: TypedProgram) {
      * method's own type parameters (own type parameters mapped positionally, as [checkOverride]
      * does). Whether a function changes its receiver is its type's, not its signature's. Used to
      * tell two inherited methods of one name apart (`types.member.conflict`) from two that happen
-     * to agree -- this is where 1.3.2's "never first-found" rule actually lives: every candidate
+     * to agree: this is where 1.3.2's "never first-found" rule actually lives: every candidate
      * pair is compared with this, so two declarations differing only in a bound (round 5 of this
      * package's bug: this function used to ignore it, so `checkOverride`'s first-found target
      * decided the outcome instead of this order-independent comparison) are correctly seen as a

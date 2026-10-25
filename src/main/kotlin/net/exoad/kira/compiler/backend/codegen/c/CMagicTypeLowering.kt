@@ -25,7 +25,7 @@ object CMagicTypeLowering {
         "Str" to CMagicTypeBinding("Str"),
         "String" to CMagicTypeBinding("Str"),
         "Any" to CMagicTypeBinding("Any"),
-        // Containers -- generics erased to KiraSlot elements; bodies in c_generator.c
+        // Containers: generics erased to KiraSlot elements; bodies in c_generator.c
         "Arr" to CMagicTypeBinding("Arr"),
         "List" to CMagicTypeBinding("List"),
         "Map" to CMagicTypeBinding("Map"),
@@ -33,7 +33,7 @@ object CMagicTypeLowering {
         "Stack" to CMagicTypeBinding("Stack"),
         "Queue" to CMagicTypeBinding("Queue"),
         "Deque" to CMagicTypeBinding("Deque"),
-        // Fallible values -- slot payloads, unwrapped back to the declared type
+        // Fallible values: slot payloads, unwrapped back to the declared type
         "Maybe" to CMagicTypeBinding("Maybe"),
         "Result" to CMagicTypeBinding("Result"),
     )

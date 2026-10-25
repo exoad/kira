@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * The C backend resolves `@_magic` free functions through the loaded binding
  * manifest (the `*.bind.yaml` files beside the stdlib modules), not a
  * hardcoded Kotlin table. These tests pin the manifest as the source of
- * truth -- they would fail if the loader stopped finding the files next to
+ * truth: they would fail if the loader stopped finding the files next to
  * the stdlib modules.
  */
 class CMagicBindingTableTest {
@@ -22,7 +22,7 @@ class CMagicBindingTableTest {
 
         assertEquals("sqrt", CMagicBindingTable.resolveFunctionOrNull("sqrt"))
         assertEquals(setOf("math.h"), CMagicBindingTable.includesOrNull("sqrt"))
-        // abs lowers to fabs, not C's abs -- that is manifest data, not a guess.
+        // abs lowers to fabs, not C's abs: that is manifest data, not a guess.
         assertEquals("fabs", CMagicBindingTable.resolveFunctionOrNull("abs"))
         assertEquals(setOf("math.h"), CMagicBindingTable.includesOrNull("min"))
     }

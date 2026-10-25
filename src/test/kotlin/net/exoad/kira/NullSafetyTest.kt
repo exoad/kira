@@ -5,7 +5,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * `null` is not a keyword -- it is a stdlib global of type `Null`, the same way
+ * `null` is not a keyword; it is a stdlib global of type `Null`, the same way
  * `true` / `false` are globals of type `Bool`. Every type is non-nullable, and
  * `Maybe<T>` is the only shape that admits absence.
  */

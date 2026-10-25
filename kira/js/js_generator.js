@@ -1,12 +1,12 @@
 /*
- * Kira JS backend -- runtime prelude (mirrors the C facade in c_generator.c).
+ * Kira JS backend: runtime prelude (mirrors the C facade in c_generator.c).
  *
  * Maps the Kira stdlib surface (kira/core, kira/tuples, kira/collections,
  * kira/result, kira/io, kira/math) onto plain JavaScript. The generated user
  * code sits after this prelude in the same file, so the whole artifact is one
  * self-contained Node script.
  *
- * Type mapping (runtime is untyped -- these are the shapes codegen emits):
+ * Type mapping (runtime is untyped; these are the shapes codegen emits):
  *   Int8..Int64 / Float32 / Float64 / Bool -> JS number / boolean
  *   Str                                    -> JS primitive string
  *   Arr<T>                                 -> JS Array

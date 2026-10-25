@@ -1,7 +1,7 @@
 // Root of the type lattice plus the primitive scalars every other stdlib
 // module builds on. Everything here is `@_magic`: the declaration exists so
 // the frontend can typecheck against it, and each backend supplies the real
-// definition -- the C backend from the prelude (`kira/c/c_generator.c`), the
+// definition: the C backend from the prelude (`kira/c/c_generator.c`), the
 // C++ backend from the runtime named in `core.bind.yaml`.
 
 pub @_magic Any: Any
@@ -13,7 +13,7 @@ pub @_magic Bool: Any
 pub @_magic @_global true: Bool = Bool { }
 pub @_magic @_global false: Bool = Bool { }
 
-// `null` is not a keyword -- it is a built-in global of the bottom-ish type
+// `null` is not a keyword. It is a built-in global of the bottom-ish type
 // `Null`, exactly like `true` and `false` are globals of type `Bool`.
 //
 // `Null` is only assignable to `Maybe<T>` (see kira:result). Every other type

@@ -126,7 +126,7 @@ class JSCodeGeneratorSmokeTest {
             "test:js.generics"
         )
 
-        // One template, type args dropped -- no Box_Int32 / id_Int32 monomorphs.
+        // One template, type args dropped: no Box_Int32 / id_Int32 monomorphs.
         assertTrue(generated.contains("class Box"), generated)
         assertTrue(generated.contains("new Box("), generated)
         assertTrue(generated.contains("function id("), generated)
@@ -196,7 +196,7 @@ class JSCodeGeneratorSmokeTest {
             "test:js.trait"
         )
 
-        // No vtable structs, no trampolines -- just a method call.
+        // No vtable structs, no trampolines: just a method call.
         assertFalse(generated.contains("VTable"), generated)
         assertFalse(generated.contains("tramp"), generated)
         assertTrue(generated.contains("s.speak()"), generated)
@@ -341,7 +341,7 @@ class JSCodeGeneratorSmokeTest {
             "test:js.liststr"
         )
 
-        // JS compares string content, not pointers -- contains works without
+        // JS compares string content, not pointers; contains works without
         // the C backend's literal-pooling assumption.
         assertTrue(generated.contains("names.add(\"ada\")"), generated)
         assertEquals("2\ngrace\n1\n", runAndCapture(generated) ?: return)

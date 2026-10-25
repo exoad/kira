@@ -1,4 +1,4 @@
-// Foreign opaque handle -- no body (like @_magic class Int32). C pointer in emit.
+// Foreign opaque handle: no body (like @_magic class Int32). C pointer in emit.
 pub @_opaque MiniSurface: Any
 
 @_extern miniCreate: (w: Int32, h: Int32, title: Str) MiniSurface

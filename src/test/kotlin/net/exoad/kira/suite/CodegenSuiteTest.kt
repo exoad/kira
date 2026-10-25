@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * C backend shape coverage: what each Kira construct lowers to in the emitted
- * translation unit. These pin the emitted text (not behavior -- that is
+ * translation unit. These pin the emitted text (not behavior: that is
  * RuntimeSuiteTest's job), so a drift in the lowering breaks a test with the
  * actual output.
  */
