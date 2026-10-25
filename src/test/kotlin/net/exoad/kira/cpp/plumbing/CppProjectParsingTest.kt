@@ -16,7 +16,8 @@ import kotlin.test.assertTrue
 class CppProjectParsingTest {
     private fun project(body: String) = "PROJECT: Project = Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
 
-    /** bibo's project.kira (e5951c3), its comments shortened and its namespaces filled in as its comment lists them. */
+    /** bibo's old kira.yaml (design 8.3) as project.kira text: its excludes, eight namespaces and globs, comments shortened.
+     * bibo's own project.kira (e5951c3) names its globs by dotted module name and lists no namespace. */
     private val bibo = project(
         """
         name = "bibo"

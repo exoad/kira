@@ -101,6 +101,26 @@ class MutabilityTest {
     }
 
     @Test
+    fun mutIsRefusedAtEveryOtherSite() {
+        val call = "f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    ys: List<Int32> = List<Int32> { }\n    %s\n}\n"
+        for ((text, help) in listOf(
+            call.format("f(xs = mut ys)") to "pass the value itself",
+            call.format("f(mut xs = ys)") to "pass the value itself",
+            "f: () Void {\n    for mut i: 0..3 {\n    }\n}\n" to "a loop variable is never Mutable",
+            "f: (cb: (mut n: Int32) Void) Void {\n}\n" to "a parameter is never Mutable",
+            "f: () Void {\n    g: (n: Int32) Void = (mut n: Int32) Void {\n    }\n}\n" to "a parameter is never Mutable",
+            "mut C: Any {\n    pub n: Int32 = 0\n}\n" to "a type whose values change is 'Name: Mutable<Parent>'",
+            "mut COUNT: Int32 = 0\n" to "a binding that changes is 'name: Mutable<T>'",
+            "C: Any {\n    pub mut n: Int32 = 0\n}\n" to "a binding that changes is 'name: Mutable<T>'",
+            "xs: List<mut Int32> = List<Int32> { }\n" to "a type argument is never Mutable",
+        )) {
+            val message = refusal(text)
+            assertContains(message, "'mut' is not part of Kira any more", message = text)
+            assertContains(message, help, message = text)
+        }
+    }
+
+    @Test
     fun mutableIsRefusedOnAParameterAValueTypeAndTwice() {
         assertContains(refusal("f: (xs: Mutable<List<Int32>>) Void {\n}\n"), "A parameter is never Mutable")
         assertContains(refusal("f: (each: (n: Mutable<Int32>) Void) Void {\n}\n"), "A parameter is never Mutable")

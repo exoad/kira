@@ -175,7 +175,7 @@ class CppBindingTableTest {
      * anyway, in order, unless it is a literal, a constant or a PRIVATE read
      * (`(static_cast<void>(mkT()), static_cast<std::int32_t>(2))`, round 3's n11: `mkT().size()`
      * dropped `mkT()`'s `ticks += 1`). The list is pinned, so a binding added that drops an
-     * operand is seen here, and CppCopyPolicyTest's `bindingDrop` rows run the emitted form.
+     * operand is seen here.
      */
     @Test
     fun everyBindingThatLeavesOutAnOperandIsListed() {

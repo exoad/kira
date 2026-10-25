@@ -1207,6 +1207,7 @@ class KiraParser(
         const val MUT_PARAM = "a parameter is never Mutable, and a Mutable type's value is shared, so its changes reach the caller"
         const val MUT_ARG = "pass the value itself: a Mutable type's value is shared with the callee"
         const val MUT_TYPE = "a type whose values change is 'Name: Mutable<Parent>'"
+        const val MUT_TYPE_ARG = "a type argument is never Mutable, and a Mutable type's value is shared wherever it is held"
     }
 
     /** [holdsTypes]: types nested in it, which count as what it adds. */
@@ -1286,7 +1287,7 @@ class KiraParser(
     fun parseReturnStatement(): Nothing {
         Diagnostics.panic(
             "parse.removed",
-            "'return' is not part of Kira any more: a block's last expression is its value (`if c { a } else { b }`, `c ? a : b`); a loop's answer goes in a `mut` local, then `break`.",
+            "'return' is not part of Kira any more: a block's last expression is its value (`if c { a } else { b }`, `c ? a : b`); a loop's answer goes in a Mutable local, then `break`.",
             location = here(),
             selectorLength = 6,
             context = context
@@ -2608,19 +2609,9 @@ class KiraParser(
         if (!declaring && at(Token.Type.S_OPEN_PARENTHESIS)) {
             return parseFunctionType()
         }
-        // `mut T` in a type argument list is refused: outside Tuple*<...> it never meant anything.
+        // `mut T` in a type argument list is refused: an Fx parameter's (inside Tuple*<...>) or any other.
         if (!declaring && at(Token.Type.K_MODIFIER_MUTABLE)) {
-            if (enclosing == null || !enclosing.startsWith("Tuple")) {
-                Diagnostics.panic(
-                    "KiraParser::parseTypeParameter",
-                    "'mut' in a type argument is only meaningful inside a Tuple's arguments, " +
-                        "as an Fx parameter type: Fx<Tuple1<mut T>, Void>.",
-                    location = baseLocation,
-                    selectorLength = peek().content.length,
-                    context = context
-                )
-            }
-            refuseMut(baseLocation, MUT_PARAM)
+            refuseMut(baseLocation, if (enclosing != null && enclosing.startsWith("Tuple")) MUT_PARAM else MUT_TYPE_ARG)
         }
         var bound: Type? = null
         fun acquireTypeBound() {

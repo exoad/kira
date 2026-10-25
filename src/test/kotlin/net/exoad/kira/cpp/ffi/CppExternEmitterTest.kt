@@ -140,7 +140,7 @@ class CppExternEmitterTest {
      * [CppExternEmitter.call] over a module's typed calls, with argument texts written by the
      * test. Which argument is copied is the copy policy's (W2.3), handed over as `copied`:
      * [text] passes none, [copiedText] the indices given; the policy's own decision is what the
-     * lowered body says ([source], and ExternCallRunTest's rows).
+     * lowered body says ([source]).
      */
     private class Calls(val ctx: CppEmitContextImpl, val source: String) {
         fun of(name: String): ResolvedCall = ctx.model.calls.values.firstOrNull { it.fn?.name == name } ?: fail("no call of '$name' in the model")

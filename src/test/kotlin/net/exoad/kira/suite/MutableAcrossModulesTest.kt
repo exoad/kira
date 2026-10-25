@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Stages 4 and 5 together: a Mutable type reached through a member alias, a Mutable nested type named Outer.Inner from another module, and stage 5's converter on stage 4's text. */
+/** Stages 4 and 5 together: a Mutable type reached through a member alias, and a Mutable nested type named Outer.Inner from another module. */
 class MutableAcrossModulesTest {
     private val counter = """
         pub Counter: Mutable<Any> {
