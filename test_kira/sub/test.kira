@@ -1,7 +1,3 @@
-module "test_kira:sub.test"
-
-pub enum TestEnum {
-    A,
-    B,
-    C
+pub TestType: Any {
+    pub a: Int32 = 0
 }

@@ -1,0 +1,7 @@
+PROJECT: Project = Project { } with {
+    name = "golden.py.bags"
+    srcDir = "src"
+    target = "py"
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

@@ -2,6 +2,7 @@ package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -52,15 +53,15 @@ class CodegenSuiteTest {
     fun functionsLowerToCSignatures() {
         val output = emit(
             """
-            fx add: (a: Int32, b: Int32) Int32 {
-                return a + b
+            add: (a: Int32, b: Int32) Int32 {
+                a + b
             }
 
-            fx greet: (name: Str) Str {
-                return name
+            greet: (name: Str) Str {
+                name
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace("hi")
             }
             """
@@ -88,7 +89,7 @@ class CodegenSuiteTest {
     fun traceLowersToPrintWithCorrectFormat() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 trace("text")
                 trace(7)
             }
@@ -104,7 +105,7 @@ class CodegenSuiteTest {
     fun ifElseLowersToCIfElse() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 x: Int32 = 2
                 if x == 1 {
                     trace("one")
@@ -124,8 +125,8 @@ class CodegenSuiteTest {
     fun whileLowersToCWhile() {
         val output = emit(
             """
-            fx main: () Void {
-                mut i: Int32 = 0
+            main: () Void {
+                i: Mutable<Int32> = 0
                 while i < 3 {
                     i = i + 1
                 }
@@ -140,14 +141,14 @@ class CodegenSuiteTest {
     fun forRangeLowersToCFor() {
         val output = emit(
             """
-            fx main: () Void {
-                for mut i: 0..3 {
+            main: () Void {
+                for i: Int32 in 0..4 {
                     trace(i)
                 }
             }
             """
         )
-        assertTrue(output.contains("for(Int32 i = 0; i <= 3; ++i)"), output)
+        assertTrue(output.contains("for(Int32 i = 0; i < 4; ++i)"), output)
         assertTrue(output.contains("print(\"%d\\n\", i);"), output)
     }
 
@@ -157,8 +158,8 @@ class CodegenSuiteTest {
         // `(a + 2);` expression. Primitives keep the native compound op.
         val output = emit(
             """
-            fx main: () Void {
-                mut a: Int32 = 1
+            main: () Void {
+                a: Mutable<Int32> = 1
                 a += 2
             }
             """
@@ -173,12 +174,12 @@ class CodegenSuiteTest {
     fun classLowersToStructConstructorAndFreeMethod() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
-                require pub sound: Str
+            pub Pet: Any {
+                pub name: Str
+                pub sound: Str
 
-                pub fx speak: () Str {
-                    return sound
+                pub speak: () Str {
+                    sound
                 }
             }
             """
@@ -199,15 +200,15 @@ class CodegenSuiteTest {
     fun methodCallsLowerToFreeFunctionWithReceiver() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
 
-                pub fx speak: () Str {
-                    return name
+                pub speak: () Str {
+                    name
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi" }
                 trace(friend.name)
                 trace(friend.speak())
@@ -223,11 +224,11 @@ class CodegenSuiteTest {
     fun classLocalsAreArcReleasedAtScopeEnd() {
         val output = emit(
             """
-            pub class Pet {
-                require pub name: Str
+            pub Pet: Any {
+                pub name: Str
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi" }
                 trace(friend.name)
             }
@@ -239,53 +240,21 @@ class CodegenSuiteTest {
 
     // --- enums ---------------------------------------------------------------
 
-    @Test
-    fun enumLowersToTypedefEnumWithPrefixedMembers() {
-        val output = emit(
-            """
-            pub enum Mood {
-                HAPPY,
-                SAD
-            }
-            """
-        )
-        assertTrue(output.contains("typedef enum Mood"), output)
-        assertTrue(output.contains("MOOD_HAPPY,"), output)
-        assertTrue(output.contains("MOOD_SAD"), output)
-    }
-
-    @Test
-    fun enumMemberAccessLowersToUppercaseConstant() {
-        val output = emit(
-            """
-            pub enum Mood {
-                HAPPY,
-                SAD
-            }
-
-            fx main: () Void {
-                state: Mood = Mood.HAPPY
-            }
-            """
-        )
-        assertTrue(output.contains("Mood state = MOOD_HAPPY;"), output)
-    }
-
     // --- generics -------------------------------------------------------------
 
     @Test
     fun genericsMonomorphize() {
         val output = emit(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            fx id<T>: (value: T) T {
-                return value
+            id<T>: (value: T) T {
+                value
             }
 
-            fx main: () Void {
+            main: () Void {
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 value: Int32 = id<Int32>(wrapped.value)
                 trace(value)
@@ -303,16 +272,65 @@ class CodegenSuiteTest {
     fun nestedGenericsLowerToNestedLiteralsAndAccessors() {
         val output = emit(
             """
-            fx main: () Void {
-                grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+            main: () Void {
+                grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
                 trace(grid[1][0])
             }
             """
         )
         // Outer and inner Arr literals both appear, nested.
         assertTrue(output.contains("Arr_lit((KiraSlot[]){ Arr_lit((KiraSlot[]){ 1, 2 }, 2)"), output)
-        // Chained element access composes the get helper.
-        assertTrue(output.contains("Arr_get_i32(Arr_get_i32(grid, 1), 0)"), output)
+        // Chained element access composes the get helper. The outer read
+        // unslots to the declared element type `Arr` (which is what `cc`
+        // rejects); the inner one has no element type to go on.
+        assertTrue(output.contains("Arr_get_i32(KIRA_UNSLOT(Arr, Arr_get(grid, 1)), 0)"), output)
+    }
+
+    @Test
+    fun namedArgumentsAreOrderedByTheCalleeNotByTheCall() {
+        val output = emit(
+            """
+            sub: (a: Int32, b: Int32) Int32 { a - b }
+
+            main: () Void {
+                trace(sub(b = 3, a = 10))
+            }
+            """
+        )
+        assertTrue(output.contains("sub(10, 3)"), output)
+        // Without the analyzer in front, a name the callee lacks is refused
+        // at emit time rather than reordered by guesswork.
+        val e = assertThrows<IllegalStateException> {
+            emit(
+                """
+                sub: (a: Int32, b: Int32) Int32 { a - b }
+
+                main: () Void {
+                    trace(sub(a = 10, c = 3))
+                }
+                """
+            )
+        }
+        assertTrue(e.message!!.contains("no parameter named 'c'"), e.message)
+    }
+
+    @Test
+    fun forInOverAnUnknownTargetIsADiagnosticNotAStubLoop() {
+        // The body used to run exactly once inside a `for(;;) { ... break; }`
+        // stub whatever the target was. Now a target the backend cannot
+        // type is refused outright.
+        val e = assertThrows<IllegalStateException> {
+            emit(
+                """
+                main: () Void {
+                    for x: Int32 in mystery {
+                        trace(x)
+                    }
+                }
+                """
+            )
+        }
+        assertTrue(e.message!!.contains("for-in over 'mystery'"), e.message)
     }
 
     @Test
@@ -323,11 +341,11 @@ class CodegenSuiteTest {
         // widen to %lld and Str needs %s. A fix flips this test.
         val output = emit(
             """
-            fx id<T>: (value: T) T {
-                return value
+            id<T>: (value: T) T {
+                value
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(id<Int32>(7))
                 trace(id<Int64>(7))
                 trace(id<Str>("ada"))
@@ -346,23 +364,23 @@ class CodegenSuiteTest {
     fun traitDispatchEmitsVtablesAndTrampolines() {
         val output = emit(
             """
-            pub trait Speaker {
-                pub fx speak: () Str
+            pub Speaker: Any {
+                pub speak: () Str
             }
 
-            pub class Dog: Speaker {
-                require pub label: Str
+            pub Dog: Speaker {
+                pub label: Str
 
-                pub fx speak: () Str {
-                    return "woof"
+                pub speak: () Str {
+                    "woof"
                 }
             }
 
-            fx announce: (s: Speaker) Void {
+            announce: (s: Speaker) Void {
                 trace(s.speak())
             }
 
-            fx main: () Void {
+            main: () Void {
                 d: Dog = Dog { "Rex" }
                 s: Speaker = d
                 announce(s)
@@ -383,8 +401,8 @@ class CodegenSuiteTest {
     fun arrAndMapLowerToPreludeContainers() {
         val output = emit(
             """
-            fx main: () Void {
-                numbers: Arr<Int32> = [10, 20, 30]
+            main: () Void {
+                numbers: Arr<Int32> = @arrOf(10, 20, 30)
                 entries: Map<Str, Int32> = Map<Str, Int32> { }
                 trace(numbers[0])
                 entries.put("a", 1)
@@ -402,7 +420,7 @@ class CodegenSuiteTest {
     fun listSetStackQueueLowerToPreludeContainers() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 names: List<Str> = List<Str> { }
                 seen: Set<Int32> = Set<Int32> { }
                 stack: Stack<Int32> = Stack<Int32> { }
@@ -424,20 +442,29 @@ class CodegenSuiteTest {
 
     @Test
     fun externLowersToLiteralCNamePlaceholder() {
-        // Known gap: @_extern currently emits the C name as a bare string
-        // statement. Pinned so the intended fopen() call is not silently lost.
+        // A marker keeps its argument on the declaration it marks (design
+        // 2.5); it used to spill into a stray `"fopen";` statement, and a
+        // bare marker with no declaration after it is now a parse error
+        // (ParserGrowthTest). The C symbol is the mark's string (design 7.3):
+        // the prototype and every call spell `fopen`, never the Kira name,
+        // on this semantic-free emit path as on the CLI's (the mark is read
+        // from the parser's stored invocation, not from apply()).
         val output = emit(
             """
-            @_opaque class FileHandle { }
+            @_opaque FileHandle: Any { }
 
-            fx openFile: (path: Str) FileHandle {
-                @_extern("fopen")
-                return null
+            @_extern("fopen") openFile: (path: Str) FileHandle;
+
+            main: () Int32 {
+                h: FileHandle = openFile("x")
+                0
             }
             """
         )
-        assertTrue(output.contains("FileHandle* openFile(Str path)"), output)
-        assertTrue(output.contains("\"fopen\";"), output)
+        assertTrue(output.contains("extern FileHandle* fopen(Str path);"), output)
+        assertTrue(output.contains("fopen(\"x\")"), output)
+        assertFalse(output.contains("openFile"), output)
+        assertFalse(output.contains("\"fopen\";"), output)
     }
 
     @Test
@@ -455,20 +482,22 @@ class CodegenSuiteTest {
     fun arrayIndexLowersToGetHelper() {
         val output = emit(
             """
-            fx main: () Void {
-                numbers: Arr<Int32> = [10, 20]
+            main: () Void {
+                numbers: Arr<Int32> = @arrOf(10, 20)
                 trace(numbers[0])
             }
             """
         )
-        assertTrue(output.contains("Arr_get_i32"), output)
+        // The read unslots to the declared element type; it used to be
+        // Arr_get_i32 for every element type.
+        assertTrue(output.contains("KIRA_UNSLOT(Int32, Arr_get(numbers, 0))"), output)
     }
 
     @Test
     fun stringMethodsLowerToPreludeHelpers() {
         val output = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 s: Str = "  Kira  "
                 trace(s.trim().length())
             }

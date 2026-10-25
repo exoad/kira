@@ -1,0 +1,23 @@
+// @_opaque handles (D70): the sidecar makes the object and Kira calls its methods by their
+// Kira names; user.kira holds them in fields, Lists and Maybes, never copied.
+
+golden.py.opaque.app.conn as conn
+golden.py.opaque.app.conn.Conn as Conn
+
+pub @_opaque Counter: Mutable<Any> {
+    pub @_mutates bump: (by: Int32) Int32
+    pub total: () Int32
+    pub @_extern(raises = "ValueError") label: () Str
+    pub wrong: () Str
+    pub absorb: (pair: Tuple2<List<Int32>, Int32>) Int32
+}
+
+pub @_extern counter: (label: Str) Counter
+
+pub @_extern maybeCounter: (label: Str) Maybe<Counter>
+
+pub @_extern sameObject: (a: Counter, b: Counter) Bool
+
+pub @_extern broken: () Counter
+
+pub @_extern dialer: () Conn

@@ -1,0 +1,10 @@
+kira.sync as sync
+
+// Loaded after the driver froze time.monotonic: its wait runs on the clock the first module took (D88).
+
+pub waitNever: (ms: Int64) Bool {
+    m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
+    m.waitUntil((xs: List<Int32>) Bool {
+        xs.size() > 0
+    }, ms)
+}

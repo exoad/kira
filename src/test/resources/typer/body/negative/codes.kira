@@ -1,0 +1,30 @@
+// The remaining refusals of phase C that a source line can reach, one per line with its code.
+// Not here, because no source reaches them: types.assign.this (the parser refuses `this =`),
+// types.call.infer (every @_infer function names T in a parameter, and a literal-only call
+// falls back to the literals' defaults), types.expr.too-deep (a StackOverflowError),
+// types.expr.type, types.expr.unsupported, types.internal, types.intrinsic.call,
+// types.member.shape and types.op.unsupported (fallbacks the parser's shapes never produce).
+
+pub Point: Struct {
+    pub x: Int32 = 0
+}
+
+pub codes: (s: Str, v: View<UInt8>, i: Int32, p: Point) Void {
+    a: Int32 = @arrOf()                    // @error types.builder.untyped
+    b: UInt32 = bitCast<UInt32>()          // @error types.bitcast.args
+    c: UInt32 = bitCast(1.5)               // @error types.bitcast.type-args
+    d: Int32 = Point(1)                    // @error types.call.type-name
+    e: Fx<Tuple2<Int32, Int32>, Int32> = (a: Int32, a: Int32) Int32 { a } // @error types.decl.duplicate
+    s[0] = 'a'                             // @error types.index.str-write
+    v[0] = 1                               // @error types.index.view-write
+    g: Bool = i == Str                     // @error types.conform.never
+    h: Fx<Tuple1<Int32>, Void> = (q: Int32 = 1) Void { } // @error types.lambda.default
+    j: Int32 = Point.x                     // @error types.member.static
+    Result.success(1)                      // @error types.result.context
+    @_static_assert(true, "here")          // @error types.static-assert.position
+    k: Fx<Tuple2<Bool, Str>, Void> = assert // @error types.fn.foreign-value
+    m: Point = p.copy(x = 1)               // @error types.with.copy
+    n: Int32 = @_infer                     // @error types.intrinsic.value
+    nested: () Void {                   // @error types.decl.nested
+    }
+}

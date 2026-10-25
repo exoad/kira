@@ -1,0 +1,59 @@
+// Globals that start from globals declared after them, directly or through a @_const function:
+// Python runs a module's lines in order, so the py target starts each after every global its
+// initializer reads, as the C++ target's constants are ready before their use. A constant,
+// which nothing can write, is shared with a constant and given to a function as itself; a
+// Mutable global or field that starts from one copies it (an Arr by itself, a List where it says so).
+// The expected output is the C++ backend's run of this same module.
+
+A: Arr<Int32, 2> = B
+B: Arr<Int32, 2> = @arrOf(7, 8)
+k: Mutable<Arr<UInt8, 2>> = KEY
+KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
+G: Arr<Int32, 3> = table()
+
+TABLE: Arr<Int32, 3> = @arrOf(4, 5, 6)
+SEED: List<Int32> = @listOf(9, 10)
+
+Holder: Mutable<Any> {
+    pub items: Mutable<List<Int32>> = SEED.view().toList()
+}
+
+@_const table: () Arr<Int32, 3> {
+    out: Mutable<Arr<Int32, 3>> = Arr<Int32, 3> { }
+    i: Mutable<Size> = 0
+    while i < TABLE.size() {
+        out[i] = TABLE[i] * 10
+        i += 1
+    }
+    out
+}
+
+sum: (v: View<Int32>) Int32 {
+    s: Mutable<Int32> = 0
+    i: Mutable<Size> = 0
+    while i < v.size() {
+        s += v[i]
+        i += 1
+    }
+    s
+}
+
+total: (xs: Arr<Int32, 2>) Int32 {
+    xs[0] + xs[1]
+}
+
+main: () Void {
+    trace(A[1])
+    trace(k[0])
+    k[0] = 1
+    trace(k[0])
+    trace(KEY[0])
+    trace(G[2])
+    held: Mutable<Holder> = Holder { }
+    trace(held.items[1])
+    held.items.add(3)
+    trace(held.items.size())
+    trace(SEED.size())
+    trace(sum(A))
+    trace(total(B))
+}

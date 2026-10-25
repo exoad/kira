@@ -1,0 +1,38 @@
+// Used by lib:tally and app:report both: one copy of its globals.
+
+kira.math as math
+
+pub SCALE: Int32 = 1000
+pub NAME: Str = "units"
+pub calls: Mutable<Int32> = 0
+pub seen: Mutable<List<Int32>> = List<Int32> { }
+pub TABLE: List<Int32> = @listOf(3, 1, 4)
+
+pub Meter: Mutable<Any> {
+    pub label: Str
+    pub reads: Mutable<Int32> = 0
+
+    pub read: (raw: Int32) Int32 {
+        reads += 1
+        calls += 1
+        raw * SCALE
+    }
+}
+
+pub bump: (by: Int32) Int32 {
+    calls += by
+    seen.add(by)
+    calls
+}
+
+pub bounded: (deg: Float64) Float64 {
+    clamp(deg2rad(deg), -1.0, 1.0)
+}
+
+hidden: () Int32 {
+    7
+}
+
+pub shown: () Int32 {
+    hidden() + 1
+}

@@ -1,0 +1,5 @@
+a | b
+c | d
+stdlib's joinPath: 3 characters
+-1 against the stdlib's 2
+7 pylib's, the stdlib's -1

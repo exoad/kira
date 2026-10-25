@@ -1,0 +1,5 @@
+functions.app.utils as utils
+
+greeting: () Str {
+    normalize("hello from functions")
+}

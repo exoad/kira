@@ -1,0 +1,37 @@
+kira.os as os
+kira.sync as sync
+kira.time as time
+
+// The stdlib seams a test patches, each read by the runtime where it is called (D88).
+
+pub mono: () Int64 {
+    monoNowNs()
+}
+
+pub monoMs: () Int64 {
+    monoNowMs()
+}
+
+pub wall: () Int64 {
+    wallNowNs()
+}
+
+pub nap: (ms: Int64) Void {
+    sleepMs(ms)
+}
+
+pub argCount: () Size {
+    args().size()
+}
+
+pub waitNever: (ms: Int64) Bool {
+    m: Mutex<List<Int32>> = Mutex<List<Int32>> { value = List<Int32> { } }
+    m.waitUntil((xs: List<Int32>) Bool {
+        xs.size() > 0
+    }, ms)
+}
+
+pub popNone: (ms: Int64) Bool {
+    q: BlockingQueue<Int32> = BlockingQueue<Int32> { }
+    q.pop(ms).isNone()
+}

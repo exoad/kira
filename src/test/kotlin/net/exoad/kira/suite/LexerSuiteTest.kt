@@ -60,6 +60,30 @@ class LexerSuiteTest {
         assertLexes("0xFF", Token.Type.L_INTEGER to "255")
         assertLexes("0x10", Token.Type.L_INTEGER to "16")
         assertLexes("0x0", Token.Type.L_INTEGER to "0")
+        // Uppercase prefix and digits are the same literal.
+        assertLexes("0XFF", Token.Type.L_INTEGER to "255")
+        assertLexes("0xabCD", Token.Type.L_INTEGER to "43981")
+    }
+
+    @Test
+    fun hexLiteralsCoverTheFull64BitRange() {
+        // Used to be parsed as a signed Int32, so anything above 0x7FFFFFFF panicked.
+        assertLexes("0x80000000", Token.Type.L_INTEGER to "2147483648")
+        assertLexes("0x7FFFFFFFFFFFFFFF", Token.Type.L_INTEGER to "9223372036854775807")
+        // The top bit set is the two's-complement bit pattern, as in C.
+        assertLexes("0xFFFFFFFFFFFFFFFF", Token.Type.L_INTEGER to "-1")
+        assertLexes("0x8000000000000000", Token.Type.L_INTEGER to "-9223372036854775808")
+        assertThrows<DiagnosticsException> { lex("0x10000000000000000") }
+        assertThrows<DiagnosticsException> { lex("0x") }
+    }
+
+    @Test
+    fun binaryLiteralsNormalizeToDecimal() {
+        assertLexes("0b1010", Token.Type.L_INTEGER to "10")
+        assertLexes("0B11", Token.Type.L_INTEGER to "3")
+        assertLexes("0b0", Token.Type.L_INTEGER to "0")
+        assertThrows<DiagnosticsException> { lex("0b") }
+        assertThrows<DiagnosticsException> { lex("0b2") }
     }
 
     @Test
@@ -70,11 +94,29 @@ class LexerSuiteTest {
     }
 
     @Test
+    fun floatLiteralsTakeAnExponent() {
+        assertLexes("1e-3", Token.Type.L_FLOAT to "1e-3")
+        assertLexes("2.5E6", Token.Type.L_FLOAT to "2.5E6")
+        assertLexes("1e+2", Token.Type.L_FLOAT to "1e+2")
+        assertLexes("7E0", Token.Type.L_FLOAT to "7E0")
+        // An `e` not followed by digits is not an exponent: the number ends before it.
+        assertLexes("1 e", Token.Type.L_INTEGER to "1", Token.Type.IDENTIFIER to "e")
+    }
+
+    @Test
     fun stringLiteralsKeepContentAndEscapes() {
         assertLexes("\"hello\"", Token.Type.L_STRING to "hello")
-        // Escapes are passed through verbatim; the lexer does not interpret them.
+        // Escapes are passed through verbatim; the parser decodes them.
         assertLexes("\"hi\\nthere\"", Token.Type.L_STRING to "hi\\nthere")
         assertLexes("\"\"", Token.Type.L_STRING to "")
+    }
+
+    @Test
+    fun escapedQuoteDoesNotEndTheString() {
+        // `\"` used to terminate the literal, leaving `"` to start another.
+        assertLexes("\"say \\\"hi\\\"\"", Token.Type.L_STRING to "say \\\"hi\\\"")
+        assertLexes("\"back\\\\\"", Token.Type.L_STRING to "back\\\\")
+        assertThrows<DiagnosticsException> { lex("\"open \\\"") }
     }
 
     @Test
@@ -106,32 +148,25 @@ class LexerSuiteTest {
             "if" to Token.Type.K_IF,
             "else" to Token.Type.K_ELSE,
             "while" to Token.Type.K_WHILE,
-            "do" to Token.Type.K_DO,
             "return" to Token.Type.K_RETURN,
             "mut" to Token.Type.K_MODIFIER_MUTABLE,
             "pub" to Token.Type.K_MODIFIER_PUBLIC,
-            "require" to Token.Type.K_MODIFIER_REQUIRE,
-            "class" to Token.Type.K_CLASS,
             "for" to Token.Type.K_FOR,
-            "module" to Token.Type.K_MODULE,
-            "use" to Token.Type.K_USE,
-            "enum" to Token.Type.K_ENUM,
             "as" to Token.Type.K_AS,
-            "is" to Token.Type.K_IS,
             "break" to Token.Type.K_BREAK,
             "continue" to Token.Type.K_CONTINUE,
             "with" to Token.Type.K_WITH,
-            "fx" to Token.Type.K_FX,
-            "trait" to Token.Type.K_TRAIT,
             "try" to Token.Type.K_TRY,
             "throw" to Token.Type.K_THROW,
             "on" to Token.Type.K_ON,
-            "variant" to Token.Type.K_VARIANT,
-            "alias" to Token.Type.K_ALIAS,
             "this" to Token.Type.K_THIS,
         )
         for ((word, type) in source) {
             assertLexes(word, type to word)
+        }
+        // The words the clean dialect removed are names.
+        for (word in listOf("do", "require", "class", "struct", "module", "use", "enum", "fx", "trait", "variant", "alias", "finally", "is")) {
+            assertLexes(word, Token.Type.IDENTIFIER to word)
         }
     }
 
@@ -144,9 +179,27 @@ class LexerSuiteTest {
     }
 
     @Test
+    fun upperSnakeCaseIdentifiersLex() {
+        // The spec's constant shape is the one ordinary identifier that may
+        // carry underscores. Any `_` used to panic the lexer.
+        assertLexes("MAX_SIZE", Token.Type.IDENTIFIER to "MAX_SIZE")
+        assertLexes("A_1", Token.Type.IDENTIFIER to "A_1")
+        assertLexes("FOO_", Token.Type.IDENTIFIER to "FOO_")
+        assertLexes(
+            "MODE_DRIVE = 7",
+            Token.Type.IDENTIFIER to "MODE_DRIVE",
+            Token.Type.S_EQUAL to "=",
+            Token.Type.L_INTEGER to "7",
+        )
+    }
+
+    @Test
     fun underscoresInsideIdentifiersThrow() {
-        val e = assertThrows<DiagnosticsException> { lex("my_var") }
-        assertTrue(e.message!!.contains("Underscores are not allowed"), e.message)
+        // camelCase / PascalCase names never contain underscores.
+        for (bad in listOf("my_var", "Foo_Bar", "MAX_size", "a_B")) {
+            val e = assertThrows<DiagnosticsException>(bad) { lex(bad) }
+            assertTrue(e.message!!.contains("Underscores are not allowed"), e.message)
+        }
     }
 
     @Test
@@ -322,9 +375,9 @@ class LexerSuiteTest {
 
     @Test
     fun tracksLineAndColumn() {
-        val tokens = lex("module \"t\"\n\nvalue: Int32 = 5")
+        val tokens = lex("k: Str = \"t\"\n\nvalue: Int32 = 5")
         assertEquals(1 to 1, tokens[0].canonicalLocation.lineNumber to tokens[0].canonicalLocation.column)
-        assertEquals(1 to 8, tokens[1].canonicalLocation.lineNumber to tokens[1].canonicalLocation.column)
+        assertEquals(1 to 10, tokens[4].canonicalLocation.lineNumber to tokens[4].canonicalLocation.column)
         val value = tokens.first { it.content == "value" }
         assertEquals(3 to 1, value.canonicalLocation.lineNumber to value.canonicalLocation.column)
         val five = tokens.first { it.type == Token.Type.L_INTEGER }

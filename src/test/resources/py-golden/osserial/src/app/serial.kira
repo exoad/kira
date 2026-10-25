@@ -1,0 +1,70 @@
+kira.os as os
+kira.sync as sync
+
+// kira:os's Serial on py (K3, K7): open imports pyserial, so a program that never opens a port needs none and one that
+// does is told which module is missing; then reads, writes and a signal's end of a read on the driver's stand-in.
+
+text: (buf: List<UInt8>, n: Int64) Str {
+    n <= 0 ? "" : Str.of(buf.slice(0, n as Size))
+}
+
+// The driver's stand-in port, whose descriptor is a socket's: the bytes waiting, then a read without limit that the
+// driver's SIGINT 300 ms in ends (D78), as EINTR ends C++'s poll.
+pub readOnSignal: () Str {
+    flag: Atomic<Bool> = Atomic<Bool> { value = false }
+    installed: Bool = onSignal(SIGNAL_INT, flag)
+    port: Serial = Serial {}
+    opened: Bool = port.open("stand-in", 115200)
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
+    n: Int64 = port.read(buf.from(0), 2000)
+    first: Str = text(buf, n)
+    m: Int64 = port.read(buf.from(0), -1)
+    "installed ${installed} open ${opened}: read ${n} '${first}', then ${m}, ${lastErrorKind()}, the flag ${flag.load()}"
+}
+
+// Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
+pub readSome: (port: Serial, size: Size, ms: Int64) Str {
+    buf: Mutable<List<UInt8>> = @listOf()
+    for i: Size in 0..size {
+        buf.add(0)
+    }
+    n: Int64 = port.read(buf.from(0), ms)
+    "${n} '${text(buf, n)}'"
+}
+
+pub openPort: (path: Str, baud: Int32) Serial {
+    port: Serial = Serial {}
+    port.open(path, baud)
+    port
+}
+
+pub reopen: (port: Serial, path: Str) Bool {
+    port.open(path, 115200)
+}
+
+pub writeText: (port: Serial, data: Str) Int64 {
+    port.write(data.bytes())
+}
+
+pub shut: (port: Serial) Void {
+    port.close()
+}
+
+pub state: (port: Serial) Str {
+    "open ${port.isOpen()} handle ${port.handle()}"
+}
+
+pub why: () Str {
+    "${lastError()} (${lastErrorKind()})"
+}
+
+pub main: () Int32 {
+    port: Serial = Serial {}
+    println("open ${port.open("kira-no-such-port", 115200)}")
+    println(lastError())
+    println(lastErrorKind())
+    buf: Mutable<List<UInt8>> = @listOf(0, 0)
+    println("read ${port.read(buf.from(0), 10)} write ${port.write(buf)} open ${port.isOpen()} handle ${port.handle()}")
+    println(lastError())
+    0
+}

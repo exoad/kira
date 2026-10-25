@@ -1,0 +1,32 @@
+4
+13
+DRIVE_SETPOINT
+0x7002
+BIT0|HEARTBEAT_TIMEOUT|BUMPER|ESTOP
+
+36
+-1
+ESTOP 0x01A2 UNKNOWN_TYPE NACK9
+ARMED STATE7
+7206dc056400
+ throttle_us=1650 steer_us=1500 duration_ms=100
+DRIVE_SETPOINT: unknown field(s) ['aa', 'zz']
+DRIVE_SETPOINT: missing field(s) ['steer_us']
+DRIVE_SETPOINT: steer_us 70000 is out of range for u16
+unknown message 'NOPE'
+00286beefbffffffd4feff0700
+ t_us=4000000000 ticks=-5 tps=-300 hall=-1 hb_seq=7
+TELEMETRY: 12 payload bytes, the message is 13
+0103deadbeef
+ proto_major=1 board=3 serial=deadbeef
+serial: 2 bytes, the field is 4
+serial: not hex
+ 5 11.5
+3
+Spec against dbwcodec.Spec: 11 messages, 11 ids, every table and enum in the same order
+pack against dbwcodec.pack: 6000 field maps, 2232 refused (an unknown or missing field, bad hex, a bytes field's length, a value out of its type), every payload and every other error the same
+unpack against dbwcodec.unpack: 6000 payloads, every field in field order and every error the same
+bitNames and bitsMask against bit_names and bits_mask: 3000 tables, the spec's own and a name to a bit given twice among them, the same
+typeName, reasonName, nackName and stateName against type_name, reason_name, nack_name and state_name: 307 codes, the same
+rttSamples against rtt_samples: 2000 runs, 4506 round trips, each heartbeat matched once and the caller's Map of them untouched
+python refuses throttle_us 70000 in struct's words (error), kira says DRIVE_SETPOINT: throttle_us 70000 is out of range for u16

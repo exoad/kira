@@ -1,0 +1,25 @@
+168
+640x480
+1280x720
+none
+none
+168
+none
+640x480
+169
+none
+18
+none
+8
+2
+168
+168
+1280x720
+166
+1
+1
+0
+0
+0
+jpegSize and jpegEnd against jpeg_size and jpeg_end: 3000 frames, 945 sized and 2535 ended, every answer the same
+splitJpegs against split_jpegs: 400 streams, 771 JPEGs and every rest the same

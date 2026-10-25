@@ -1,8 +1,0 @@
-module "app:main"
-
-use "app:greetings"
-
-fx main: () Void {
-    message: Str = greeting()
-    trace(message)
-}

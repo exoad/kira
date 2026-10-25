@@ -1,0 +1,15 @@
+each command line prints and exits as argparse's parser: 24 of 24
+--help: 0 usage: decode [-h] [--samples SAMPLES] [--steps-per-epoch STEPS_PER_EPOCH] ... 21 lines; 50% kept: True True
+[] -> 2 '' usage: decode [-h] [-- ... decode: error: the following arguments are required: onnx
+['m.onnx', '--samples', '9223372036854775808'] -> 2 '' usage: decode [-h] [-- ... decode: error: argument --samples: invalid int value: '9223372036854775808'
+['m.onnx', '--bogus'] -> 2 '' usage: decode [-h] [-- ... decode: error: unrecognized arguments: --bogus
+parse from Python: ['m.onnx', 200, 3.0, 1e-05, None, False] ['str', 'int', 'float', 'float', 'NoneType', 'bool']
+['--samples', 'x'] raises SystemExit 2 having written False True
+['--help'] raises SystemExit 0 having written True False
+a description is plain too: 0 ['%(prog)s at 50%']
+kira: Parsed: '--out' is a text argument, not a whole one
+kira: Parsed: no argument '--nope' was declared
+kira: Parsed: 'onnx' is a text argument, not a flag one
+kira: ArgSpec: argument --samples: conflicting option string: --samples
+kira: ArgSpec: 'out' is no flag (it needs a leading -)
+kira: ArgSpec: '--onnx' is no positional name (it has a leading -)

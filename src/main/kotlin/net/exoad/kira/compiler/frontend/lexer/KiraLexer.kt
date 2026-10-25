@@ -14,7 +14,11 @@ import kotlin.properties.Delegates
  *
  * It passes this list of symbols onto the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  */
-class KiraLexer(private val context: SourceContext) {
+class KiraLexer(
+    private val context: SourceContext,
+    // The keyword table: the clean dialect's, or Keywords.legacy for the converter's old reader.
+    private val keywords: Map<String, Token.Type> = Keywords.reserved,
+) {
     private val buffer = CharacterBuffer(context.content)
 
     // it is ill-advised to modify any of these on their owns
@@ -51,40 +55,69 @@ class KiraLexer(private val context: SourceContext) {
         return buffer.peek(k)
     }
 
-    private fun lexHexNumberLiteral(): Token {
-        val start = pointer
-        val startLoc = SourcePosition(lineNumber, column)
-        while (peek().isHexChar()) {
+    /**
+     * The digits of a `0x` / `0b` literal, whose prefix [start] already
+     * consumed. The token carries the value in decimal so the parser reads
+     * every integer literal the same way. The full 64-bit range is accepted:
+     * `0xFFFFFFFFFFFFFFFF` is the bit pattern of -1, as in C.
+     */
+    private fun lexRadixIntegerLiteral(radix: Int, radixName: String, start: Int, startLoc: SourcePosition): Token {
+        val digitsStart = pointer
+        while (peek().isRadixDigit(radix)) {
             advancePointer()
         }
-        var content by Delegates.notNull<String>()
-        try {
-            content = context.content.substring(start, pointer).toInt(16).toString(10) // check
-        } catch (_: Exception) {
+        val text = context.content.substring(start, pointer)
+        val digits = context.content.substring(digitsStart, pointer)
+        if (digits.isEmpty()) {
             Diagnostics.panic(
-                "KiraLexer::lexHexNumberLiteral",
-                "'$content' is not a valid hex literal.",
+                "KiraLexer::lexRadixIntegerLiteral",
+                "'$text' needs at least one $radixName digit after the prefix.",
                 location = startLoc,
-                selectorLength = content.length,
+                selectorLength = text.length,
                 context = context
             )
         }
-        return Token.Raw(Token.Type.L_INTEGER, content, start, startLoc)
+        val value = try {
+            digits.toULong(radix).toLong()
+        } catch (_: NumberFormatException) {
+            Diagnostics.panic(
+                "KiraLexer::lexRadixIntegerLiteral",
+                "'$text' does not fit in 64 bits.",
+                location = startLoc,
+                selectorLength = text.length,
+                context = context
+            )
+        }
+        return Token.Raw(Token.Type.L_INTEGER, value.toString(), start, startLoc)
+    }
+
+    private fun Char.isRadixDigit(radix: Int): Boolean {
+        return when (radix) {
+            16 -> isHexChar()
+            2 -> this == '0' || this == '1'
+            else -> isDigit()
+        }
     }
 
     /**
      * Maximal Munch approach to reading floating point and integer types by preferring
-     * reading floating point first
+     * reading floating point first. Forms: `42`, `0xFF` / `0XFF`, `0b101` / `0B101`,
+     * `1.5`, and floats with an exponent (`1e-3`, `2.5E6`). No digit separators,
+     * no suffixes -- the spec defines none.
      */
     fun lexNumberLiteral(): Token {
-        if (peek() == '0' && peek(1) == 'x') // hex parsing!
-        {
-            advancePointer()
-            advancePointer()
-            return lexHexNumberLiteral()
-        }
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
+        if (peek() == '0' && (peek(1) == 'x' || peek(1) == 'X')) {
+            advancePointer()
+            advancePointer()
+            return lexRadixIntegerLiteral(16, "hex", start, startLoc)
+        }
+        if (peek() == '0' && (peek(1) == 'b' || peek(1) == 'B')) {
+            advancePointer()
+            advancePointer()
+            return lexRadixIntegerLiteral(2, "binary", start, startLoc)
+        }
         var isFloat = false
         while (peek().isDigit()) {
             advancePointer()
@@ -94,6 +127,18 @@ class KiraLexer(private val context: SourceContext) {
             if (afterDot.isDigit()) {
                 isFloat = true
                 advancePointer()
+                while (peek().isDigit()) {
+                    advancePointer()
+                }
+            }
+        }
+        // Exponent: e/E, optional sign, at least one digit. Anything else
+        // after the `e` is not part of the number.
+        if (peek() == 'e' || peek() == 'E') {
+            val signLength = if (peek(1) == '+' || peek(1) == '-') 1 else 0
+            if (peek(1 + signLength).isDigit()) {
+                isFloat = true
+                repeat(1 + signLength) { advancePointer() }
                 while (peek().isDigit()) {
                     advancePointer()
                 }
@@ -110,9 +155,47 @@ class KiraLexer(private val context: SourceContext) {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
         advancePointer() // skip opening "
+        return lexStringBody(start, startLoc, first = true)
+    }
+
+    /**
+     * The brace depth inside each open `${ }` hole, innermost last. Empty
+     * outside of any interpolated string. A `{` inside a hole deepens it; the
+     * `}` that brings the depth back to 0 closes the hole and resumes the
+     * string's text in [lexStringBody].
+     */
+    private val holeDepths: ArrayDeque<Int> = ArrayDeque()
+
+    /**
+     * The text of a string from [pointer] (just past `"` or `}`) up to the
+     * closing `"` or the next `${`. A string with no hole is one L_STRING as
+     * before; with holes it lexes as HEAD expr (PART expr)* TAIL, the holes'
+     * tokens coming from ordinary [nextToken] calls in between.
+     *
+     * Escape sequences are passed "as is" to the parser, which decodes them.
+     * A backslash owns the character after it, so `\"` does not terminate the
+     * string and `\$` never opens a hole.
+     */
+    private fun lexStringBody(start: Int, startLoc: SourcePosition, first: Boolean): Token {
         val contentStart = pointer
         while (peek() != Symbols.NULL.rep && peek() != Symbols.DOUBLE_QUOTE.rep && peek() != '\n') {
-            // escaped sequences are passed "as is" to the parser
+            if (peek() == '\\' && peek(1) != Symbols.NULL.rep && peek(1) != '\n') {
+                advancePointer()
+                advancePointer()
+                continue
+            }
+            if (peek() == '$' && peek(1) == Symbols.OPEN_BRACE.rep) {
+                val content = context.content.substring(contentStart, pointer)
+                advancePointer() // $
+                advancePointer() // {
+                holeDepths.addLast(0)
+                return Token.Raw(
+                    if (first) Token.Type.L_STRING_HEAD else Token.Type.L_STRING_PART,
+                    content,
+                    start,
+                    startLoc
+                )
+            }
             advancePointer()
         }
         if (peek() != Symbols.DOUBLE_QUOTE.rep) {
@@ -129,42 +212,91 @@ class KiraLexer(private val context: SourceContext) {
                 context = context
             )
         }
-        val content = String(context.content.toCharArray(), contentStart, pointer - contentStart)
+        val content = context.content.substring(contentStart, pointer)
         advancePointer()
-        return Token.Raw(Token.Type.L_STRING, content, start, startLoc)
+        return Token.Raw(
+            if (first) Token.Type.L_STRING else Token.Type.L_STRING_TAIL,
+            content,
+            start,
+            startLoc
+        )
     }
+
+    /**
+     * `'c'` (design D3). The token carries the raw text between the quotes,
+     * one character or one escape (`\n \t \r \\ \' \0`); the parser decodes
+     * it and checks the byte range.
+     */
+    fun lexCharLiteral(): Token {
+        val start = pointer
+        val startLoc = SourcePosition(lineNumber, column)
+        advancePointer() // opening '
+        val contentStart = pointer
+        if (peek() == '\\' && peek(1) != Symbols.NULL.rep && peek(1) != '\n') {
+            advancePointer()
+            advancePointer()
+        } else if (peek() != Symbols.NULL.rep && peek() != '\n' && peek() != '\'') {
+            advancePointer()
+        }
+        if (pointer == contentStart || peek() != '\'') {
+            val shown = context.content.substring(start, pointer)
+            Diagnostics.panic(
+                "KiraLexer::lexCharLiteral",
+                "A Char literal holds exactly one character between single quotes, like 'a' or '\\n'; '$shown' does not.",
+                location = startLoc,
+                selectorLength = maxOf(1, pointer - start),
+                context = context
+            )
+        }
+        val content = context.content.substring(contentStart, pointer)
+        advancePointer() // closing '
+        return Token.Raw(Token.Type.L_CHAR, content, start, startLoc)
+    }
+
+    /**
+     * The spec's constant shape, `^[A-Z][A-Z0-9_]*$`: the only ordinary
+     * identifiers that may contain an underscore. Everything else is
+     * camelCase / PascalCase, and intrinsics (`@snake_case`) are lexed
+     * separately.
+     */
+    private val upperSnakeCase = Regex("[A-Z][A-Z0-9_]*")
 
     fun lexIdentifier(): Token {
         val start = pointer
         val startLoc = SourcePosition(lineNumber, column)
-        while (peek() != Symbols.NULL.rep) {
-            val c = peek()
-            if (c.isLetterOrDigit()) {
-                advancePointer()
-                continue
-            }
-            if (c == Symbols.UNDERSCORE.rep) {
-                if (isInIntrinsic) {
-                    advancePointer()
-                    continue
-                } else {
-                    Diagnostics.panic(
-                        "KiraLexer::lexIdentifier",
-                        "Underscores are not allowed in identifiers. Only intrinsics may contain underscores; use camelCase or PascalCase for identifiers.",
-                        location = startLoc,
-                        selectorLength = pointer - start,
-                        context = context
-                    )
-                }
-            }
-            break
+        while (peek() != Symbols.NULL.rep && (peek().isLetterOrDigit() || peek() == Symbols.UNDERSCORE.rep)) {
+            advancePointer()
         }
-        return Token.Raw(Token.Type.IDENTIFIER, context.content.substring(start, pointer), start, startLoc)
+        val text = context.content.substring(start, pointer)
+        if (text.contains(Symbols.UNDERSCORE.rep) && !upperSnakeCase.matches(text) && !onImportLine(start)) {
+            Diagnostics.panic(
+                "KiraLexer::lexIdentifier",
+                "Underscores are not allowed in '$text'. Only UPPER_SNAKE_CASE constants (MAX_SIZE) and " +
+                    "@intrinsics may contain underscores; use camelCase or PascalCase for other identifiers.",
+                location = startLoc,
+                selectorLength = text.length,
+                context = context
+            )
+        }
+        return Token.Raw(Token.Type.IDENTIFIER, text, start, startLoc)
+    }
+
+    /** `a.b_c.d as name`: a module path names files, and a file's name may be snake_case. */
+    private val importLine = Regex("""\s*[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+(\s+as\s+)[A-Za-z][A-Za-z0-9_]*\s*;?\s*""")
+
+    /** How many `{` are open outside string holes: a top-level import line is at 0. */
+    private var braceDepth = 0
+
+    /** Whether the identifier at [at] is in the path of a top-level import, before its `as`. */
+    private fun onImportLine(at: Int): Boolean {
+        if (keywords !== Keywords.reserved || braceDepth != 0) return false
+        val from = context.content.lastIndexOf('\n', at - 1) + 1
+        val to = context.content.indexOf('\n', at).let { if (it < 0) context.content.length else it }
+        val m = importLine.matchEntire(context.content.substring(from, to).trimEnd('\r')) ?: return false
+        return at - from < m.groups[2]!!.range.first
     }
 
     private val pendingClosingAngleBrackets: ArrayDeque<Token> = ArrayDeque()
-
-    private var isInIntrinsic = false
 
     fun nextToken(): Token {
         if (pendingClosingAngleBrackets.isNotEmpty()) {
@@ -173,6 +305,7 @@ class KiraLexer(private val context: SourceContext) {
         while (peek() != Symbols.NULL.rep) {
             skipWhitespace()
             if (peek() == Symbols.NULL.rep) {
+                expectNoOpenHole()
                 return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
             }
             val char = peek()
@@ -194,9 +327,9 @@ class KiraLexer(private val context: SourceContext) {
             }
 
             val startLoc = SourcePosition(lineNumber, column)
-            if (char.isLetter() || (isInIntrinsic && char == Symbols.UNDERSCORE.rep)) {  // identifiers and keywords usually have the same stuffs
+            if (char.isLetter()) {  // identifiers and keywords usually have the same stuffs
                 val identifier = lexIdentifier()
-                val keywordTokenType = Keywords.reserved[identifier.content]
+                val keywordTokenType = keywords[identifier.content]
                 if (keywordTokenType != null) {
                     return Token.Raw(
                         keywordTokenType,
@@ -236,6 +369,9 @@ class KiraLexer(private val context: SourceContext) {
             }
             if (char == Symbols.DOUBLE_QUOTE.rep) {
                 return lexStringLiteral()
+            }
+            if (char == '\'') {
+                return lexCharLiteral()
             }
             advancePointer()
             if (char == Symbols.AT.rep) {
@@ -452,12 +588,20 @@ class KiraLexer(private val context: SourceContext) {
                         else -> Token.Symbol(Token.Type.OP_MOD, Symbols.PERIOD, start, startLoc)
                     }
 
-                Symbols.OPEN_BRACE.rep -> Token.Symbol(
-                    Token.Type.S_OPEN_BRACE,
-                    Symbols.OPEN_BRACE,
-                    start,
-                    startLoc
-                )
+                Symbols.OPEN_BRACE.rep -> {
+                    // Inside a `${ }` hole a `{` deepens the hole (a block or a
+                    // `T { }` construction), so its `}` is not the hole's end.
+                    if (holeDepths.isNotEmpty()) {
+                        holeDepths[holeDepths.lastIndex] = holeDepths.last() + 1
+                    }
+                    braceDepth++
+                    Token.Symbol(
+                        Token.Type.S_OPEN_BRACE,
+                        Symbols.OPEN_BRACE,
+                        start,
+                        startLoc
+                    )
+                }
 
                 Symbols.PERIOD.rep ->
                     when (localPeek(1)) {
@@ -576,12 +720,24 @@ class KiraLexer(private val context: SourceContext) {
                         )
                     }
 
-                Symbols.CLOSE_BRACE.rep -> Token.Symbol(
-                    Token.Type.S_CLOSE_BRACE,
-                    Symbols.CLOSE_BRACE,
-                    start,
-                    startLoc
-                )
+                Symbols.CLOSE_BRACE.rep -> {
+                    if (holeDepths.isNotEmpty()) {
+                        val depth = holeDepths.last()
+                        if (depth == 0) {
+                            // The matching `}` of `${`: back to the string's text.
+                            holeDepths.removeLast()
+                            return lexStringBody(pointer, SourcePosition(lineNumber, column), first = false)
+                        }
+                        holeDepths[holeDepths.lastIndex] = depth - 1
+                    }
+                    braceDepth--
+                    Token.Symbol(
+                        Token.Type.S_CLOSE_BRACE,
+                        Symbols.CLOSE_BRACE,
+                        start,
+                        startLoc
+                    )
+                }
 
                 Symbols.OPEN_BRACKET.rep -> Token.Symbol(
                     Token.Type.S_OPEN_BRACKET,
@@ -656,7 +812,21 @@ class KiraLexer(private val context: SourceContext) {
                 )
             }
         }
+        expectNoOpenHole()
         return Token.Symbol(Token.Type.S_EOF, Symbols.NULL, pointer, SourcePosition(lineNumber, column))
+    }
+
+    /** The input ended inside a `${ }` hole: the string was never closed. */
+    private fun expectNoOpenHole() {
+        if (holeDepths.isEmpty()) {
+            return
+        }
+        Diagnostics.panic(
+            "KiraLexer::lexStringLiteral",
+            "Unterminated '\${' in a string literal: insert '}' to close the hole and '\"' to close the string.",
+            location = SourcePosition(lineNumber, column),
+            context = context
+        )
     }
 
     fun tokenize(): List<Token> {

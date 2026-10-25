@@ -1,0 +1,15 @@
+
+sender - a class with stored Fx fields
+
+  ok    nothing sent yet: -1
+  ok    a line goes out
+  ok    through the write lambda
+  ok    with the default wait, WRITE_WAIT_MS
+  ok    and counts as sent when its write returns
+  ok    a given wait is passed on
+  ok    worstGapMs is the longest gap between accepted lines
+  ok    a failed write's result comes back
+  ok    and does not count as sent
+  ok    every field is a constructor parameter
+
+10 checks, 0 failed

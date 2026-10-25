@@ -1,0 +1,59 @@
+kira.http as http
+kira.test as test
+
+// kira:http's client (K7): any status a reply, none when none came, httpError() str(e) until a call that works clears
+// it (D86); the driver's server gives each case its bytes.
+
+pub get: (url: Str, ms: Int64) Maybe<HttpReply> {
+    httpGet(url, ms)
+}
+
+pub post: (url: Str, body: View<UInt8>, contentType: Str, ms: Int64) Maybe<HttpReply> {
+    httpPost(url, body, contentType, ms)
+}
+
+pub why: () Str {
+    httpError()
+}
+
+pub text: (body: View<UInt8>) Maybe<Str> {
+    jsonText(body)
+}
+
+pub path: (target: Str) Maybe<Str> {
+    urlPath(target)
+}
+
+pub query: (target: Str) Maybe<Str> {
+    urlQuery(target)
+}
+
+pub first: (q: Str, key: Str) Maybe<Str> {
+    queryFirst(q, key)
+}
+
+pub main: () Int32 {
+    t: Suite = Suite { title = "httpclient - kira:http's client on py" }
+    t.check(httpGet("nope", 1000).isNone() && httpError() == "unknown url type: 'nope'", "a URL without a scheme is none, httpError str(e)")
+    t.check(httpGet("file:///nope", 1000).isNone() && httpError() == "<urlopen error unknown url type: file>", "only http and https are opened")
+    t.check(httpPost("ftp://x/", "a".bytes(), "text/plain", 1000).isNone() && httpError() == "<urlopen error unknown url type: ftp>", "a POST's URL too")
+    t.check(httpGet("http://[::1", 1000).isNone() && httpError() == "Invalid IPv6 URL", "a URL urlparse refuses is none")
+    t.check(httpGet("http://127.0.0.1:abc/", 1000).isNone() && httpError() == "nonnumeric port: 'abc'", "and one http.client refuses")
+    t.check(httpGet("http://127.0.0.1:99999999999999999999/", 300).isNone() && httpError() != "", "a port past a C long is none")
+    t.check(httpGet("http://[::1]:99999999999999999999/", 300).isNone() && httpError() != "", "an IPv6 host's too")
+    utf8: List<UInt8> = "{\"a\": \"é\"}".bytes()
+    t.checkStr(jsonText(utf8).value, "{\"a\": \"é\"}", "jsonText of UTF-8")
+    bom: List<UInt8> = @listOf(0xef, 0xbb, 0xbf, 0x5b, 0x5d)
+    t.checkStr(jsonText(bom).value, "[]", "UTF-8 after a BOM, which it drops")
+    wide: List<UInt8> = @listOf(0x5b, 0x00, 0x5d, 0x00)
+    t.checkStr(jsonText(wide).value, "[]", "UTF-16, little-endian by its NULs")
+    bad: List<UInt8> = @listOf(0x22, 0xff, 0x22)
+    t.check(jsonText(bad).isNone() && httpError().startsWith("'utf-8' codec can't decode byte 0xff in position 1"), "none for bytes it cannot decode")
+    t.check(jsonText(bom).isSome() && httpError() == "", "a call that works clears the reason")
+    t.checkStr(urlPath("/power?s=60").value + "|" + urlQuery("/power?s=60").value, "/power|s=60", "urlPath and urlQuery split a target")
+    t.check(urlPath("http://[x/").isNone() && httpError() == "Invalid IPv6 URL" && urlQuery("/").value == "", "a target urlparse refuses is none")
+    t.check(urlQuery("http://[x/").isNone() && urlPath("/a").value == "/a" && httpError() == "", "a split that works clears the reason")
+    t.checkStr(queryFirst("s=60&s=90&t=", "s").value, "60", "queryFirst is parse_qs's first value")
+    t.check(queryFirst("s=60&t=", "t").isNone() && queryFirst("s=60", "u").isNone(), "none for a blank value, which parse_qs drops, and a missing one")
+    t.finish()
+}

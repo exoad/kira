@@ -1,0 +1,3 @@
+pub READY: Int32 = 0
+pub RUNNING: Int32 = 1
+pub DONE: Int32 = 2

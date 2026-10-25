@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.analysis.semantic
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.MemberResolver
 import net.exoad.kira.compiler.frontend.IntrinsicTreeWalker
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -14,11 +15,14 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.NamedArguments
+import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourceLocation
 import net.exoad.kira.source.SourcePosition
 import net.exoad.kira.utils.EnglishUtils
+import java.util.IdentityHashMap
 
 /**
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
@@ -72,7 +76,11 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     fun validateAST(): SemanticAnalyzerResults {
+        net.exoad.kira.compiler.DialectLink.link(compilationUnit)
         try {
+            // Callable signatures first, so a named-argument call can bind
+            // against a function declared later or in another source.
+            collectCallableSignatures()
             // Pass 1: declare every module and its top-level types/functions so
             // later `use` imports can see them regardless of source file order.
             for (source in compilationUnit.allSources()) {
@@ -102,7 +110,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     // UseStatement is itself a Statement; root lists hold them directly.
                     val use = node as? UseStatement ?: return@forEach
                     val foreign = compilationUnit.symbolTable.findScope(
-                        SemanticScope.Module(use.uri.value)
+                        SemanticScope.Module(use.moduleUri)
                     ) ?: return@forEach
                     foreign.symbols.values
                         .filter {
@@ -255,10 +263,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
         // TODO("Not yet implemented")
     }
@@ -269,8 +273,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitUseStatement(useStatement: UseStatement) {
         // Import public type symbols from the named module into the current module scope.
-        // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS / enums that were marked relativelyVisible.
-        val uri = useStatement.uri.value
+        // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS that were marked relativelyVisible.
+        val uri = useStatement.moduleUri
         val foreignModule = compilationUnit.symbolTable.findScope(SemanticScope.Module(uri))
         if (foreignModule == null) {
             // Module may not have been analyzed yet (source order). Soft-skip:
@@ -317,6 +321,155 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         functionCallExpr.name.accept(this)
         functionCallExpr.positionalParameters.forEach { it.value.accept(this) }
         functionCallExpr.namedParameters.forEach { it.value.accept(this) }
+        checkNamedArguments(functionCallExpr)
+    }
+
+    /**
+     * The callables the typer makes, which no declaration names (D39, D55, D64), by `Type.name`,
+     * and their parameters' names.
+     */
+    private val compilerMadeParameters = mapOf(
+        "Result.success" to listOf("value"),
+        "Result.error" to listOf("value"),
+        "Str.of" to listOf("bytes"),
+        "Json.parse" to listOf("text"),
+        "Json.of" to listOf("value"),
+        "Json.error" to emptyList(),
+        "Json.obj" to emptyList(),
+        "Json.arr" to emptyList(),
+        "Json.null" to emptyList(),
+    )
+
+    /** Top-level function name -> parameter names, across every source. */
+    private val functionParameterNames = mutableMapOf<String, List<String>>()
+
+    /**
+     * Method simple name -> the distinct parameter-name lists declared under
+     * it (by classes and traits). One entry means the name binds the same way
+     * everywhere, so a call can use it without knowing the receiver's type.
+     */
+    private val methodParameterNames = mutableMapOf<String, MutableSet<List<String>>>()
+
+    /** `callee.parameter` for each parameter with a default, which a call may leave out. */
+    private val defaultedParameters = HashSet<String>()
+
+    /**
+     * Named arguments (`sub(b = 3, a = 10)`) bind to the callee's parameter
+     * names. Expression types are not inferred here, so a method callee is
+     * resolved by its simple name when every declaration of that name agrees
+     * on parameters; anything else is a diagnostic rather than a silent
+     * reorder. Stdlib `@_magic` classes are not candidates.
+     */
+    private fun checkNamedArguments(call: FunctionCallExpr) {
+        if (call.namedParameters.isEmpty()) {
+            return
+        }
+        val location = context.astOrigins[call] ?: SourcePosition.UNKNOWN
+        val calleeName: String
+        val parameterNames: List<String>?
+        when (val callee = call.name) {
+            is Identifier -> {
+                calleeName = callee.value
+                parameterNames = functionParameterNames[calleeName]
+            }
+            is MemberAccessExpr -> {
+                val simple = (callee.member as? Identifier)?.value ?: "(member)"
+                val made = (callee.origin as? Identifier)?.let { compilerMadeParameters["${it.value}.$simple"] }
+                if (made != null) {
+                    // Result.success(value = v), Str.of(bytes = b): called on the type, bound by the typer.
+                    val name = "${(callee.origin as Identifier).value}.$simple"
+                    val binding = NamedArguments.bind(call, name, made)
+                    if (binding is NamedArguments.Binding.Unbound) {
+                        pump(
+                            binding.message,
+                            location = location,
+                            selectorLength = simple.length,
+                            help = "Named arguments bind to the callee's parameter names; positional arguments come first."
+                        )
+                    }
+                    return
+                }
+                calleeName = simple
+                val candidates = methodParameterNames[calleeName].orEmpty()
+                if (candidates.size > 1) {
+                    pump(
+                        "Named arguments cannot be used with '$calleeName' here: it is declared by more than one " +
+                            "type with different parameter names, and the receiver's type is not known.",
+                        location = location,
+                        selectorLength = calleeName.length,
+                        help = "Pass the arguments positionally."
+                    )
+                    return
+                }
+                parameterNames = candidates.firstOrNull()
+            }
+            else -> {
+                calleeName = "(expression)"
+                parameterNames = null
+            }
+        }
+        val binding = NamedArguments.bind(call, calleeName, parameterNames) { "$calleeName.$it" in defaultedParameters }
+        if (binding is NamedArguments.Binding.Unbound) {
+            pump(
+                binding.message,
+                location = location,
+                selectorLength = calleeName.length,
+                help = "Named arguments bind to the callee's parameter names; positional arguments come first."
+            )
+        }
+    }
+
+    private fun noteDefaults(name: String, fn: FunctionDecl) {
+        fn.def.parameters.filter { it.defaultValue != null }.forEach { defaultedParameters += "$name.${it.name.value}" }
+    }
+
+    private fun collectCallableSignatures() {
+        for (source in compilationUnit.allSources()) {
+            val marks = runCatching { source.astIntrinsicMarked }.getOrNull()
+            fun isMagic(decl: ASTNode): Boolean = marks?.get(decl)?.any { it.name == "_magic" } == true
+            source.ast.statements.forEach { stmt ->
+                val decl: Any? = when (stmt) {
+                    is Decl -> stmt
+                    is Statement -> stmt.expr
+                    else -> null
+                }
+                when (decl) {
+                    is FunctionDecl -> {
+                        val name = (decl.name as? Identifier)?.value ?: return@forEach
+                        functionParameterNames.putIfAbsent(name, decl.def.parameters.map { it.name.value })
+                        noteDefaults(name, decl)
+                    }
+                    is ClassDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
+                        }
+                    }
+                    is TraitDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
+                        }
+                    }
+                    // A struct's methods bind named arguments exactly like a class's.
+                    is StructDecl -> {
+                        if (isMagic(decl)) return@forEach
+                        decl.members.filterIsInstance<FunctionDecl>().forEach { method ->
+                            val name = (method.name as? Identifier)?.value ?: return@forEach
+                            methodParameterNames.getOrPut(name) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
+                            noteDefaults(name, method)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
@@ -337,7 +490,20 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 //            selectorLength = intrinsicExpr.intrinsicKey.rep.length,
 //        )
         // TODO: implement proper validation logic by also double checking valid target ast nodes instead
-        intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        // A failed validate (an arity error such as `@_static_assert()`) is a
+        // diagnostic at the intrinsic. Measured before: the exception escaped
+        // the walk to the catch-all, which recorded it at an unknown position.
+        try {
+            intrinsicExpr.intrinsicKey.validate(intrinsicExpr, compilationUnit, context)
+        } catch (e: DiagnosticsException) {
+            diagnosticsPump.add(e)
+        } catch (e: Exception) {
+            pump(
+                e.message ?: "The intrinsic '@${intrinsicExpr.intrinsicKey.name}' rejected this use.",
+                location = context.astOrigins[intrinsicExpr] ?: intrinsicExpr.sourceLocation.toPosition(),
+                selectorLength = intrinsicExpr.intrinsicKey.name.length + 1,
+            )
+        }
     }
 
     override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
@@ -345,14 +511,17 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
-        // TODO("Not yet implemented")
+        val typeName = (functionDeclParameterExpr.typeSpecifier.identifier as? Identifier)?.value ?: return
+        declareValueType(functionDeclParameterExpr.name.value, typeName, parameter = true)
     }
 
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         // Null safety: a Maybe<T> must be unwrapped before its payload is
         // reachable, so only the Maybe API itself may be accessed on one.
         val receiver = memberAccessExpr.origin as? Identifier ?: return
-        if (declaredValueTypes[receiver.value] != "Maybe") {
+        val declared = declaredValueType(receiver.value)
+        // A Maybe parameter's misuse is the typer's coded types.maybe.member.
+        if (declared == null || declared.typeName != "Maybe" || declared.parameter) {
             return
         }
         val member = (memberAccessExpr.member as? Identifier)?.value
@@ -360,7 +529,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 (call.name as? Identifier)?.value
             }
             ?: return
-        if (member in maybeMembers) {
+        if (member in MemberResolver.MAYBE_API) {
             return
         }
         pump(
@@ -396,10 +565,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         arrayIndexExpr.indexExpr.accept(this)
     }
 
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
         objectInitExpr.positionalArgs.forEach { it.accept(this) }
     }
@@ -428,10 +593,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // TODO("Not yet implemented")
     }
 
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
         // should be true
     }
@@ -448,8 +609,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // should be true
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        // TODO("Not yet implemented")
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        // The typer types a builder.
     }
 
     override fun visitNullLiteral(nullLiteral: NullLiteral) {
@@ -464,27 +625,42 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         // todo
     }
 
-    /**
-     * Used for [visitVariableDecl] which uses this map to find all of the literal types and how they can match
-     */
-    /**
-     * Declared type of each local currently in scope, for null-safety checks.
-     * `Maybe` is the only nullable shape, so this is what tells us whether a
-     * `null` initializer is legal and whether a member access needs unwrapping.
-     */
-    private val declaredValueTypes = mutableMapOf<String, String>()
+    private class Declared(val typeName: String, val parameter: Boolean)
 
-    /** The Maybe API -- the only members reachable without unwrapping first. */
-    private val maybeMembers = setOf("isSome", "isNone", "unwrap", "unwrapOr")
+    /** Each variable's and parameter's declared type name, by the scope frame that declares it. */
+    private val declaredValueTypes = IdentityHashMap<KiraScopeFrame, MutableMap<String, Declared>>()
+
+    private fun declareValueType(name: String, typeName: String, parameter: Boolean = false) {
+        declaredValueTypes.getOrPut(compilationUnit.symbolTable.first()) { mutableMapOf() }[name] = Declared(typeName, parameter)
+    }
+
+    private fun declaredValueType(name: String): Declared? {
+        for (frame in compilationUnit.symbolTable) {
+            declaredValueTypes[frame]?.get(name)?.let { return it }
+            if (frame.kind is SemanticScope.Module) {
+                return null
+            }
+        }
+        return null
+    }
 
     /** True when [expr] is the stdlib `null` global (or the legacy null literal). */
     private fun isNullValue(expr: Expr?): Boolean {
         return expr is NullLiteral || (expr is Identifier && expr.value == "null")
     }
 
+    /**
+     * Every integer type kira/core.kira declares takes an integer literal: the stdlib's
+     * UInt8..UInt64 and Size (D2) are as literal-initialisable as Int32. Whether the literal
+     * fits the type is the typer's check (ConstEval), not this pass's.
+     */
+    private val integerLiteralTypes = setOf(
+        "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Size",
+    )
+
     private val variableBuiltinPrimitives = mapOf(
         StringLiteral::class to { type: String -> type == "String" || type == "Str" },
-        IntegerLiteral::class to { type: String -> type == "Int32" || type == "Int64" },
+        IntegerLiteral::class to { type: String -> type in integerLiteralTypes },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
     )
 
@@ -558,7 +734,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                         "to allow absence, then read it with unwrapOr(...) or guard on isSome()."
                 )
             }
-            declaredValueTypes[varName] = typeName
+            declareValueType(varName, typeName)
         }
 
     }
@@ -566,6 +742,45 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     override fun visitFunctionDecl(functionDecl: FunctionDecl) {
         // Allow intrinsics to act on functions (e.g., make them global) before entering their scope
         runIntrinsicsIfPresent(functionDecl)
+        // 1.3.5: the pre-W2.9 free form (`fx @op_add: (a: T, b: T) T`) is deprecated on every
+        // target here (--target cpp refuses it outright, in w2-9-7-ops-typer); this is the
+        // warning for C and JS. Checked before entering the function's own scope, so `where()`
+        // still names the scope this declaration lives in: `Module` for a free operator,
+        // `Class` for a member one (classes and traits alike), which is never this form. This
+        // runs even for a body-less declaration (`functionDecl.isStub()`): a module-level
+        // member-form operator with no body still passed the old ordering (the isStub() return
+        // ran first) clean, and C/JS emit then called a function that does not exist under that
+        // name (a C link error or a JS ReferenceError). So the stub return below must come
+        // after this check, not before it.
+        val declName = functionDecl.name
+        if (declName is IntrinsicExpr && compilationUnit.symbolTable.where() is SemanticScope.Module) {
+            val opName = declName.intrinsicKey.name
+            if (OperatorIntrinsics.isFreeOperatorName(opName)) {
+                val (memberName, arity) = OperatorIntrinsics.freeToMember(opName) ?: ("_op_..._" to 1)
+                val signature = if (arity == 0) "() T" else "(other: T) T"
+                Diagnostics.Logging.warn(
+                    "ops.free-form",
+                    "the free @$opName form is deprecated: declare " +
+                        "pub @$memberName: $signature in type T.",
+                )
+            } else if (OperatorIntrinsics.isMemberOperatorName(opName)) {
+                // `@_op_add_` (1.3.1's *member* spelling) names a method, not the deprecated
+                // free form above. Neither backend's free-operator lowering ever emits this
+                // spelling for `a + a` -- it always calls the free name (`OperatorIntrinsics
+                // .binaryName`/`unaryName`, e.g. `op_add`) -- so a module-level declaration under
+                // the member spelling would otherwise pass this whole pass clean and then call a
+                // function that does not exist under that name on either target (a C link error
+                // or a JS ReferenceError). This is refused, not merely warned: `pump` fails the
+                // semantic pass, so `Main.kt` skips backend emit instead of producing that.
+                pump(
+                    "'@$opName' is a method (1.3.1): declare it inside a class, as " +
+                        "'pub @$opName: (other: T) T' in type T. It cannot be declared at " +
+                        "module level.",
+                    context.astOrigins[declName] ?: SourcePosition.UNKNOWN,
+                    selectorLength = opName.length + 1,
+                )
+            }
+        }
         if (functionDecl.isStub()) {
             return
         }
@@ -641,67 +856,9 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
-    private val moduleUriMatcher = Regex("""^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*$""")
-
     override fun visitModuleDecl(moduleDecl: ModuleDecl) {
-        // Run intrinsics attached to the module declaration
+        // The file is the module: its name comes from its path, so there is nothing to check.
         runIntrinsicsIfPresent(moduleDecl)
-        val uri = moduleDecl.uri.value
-        val originPos = context.astOrigins[moduleDecl.name] ?: SourcePosition.UNKNOWN
-        pumpOnTrue(
-            !uri.matches(moduleUriMatcher),
-            "A module URI must be in the format 'package:folder1.folder2.file' using [a-zA-Z0-9_] tokens.",
-            originPos.offsetBy(0, 1),
-            selectorLength = uri.length,
-            help = "Expected: <package>:<dot.separated.path.to.file> where the last segment is the source file name (without .kira)."
-        )
-        if (uri.matches(moduleUriMatcher)) {
-            val (pkg, dotted) = uri.split(":", limit = 2)
-            val segments = dotted.split(".")
-            if (segments.isEmpty()) {
-                pump(
-                    "Module URI must contain at least a file name after the ':'",
-                    originPos,
-                    selectorLength = uri.length
-                )
-                return
-            }
-            val expectedSuffix = buildString {
-                append(pkg)
-                append("/")
-                append(segments.joinToString("/"))
-                append(".kira")
-            }
-            val actualPath = context.file.replace('\\', '/') // normalize separators
-            if (!actualPath.endsWith(expectedSuffix)) {
-                pumpOnTrue(
-                    true,
-                    "Module URI '$uri' does not match the source file location. Expected path ending with '$expectedSuffix' but found '$actualPath'.",
-                    originPos.offsetBy(0, 1),
-                    selectorLength = uri.length,
-                    help = "The module path segments map to folders under the package name; the final segment must be the source file name without the '.kira' extension."
-                )
-            }
-        }
-    }
-
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        // Run intrinsics for enum declarations
-        runIntrinsicsIfPresent(enumDecl)
-        val typeName = enumDecl.name.value
-        val symbol = SemanticSymbol(
-            typeName,
-            SemanticSymbolKind.TYPE_SPECIFIER,
-            Token.Type.K_ENUM,
-            SourceLocation.fromPosition(
-                context.astOrigins[enumDecl] ?: SourcePosition.UNKNOWN,
-                context.file
-            ),
-            relativelyVisible = enumDecl.modifiers.contains(Modifier.PUBLIC)
-        )
-
-        expectTypeNotDeclaredInModule(typeName, context.astOrigins[enumDecl])
-        compilationUnit.symbolTable.declare(typeName, symbol)
     }
 
     override fun visitTraitDecl(traitDecl: TraitDecl) {
@@ -725,33 +882,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
                 registerGenericTypeParameters(traitDecl.name)
                 traitDecl.members.forEach { it.accept(this) }
-                compilationUnit.symbolTable.exit()
-            }
-        }
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        // Run intrinsics for variants
-        runIntrinsicsIfPresent(variantDecl)
-        if (variantDecl.name.identifier is Identifier) {
-            val typeName = (variantDecl.name.identifier as Identifier).value
-            val symbol = SemanticSymbol(
-                typeName,
-                SemanticSymbolKind.TYPE_SPECIFIER,
-                Token.Type.K_VARIANT,
-                SourceLocation.fromPosition(
-                    context.astOrigins[variantDecl] ?: SourcePosition.UNKNOWN,
-                    context.file
-                ),
-                relativelyVisible = variantDecl.modifiers.contains(Modifier.PUBLIC)
-            )
-            expectTypeNotDeclaredInModule(typeName, context.astOrigins[variantDecl])
-            compilationUnit.symbolTable.declare(typeName, symbol)
-            if (variantDecl.variants.isNotEmpty() || variantDecl.members.isNotEmpty()) {
-                compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
-                registerGenericTypeParameters(variantDecl.name)
-                variantDecl.variants.forEach { it.accept(this) }
-                variantDecl.members.forEach { it.accept(this) }
                 compilationUnit.symbolTable.exit()
             }
         }
@@ -806,6 +936,72 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
+    // --- the AST contract (design 2.4): declare the new names, walk the new children ---
+
+    override fun visitStructDecl(structDecl: StructDecl) {
+        // A struct declares a type name exactly like a class does; its
+        // members and its initially block are walked in the struct's scope.
+        runIntrinsicsIfPresent(structDecl)
+        val typeName = (structDecl.name.identifier as? Identifier)?.value ?: return
+        val symbol = SemanticSymbol(
+            typeName,
+            SemanticSymbolKind.TYPE_SPECIFIER,
+            Token.Type.K_STRUCT,
+            SourceLocation.fromPosition(
+                context.astOrigins[structDecl] ?: SourcePosition.UNKNOWN,
+                context.file
+            ),
+            relativelyVisible = structDecl.modifiers.contains(Modifier.PUBLIC)
+        )
+        expectTypeNotDeclaredInModule(typeName, context.astOrigins[structDecl])
+        compilationUnit.symbolTable.declare(typeName, symbol)
+        if (structDecl.members.isNotEmpty() || structDecl.initially != null) {
+            compilationUnit.symbolTable.enter(SemanticScope.Class(typeName))
+            registerGenericTypeParameters(structDecl.name)
+            structDecl.members.forEach { it.accept(this) }
+            structDecl.initially?.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
+    }
+
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        ifExpr.condition.accept(this)
+        for (branch in listOf(ifExpr.thenBranch, ifExpr.elseBranch)) {
+            compilationUnit.symbolTable.enter(SemanticScope.Block("(if)"))
+            branch.forEach { it.accept(this) }
+            compilationUnit.symbolTable.exit()
+        }
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        compilationUnit.symbolTable.enter(SemanticScope.Function("(lambda)"))
+        lambdaExpr.def.parameters.forEach { it.accept(this) }
+        lambdaExpr.def.returnTypeSpecifier.accept(this)
+        lambdaExpr.def.body?.forEach { it.accept(this) }
+        compilationUnit.symbolTable.exit()
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        placeAssignmentExpr.target.accept(this)
+        placeAssignmentExpr.value.accept(this)
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        // nothing to declare or check here; the typer binds it to the enclosing type
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        // should be true
+    }
+
+    override fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        interpolatedStringLiteral.parts.forEach { part ->
+            if (part is InterpolationPart.Hole) {
+                part.expr.accept(this)
+            }
+        }
+    }
+
     private fun runIntrinsicsIfPresent(node: ASTNode) {
         try {
             if (!::context.isInitialized) return
@@ -819,9 +1015,17 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 node.attachedIntrinsics
             }
             if (intrinsicsToApply.isEmpty()) return
-            for (intrinsic in intrinsicsToApply) {
+            // The parser's own invocations, arguments included, in the same
+            // order as the marks (design 2.5): `@_const(1)` must reach
+            // ConstIntrinsic.validate with its `1`. Measured before: a fresh
+            // argument-less IntrinsicExpr was validated instead, so no marker's
+            // arity check could ever fire.
+            val stored = context.intrinsicInvocationsOf(node)
+            for ((index, intrinsic) in intrinsicsToApply.withIndex()) {
+                val written = stored.getOrNull(index)?.takeIf { it.intrinsicKey === intrinsic }
                 val srcLoc = try {
-                    SourceLocation.fromPosition(context.relativeOriginOf(node), context.file)
+                    val origin = written?.let { context.astOrigins[it] } ?: context.relativeOriginOf(node)
+                    SourceLocation.fromPosition(origin, context.file)
                 } catch (_: Exception) {
                     SourceLocation.bakedIn()
                 }
@@ -839,7 +1043,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     )
                     continue
                 }
-                val invocation = IntrinsicExpr(
+                val invocation = written ?: IntrinsicExpr(
                     intrinsic,
                     srcLoc,
                     null
@@ -849,7 +1053,16 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                     intrinsic.validate(invocation, compilationUnit, context)
                     intrinsic.apply(invocation, node, compilationUnit, context)
                 } catch (e: Exception) {
-                    diagnosticsPump.add(Diagnostics.recordPanic("IntrinsicApplication", e.message ?: "Intrinsic error", cause = e, location = srcLoc.toPosition(), context = context))
+                    diagnosticsPump.add(
+                        Diagnostics.recordPanic(
+                            "IntrinsicApplication",
+                            e.message ?: "Intrinsic error",
+                            cause = e,
+                            location = srcLoc.toPosition(),
+                            selectorLength = intrinsic.name.length + 1,
+                            context = context
+                        )
+                    )
                 }
             }
         } catch (e: Exception) {

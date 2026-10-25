@@ -13,16 +13,13 @@ class ForeignEdgePipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            @_opaque
-            pub class Handle
+            pub @_opaque Handle: Any
 
-            @_extern
-            fx foreignOpen: (name: Str) Handle
+            @_extern foreignOpen: (name: Str) Handle
 
-            @_extern
-            fx foreignClose: (h: Handle) Void
+            @_extern foreignClose: (h: Handle) Void
 
-            fx main: () Void {
+            main: () Void {
                 h: Handle = foreignOpen("x")
                 foreignClose(h)
             }
@@ -51,49 +48,36 @@ class ForeignEdgePipelineTest {
 
     @Test
     fun ffiMiniExampleCompilesAndRuns() {
-        val compiler = TestCompileSupport.findCCompiler()
-        assumeTrue(compiler != null, "No C compiler on PATH")
+        val project = java.io.File("src/test/resources/test-projects/ffi-mini")
+        assertTrue(project.isDirectory, "$project missing")
 
-        val project = java.io.File("examples/ffi-mini")
-        assumeTrue(project.isDirectory, "examples/ffi-mini missing")
+        // The CLI from the test classpath, its C under build/tmp, never beside the project.
+        val out = java.io.File("build/tmp/test-projects/ffi-mini").absoluteFile
+        out.deleteRecursively()
+        val emit = net.exoad.kira.py.PyTestSupport.cli(project, "--out", out.path)
+        assertEquals(0, emit.exitCode, "kira emit failed:\n${emit.all}")
 
-        val kiraBin = java.io.File("build/install/kira/bin/kira")
-        assumeTrue(kiraBin.canExecute() || java.io.File("build/install/kira/bin/kira").exists(),
-            "run installDist first")
-
-        // Prefer installed CLI; fall back to gradle run is too heavy -- require installDist
-        assumeTrue(kiraBin.exists(), "build/install/kira/bin/kira not found")
-
-        val emit = ProcessBuilder(kiraBin.absolutePath)
-            .directory(project)
-            .redirectErrorStream(true)
-            .start()
-        val emitOut = emit.inputStream.bufferedReader().readText()
-        val emitCode = emit.waitFor()
-        assertEquals(0, emitCode, "kira emit failed:\n$emitOut")
-
-        val outC = java.io.File(project, "out.kira.c")
+        val outC = java.io.File(out, "out.kira.c")
         assertTrue(outC.isFile, "out.kira.c missing")
         val text = outC.readText()
         assertTrue(text.contains("miniCreate"), text)
         assertTrue(text.contains("MiniSurface*"), text)
 
-        val app = java.io.File(project, "app_test_bin")
+        val compiler = TestCompileSupport.findCCompiler()
+        assumeTrue(compiler != null, "No C compiler on PATH")
+        val app = java.io.File(out, "app_test_bin")
         val cc = ProcessBuilder(
             compiler!!, "-std=c17", "-O0", "-o", app.absolutePath,
             outC.absolutePath,
             java.io.File(project, "native/mini_gfx.c").absolutePath
-        ).directory(project).redirectErrorStream(true).start()
+        ).directory(out).redirectErrorStream(true).start()
         val ccOut = cc.inputStream.bufferedReader().readText()
         assertEquals(0, cc.waitFor(), "cc failed:\n$ccOut")
 
-        val run = ProcessBuilder(app.absolutePath).directory(project).redirectErrorStream(true).start()
+        val run = ProcessBuilder(app.absolutePath).directory(out).redirectErrorStream(true).start()
         val runOut = run.inputStream.bufferedReader().readText()
         assertEquals(0, run.waitFor(), "run failed:\n$runOut")
         assertTrue(runOut.contains("mini:"), runOut)
         assertTrue(runOut.contains("ffi-mini ok"), runOut)
-
-        outC.delete()
-        app.delete()
     }
 }

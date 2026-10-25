@@ -1,0 +1,3 @@
+// A raises = name that is a builtin but no exception: a panic at import.
+
+pub @_extern(raises = "len") f: () Void

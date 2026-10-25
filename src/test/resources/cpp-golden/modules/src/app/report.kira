@@ -1,0 +1,29 @@
+golden.modules.lib.units as units
+golden.modules.lib.units.SCALE as SCALE
+golden.modules.lib.units.percent as percent
+
+// A module in another directory: it includes lib/units by relative path, and
+// every name it takes from there is fully qualified.
+
+pub Line: Struct {
+    pub label: Str = ""
+    pub pct: Int32 = 0
+}
+
+bar: (pct: Int32) Str {
+    out: Mutable<Str> = ""
+    i: Mutable<Int32> = 0
+    while i < pct / 10 {
+        out = out + "#"
+        i += 1
+    }
+    out
+}
+
+pub line: (label: Str, part: Int32, whole: Int32 = SCALE) Line {
+    Line { label = label, pct = percent(part, whole) }
+}
+
+pub render: (l: Line) Str {
+    "${l.label}: ${l.pct}% ${bar(l.pct)}"
+}

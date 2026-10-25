@@ -12,17 +12,15 @@ class CCodeGeneratorSmokeTest {
     @Test
     fun emitsBasicCForSimpleProgram() {
         val source = """
-            module "tests:main"
-
             x: Int32 = 10
             y: Int32 = 20
 
-            fx add: (a: Int32, b: Int32) Int32 {
-                return a + b
+            add: (a: Int32, b: Int32) Int32 {
+                a + b
             }
 
-            fx main: () Void {
-                mut z: Int32 = add(x, y)
+            main: () Void {
+                z: Mutable<Int32> = add(x, y)
                 trace(z)
             }
         """.trimIndent()

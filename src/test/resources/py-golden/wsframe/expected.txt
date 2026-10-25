@@ -1,0 +1,27 @@
+81 5 3 64 23 44 43
+82 7e 0 c8 9 1e
+204
+82 7f 0 0 0 0 0 1 11 70 1 26
+70010
+89 7d 4 83
+81 fe 0 82 37 fa 21 3d 32 58
+88 0
+6
+1
+11
+1 5 7191889
+2 200 4223790396
+2 70000 422120456
+9 125 2087332726
+1 130 21207815
+8 0 0
+1
+1
+1
+1
+1
+0
+0
+0
+encode against ws_frame: 226 frames, every byte the same
+readFrames against read_frames: 160 streams cut 2155 ways, 2416 frames and every rest the same

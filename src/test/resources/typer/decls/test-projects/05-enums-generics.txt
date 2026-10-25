@@ -1,0 +1,15 @@
+module enums.generics:app.box  profile=HOSTED ns=box imports=[]
+  class Box<T>  pub
+    field value: T  pub require #0
+  fn id<T>: (value: T) T  body
+module enums.generics:app.main  profile=HOSTED ns=main_ imports=[enums.generics:app.status, enums.generics:app.box]
+  fn main: () Void  body
+module enums.generics:app.status  profile=HOSTED ns=status imports=[]
+  global READY: Int32  pub const value=0:Int32
+  global RUNNING: Int32  pub const value=1:Int32
+  global DONE: Int32  pub const value=2:Int32
+diag error types.use.bare enums.generics/app/main.kira:5:20  'READY' is not in scope: add `enums.generics.app.status.READY as READY` or write `status.READY`.
+diag error types.use.bare enums.generics/app/main.kira:6:14  'Box' is not in scope: add `enums.generics.app.box.Box as Box` or write `box.Box`.
+diag error types.use.bare enums.generics/app/main.kira:6:27  'Box' is not in scope: add `enums.generics.app.box.Box as Box` or write `box.Box`.
+diag error types.use.bare enums.generics/app/main.kira:7:20  'id' is not in scope: add `enums.generics.app.box.id as id` or write `box.id` (it is not pub there: mark it `pub` first).
+diag error types.use.bare enums.generics/app/main.kira:9:17  'READY' is not in scope: add `enums.generics.app.status.READY as READY` or write `status.READY`.

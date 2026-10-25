@@ -1,0 +1,104 @@
+// Zero-padded hex as bibo's drive-by-wire tools print it, with toHex, toUpper and
+// padStart(width, fill: Char): dbwcodec.py's type_name and reason_name fallback f"0x{v:04X}",
+// dbwcli.py's USB ids f"{vid:04x}:{pid:04x}" and build id f"{id:08x}", dbw_gen.py's byte_table
+// rows of '0x%02X' and its CRC-16/CCITT-FALSE check message '0x%04X' (with the crc16 it checks).
+// The expected output is the C++ backend's run of main, then the driver's run of these against
+// Python's own formats and the hand-written byte_table and crc16.
+
+// f"0x{v:04X}"
+pub hex4: (v: UInt16) Str {
+    "0x" + v.toHex().toUpper().padStart(4, '0')
+}
+
+// '0x%02X' % b
+pub hex2: (b: UInt8) Str {
+    "0x" + b.toHex().toUpper().padStart(2, '0')
+}
+
+// f"{vid:04x}:{pid:04x}"
+pub usbIds: (vid: UInt16, pid: UInt16) Str {
+    "${vid.toHex().padStart(4, '0')}:${pid.toHex().padStart(4, '0')}"
+}
+
+// f"build {id:08x}"
+pub build: (id: UInt32) Str {
+    "build ${id.toHex().padStart(8, '0')}"
+}
+
+pub crcLine: (crc: UInt16) Str {
+    "0x${crc.toHex().padStart(4, '0')}"
+}
+
+// dbw_gen.py's crc16: MSB first, no reflection.
+pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt16 {
+    crc: Mutable<UInt16> = init
+    i: Mutable<Size> = 0
+    while i < data.size() {
+        crc = crc ^ ((data[i] as UInt16) << 8)
+        k: Mutable<Int32> = 0
+        while k < 8 {
+            if (crc & 0x8000) != 0 {
+                crc = (crc << 1) ^ poly
+            } else {
+                crc = crc << 1
+            }
+            k += 1
+        }
+        i += 1
+    }
+    crc ^ xorout
+}
+
+// dbw_gen.py's byte_table: the declaration, a brace, rows of twelve bytes, and the close.
+pub byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
+    out: Mutable<List<Str>> = List<Str> { }
+    out.add(ind + decl + " =")
+    out.add(ind + "{")
+    i: Mutable<Size> = 0
+    while i < data.size() {
+        row: Mutable<Str> = ind + pad
+        k: Mutable<Size> = i
+        while k < data.size() && k < i + 12 {
+            if k > i {
+                row = row + ", "
+            }
+            row = row + hex2(data[k])
+            k += 1
+        }
+        out.add(row + ",")
+        i += 12
+    }
+    out.add(ind + "};")
+    out
+}
+
+main: () Void {
+    trace(hex4(0))
+    trace(hex4(0xF))
+    trace(hex4(0x10))
+    trace(hex4(0xABC))
+    trace(hex4(0xFFFF))
+    trace(hex2(0) + " " + hex2(9) + " " + hex2(0xA) + " " + hex2(0xFF))
+    trace(usbIds(0x2E8A, 0x000A))
+    trace(usbIds(0, 0xFFFF))
+    trace(build(0xDEADBEEF))
+    trace(build(0x1A))
+    trace(build(0))
+    check: List<UInt8> = @listOf(0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39)
+    trace("crc check: these parameters give " + hex4(crc16(check, 0x1021, 0xFFFF, 0)))
+    trace(crcLine(crc16(check, 0x1021, 0xFFFF, 0)))
+    trace(crcLine(crc16(check, 0x1021, 0, 0)))
+    trace(crcLine(crc16(check, 0x8005, 0, 0xFFFF)))
+    data: Mutable<List<UInt8>> = List<UInt8> { }
+    b: Mutable<Int32> = 0
+    while b < 26 {
+        data.add((b * 37) as UInt8)
+        b += 1
+    }
+    rows: List<Str> = byteTable("  ", "    ", "constexpr UInt8 TABLE[26]", data)
+    r: Mutable<Size> = 0
+    while r < rows.size() {
+        trace(rows[r])
+        r += 1
+    }
+}

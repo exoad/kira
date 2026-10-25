@@ -1,0 +1,279 @@
+// The operating system, hosted only: sockets, serial ports, files,
+// processes, signals, the environment. The runtime is kira/cpp/kira/os.hxx
+// with os.cxx, which has a Win32 half (Winsock, COM ports) and a POSIX half;
+// under KIRA_PROFILE_FREESTANDING the whole file is empty. On py it is kira/py/runtime.py's.
+//
+// Errors are values, never exceptions: a Maybe that is none, a Bool that is
+// false, or an Int64 that is -1. The reason is in lastError(), per thread,
+// as text for a log line.
+//
+// Hosts are numeric IPv4 ("127.0.0.1", "0.0.0.0"): the car's devices have
+// addresses, not names, and a static musl binary resolves no names anyway.
+
+// Why the last call that can fail on this thread did, "" when it did not (close() and the handle getters leave it):
+// a log line, C++'s naming the call, py's the category of what Python raised (OSError for each subclass) and its text.
+pub @_magic lastError: () Str;
+// The same failure's kind on every target: NotFound, Exists, Permission, Timeout, Interrupted or Other; "" for none.
+pub @_magic lastErrorKind: () Str;
+
+// --- networking ------------------------------------------------------------
+
+// Bits for Poller.add and Ready.events.
+pub POLL_READ: Int32 = 1
+pub POLL_WRITE: Int32 = 2
+// Set by the poller only: the peer hung up or the handle is in error.
+pub POLL_ERROR: Int32 = 4
+
+// What recvFrom read: the byte count (into the caller's view) and where
+// the datagram came from.
+pub Datagram: Struct {
+    pub size: Size = 0
+    pub host: Str = ""
+    pub port: Int32 = 0
+}
+
+// One handle Poller.wait found ready, and why (POLL_* bits).
+pub Ready: Struct {
+    pub handle: Int64 = -1
+    pub events: Int32 = 0
+}
+
+// A non-blocking UDP socket.
+pub @_magic UdpSocket: Mutable<Any> {
+    // Binds to host:port; port 0 takes a free one, read back with localPort.
+    pub @_mutates bind: (host: Str, port: Int32) Bool;
+    pub localPort: () Int32;
+    // Bytes sent, or -1.
+    pub sendTo: (data: View<UInt8>, host: Str, port: Int32) Int64;
+    // The next datagram, or none when there is none yet (or on error: see
+    // lastError). A datagram longer than `into` is truncated to it.
+    pub recvFrom: (into: MutView<UInt8>) Maybe<Datagram>;
+    // For Poller.add.
+    pub handle: () Int64;
+    pub @_mutates close: () Void;
+}
+
+// A TCP listening socket, non-blocking: accept() returns none when no
+// connection is waiting, so poll its handle for POLL_READ first.
+pub @_magic TcpListener: Mutable<Any> {
+    // Listens on every interface; port 0 takes a free one (see localPort).
+    pub @_mutates listen: (port: Int32) Bool;
+    pub localPort: () Int32;
+    // The next waiting connection, blocking for reads and writes, or none.
+    pub accept: () Maybe<TcpStream>;
+    pub handle: () Int64;
+    pub @_mutates close: () Void;
+}
+
+// One TCP connection: from accept(), or connect() on a fresh one. Reads
+// and writes block, on py too, so poll the handle for POLL_READ before a read
+// that must not wait.
+pub @_magic TcpStream: Mutable<Any> {
+    pub @_mutates connect: (host: Str, port: Int32) Bool;
+    // Bytes read; 0 when the peer closed; -1 on error.
+    pub read: (into: MutView<UInt8>) Int64;
+    // Bytes written (all of them, or -1): a short write is retried inside.
+    pub write: (data: View<UInt8>) Int64;
+    pub isOpen: () Bool;
+    pub handle: () Int64;
+    pub @_mutates close: () Void;
+}
+
+// poll(2) (WSAPoll on Windows) over socket handles. Serial and process
+// handles are not pollable on Windows; those reads carry their own timeout.
+pub @_magic Poller: Mutable<Any> {
+    // Watches `handle` for the POLL_* bits in `events`; adding a handle
+    // again replaces its events.
+    pub @_mutates add: (handle: Int64, events: Int32) Void;
+    pub @_mutates remove: (handle: Int64) Void;
+    // The handles that are ready, after waiting up to timeoutMs (negative:
+    // without limit, zero: a poll). Empty on timeout, and empty on error
+    // (see lastError), including the EINTR of a signal.
+    pub wait: (timeoutMs: Int64) List<Ready>;
+}
+
+// --- serial ----------------------------------------------------------------
+
+// A serial port as raw 8N1, no flow control: termios, or a Win32 COM port.
+// On py it is pyserial's, imported at open: without it open is false, naming the missing module.
+pub @_magic Serial: Mutable<Any> {
+    // `path` is /dev/ttyUSB0 or COM3; `baud` a standard rate the port
+    // accepts (50 to 4000000 on termios, 1200 for a Pico's bootloader
+    // touch among them; any rate the driver takes on Windows). Windows'
+    // pyserial words why an open failed only in its text: kind Other there.
+    pub @_mutates open: (path: Str, baud: Int32) Bool;
+    // Bytes read, waiting up to timeoutMs for the first one: 0 when the wait
+    // ran out, -1 on error, a device that hung up (a USB reset) among them.
+    pub read: (into: MutView<UInt8>, timeoutMs: Int64) Int64;
+    pub write: (data: View<UInt8>) Int64;
+    pub isOpen: () Bool;
+    // The descriptor (POSIX only, pollable); -1 on Windows.
+    pub handle: () Int64;
+    pub @_mutates close: () Void;
+}
+
+// --- files -----------------------------------------------------------------
+
+pub @_magic readFile: (path: Str) Maybe<List<UInt8>>;
+// The file's text as it is. On py it must be UTF-8: other bytes are none, with lastError, where C++ returns them.
+pub @_magic readText: (path: Str) Maybe<Str>;
+// readText with CRLF and CR read as LF, as Python's universal newlines read them.
+pub @_magic readTextLf: (path: Str) Maybe<Str>;
+// At most size bytes from the start of the file.
+pub @_magic readFileHead: (path: Str, size: Size) Maybe<List<UInt8>>;
+// Creates or truncates the file and writes the bytes as they are.
+pub @_magic writeFile: (path: Str, bytes: View<UInt8>) Bool;
+// Writes <path>.<pid>.<n>.tmp beside `path`, flushes it to disk and renames it over `path`, so a reader sees
+// the old file or the new one, never a torn one; the directory is flushed after on POSIX.
+pub @_magic writeFileAtomic: (path: Str, bytes: View<UInt8>) Bool;
+// The entries of a directory, without . and .., sorted by name. Empty, with
+// lastError set, for a directory that cannot be opened or whose listing
+// fails part-way: never a partial list passed off as the whole.
+pub @_magic listDir: (path: Str) List<Str>;
+pub @_magic exists: (path: Str) Bool;
+pub @_magic isFile: (path: Str) Bool;
+pub @_magic isDir: (path: Str) Bool;
+// Its size in bytes, -1 when it cannot be read.
+pub @_magic fileSize: (path: Str) Int64;
+// When it last changed, in seconds since 1970 (st_mtime).
+pub @_magic modifiedS: (path: Str) Maybe<Float64>;
+// A file, never a directory.
+pub @_magic removeFile: (path: Str) Bool;
+// Renames source over target in one step: rename(2), MoveFileEx, os.replace.
+pub @_magic replaceFile: (source: Str, target: Str) Bool;
+// Creates every missing directory on the path; true when it exists after.
+pub @_magic makeDirs: (path: Str) Bool;
+// Bytes free to this process on the filesystem holding `path`, a file or a
+// directory, on both halves; -1 when `path` does not exist.
+pub @_magic freeBytes: (path: Str) Int64;
+
+// A file written as it goes: each write reaches the OS whole before it returns.
+pub @_magic FileOut: Mutable<Any> {
+    pub @_mutates write: (data: View<UInt8>) Bool;
+    // Flushed to the disk (fsync).
+    pub sync: () Bool;
+    pub size: () Int64;
+    // Closed, or its path no longer exists (moved or removed).
+    pub isStale: () Bool;
+    pub @_mutates close: () Void;
+}
+
+// Creates the file if it is missing; every write goes to its end.
+pub @_magic openAppend: (path: Str) Maybe<FileOut>;
+// Creates or truncates the file.
+pub @_magic openWrite: (path: Str) Maybe<FileOut>;
+
+// --- files, py only for now (cpp: unsupported) ------------------------------
+
+// A new directory under the system's temporary one, its name starting with prefix.
+pub @_magic tempDir: (prefix: Str) Maybe<Str>;
+// The directory and everything under it; false at the first error.
+pub @_magic removeTree: (path: Str) Bool;
+// Sets when the file was last read and changed to s seconds since 1970.
+pub @_magic setModifiedS: (path: Str, s: Float64) Bool;
+// The paths matching pattern (*, ?, [...], a leading dot only by name), sorted.
+pub @_magic glob: (pattern: Str) List<Str>;
+// Every file under dir as dir joined to its path, sorted; a linked directory is not entered.
+pub @_magic walkFiles: (dir: Str) List<Str>;
+// The program PATH finds for name, as a shell would run it.
+pub @_magic which: (name: Str) Maybe<Str>;
+// The interpreter running this program (sys.executable), to start another script under.
+pub @_magic pythonExecutable: () Str;
+// The directory of this module's own file, its links resolved.
+pub @_magic moduleDir: () Str;
+
+// --- processes -------------------------------------------------------------
+
+// A child process whose stdout is a pipe this side reads. Dropping the last
+// reference to a Process that is still running kills it and reaps it: a
+// child never outlives the handle that started it.
+pub @_magic Process: Mutable<Any> {
+    // Bytes read from the child's stdout, blocking until some arrive: 0 at
+    // the end of the pipe, -1 on error.
+    pub readStdout: (into: MutView<UInt8>) Int64;
+    // Ends the child at once (SIGKILL, TerminateProcess): no cleanup runs.
+    pub kill: () Void;
+    // Waits for the child to end and returns its exit code; 128 + the
+    // signal number when a signal ended it (137 after kill(), on both
+    // halves), -1 when nothing can be learned. A second wait returns the
+    // same code.
+    pub @_mutates wait: () Int32;
+    pub isRunning: () Bool;
+    // The read end of the stdout pipe (POSIX only, pollable); -1 on Windows.
+    pub stdoutHandle: () Int64;
+    pub pid: () Int64;
+}
+
+// Starts argv[0] with the rest as its arguments, searching PATH; none when
+// it could not start (a missing program included, on both halves: see
+// lastError). The child gets stdin, stderr and its stdout pipe and nothing
+// else. On Windows those three are the child's whole handle list; on POSIX
+// every other descriptor is closed in the child before it starts, whoever
+// opened it (kira:os, C++ code, an FFI call, with close-on-exec or
+// without). A child that outlives this process holds none of its sockets,
+// files or ports.
+pub @_magic spawnProcess: (argv: List<Str>) Maybe<Process>;
+
+// Pins process pid (0: this one) to the CPUs numbered in cpus; false off Linux.
+pub @_magic setAffinity: (pid: Int64, cpus: List<Int32>) Bool;
+// Adds increment to this process's niceness and returns the new one; none on Windows.
+pub @_magic nice: (increment: Int32) Maybe<Int32>;
+
+// --- processes, py only for now (cpp: unsupported) --------------------------
+
+// What runCapture's child did: its exit code (128 + the signal that ended it) and what it wrote.
+pub Ran: Struct {
+    pub code: Int32 = -1
+    pub out: Str = ""
+    pub err: Str = ""
+}
+
+// Runs argv (no shell) to its end with input on its stdin (none: this one's), its output read as UTF-8 (U+FFFD
+// for a bad byte) with CRLF and CR as LF; none when it cannot start or runs past timeoutMs (<= 0: no limit), killed.
+pub @_magic runCapture: (argv: List<Str>, input: Maybe<Str>, timeoutMs: Int64) Maybe<Ran>;
+// Runs argv with this process's stdin, stdout and stderr: its exit code, -1 when it never started.
+pub @_magic runInherit: (argv: List<Str>) Int32;
+
+// A child whose stdin, stdout and stderr are all pipes this side holds; dropped while running, it is killed.
+pub @_magic PipedProcess: Mutable<Any> {
+    // Bytes written (all of them), or -1.
+    pub writeStdin: (data: View<UInt8>) Int64;
+    pub @_mutates closeStdin: () Void;
+    pub readStdout: (into: MutView<UInt8>) Int64;
+    // The next line of stderr with its \n (the last may lack one), a bad byte as U+FFFD; none at its end.
+    pub readStderrLine: () Maybe<Str>;
+    pub kill: () Void;
+    pub @_mutates wait: () Int32;
+    pub isRunning: () Bool;
+    pub stdoutHandle: () Int64;
+    pub pid: () Int64;
+}
+
+pub @_magic spawnPiped: (argv: List<Str>) Maybe<PipedProcess>;
+
+// --- signals, environment, arguments, exit ---------------------------------
+
+// Signal numbers common to POSIX and the C runtime on Windows.
+pub SIGNAL_INT: Int32 = 2
+pub SIGNAL_TERM: Int32 = 15
+
+// Installs a handler for `sig` that only sets `flag` to true, so it is
+// async-signal-safe and a loop can poll the flag. On POSIX the handler
+// does not restart interrupted calls: a blocked Poller.wait, TcpStream.read,
+// Serial.read or Process.readStdout returns (-1 or an empty list, with
+// lastError naming the interruption) and the loop sees the flag.
+// Process.wait, Mutex.waitUntil and BlockingQueue.pop do not return early:
+// they resume until the child ends, the predicate holds or the timeout
+// runs out, so a loop that must see the flag polls with a timeout. Safe to
+// call from several threads at once. False when the signal cannot be
+// caught. On py only the main thread installs one; elsewhere it is false (D78).
+pub @_magic onSignal: (sig: Int32, flag: Atomic<Bool>) Bool;
+
+pub @_magic env: (name: Str) Maybe<Str>;
+
+// The program's arguments, args()[0] the program itself, as main's
+// `args: List<Str>` holds them.
+pub @_magic args: () List<Str>;
+
+// Flushes stdio and ends the process with `code`.
+pub @_magic exit: (code: Int32) Never;

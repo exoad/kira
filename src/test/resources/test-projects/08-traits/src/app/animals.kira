@@ -1,0 +1,45 @@
+Speaker: Any {
+    pub speak: () Str
+    pub name: () Str
+}
+
+Noisy: Speaker {
+    pub loudness: () Int32
+}
+
+Dog: Noisy {
+    pub label: Str
+
+    pub speak: () Str {
+        "woof"
+    }
+
+    pub name: () Str {
+        label
+    }
+
+    pub loudness: () Int32 {
+        8
+    }
+}
+
+Cat: Speaker {
+    pub label: Str
+
+    pub speak: () Str {
+        "meow"
+    }
+
+    pub name: () Str {
+        label
+    }
+}
+
+announce: (s: Speaker) Void {
+    trace(s.name())
+    trace(s.speak())
+}
+
+noiseLevel: (s: Noisy) Int32 {
+    s.loudness()
+}

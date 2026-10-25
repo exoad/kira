@@ -1,13 +1,11 @@
 ---
-description: Kira source language surface facts when writing or editing .kira files (stdlib and examples).
-globs: kira/*.kira, examples/**/*.kira, test_kira/**/*.kira
+description: Kira source language surface facts when writing or editing .kira files (stdlib and test programs).
+globs: kira/*.kira, src/test/resources/**/*.kira, test_kira/**/*.kira
 ---
 
 # Kira language surface
 
-Facts that trip up new writers. The full reference is
-`specifications/LanguageSpecifications.md`; the tutorial stays inside what the
-C backend lowers today.
+Facts that trip up new writers.
 
 ## Syntax facts
 

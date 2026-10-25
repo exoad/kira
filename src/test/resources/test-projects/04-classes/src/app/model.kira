@@ -1,0 +1,24 @@
+pub Point: Any {
+    pub x: Int32
+    pub y: Int32
+}
+
+pub Rectangle: Any {
+    pub topLeft: Point
+    pub bottomRight: Point
+
+    pub perimeter: () Int32 {
+        width: Int32 = bottomRight.x - topLeft.x
+        height: Int32 = topLeft.y - bottomRight.y;
+        (width + height) * 2
+    }
+}
+
+pub Pet: Any {
+    pub name: Str
+    pub sound: Str
+
+    pub speak: () Str {
+        sound
+    }
+}

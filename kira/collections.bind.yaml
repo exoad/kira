@@ -1,0 +1,152 @@
+# Magic binding manifest for kira:collections (C++ and py backends).
+#
+# A `py` map beside `cpp` is the py target's binding (PyBindingTable): `expr` with the same
+# placeholders, each used once and the receiver first, so Python's left-to-right evaluation is
+# Kira's; a `_k_` name in it is a helper of kira/py/runtime.py. On the py target a List or an
+# Arr is a Python list, a bytearray of UInt8; a View or MutView is what it was lent from, and
+# from and slice make a memoryview of bytes (which a MutView writes through) or a copied slice
+# of any other element, which only a View, read-only, can be. A Map is a dict. `place` and
+# `statement` name their operands in any order; the emitter takes them where that cannot show.
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
+# (the C backend lowers containers through tryEmitCollectionMethod). Keys are
+# `Type.method`; the placeholders and the `pure` / `constexpr` flags are
+# defined in core.bind.yaml (`{T0}` in a method is the class's first type
+# parameter, read from the receiver's type). The C++ types are those of
+# design section 5.1: Arr<T> and List<T> are kira::List<T> (std::vector),
+# Arr<T, N> is std::array, Map/Set are kira::Map/kira::Set, Stack/Queue are
+# kira::Stack/kira::Queue, Deque is std::deque, View and MutView are
+# kira::View / kira::MutView.
+#
+# `mut fx` methods carry no `pure`; the receiver they change is a mutable
+# place the typer already checked.
+#
+# `constexpr` on the View, MutView and Arr entries describes the targets on
+# the receivers that are literal types: kira::View, kira::MutView, and
+# std::array for Arr<T, N> (kira::at and kira::view on std::array are
+# constexpr in design section 6). Arr<T> is the same std::vector as List<T>,
+# which libstdc++ made constexpr only in GCC 12, above the gcc 11.4 floor; a
+# @_const body holding one fails ConstEligibilityPass's literal-type rule
+# before any flag is read, exactly as a List<T> does, which is why the List.*
+# entries carry no flag at all.
+#
+# Runtime names this manifest uses beyond design section 6. They are spelled
+# as W1.3's kira/cpp/kira/rt.hxx defines them (the design names none of
+# them), and each binding expression here compiles against that header:
+#   kira::view(const std::vector<T>&) -> View<T>      (the std::array one exists)
+#   kira::list::contains(const List<T>&, const T&) -> bool
+#   kira::list::clone(const List<T>&) -> List<T>
+#   kira::list::addAll(List<T>&, const List<T>&) -> void
+#   kira::list::removeAt(List<T>&, Size) -> T          (checked, D10)
+#   kira::popFront(std::deque<T>&), kira::popBack(std::deque<T>&) -> Maybe<T>
+#   kira::Map<K, V>: size, isEmpty, put, get -> Maybe<V>, remove -> Maybe<V>,
+#     containsKey, containsValue, keys -> List<K>, valuesArr -> List<V>,
+#     entries -> List<Tuple2<K, V>>, clear
+#   kira::Set<T>: size, isEmpty, add -> bool, remove -> bool, contains,
+#     toArr -> List<T>, clear
+#   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear
+#   kira::Queue<T>: size, isEmpty, enqueue, dequeue -> Maybe<T>, peek -> Maybe<T>, clear
+#   kira::list::contains and kira::list::clone are overloaded on std::array too, so
+#     Arr.contains and Arr.clone bind the same text for an Arr<T, N>; the clone of an
+#     Arr<T, N> is a List<T> (Arr<T>), as collections.kira declares it
+#   kira::list::clone(View<T>), clone(MutView<T>) -> List<T>   (toList, D52: hosted, as a List is)
+#   kira::list::joinToString(const List<Str>&, const Str&) -> Str   (D58: the typer takes a List<Str> only)
+#   kira::list::sort, sum, minOrNull, maxOrNull over a List<T>, and kira::list::less, their order   (D61)
+
+# --- View<T> ---------------------------------------------------------------
+View.size:     { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+View.isEmpty:  { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+View.get:      { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+View.from:     { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+View.slice:    { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+View.toList:   { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+
+# --- MutView<T> ------------------------------------------------------------
+MutView.size:    { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+MutView.isEmpty: { cpp: { expr: "({self}.size() == 0)", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+MutView.get:     { cpp: { expr: "{self}[{0}]", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+MutView.set:     { cpp: { expr: "{self}[{0}] = {1}", constexpr: true }, py: { expr: "{self}.__setitem__({0}, {1})" } }
+MutView.from:    { cpp: { expr: "{self}.from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+MutView.slice:   { cpp: { expr: "{self}.slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+MutView.view:    { cpp: { expr: "kira::View<{T0}>({self})", pure: true, constexpr: true }, py: { expr: "{self}" } }
+MutView.toList:  { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+
+# --- Arr<T> (and Arr<T, N>: kira::at / kira::view overload on std::array) --
+Arr.size:      { cpp: { expr: "{self}.size()", pure: true, constexpr: true }, py: { expr: "len({self})" } }
+Arr.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true, constexpr: true }, py: { expr: "(len({self}) == 0)" } }
+Arr.get:       { cpp: { expr: "kira::at({self}, {0})", pure: true, constexpr: true }, py: { expr: "{self}[{0}]" } }
+Arr.set:       { cpp: { expr: "kira::at({self}, {0}) = {1}", constexpr: true }, py: { expr: "{self}.__setitem__({0}, {1})" } }
+Arr.contains:  { cpp: { expr: "kira::list::contains({self}, {0})", pure: true }, py: { expr: "_k_contains({self}, {0})" } }
+Arr.clone:     { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+Arr.view:      { cpp: { expr: "kira::view({self})", pure: true, constexpr: true }, py: { expr: "{self}" } }
+Arr.from:      { cpp: { expr: "kira::view({self}).from({0})", pure: true, constexpr: true }, py: { expr: "_k_from({self}, {0})" } }
+Arr.slice:     { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+
+# --- List<T> ---------------------------------------------------------------
+List.size:     { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+List.isEmpty:  { cpp: { expr: "{self}.empty()", pure: true }, py: { expr: "(len({self}) == 0)" } }
+List.add:      { cpp: { expr: "{self}.push_back({0})" }, py: { expr: "{self}.append({0})" } }
+List.addAll:   { cpp: { expr: "kira::list::addAll({self}, {0})" }, py: { expr: "{self}.extend({0})" } }
+List.get:      { cpp: { expr: "kira::at({self}, {0})", pure: true }, py: { expr: "{self}[{0}]" } }
+List.set:      { cpp: { expr: "kira::at({self}, {0}) = {1}" }, py: { expr: "{self}.__setitem__({0}, {1})" } }
+List.removeAt: { cpp: { expr: "kira::list::removeAt({self}, {0})" }, py: { expr: "{self}.pop({0})" } }
+List.clear:    { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
+List.contains: { cpp: { expr: "kira::list::contains({self}, {0})", pure: true }, py: { expr: "_k_contains({self}, {0})" } }
+List.toArr:    { cpp: { expr: "kira::list::clone({self})", pure: true }, py: { expr: "_k_copy({self})" } }
+List.view:     { cpp: { expr: "kira::view({self})", pure: true }, py: { expr: "{self}" } }
+List.from:     { cpp: { expr: "kira::view({self}).from({0})", pure: true }, py: { expr: "_k_from({self}, {0})" } }
+List.slice:    { cpp: { expr: "kira::view({self}).slice({0}, {1})", pure: true }, py: { expr: "_k_slice({self}, {0}, {1})" } }
+List.joinToString: { cpp: { expr: "kira::list::joinToString({self}, {0})", pure: true }, py: { expr: "_k_join({self}, {0})" } }
+# D61: `{T0}` on py is the element type's Kira name, which the helper's rule depends on.
+List.sort:      { cpp: { expr: "kira::list::sort({self})" }, py: { expr: '_k_sort({self}, "{T0}")' } }
+List.sum:       { cpp: { expr: "kira::list::sum({self})", pure: true }, py: { expr: '_k_sum({self}, "{T0}")' } }
+List.minOrNull: { cpp: { expr: "kira::list::minOrNull({self})", pure: true }, py: { expr: '_k_minof({self}, "{T0}")' } }
+List.maxOrNull: { cpp: { expr: "kira::list::maxOrNull({self})", pure: true }, py: { expr: '_k_maxof({self}, "{T0}")' } }
+
+# --- Map<K, V>: kira::Map, insertion-ordered (D27) -------------------------
+# py: a dict keeps kira::Map's order; `{list}` is list, or bytearray for a List<UInt8>.
+Map.size:          { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Map.isEmpty:       { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
+Map.put:           { cpp: { expr: "{self}.put({0}, {1})" }, py: { expr: "{self}.__setitem__({0}, {1})", statement: "{self}[{0}] = {1}" } }
+Map.get:           { cpp: { expr: "{self}.get({0})", pure: true }, py: { expr: "{self}.get({0})" } }
+Map.remove:        { cpp: { expr: "{self}.remove({0})" }, py: { expr: "{self}.pop({0}, None)" } }
+Map.containsKey:   { cpp: { expr: "{self}.containsKey({0})", pure: true }, py: { expr: "{self}.__contains__({0})", place: "({0} in {self})" } }
+Map.containsValue: { cpp: { expr: "{self}.containsValue({0})", pure: true }, py: { expr: "_k_contains({self}.values(), {0})" } }
+Map.keys:          { cpp: { expr: "{self}.keys()", pure: true }, py: { expr: "{list}({self})" } }
+Map.valuesArr:     { cpp: { expr: "{self}.valuesArr()", pure: true }, py: { expr: "{list}({self}.values())" } }
+Map.entries:       { cpp: { expr: "{self}.entries()", pure: true }, py: { expr: "list({self}.items())" } }
+Map.clear:         { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
+
+# --- Set<T>: kira::Set, insertion-ordered (D27) ----------------------------
+Set.size:      { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Set.isEmpty:   { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
+Set.add:       { cpp: { expr: "{self}.add({0})" }, py: { expr: "_k_setadd({self}, {0})" } }
+Set.remove:    { cpp: { expr: "{self}.remove({0})" }, py: { expr: "_k_setdel({self}, {0})" } }
+Set.contains:  { cpp: { expr: "{self}.contains({0})", pure: true }, py: { expr: "{self}.__contains__({0})", place: "({0} in {self})" } }
+Set.toArr:     { cpp: { expr: "{self}.toArr()", pure: true }, py: { expr: "{list}({self})" } }
+Set.clear:     { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
+
+# --- Stack<T>: kira::Stack adaptor, pop() returns Maybe --------------------
+Stack.size:    { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Stack.isEmpty: { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
+Stack.push:    { cpp: { expr: "{self}.push({0})" }, py: { expr: "{self}.append({0})" } }
+Stack.pop:     { cpp: { expr: "{self}.pop()" }, py: { expr: "_k_pop({self})" } }
+Stack.peek:    { cpp: { expr: "{self}.peek()", pure: true }, py: { expr: "_k_peek({self})" } }
+Stack.clear:   { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
+
+# --- Queue<T>: kira::Queue adaptor, dequeue() returns Maybe ----------------
+Queue.size:    { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Queue.isEmpty: { cpp: { expr: "{self}.isEmpty()", pure: true }, py: { expr: "(not {self})" } }
+Queue.enqueue: { cpp: { expr: "{self}.enqueue({0})" }, py: { expr: "{self}.append({0})" } }
+Queue.dequeue: { cpp: { expr: "{self}.dequeue()" }, py: { expr: "_k_popleft({self})" } }
+Queue.peek:    { cpp: { expr: "{self}.peek()", pure: true }, py: { expr: "_k_peekleft({self})" } }
+Queue.clear:   { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }
+
+# --- Deque<T>: std::deque; the Maybe-returning pops are kira:: helpers -----
+Deque.size:      { cpp: { expr: "{self}.size()", pure: true }, py: { expr: "len({self})" } }
+Deque.isEmpty:   { cpp: { expr: "{self}.empty()", pure: true }, py: { expr: "(not {self})" } }
+Deque.pushFront: { cpp: { expr: "{self}.push_front({0})" }, py: { expr: "{self}.appendleft({0})" } }
+Deque.pushBack:  { cpp: { expr: "{self}.push_back({0})" }, py: { expr: "{self}.append({0})" } }
+Deque.popFront:  { cpp: { expr: "kira::popFront({self})" }, py: { expr: "_k_popleft({self})" } }
+Deque.popBack:   { cpp: { expr: "kira::popBack({self})" }, py: { expr: "_k_pop({self})" } }
+Deque.clear:     { cpp: { expr: "{self}.clear()" }, py: { expr: "{self}.clear()" } }

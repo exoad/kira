@@ -1,0 +1,12 @@
+conway.app.grid as grid
+
+main: () Void {
+    g: Grid = Grid { 5, 5, @arrOf(0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) }
+    gen: Mutable<Int32> = 0
+    while gen < 5 {
+        g.printGrid()
+        trace("")
+        g.step()
+        gen = gen + 1
+    }
+}

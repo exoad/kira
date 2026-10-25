@@ -1,0 +1,75 @@
+// The design's dialect (section 2): struct, override, initially, parameter
+// defaults, const type arguments, `mut` parameters and `Fx` elements, char literals.
+// It parses once the frontend package's parser is on the branch; until then TyperDeclTest
+// skips it and says why.
+
+pub LIMIT: Size = 32
+pub Arr<UInt8, 32> as Frame
+pub Arr<UInt8, LIMIT> as Sized
+pub SPACE: Char = ' '
+
+pub KIND_OK: Int32 = 0
+pub KIND_ERR: Int32 = 1
+
+pub Reply: Mutable<Any> {
+    pub kind: Mutable<Int32> = KIND_OK
+    pub line: Str = ""
+    pub code: Int32
+
+    pub isOk: () Bool {
+        kind == KIND_OK
+    }
+
+    pub reset: () Void {
+        kind = KIND_OK
+    }
+}
+
+pub Measured: Any {
+    pub width: () Int32;
+}
+
+pub Band: Struct, Measured {
+    pub lo: Int32 = 0
+    pub hi: Int32 = 10
+
+    override pub width: () Int32 {
+        hi - lo
+    }
+}
+
+pub Behaviour: Mutable<Any> {
+    pub id: () Str;
+    pub mayDrive: () Bool {
+        false
+    }
+    pub step: (r: Reply) Reply;
+}
+
+pub Stop: Mutable<Behaviour> {
+    pub reason: Str
+
+    initially {
+        trace(reason)
+    }
+
+    override pub id: () Str {
+        "stop"
+    }
+
+    override pub step: (r: Reply) Reply {
+        r
+    }
+}
+
+pub command: (verb: Str, args: Str = "", retries: Int32 = 3) Str {
+    verb
+}
+
+pub isSpace: (c: Char) Bool {
+    c == SPACE
+}
+
+pub frame: () Frame {
+    @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+}

@@ -1,0 +1,40 @@
+happy -> exit 0
+  each 60
+  each, a named function 4
+  callWith 1 a
+  bytesOf bytes b'\x01\x02\xff'
+  render 200 bytearray b'/power'
+  callKept 15 18
+  onThread 107
+  calls 5
+  caught from a callback: no x
+  positive 4
+  caught from raises: ValueError: -1 is not positive
+  a Json Python passed, after Python wrote its own: {"a": 1}
+  takeJson dict of 2 keys, Kira's after Python wrote what it got: {"a": 1}
+  kinds bytes bytes bytes
+  happy done
+none -> exit abort
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith gave None (NoneType) where Int32 was declared
+bool -> exit abort
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith gave True (bool) where Int32 was declared
+arity -> exit abort
+  stderr: RuntimeError: kira: the Fx f given to callbacks_ext.callWith was called with 1 argument where 2 were declared
+pair -> exit abort
+  stderr: RuntimeError: kira: the Fx g given to callbacks_ext.pair gave None (NoneType) where Int32 was declared
+panic -> exit abort
+  stderr: IndexError: list index out of range
+swallow-throw -> exit 0
+  swallowed Error
+  swallow-throw done
+swallow-panic -> exit abort
+  stderr: RuntimeError: kira: integer division by zero
+exit -> exit 6
+  in the callback, unflushed
+thread-throw -> exit 70
+  stderr: kira:errors.Error: thrown on Python's thread
+thread-panic -> exit abort
+  stderr: RuntimeError: kira: integer division by zero
+thread-exit -> exit 5
+kept-throw -> exit 70
+  stderr: kira:errors.Error: thrown after its extern returned

@@ -1,0 +1,91 @@
+// Conformance, `value == Identity`: a Maybe that holds a value conforms to its type, and the test
+// narrows the name wherever it has passed. The expected output is the C++ backend's run.
+
+Pt: Struct {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+calls: Mutable<Int32> = 0
+
+find: (xs: List<Int32>, v: Int32) Maybe<Int32> {
+    result: Mutable<Maybe<Int32>> = null
+    for i: Size in 0..xs.size() {
+        if xs[i] == v {
+            result = i as Int32
+            break
+        }
+    }
+    result
+}
+
+counted: () Maybe<Int32> {
+    calls += 1
+    calls
+}
+
+// The rest of an `&&`, and the body after it.
+far: (m: Maybe<Int32>) Bool {
+    m == Int32 && m > 1
+}
+
+// `!=` narrows the else branch; an else-if sees what the conditions before it failing proved.
+describe: (m: Maybe<Int32>) Str {
+    m != Int32 ? "none" : m > 1 ? "far ${m + 1}" : "near ${m * 10}"
+}
+
+// After an `if` that always leaves, the rest of the block sees what its failing proved.
+scaled: (m: Maybe<Int32>, k: Int32) Int32 {
+    m != Int32 ? -1 : m * k
+}
+
+// The rest of an `||` sees the left side false; `!` turns a test around.
+small: (m: Maybe<Int32>) Bool {
+    m != Int32 || m < 2
+}
+
+flipped: (m: Maybe<Int32>) Int32 {
+    !(m != Int32) ? m + 1000 : 0
+}
+
+// An if-expression's arms, and a while loop's body.
+orZero: (m: Maybe<Int32>) Int32 {
+    v: Int32 = m == Int32 ? m + 1 : 0
+    v
+}
+
+countdown: (m: Maybe<Int32>) Int32 {
+    steps: Mutable<Int32> = 0
+    while m == Int32 && steps < m {
+        steps += 1
+    }
+    steps
+}
+
+twice: (x: Int32) Int32 {
+    x * 2
+}
+
+main: () Void {
+    xs: List<Int32> = @listOf(5, 6, 7)
+    for v: Int32 in @listOf(7, 6, 9) {
+        m: Maybe<Int32> = find(xs, v)
+        trace(far(m))
+        trace(describe(m))
+        trace(scaled(m, 3))
+        trace(small(m))
+        trace(flipped(m))
+        trace(orZero(m))
+        trace(countdown(m))
+    }
+    // Decided by the types: the value is still evaluated.
+    trace(counted() == Maybe<Int32>)
+    trace(calls)
+    p: Pt = Pt { 1, 2 }
+    trace(p == Pt)
+    trace(p != Pt)
+    trace(p.x + p.y)
+    f: (x: Int32) Int32 = twice
+    trace(f == (Int32) Int32)
+    trace(f(4))
+}

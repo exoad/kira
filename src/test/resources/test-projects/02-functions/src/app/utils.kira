@@ -1,0 +1,3 @@
+normalize: (text: Str) Str {
+    text
+}

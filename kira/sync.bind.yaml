@@ -1,0 +1,53 @@
+# Magic binding manifest for kira:sync (C++ and py backends).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips
+# it (the C backend has no threads). Keys are `Type.method` and the bare
+# name of the free function; placeholders and flags as in core.bind.yaml.
+# A `py` entry calls the runtime's class of the same name, _k_Thread, _k_Mutex, _k_Atomic or
+# _k_BlockingQueue (D77, kira/py/runtime.py).
+#
+# Every class here is a Kira class, so `{self}` is a kira::Rc<C> (design 5.1)
+# and the member is reached with `->`. Nothing is pure: every call reads or
+# changes state another thread may be changing too. None is constexpr.
+#
+# Runtime names, all in kira/cpp/kira/sync.hxx, namespace kira::sync:
+#   Thread(const Str& name, F&& body): stopRequested(), requestStop(), join()
+#     (the class's two require fields are that constructor's arguments, so
+#     `Thread { name, body }` lowers to make_shared<Thread>(name, body) as
+#     every class construction does, and starts the thread as spawn does)
+#   spawn(const Str& name, F&& body) -> Rc<Thread>        (F: Callable<F, void>)
+#   Mutex<T>(T): with(F&& body) (F: Callable<F, void, T&>; Kira's Mutex.lock),
+#                waitUntil(F&& pred, int64 timeoutMs) -> bool (F: Callable<F, bool, const T&>)
+#   Atomic<T>(T): load, store, add -> T (the value after), swap -> T (the value
+#                 before), compareSwap(expected, desired) -> bool, loadAcquire,
+#                 storeRelease
+#   BlockingQueue<T>(): push, pop(int64 timeoutMs) -> Maybe<T>, close, isClosed, size
+# with and waitUntil take their Fx as a template parameter (design 5.1, the
+# non-escaping row), so a lambda argument costs no std::function.
+
+# --- Thread ----------------------------------------------------------------
+Thread.stopRequested: { cpp: { expr: "{self}->stopRequested()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.stopRequested()" } }
+Thread.requestStop:   { cpp: { expr: "{self}->requestStop()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.requestStop()" } }
+Thread.join:          { cpp: { expr: "{self}->join()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.join()" } }
+spawn:                { cpp: { expr: "kira::sync::spawn({0}, {1})", includes: ["kira/sync.hxx"] }, py: { expr: "_k_Thread({0}, {1})" } }
+
+# --- Mutex<T> --------------------------------------------------------------
+# Kira's `lock` is D24's `with` (a parser keyword at the W1 gate; see sync.kira).
+Mutex.lock:      { cpp: { expr: "{self}->with({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.lock({0})" } }
+Mutex.waitUntil: { cpp: { expr: "{self}->waitUntil({0}, {1})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.waitUntil({0}, {1})" } }
+
+# --- Atomic<T> -------------------------------------------------------------
+Atomic.load:         { cpp: { expr: "{self}->load()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.load()" } }
+Atomic.store:        { cpp: { expr: "{self}->store({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.store({0})" } }
+Atomic.add:          { cpp: { expr: "{self}->add({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.add({0})" } }
+Atomic.swap:         { cpp: { expr: "{self}->swap({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.swap({0})" } }
+Atomic.compareSwap:  { cpp: { expr: "{self}->compareSwap({0}, {1})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.compareSwap({0}, {1})" } }
+Atomic.loadAcquire:  { cpp: { expr: "{self}->loadAcquire()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.load()" } }
+Atomic.storeRelease: { cpp: { expr: "{self}->storeRelease({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.store({0})" } }
+
+# --- BlockingQueue<T> ------------------------------------------------------
+BlockingQueue.push:     { cpp: { expr: "{self}->push({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.push({0})" } }
+BlockingQueue.pop:      { cpp: { expr: "{self}->pop({0})", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.pop({0})" } }
+BlockingQueue.close:    { cpp: { expr: "{self}->close()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.close()" } }
+BlockingQueue.isClosed: { cpp: { expr: "{self}->isClosed()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.isClosed()" } }
+BlockingQueue.size:     { cpp: { expr: "{self}->size()", includes: ["kira/sync.hxx"] }, py: { expr: "{self}.size()" } }

@@ -1,0 +1,64 @@
+// Conformance tests that ask nothing (stage 3): never true by the types, or not a question at all.
+
+pub Shape: Any {
+    pub area: () Int32;
+}
+
+pub Circle: Shape {
+    pub radius: Int32
+
+    override pub area: () Int32 {
+        radius
+    }
+}
+
+pub Square: Shape {
+    pub side: Int32
+
+    override pub area: () Int32 {
+        side
+    }
+}
+
+pub Box<T>: Shape {
+    pub value: T
+
+    override pub area: () Int32 {
+        0
+    }
+}
+
+pub Pt: Struct {
+    pub x: Int32 = 0
+}
+
+pub same<T>: (v: T) Bool {
+    v == Int32                      // @error types.conform.unsupported
+}
+
+pub never: (s: Shape, c: Circle, i: Int32, p: Pt, f: (x: Int32) Int32) Void {
+    a: Bool = i == Str                     // @error types.conform.never
+    b: Bool = c == Square                  // @error types.conform.never
+    d: Bool = s == Pt                      // @error types.conform.never
+    e: Bool = p == Shape                   // @error types.conform.never
+    g: Bool = f == (Int32) Str             // @error types.conform.never
+    h: Bool = s == Box<Int32>              // @error types.conform.args
+    k: Bool = i == Void                    // @error types.conform.unsupported
+}
+
+// An if whose block can end without leaving proves nothing after it, nor does one that leaves on one path.
+pub notAfter: (s: Shape, m: Maybe<Int32>, k: Int32) Int32 {
+    if m != Int32 {
+        trace(0)
+    }
+    v: Int32 = m                           // @error types.assign.mismatch
+    result: Mutable<Int32> = 0
+    found: Mutable<Bool> = false
+    if s != Circle {
+        if k > 0 {
+            result = 0
+            found = true
+        }
+    }
+    found ? result : s.radius                        // @error types.member.unknown
+}

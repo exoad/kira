@@ -1,0 +1,8 @@
+// A project's own joinPath, floorMod and Ran beside the stdlib's, each chosen by a member alias.
+PROJECT: Project = Project { } with {
+    name = "golden.py.stdshadow"
+    srcDir = "src"
+    target = "py"
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

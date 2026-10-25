@@ -1,0 +1,7 @@
+PROJECT: Project = Project { } with {
+    name = "golden.py.defaults"
+    srcDir = "src"
+    target = "py"
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

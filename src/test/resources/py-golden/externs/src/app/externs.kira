@@ -1,0 +1,131 @@
+// The sidecar boundary (D68), which driver.py runs: what each Kira type is in externs_ext.py,
+// what the sidecar may keep, and what it may hand back (a wrong value is a panic).
+
+kira.json as json
+
+pub LEVEL_HIGH: Int32 = 7
+
+pub Pt: Struct {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+pub Box: Mutable<Any> {
+    pub items: Mutable<List<Str>> = List<Str> { }
+}
+
+pub Holder: Mutable<Any> {
+    pub t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { @listOf(1), 0 }
+    pub raw: List<UInt8> = @listOf(1)
+}
+
+pub @_extern scribble: (t: Tuple2<List<Int32>, Int32>, h: Holder, ts: List<Tuple2<List<Int32>, Int32>>, mt: Maybe<Tuple2<List<Int32>, Int32>>) Void
+
+pub @_extern bytesKinds: (a: List<UInt8>, b: Maybe<List<UInt8>>, c: List<List<UInt8>>, d: Map<Str, List<UInt8>>, e: Tuple2<List<UInt8>, Int32>, h: Holder) Str
+
+pub @_extern annotate: (j: Json, key: Str) Void
+
+pub @_extern seenScalars: (a: Int8, b: UInt64, c: Size, d: Float64, e: Bool, f: Str, g: Int32) Str
+
+pub @_extern seenValues: (xs: List<Int32>, b: List<UInt8>, m: Map<Str, Int32>, t: Tuple2<Str, Int32>, some: Maybe<Str>, absent: Maybe<Str>) Str
+
+pub @_extern seenObjects: (p: Pt, b: Box, j: Json) Str
+
+pub @_extern keep: (xs: List<Int32>, p: Pt, b: Box) Void
+
+pub @_extern kept: () Str
+
+pub @_extern sharedList: () List<Str>
+
+pub @_extern touchShared: () Void
+
+pub @_extern fillInto: (buf: MutView<UInt8>) Int64
+
+pub @_extern tryWrite: (data: View<UInt8>) Str
+
+pub @_extern useKept: () Str
+
+pub @_extern giveInt32: (k: Str) Int32
+
+pub @_extern giveUInt8: (k: Str) UInt8
+
+pub @_extern giveSize: (k: Str) Size
+
+pub @_extern giveFloat: (k: Str) Float64
+
+pub @_extern giveBool: (k: Str) Bool
+
+pub @_extern giveStr: (k: Str) Str
+
+pub @_extern giveMaybe: (k: Str) Maybe<Int32>
+
+pub @_extern giveList: (k: Str) List<Str>
+
+pub @_extern giveBytes: (k: Str) List<UInt8>
+
+pub @_extern giveMap: (k: Str) Map<Str, Int64>
+
+pub @_extern giveTuple: (k: Str) Tuple2<Str, Int32>
+
+
+pub @_extern giveJson: (k: Str) Json
+
+pub @_extern giveVoid: (k: Str) Void
+
+pub run: () Void {
+    top: UInt64 = 0
+    trace(seenScalars(-5, top - 1, 3, 2.5, true, "hi", LEVEL_HIGH))
+    m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    m.put("a", 1)
+    trace(seenValues(@listOf(1, 2), @listOf(7, 8), m, Tuple2<Str, Int32> { "t", 2 }, "s", null))
+    box: Mutable<Box> = Box { }
+    box.items.add("first")
+    trace(seenObjects(Pt { 1, 2 }, box, Json.parse("{\"k\": [1, 2.5, null]}")))
+
+    // The sidecar keeps a copy of a List and a struct, and the Box itself.
+    xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
+    p: Mutable<Pt> = Pt { 1, 2 }
+    keep(xs, p, box)
+    xs.add(4)
+    p = p with {
+        x = 9
+    }
+    box.items.add("later")
+    trace(kept())
+
+    // A List the sidecar returned and still holds: Kira's copy is its own.
+    s: List<Str> = sharedList()
+    touchShared()
+    trace(s.size())
+
+    // A view is lent for the call: written through, released after, and the List grows again.
+    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0)
+    trace(fillInto(buf.from(0)))
+    trace(Str.of(buf.slice(0, 3)))
+    trace(useKept())
+    buf.add(9)
+    trace(buf.size())
+    trace(tryWrite(buf))
+
+    // Python writes into every List it is handed, at any depth, a tuple's included: Kira's stay as they were,
+    // but for a Mutable object's own (the Holder's), which the sidecar shares.
+    t: Tuple2<List<Int32>, Int32> = Tuple2<List<Int32>, Int32> { @listOf(1), 0 }
+    h: Holder = Holder { }
+    ts: List<Tuple2<List<Int32>, Int32>> = @listOf(Tuple2<List<Int32>, Int32> { @listOf(1), 0 })
+    mt: Maybe<Tuple2<List<Int32>, Int32>> = Tuple2<List<Int32>, Int32> { @listOf(1), 0 }
+    scribble(t, h, ts, mt)
+    a: List<Int32> = t.first
+    b: List<Int32> = h.t.first
+    c: List<Int32> = ts[0].first
+    d: List<Int32> = mt.value.first
+    trace("${a.size()} ${b.size()} ${c.size()} ${d.size()}")
+    x: List<UInt8> = @listOf(1)
+    bm: Mutable<Map<Str, List<UInt8>>> = Map<Str, List<UInt8>> { }
+    bm.put("k", x)
+    trace(bytesKinds(x, x, @listOf(x), bm, Tuple2<List<UInt8>, Int32> { x, 0 }, h))
+
+    // A Json goes as itself: what the sidecar writes into it, Kira reads.
+    j: Mutable<Json> = Json.parse("{}")
+    annotate(j, "note")
+    trace(j.has("note"))
+}

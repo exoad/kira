@@ -1,0 +1,48 @@
+// Num's own methods on py (D83): equals is ==, hashCode is kira::hashCode, toInt32 and toInt64 are `as`, and
+// toFloat64 widens. The expected output is the C++ backend's run of this module.
+
+pub main: () Void {
+    a: Int32 = -7
+    b: Int64 = 9000000000
+    u: UInt64 = (0 - 1) as UInt64
+    w: UInt64 = 9007199254740993
+    s: UInt8 = 200
+    f: Float64 = 25000000000.5
+    n: Float64 = 0.0 / 0.0
+    z: Float64 = -0.0
+    trace(a.equals(-7))
+    trace(a.equals(7))
+    trace(f.equals(f))
+    trace(n.equals(n))
+    trace(z.equals(0.0))
+    trace(a.hashCode())
+    trace(u.hashCode())
+    trace(s.hashCode())
+    trace(f.hashCode())
+    trace(z.hashCode())
+    trace(b.toInt32())
+    trace(u.toInt32())
+    trace(f.toInt32())
+    trace((0.0 - f).toInt64())
+    trace(n.toInt64())
+    trace(u.toInt64())
+    trace(s.toInt64())
+    trace(a.toFloat64())
+    trace(b.toFloat64())
+    trace(u.toFloat64())
+    trace(u.toFloat64().fixed(0))
+    trace(w.toFloat64().fixed(0))
+    callers(10000000000.0, 10000000000.0)
+    callers(100000000000000000000.0, 100000000000000000000.0)
+    callers(-3.0, 3.0)
+}
+
+// The driver hands these the same numbers as Python ints, which must answer as the doubles do.
+pub callers: (v: Float64, w: Float64) Void {
+    trace(v as Int32)
+    trace(v.toInt32())
+    trace(v.toInt64())
+    trace(v.hashCode())
+    trace(v.equals(w))
+    trace(v.hashCode() == w.hashCode())
+}

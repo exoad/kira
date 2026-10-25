@@ -1,0 +1,5 @@
+kira.json as json
+
+pub parsed: (text: Str) Bool {
+    !Json.parse(text).isNull()
+}

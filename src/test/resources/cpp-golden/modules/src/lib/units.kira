@@ -1,0 +1,13 @@
+// A header-only module (build.cpp.headerOnly) in namespace golden::units
+// (build.cpp.namespaces). Its private helper lands in namespace impl_ of the
+// header, where the module's own inline functions can call it.
+
+pub SCALE: Int32 = 100
+
+clampPct: (v: Int32) Int32 {
+    v < 0 ? 0 : v > SCALE ? SCALE : v
+}
+
+pub percent: (part: Int32, whole: Int32) Int32 {
+    whole == 0 ? 0 : clampPct(part * SCALE / whole)
+}

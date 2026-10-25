@@ -1,0 +1,6 @@
+// main taking the program's arguments, as C++'s runMain hands them: its result is the exit status.
+
+main: (args: List<Str>) Int32 {
+    trace("ran with ${args.size()} arguments")
+    args.size() as Int32
+}

@@ -1,0 +1,158 @@
+// A List is shared (stage 4): assigning, storing, passing and returning it hands on one List, and a
+// function that changes its parameter changes the caller's. Each probe changes one name and traces the other.
+
+log: Mutable<List<Int32>> = List<Int32> { }
+seed: Mutable<List<Int32>> = List<Int32> { }
+
+Holder: Mutable<Any> {
+    pub items: Mutable<List<Int32>>
+
+    pub snapshot: () List<Int32> {
+        items
+    }
+
+    pub setItems: (xs: List<Int32>) Void {
+        items = xs
+    }
+
+    // The callee writes the field the caller passed: the argument is the field as it was.
+    pub poke: (xs: List<Int32>) Size {
+        items.add(9)
+        xs.size()
+    }
+
+    pub grow: () Int32 {
+        items.add(0)
+        1
+    }
+
+    // The callee replaces the field it was passed: the parameter keeps the List the field was.
+    pub reset: (xs: List<Int32>) Size {
+        items = List<Int32> { }
+        xs.add(1)
+        items.size()
+    }
+}
+
+count: (xs: List<Int32>) Size {
+    log.add(1)
+    xs.size()
+}
+
+fill: (xs: List<Int32>, n: Int32) Void {
+    i: Mutable<Int32> = 0
+    while i < n {
+        xs.add(i)
+        i += 1
+    }
+}
+
+pushTo: (xs: List<Int32>) Int32 {
+    xs.add(100)
+    1
+}
+
+lenOf: (xs: List<Int32>, k: Int32) Size {
+    xs.size() + (k as Size)
+}
+
+echo: (xs: List<Int32>) List<Int32> {
+    xs
+}
+
+fresh: (n: Int32) List<Int32> {
+    out: Mutable<List<Int32>> = List<Int32> { }
+    fill(out, n)
+    out
+}
+
+pick: (c: Bool, a: List<Int32>, b: List<Int32>) List<Int32> {
+    c ? a : b
+}
+
+show: (xs: List<Int32>) Str {
+    s: Mutable<Str> = "["
+    i: Mutable<Size> = 0
+    while i < xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+        i += 1
+    }
+    s + "]"
+}
+
+main: () Void {
+    // assign, then mutate either name
+    a: Mutable<List<Int32>> = List<Int32> { }
+    a.add(1)
+    b: Mutable<List<Int32>> = a
+    b.add(2)
+    trace(show(a))
+    trace(show(b))
+    a = b
+    a.add(3)
+    trace(show(a))
+    trace(show(b))
+
+    // a field given to a construction, a setter, and returned
+    h: Mutable<Holder> = Holder { a }
+    a.add(4)
+    trace(show(h.items))
+    h.setItems(b)
+    b.add(5)
+    trace(show(h.items))
+    snap: Mutable<List<Int32>> = h.snapshot()
+    snap.add(6)
+    trace(show(h.items))
+    trace(show(snap))
+
+    // the callee writes the field it was passed
+    trace(h.poke(h.items))
+    trace(show(h.items))
+    trace(count(log))
+    trace(count(log))
+    trace(log.size())
+
+    // a function changes the List it is given, the field it names included
+    fill(a, 3)
+    trace(show(a))
+    b.add(7)
+    trace(show(a))
+    trace(h.reset(h.items))
+    trace(show(h.items))
+    fill(h.items, 2)
+    trace(show(h.items))
+    fill(seed, 2)
+    trace(show(seed))
+
+    // a sibling argument that writes the List passed before it
+    trace(lenOf(a, pushTo(a)))
+    trace(show(a))
+    trace(lenOf(h.items, h.grow()))
+    trace(show(h.items))
+
+    // returned: a parameter, a local, either branch
+    e: Mutable<List<Int32>> = echo(a)
+    e.add(8)
+    trace(show(a))
+    trace(show(e))
+    f: Mutable<List<Int32>> = fresh(2)
+    f.add(9)
+    trace(show(f))
+    p: Mutable<List<Int32>> = pick(true, a, b)
+    p.add(10)
+    trace(show(a))
+    trace(show(p))
+    g: Mutable<List<Int32>> = seed
+    g.add(11)
+    trace(show(seed))
+    seed = g
+    g.add(12)
+    trace(show(seed))
+    trace(show(g))
+    g.set(0, 50)
+    trace(g.contains(50))
+    trace(g.contains(0))
+}

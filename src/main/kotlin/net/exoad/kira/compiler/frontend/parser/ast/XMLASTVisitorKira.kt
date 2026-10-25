@@ -132,17 +132,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        node("DoWhileIterationStatement") {
-            node("Condition") {
-                doWhileIterationStatement.condition.accept(this)
-            }
-            node("Body") {
-                doWhileIterationStatement.statements.forEach { it.accept(this) }
-            }
-        }
-    }
-
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
         node("ReturnStatement") {
             returnStatement.expr.accept(this)
@@ -220,9 +209,10 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        node("LArray") {
-            arrayLiteral.value.forEach { it.accept(this) }
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        node("Builder", "kind=\"${builderExpr.kind.intrinsic}\"") {
+            builderExpr.typeArgs.forEach { it.accept(this) }
+            builderExpr.elements.forEach { it.accept(this) }
         }
     }
 
@@ -337,17 +327,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        node(
-            "EnumDecl", """modifiers="${
-                enumDecl.modifiers.joinToString(",") { it.name }
-            }""""
-        ) {
-            enumDecl.name.accept(this)
-            enumDecl.members.forEach { it.accept(this) }
-        }
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         node("TraitDecl", "modifiers=\"${traitDecl.modifiers.joinToString(",") { it.name }}\"") {
             traitDecl.name.accept(this)
@@ -358,18 +337,6 @@ object XMLASTVisitorKira :
             }
             node("Members") {
                 traitDecl.members.forEach { it.accept(this) }
-            }
-        }
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        node("VariantDecl", "modifiers=\"${variantDecl.modifiers.joinToString(",") { it.name }}\"") {
-            variantDecl.name.accept(this)
-            node("Variants") {
-                variantDecl.variants.forEach { it.accept(this) }
-            }
-            node("Members") {
-                variantDecl.members.forEach { it.accept(this) }
             }
         }
     }
@@ -512,14 +479,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        node("EnumMember")
-        {
-            enumMemberExpr.name.accept(this)
-            enumMemberExpr.value?.accept(this)
-        }
-    }
-
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
         node("ObjectInit") {
             node("Type") { objectInitExpr.typeName.accept(this) }
@@ -540,6 +499,7 @@ object XMLASTVisitorKira :
             {
                 typeCheckExpr.type.accept(this)
             }
+            typeCheckExpr.checks?.let { checks -> node("Checks") { checks.forEach { it.accept(this) } } }
         }
     }
 
@@ -564,7 +524,12 @@ object XMLASTVisitorKira :
     override fun visitWithExpr(withExpr: WithExpr) {
         node("WithExpr")
         {
-            withExpr.members.forEach { it.accept(this) }
+            node("Receiver") {
+                withExpr.receiver.accept(this)
+            }
+            node("Body") {
+                withExpr.body.forEach { it.accept(this) }
+            }
         }
     }
 
@@ -590,14 +555,70 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        node("WithExprMember")
-        {
-            node("Name")
-            {
-                withExprMember.name.accept(this)
+    // --- the AST contract (design 2.4) ---------------------------------------
+
+    override fun visitStructDecl(structDecl: StructDecl) {
+        node(
+            "StructDecl", when (structDecl.modifiers.isNotEmpty()) {
+                true -> """modifiers="${structDecl.modifiers.joinToString(",") { it.name }}""""
+                else -> ""
             }
-            withExprMember.value.accept(this)
+        ) {
+            structDecl.name.accept(this)
+            if (structDecl.traits.isNotEmpty()) {
+                node("Traits") {
+                    structDecl.traits.forEach { it.accept(this) }
+                }
+            }
+            node("Members") {
+                structDecl.members.forEach { it.accept(this) }
+            }
+            structDecl.initially?.let { block ->
+                node("Initially") { block.forEach { it.accept(this) } }
+            }
+        }
+    }
+
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        node("IfExpr") {
+            node("Condition") { ifExpr.condition.accept(this) }
+            node("Then") { ifExpr.thenBranch.forEach { it.accept(this) } }
+            node("Else") { ifExpr.elseBranch.forEach { it.accept(this) } }
+        }
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        node("LambdaExpr") {
+            lambdaExpr.def.accept(this)
+        }
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        node(
+            "PlaceAssignmentExpr",
+            placeAssignmentExpr.operator?.let { """op="${escapeXml(it.toString())}"""" } ?: ""
+        ) {
+            node("Target") { placeAssignmentExpr.target.accept(this) }
+            node("Value") { placeAssignmentExpr.value.accept(this) }
+        }
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        xmlSingleLeaf("This", null)
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        xmlSingleLeaf("LChar", """value="${charLiteral.value}"""")
+    }
+
+    override fun visitInterpolatedStringLiteral(interpolatedStringLiteral: InterpolatedStringLiteral) {
+        node("LInterpolatedString") {
+            interpolatedStringLiteral.parts.forEach { part ->
+                when (part) {
+                    is InterpolationPart.Text -> xmlSingleLeaf("Text", """value="${escapeXml(part.text)}"""")
+                    is InterpolationPart.Hole -> node("Hole") { part.expr.accept(this) }
+                }
+            }
         }
     }
 

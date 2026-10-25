@@ -1,0 +1,31 @@
+traits.app.animals as animals
+
+makeDog: () Dog {
+    dog: Dog = Dog { "Rex" }
+    dog
+}
+
+makeSpeaker: () Speaker {
+    cat: Cat = Cat { "Luna" }
+    cat
+}
+
+main: () Void {
+    dog: Dog = makeDog()
+    cat: Cat = Cat { "Luna" }
+
+    announce(dog)
+    announce(cat)
+
+    dogLoud: Int32 = noiseLevel(dog)
+    trace(dogLoud)
+
+    s: Speaker = dog
+    trace(s.name())
+
+    // Object literal coerced directly to a trait-typed slot.
+    bolt: Speaker = Dog { "Bolt" }
+    trace(bolt.speak())
+
+    trace(makeSpeaker().name())
+}

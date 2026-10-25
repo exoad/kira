@@ -1,0 +1,115 @@
+// text: the Pico's command parsing on borrowed views and a fixed buffer. The same
+// file builds for the Pico (-DKIRA_PROFILE_FREESTANDING=1): no printf, a stub
+// panic, and golden_main in place of main.
+#include "../expected/src/lib/text.kira.hxx"
+
+#if KIRA_PROFILE_HOSTED
+#include <cstdio>
+#endif
+
+namespace
+{
+  int checks = 0;
+  int failures = 0;
+
+  void check(bool ok, const char* what)
+  {
+      ++checks;
+      if(!ok)
+      {
+          ++failures;
+      }
+#if KIRA_PROFILE_HOSTED
+      std::printf(ok ? "  ok    %s\n" : "  FAIL  %s\n", what);
+#else
+      static_cast<void>(what);
+#endif
+  }
+
+  void run()
+  {
+      const kira::View<char> esc = kira::lit("ESC 1541");
+      const kira::Maybe<kira::Size> arg = bibo::text::wordEnd(esc, kira::lit("ESC"));
+      check(kira::isSome(arg) && esc.from(kira::unwrap(arg)) == kira::lit("1541"), "word splits the argument off");
+      const kira::View<char> ping = kira::lit("PING");
+      check(kira::isSome(bibo::text::wordEnd(ping, kira::lit("PING"))) &&
+                ping.from(kira::unwrap(bibo::text::wordEnd(ping, kira::lit("PING")))).isEmpty(),
+            "a bare command is an empty view, not none");
+      check(!kira::isSome(bibo::text::wordEnd(kira::lit("ESCAPE 1"), kira::lit("ESC"))), "a longer word does not match");
+      check(!kira::isSome(bibo::text::wordEnd(kira::lit("ES"), kira::lit("ESC"))), "nor does a shorter one");
+      const kira::View<char> led = kira::lit("LED    on");
+      check(led.from(kira::unwrap(bibo::text::wordEnd(led, kira::lit("LED")))) == kira::lit("on"),
+            "every space after the word is skipped");
+      check(bibo::text::isCommand(kira::lit("STOP\r"), kira::lit("STOP")) == false, "a CR is not a space");
+      check(bibo::text::trimEnd(kira::lit("PING\r\n")) == 4 && bibo::text::trimEnd(kira::lit(" \t")) == 0,
+            "trimEnd drops CR, LF, space and tab");
+
+      const auto spaced = bibo::text::toInt(kira::lit(" 1541 \r\n"));
+      check(kira::isSome(spaced) && kira::unwrap(spaced) == 1541, "toInt allows surrounding space");
+      const auto signed_ = bibo::text::toInt(kira::lit("-300"));
+      check(kira::isSome(signed_) && kira::unwrap(signed_) == -300, "and a sign");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("12abc"))), "12abc is refused");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("   "))) && !kira::isSome(bibo::text::toInt(kira::lit(""))), "blank is refused");
+      check(!kira::isSome(bibo::text::toInt(kira::lit("1 2"))), "two numbers are refused");
+
+      kira::StrBuf<32> reply;
+      bibo::text::driveReply(1500, -12, reply);
+      check(reply.view() == kira::lit("OK drive servo=1500 esc=-12") && !reply.truncated(), "driveReply fills a StrBuf");
+      bibo::text::driveReply(1600, 1541, reply);
+      check(reply.view() == kira::lit("OK drive servo=1600 esc=1541"), "and clears it first");
+      bibo::text::driveReply(2147483647, -2147483647, reply);
+      check(reply.size() == 32 && reply.truncated(), "a reply past 32 chars is truncated, and says so");
+
+      // addFixed rounds as printf's %.*f: an exact half to even, a decimal one by the double's value.
+      kira::StrBuf<32> speed;
+      const auto said = [&speed](double v, std::int32_t places, const char* want)
+      {
+          bibo::text::speedReply(v, places, speed);
+          kira::Size n = 0;
+          while(want[n] != '\0')
+          {
+              ++n;
+          }
+          return speed.view() == kira::View<char>(want, n);
+      };
+      check(said(0.25, 1, "SPEED 0.2") && said(-0.25, 1, "SPEED -0.2") && said(2.5, 0, "SPEED 2") && said(1.5, 0, "SPEED 2"),
+            "addFixed: an exact half goes to even");
+      check(said(0.15, 1, "SPEED 0.1") && said(0.35, 1, "SPEED 0.3") && said(2.675, 2, "SPEED 2.67") &&
+                said(0.45, 1, "SPEED 0.5"),
+            "addFixed: a decimal half is the double's exact value");
+      check(said(-0.0, 1, "SPEED -0.0") && said(-0.0005, 3, "SPEED -0.001") && said(1.5, 3, "SPEED 1.500"),
+            "addFixed: a negative zero keeps its sign");
+      check(said(kira::bitCast<double>(std::uint64_t{0x7FF8000000000000u}), 2, "SPEED nan") &&
+                said(kira::bitCast<double>(std::uint64_t{0xFFF8000000000000u}), 2, "SPEED nan") &&
+                said(std::numeric_limits<double>::infinity(), 1, "SPEED inf") &&
+                said(-std::numeric_limits<double>::infinity(), 1, "SPEED -inf"),
+            "addFixed: NaN and the infinities");
+      check(said(0.1, 12, "SPEED 0.100000000") && said(1.5, -1, "SPEED 2"), "addFixed: places clamped to 0..9");
+  }
+}
+
+#if KIRA_PROFILE_HOSTED
+int main()
+{
+    std::printf("\ntext - commands on views and a fixed buffer\n\n");
+    run();
+    std::printf("\n%d checks, %d failed\n", checks, failures);
+    return failures == 0 ? 0 : 1;
+}
+#else
+// The board's panic, stubbed for the probe build.
+[[noreturn]] void kira::panic(const char* what) noexcept
+{
+    static_cast<void>(what);
+    for(;;)
+    {
+        __asm__ volatile("");
+    }
+}
+
+extern "C" int golden_main()
+{
+    run();
+    return failures;
+}
+#endif

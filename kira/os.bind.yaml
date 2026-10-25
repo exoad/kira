@@ -1,0 +1,136 @@
+# Magic binding manifest for kira:os (C++ and py backends).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips
+# it (the C backend has no sockets). Keys are `Type.method` and the bare
+# name of each free function; placeholders and flags as in core.bind.yaml.
+# Every class here is a Kira class, so `{self}` is a kira::Rc<C> (design
+# 5.1) and the member is reached with `->`. Nothing is pure: every call
+# reaches the operating system, or reads a per-thread error it may have set.
+#
+# The module's structs (Datagram, Ready, Ran) and its constants (POLL_*,
+# SIGNAL_*) are not bindings: kira/cpp/kira/os.hxx defines them by hand as
+# kira::os::Datagram, kira::os::Ready and inline constexpr constants, the
+# aggregate and constant forms of design 5.2, under the kira::os namespace
+# that the kira:os URI maps to (D14).
+#
+# Runtime names, declared in kira/cpp/kira/os.hxx and defined in os.cxx,
+# namespace kira::os: lastError, lastErrorKind; UdpSocket (bind, localPort, sendTo,
+# recvFrom, handle, close); TcpListener (listen, localPort, accept, handle,
+# close); TcpStream (connect, read, write, isOpen, handle, close); Poller
+# (add, remove, wait); Serial (open, read, write, isOpen, handle, close);
+# readFile, readText, readTextLf, readFileHead, writeFile, writeFileAtomic, listDir,
+# exists, isFile, isDir, fileSize, modifiedS, removeFile, replaceFile, makeDirs,
+# freeBytes; FileOut (write, sync, size, isStale, close), openAppend, openWrite;
+# Process (readStdout, kill, wait, isRunning, stdoutHandle, pid), spawnProcess;
+# setAffinity, nice; onSignal, env, exit. args (D71) is kira::rt::args in
+# kira/main.hxx, from the argv runMain keeps.
+#
+# On py each is a _k_ helper or runtime class of kira/py/runtime.py (K3, K4). The py-only entries
+# below say cpp: { unsupported }, refused at compile time with the reason (D83).
+
+lastError:     { cpp: { expr: "kira::os::lastError()", includes: ["kira/os.hxx"] }, py: { expr: "_k_oserror()" } }
+lastErrorKind: { cpp: { expr: "kira::os::lastErrorKind()", includes: ["kira/os.hxx"] }, py: { expr: "_k_oserrkind()" } }
+
+# --- UdpSocket -------------------------------------------------------------
+UdpSocket.bind:      { cpp: { expr: "{self}->bind({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.bind({0}, {1})" } }
+UdpSocket.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.localPort()" } }
+UdpSocket.sendTo:    { cpp: { expr: "{self}->sendTo({0}, {1}, {2})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.sendTo({0}, {1}, {2})" } }
+UdpSocket.recvFrom:  { cpp: { expr: "{self}->recvFrom({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.recvFrom({0})" } }
+UdpSocket.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.handle()" } }
+UdpSocket.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.close()" } }
+
+# --- TcpListener -----------------------------------------------------------
+TcpListener.listen:    { cpp: { expr: "{self}->listen({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.listen({0})" } }
+TcpListener.localPort: { cpp: { expr: "{self}->localPort()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.localPort()" } }
+TcpListener.accept:    { cpp: { expr: "{self}->accept()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.accept()" } }
+TcpListener.handle:    { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.handle()" } }
+TcpListener.close:     { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.close()" } }
+
+# --- TcpStream -------------------------------------------------------------
+TcpStream.connect: { cpp: { expr: "{self}->connect({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.connect({0}, {1})" } }
+TcpStream.read:    { cpp: { expr: "{self}->read({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.read({0})" } }
+TcpStream.write:   { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.write({0})" } }
+TcpStream.isOpen:  { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.isOpen()" } }
+TcpStream.handle:  { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.handle()" } }
+TcpStream.close:   { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.close()" } }
+
+# --- Poller ----------------------------------------------------------------
+Poller.add:    { cpp: { expr: "{self}->add({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.add({0}, {1})" } }
+Poller.remove: { cpp: { expr: "{self}->remove({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.remove({0})" } }
+Poller.wait:   { cpp: { expr: "{self}->wait({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.wait({0})" } }
+
+# --- Serial ----------------------------------------------------------------
+Serial.open:   { cpp: { expr: "{self}->open({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.open({0}, {1})" } }
+Serial.read:   { cpp: { expr: "{self}->read({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.read({0}, {1})" } }
+Serial.write:  { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.write({0})" } }
+Serial.isOpen: { cpp: { expr: "{self}->isOpen()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.isOpen()" } }
+Serial.handle: { cpp: { expr: "{self}->handle()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.handle()" } }
+Serial.close:  { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.close()" } }
+
+# --- files -----------------------------------------------------------------
+readFile:        { cpp: { expr: "kira::os::readFile({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_readfile({0}, -1)" } }
+readText:        { cpp: { expr: "kira::os::readText({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_readtext({0}, \"\")" } }
+readTextLf:      { cpp: { expr: "kira::os::readTextLf({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_readtext({0}, None)" } }
+readFileHead:    { cpp: { expr: "kira::os::readFileHead({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_readfile({0}, {1})" } }
+writeFile:       { cpp: { expr: "kira::os::writeFile({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_writefile({0}, {1})" } }
+writeFileAtomic: { cpp: { expr: "kira::os::writeFileAtomic({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_writeatomic({0}, {1})" } }
+listDir:         { cpp: { expr: "kira::os::listDir({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget([], _k_listdir, {0})" } }
+exists:          { cpp: { expr: "kira::os::exists({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_ostest(_k_os.path.exists, {0})" } }
+isFile:          { cpp: { expr: "kira::os::isFile({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_ostest(_k_os.path.isfile, {0})" } }
+isDir:           { cpp: { expr: "kira::os::isDir({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_ostest(_k_os.path.isdir, {0})" } }
+fileSize:        { cpp: { expr: "kira::os::fileSize({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget(-1, _k_os.path.getsize, {0})" } }
+modifiedS:       { cpp: { expr: "kira::os::modifiedS({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget(None, _k_os.path.getmtime, {0})" } }
+removeFile:      { cpp: { expr: "kira::os::removeFile({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osdo(_k_os.remove, {0})" } }
+replaceFile:     { cpp: { expr: "kira::os::replaceFile({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osdo(_k_os.replace, {0}, {1})" } }
+makeDirs:        { cpp: { expr: "kira::os::makeDirs({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osdo(_k_makedirs, {0})" } }
+freeBytes:       { cpp: { expr: "kira::os::freeBytes({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget(-1, _k_freebytes, {0})" } }
+
+# --- FileOut ---------------------------------------------------------------
+FileOut.write:   { cpp: { expr: "{self}->write({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.write({0})" } }
+FileOut.sync:    { cpp: { expr: "{self}->sync()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.sync()" } }
+FileOut.size:    { cpp: { expr: "{self}->size()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.size()" } }
+FileOut.isStale: { cpp: { expr: "{self}->isStale()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.isStale()" } }
+FileOut.close:   { cpp: { expr: "{self}->close()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.close()" } }
+openAppend:      { cpp: { expr: "kira::os::openAppend({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_openout({0}, \"ab\")" } }
+openWrite:       { cpp: { expr: "kira::os::openWrite({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_openout({0}, \"wb\")" } }
+
+# --- files, py only (Python's tempfile, shutil, glob and os.walk; their C++ halves are not written yet) -------
+tempDir:          { cpp: { unsupported: "py only for now: tempfile.mkdtemp has no C++ half yet" }, py: { expr: "_k_osget(None, _k_tempfile.mkdtemp, \"\", {0})" } }
+removeTree:       { cpp: { unsupported: "py only for now: shutil.rmtree has no C++ half yet" }, py: { expr: "_k_osdo(_k_shutil.rmtree, {0})" } }
+setModifiedS:     { cpp: { unsupported: "py only for now: os.utime has no C++ half yet" }, py: { expr: "_k_osdo(_k_touch, {0}, {1})" } }
+glob:             { cpp: { unsupported: "py only for now: glob.glob has no C++ half yet" }, py: { expr: "_k_osget([], _k_globbed, {0})" } }
+walkFiles:        { cpp: { unsupported: "py only for now: os.walk has no C++ half yet" }, py: { expr: "_k_osget([], _k_walkfiles, {0})" } }
+which:            { cpp: { unsupported: "py only for now: shutil.which has no C++ half yet" }, py: { expr: "_k_osget(None, _k_shutil.which, {0})" } }
+pythonExecutable: { cpp: { unsupported: "the interpreter that runs a py program; a C++ program is no script" }, py: { expr: "(_k_sys.executable or \"\")" } }
+moduleDir:        { cpp: { unsupported: "a generated module's own directory; a C++ binary keeps no source file's" }, py: { expr: "_k_moddir()" } }
+
+# --- Process ---------------------------------------------------------------
+Process.readStdout:   { cpp: { expr: "{self}->readStdout({0})", includes: ["kira/os.hxx"] }, py: { expr: "{self}.readStdout({0})" } }
+Process.kill:         { cpp: { expr: "{self}->kill()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.kill()" } }
+Process.wait:         { cpp: { expr: "{self}->wait()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.wait()" } }
+Process.isRunning:    { cpp: { expr: "{self}->isRunning()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.isRunning()" } }
+Process.stdoutHandle: { cpp: { expr: "{self}->stdoutHandle()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.stdoutHandle()" } }
+Process.pid:          { cpp: { expr: "{self}->pid()", includes: ["kira/os.hxx"] }, py: { expr: "{self}.pid()" } }
+spawnProcess:         { cpp: { expr: "kira::os::spawnProcess({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_spawn({0}, False)" } }
+setAffinity:          { cpp: { expr: "kira::os::setAffinity({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osdo(_k_affinity, {0}, {1})" } }
+nice:                 { cpp: { expr: "kira::os::nice({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget(None, _k_nice, {0})" } }
+
+# --- processes, py only (subprocess; their C++ halves are not written yet) ----------
+runCapture:                  { cpp: { unsupported: "py only for now: subprocess.run has no C++ half yet" }, py: { expr: "_k_runcapture({0}, {1}, {2})" } }
+runInherit:                  { cpp: { unsupported: "py only for now: subprocess.run has no C++ half yet" }, py: { expr: "_k_runinherit({0})" } }
+spawnPiped:                  { cpp: { unsupported: "py only for now: subprocess's three pipes have no C++ half yet" }, py: { expr: "_k_spawn({0}, True)" } }
+PipedProcess.writeStdin:     { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.writeStdin({0})" } }
+PipedProcess.closeStdin:     { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.closeStdin()" } }
+PipedProcess.readStdout:     { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.readStdout({0})" } }
+PipedProcess.readStderrLine: { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.readStderrLine()" } }
+PipedProcess.kill:           { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.kill()" } }
+PipedProcess.wait:           { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.wait()" } }
+PipedProcess.isRunning:      { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.isRunning()" } }
+PipedProcess.stdoutHandle:   { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.stdoutHandle()" } }
+PipedProcess.pid:            { cpp: { unsupported: "py only for now, as spawnPiped is" }, py: { expr: "{self}.pid()" } }
+
+# --- signals, environment, arguments, exit ---------------------------------
+args:     { cpp: { expr: "kira::rt::args()", includes: ["kira/main.hxx"] }, py: { expr: "list(_k_sys.argv)" } }
+onSignal: { cpp: { expr: "kira::os::onSignal({0}, {1})", includes: ["kira/os.hxx"] }, py: { expr: "_k_onsignal({0}, {1})" } }
+env:      { cpp: { expr: "kira::os::env({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_osget(None, _k_os.environ.get, {0})" } }
+exit:     { cpp: { expr: "kira::os::exit({0})", includes: ["kira/os.hxx"] }, py: { expr: "_k_exit({0})" } }

@@ -14,8 +14,8 @@ class FrontendCompilationPipelineTest {
             x: Int32 = 1
             y: Int32 = 2
 
-            fx add: (a: Int32, b: Int32) Int32 {
-                return a + b
+            add: (a: Int32, b: Int32) Int32 {
+                a + b
             }
 
             answer: Int32 = add(x, y)
@@ -49,6 +49,6 @@ class FrontendCompilationPipelineTest {
             semantics.isHealthy,
             semantics.diagnostics.joinToString("\n") { it.message }
         )
-        assertNotNull(result.compilationUnit.resolveSymbol("TestEnum"))
+        assertNotNull(result.compilationUnit.resolveSymbol("TestType"))
     }
 }

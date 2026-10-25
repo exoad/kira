@@ -1,0 +1,49 @@
+Pt: Struct {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+Seg: Struct {
+    pub a: Pt = Pt { }
+    pub b: Pt = Pt { }
+}
+
+Lone: Struct {
+    pub v: Float64 = 0.0
+}
+
+main: () Void {
+    pts: Mutable<List<Pt>> = List<Pt> { }
+    pts.add(Pt { 1, 2 })
+    probe: Pt = Pt { 1, 2 }
+    trace(pts.contains(probe))
+    trace(pts.contains(Pt { 3, 4 }))
+
+    m: Mutable<Map<Str, Pt>> = Map<Str, Pt> { }
+    m["a"] = Pt { 5 }
+    trace(m.containsValue(Pt { 5 }))
+    trace(m.containsValue(Pt { 5, 1 }))
+
+    s: Seg = Seg { Pt { 1 }, Pt { 2 } }
+    t: Mutable<Seg> = s
+    trace(s == t)
+    t = t with {
+        b = Pt { 3 }
+    }
+    trace(s == t)
+    trace(s != t)
+    segs: Mutable<List<Seg>> = List<Seg> { }
+    segs.add(s)
+    trace(segs.contains(t))
+    t = t with {
+        b = Pt { 2 }
+    }
+    trace(segs.contains(t))
+    trace(Pt { 1, 2 } == probe)
+
+    nan: Float64 = 0.0 / 0.0
+    ls: Mutable<List<Lone>> = List<Lone> { }
+    ls.add(Lone { nan })
+    trace(ls.contains(Lone { nan }))
+    trace(ls.contains(Lone { }))
+}

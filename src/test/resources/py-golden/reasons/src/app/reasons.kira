@@ -1,0 +1,25 @@
+kira.json as json
+kira.sync as sync
+golden.py.reasons.app.parser as parser
+golden.py.reasons.app.parser.parsed as parsed
+
+// A stdlib call's reason is one per thread for the whole program, as C++ keeps it: main reads what a call in
+// another module left, another thread reads its own, and the next call that succeeds clears it.
+
+pub main: () Void {
+    println("parser parsed {: ${parsed("{")}")
+    println("main reads [${Json.error()}]")
+    seen: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
+    t: Thread = spawn("other", () Void {
+        e: Str = Json.error()
+        seen.lock((xs: List<Str>) Void {
+            xs.add(e)
+        })
+    })
+    t.join()
+    seen.lock((xs: List<Str>) Void {
+        println("another thread reads [${xs[0]}]")
+    })
+    println("parser parsed [1]: ${parsed("[1]")}")
+    println("main reads [${Json.error()}]")
+}

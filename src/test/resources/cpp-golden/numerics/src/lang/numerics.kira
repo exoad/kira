@@ -1,0 +1,113 @@
+// Kira's numbers in C++. Arithmetic on a sub-int type wraps in that type (R1);
+// a literal takes the type it meets (R2, R3); `as` from float to int saturates
+// and takes NaN to 0 (R13); / and % by a value that is not a constant are
+// checked (R11). Only the paths that do not fail can be golden.
+
+pub BIG: Int64 = 5000000000
+pub MASK: UInt32 = 0xFFFFFFFF
+pub HALF: Float32 = 0.5
+pub TICK: Size = 1000
+pub BYTE: UInt8 = 200
+
+pub wrapAdd: (a: UInt8, b: UInt8) UInt8 {
+    a + b
+}
+
+// 200 + 100 is 44 in UInt8, and 44 is not above 250. C++ alone says 300 is.
+pub overLimit: (a: UInt8, b: UInt8) Bool {
+    a + b > 250
+}
+
+pub negate: (a: Int8) Int8 {
+    -a
+}
+
+pub flip: (a: UInt16) UInt16 {
+    ~a
+}
+
+pub lowByte: (v: UInt32) UInt8 {
+    (v & 0xFF) as UInt8
+}
+
+pub micros: (seconds: Int64) Int64 {
+    seconds * 1000000
+}
+
+// Only literals: typed Int64, so the product is not computed in Int32.
+pub trillion: () Int64 {
+    1000000 * 1000000
+}
+
+pub ticksIn: (n: Size) Size {
+    n * TICK + 1
+}
+
+// bibo's fixed3: the literals take v's type, so this is Float32 arithmetic.
+pub fixed3: (value: Float32) Str {
+    neg: Bool = value < 0.0
+    v: Float32 = neg ? -value : value
+    scaled: Int32 = (v * 1000.0 + 0.5) as Int32
+    whole: Int32 = scaled / 1000
+    frac: Int32 = scaled % 1000
+    sign: Str = neg ? "-" : ""
+    "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
+}
+
+pub toInt: (v: Float64) Int32 {
+    v as Int32
+}
+
+pub toByte: (v: Float32) UInt8 {
+    v as UInt8
+}
+
+pub narrow: (v: Int64) Int32 {
+    v as Int32
+}
+
+pub widen: (v: Int32) Float64 {
+    v as Float64
+}
+
+pub half: (v: Float64) Float32 {
+    v as Float32
+}
+
+pub code: (c: Char) UInt8 {
+    c as UInt8
+}
+
+pub letter: (n: UInt8) Char {
+    n as Char
+}
+
+// Char compares as unsigned on every target: `char` is signed on x86 and
+// unsigned on ARM.
+pub before: (a: Char, b: Char) Bool {
+    a < b
+}
+
+pub ratio: (a: Int32, b: Int32) Int32 {
+    a / b
+}
+
+pub rem: (a: Int32, b: Int32) Int32 {
+    a % b
+}
+
+pub tenth: (a: Int32) Int32 {
+    a / 10
+}
+
+pub shift: (v: UInt32, n: UInt32) UInt32 {
+    v << n
+}
+
+pub eighth: (v: UInt32) UInt32 {
+    v >> 3
+}
+
+pub scaled: (v: Float32) Float32 {
+    v * 1000.0 + 0.5
+}

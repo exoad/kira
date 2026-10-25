@@ -1,0 +1,34 @@
+// Shape's nested types from another module: through the member alias Shape and the module alias shapes.
+
+golden.py.nestedtypes.lib.shapes as shapes
+golden.py.nestedtypes.lib.shapes.Shape as Shape
+golden.py.nestedtypes.lib.shapes.square as square
+
+describe: (c: Shape.Corner) Str {
+    "(${c.x}, ${c.y}) ${c.mark.label}"
+}
+
+which: (c: Shape.Corner, side: Shape.Side) Str {
+    "a ${c.kind()} at ${c.x}, a ${side.kind()}"
+}
+
+pub main: () Void {
+    s: Shape = square(3)
+    a: Shape.Corner = s.first()
+    b: shapes.Shape.Corner = s.corners.get(2)
+    println(describe(a))
+    println(describe(b))
+    side: Shape.Side = a.sideTo(b)
+    println("side ${side.length2()} ${side.kind()}")
+    m: Shape.Corner.Mark = s.marked("first")
+    println(m.label)
+    c: Shape.Corner = Shape.Corner { x = 7, mark = Shape.Corner.Mark { label = "seven" } }
+    println(describe(c))
+    println("${which(c, side)} ${s.size.w}x${s.size.h}")
+    wider: Shape.Size = s.size with {
+        w = 10
+    }
+    println("${wider.w}x${wider.h} ${s.size.w}")
+    empty: Shape = Shape { }
+    println(describe(empty.first()))
+}

@@ -1,0 +1,91 @@
+// The class model: reference types held by Rc, traits with parameters and
+// default bodies, inheritance, a generic class, and the spec's Ref and Weak.
+
+pub Pet: Any {
+    pub name: Str
+}
+
+// A getter that returns a field: a copy of the reference, never a second owner
+// of one count (the C backend double-frees this).
+pub Owner: Any {
+    pet: Pet
+
+    pub getPet: () Pet {
+        pet
+    }
+}
+
+pub Scaler: Any {
+    pub scale: (v: Int32) Int32;
+    pub factor: () Int32;
+    pub describe: () Str {
+        "scales by ${factor()}"
+    }
+}
+
+pub Doubler: Scaler {
+    k: Int32
+
+    override pub scale: (v: Int32) Int32 {
+        v * k
+    }
+
+    override pub factor: () Int32 {
+        k
+    }
+}
+
+pub apply: (s: Scaler, v: Int32) Int32 {
+    s.scale(v)
+}
+
+pub Animal: Any {
+    pub name: Str
+
+    pub sound: () Str {
+        "..."
+    }
+
+    pub describe: () Str {
+        "${name} says ${sound()}"
+    }
+}
+
+pub Dog: Mutable<Animal> {
+    tricks: Mutable<Int32> = 0
+
+    override pub sound: () Str {
+        "woof"
+    }
+
+    pub learn: () Int32 {
+        tricks += 1
+        tricks
+    }
+}
+
+pub Box<T>: Any {
+    pub value: T
+
+    pub get: () T {
+        value
+    }
+}
+
+pub boxed: (v: Int32) Box<Int32> {
+    Box<Int32> { value = v }
+}
+
+pub makeCounter: () Ref<Int32> {
+    Ref<Int32> { value = 0 }
+}
+
+pub bump: (c: Ref<Int32>) Int32 {
+    c.value = c.value + 1
+    c.value
+}
+
+pub petName: (w: Weak<Pet>) Str {
+    p: Maybe<Pet> = w.upgrade()
+    p.isNone() ? "gone" : p.unwrap().name
+}

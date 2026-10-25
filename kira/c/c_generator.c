@@ -316,8 +316,8 @@ simple KiraSlot Result_unwrapErr(Result* r)
 /* Str -- immutable UTF-8-ish byte strings                                     */
 /*                                                                            */
 /* Every producer here returns freshly malloc'd storage. Kira has no Str       */
-/* ownership model yet, so these are not freed -- the same documented limit as */
-/* unowned ARC temporaries (docs/backend-c.md).                                */
+/* ownership model yet, so these are not freed -- the same known limit as      */
+/* unowned ARC temporaries.                                                    */
 /* -------------------------------------------------------------------------- */
 
 simple Utf8* kira_str_alloc(Int32 nbytes)

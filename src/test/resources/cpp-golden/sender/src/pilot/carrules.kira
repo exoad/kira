@@ -1,0 +1,39 @@
+golden.sender.pilot.carlink as carlink
+golden.sender.pilot.carlink.LINK_OK as LINK_OK
+golden.sender.pilot.carlink.WRITE_WAIT_MS as WRITE_WAIT_MS
+
+// carrules' Sender: one line to the Pico at a time, timed by a clock it is
+// handed. Its two Fx fields are stored, so they lower to std::function, and a
+// C++ test builds a Sender from two lambdas.
+pub Sender: Mutable<Any> {
+    clock: Fx<Tuple0, Int64>
+    write: Fx<Tuple2<Str, Int32>, Int32>
+    lastMs: Mutable<Int64> = -1
+    worstMs: Mutable<Int64> = 0
+
+    // One line, waiting at most waitMs for the port to take it.
+    pub send: (line: Str, waitMs: Int32 = WRITE_WAIT_MS) Int32 {
+        r: Int32 = write(line, waitMs)
+        if r != LINK_OK {
+            r
+        } else {
+            now: Int64 = clock()
+            gap: Int64 = lastMs >= 0 ? now - lastMs : 0
+            lastMs = now
+            if gap > worstMs {
+                worstMs = gap
+            }
+            r
+        }
+    }
+
+    // When the port last accepted a line; -1 before the first.
+    pub sentMs: () Int64 {
+        lastMs
+    }
+
+    // The longest gap between two accepted lines.
+    pub worstGapMs: () Int64 {
+        worstMs
+    }
+}

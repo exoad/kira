@@ -1,0 +1,50 @@
+
+pytext - kira:pytext on py
+
+  ok    pyInt reads 8_0 and Arabic-Indic digits as 80
+  ok    and a space and a sign, with no reason
+  ok    and none for x, ValueError's own text
+  ok    a float, hex, a double _ and nothing are none
+  ok    the last Int64 is read
+  ok    one past it is none, as an OverflowError
+  ok    pyFloat reads _, spaces and infinities
+  ok    and none for 1,5, its text Python's
+  ok    strRepr quotes as repr does
+  ok    floatRepr is repr's
+  ok    jsonRepr is the repr of what json.loads makes
+  ok    formatFloat is format's
+  ok    and none for a spec Python refuses
+  ok    roundTo is round's: the double's own value, half to even
+  ok    and past the largest double the infinity of its sign, where round raises
+  ok    roundHalfEven takes a half to even
+  ok    and none for a NaN
+  ok    and an infinity
+  ok    and past Int64
+  ok    upper, lower and the strips are str's
+  ok    isUpper needs a cased character, each upper
+  ok    splitSpace splits at Unicode's spaces
+  ok    splitLines at every line break Python knows
+  ok    findFrom is find's
+  ok    wrapWords breaks no word
+  ok    the character classes are Unicode's
+
+26 checks, 0 failed
+
+pytext -> 0
+pyInt and its reason is Python's: 36 of 36
+pyFloat and its reason is Python's: 36 of 36
+strRepr is Python's: 13 of 13
+floatRepr is Python's: 23 of 23
+jsonRepr is Python's: 8 of 8
+formatFloat and its reason is Python's: 598 of 598
+roundTo is Python's: 216 of 216
+roundHalfEven and its reason is Python's: 23 of 23
+upper, lower, strip, lstrip, rstrip is Python's: 10 of 10
+isUpper is Python's: 10 of 10
+splitSpace is Python's: 10 of 10
+splitLines is Python's: 12 of 12
+findFrom is Python's: 96 of 96
+wrapWords is Python's: 39 of 39
+isSpace, isAlnum, isAlpha, isDigit is Python's: 781 of 781
+wrapWords of width 0: kira: wrapWords of a width of 0
+of the types: ['int', 'float', 'str', 'float', 'int', 'int'] None

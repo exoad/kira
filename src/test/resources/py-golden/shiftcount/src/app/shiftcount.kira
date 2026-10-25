@@ -1,0 +1,45 @@
+// A shift count outside 0 until the width stops the program, as the C++ target's kira::shl and
+// kira::shr do: a count held in a variable of any integer type, a constant outside, and a
+// compound assignment's count. driver.py calls each; the C++ backend's run of each such call
+// alone stops with "kira: shift count out of range", which the driver prints as the
+// RuntimeError's message.
+
+pub shl8: (v: Int8, n: Int32) Int8 {
+    v << n
+}
+
+pub shrU16: (v: UInt16, n: Int64) UInt16 {
+    v >> n
+}
+
+pub ushr32: (v: Int32, n: UInt8) Int32 {
+    v >>> n
+}
+
+pub shlU64: (v: UInt64, n: Size) UInt64 {
+    v << n
+}
+
+pub shrSize: (v: Size, n: Int32) Size {
+    v >> n
+}
+
+pub shlBy32: (v: UInt32) UInt32 {
+    v << 32
+}
+
+pub shrByMinusOne: (v: Int64) Int64 {
+    v >> -1
+}
+
+pub shlInPlace: (v: Int16, n: Int32) Int16 {
+    x: Mutable<Int16> = v
+    x <<= n
+    x
+}
+
+pub ushrInPlace: (v: Int64, n: Int32) Int64 {
+    x: Mutable<Int64> = v
+    x >>>= n
+    x
+}

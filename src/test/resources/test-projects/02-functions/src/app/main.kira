@@ -1,0 +1,6 @@
+functions.app.greetings as greetings
+
+main: () Void {
+    message: Str = greeting()
+    trace(message)
+}

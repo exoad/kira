@@ -1,0 +1,60 @@
+kira.csv as csv
+kira.os as os
+kira.test as test
+
+// kira:csv (K6): a file's rows as csv.reader reads them, the reason str(e) alone, and a csv.Error a caller may end the
+// program on (critique 15), as strictRows does.
+
+pub opened: (path: Str) Maybe<CsvReader> {
+    openCsv(path)
+}
+
+pub nextRow: (r: CsvReader) Maybe<List<Str>> {
+    r.next()
+}
+
+pub malformed: (r: CsvReader) Bool {
+    r.isMalformed()
+}
+
+pub why: () Str {
+    csvError()
+}
+
+pub line: (cells: List<Str>) Str {
+    csvLine(cells)
+}
+
+// Every row of the file; a row csv refuses ends the program here, as Python's csv.Error ended powerpage's reader.
+pub strictRows: (path: Str) List<List<Str>> {
+    out: Mutable<List<List<Str>>> = @listOf()
+    r: CsvReader = openCsv(path).value
+    row: Mutable<Maybe<List<Str>>> = r.next()
+    while row.isSome() {
+        out.add(row.value)
+        row = r.next()
+    }
+    assert(!r.isMalformed(), "csv.Error: " + csvError())
+    out
+}
+
+pub main: () Int32 {
+    t: Suite = Suite { title = "csvs - kira:csv on py" }
+    dir: Str = tempDir("kira-csvs-").value
+    path: Str = dir + "/day.csv"
+    t.check(writeFile(path, "t,v\r\n1,\"a,b\"\r\n2,\"two\nlines\"\r\n3,\"q\"\"q\"\r\n".bytes()), "a day file")
+    r: CsvReader = openCsv(path).value
+    t.checkStr(r.next().value.joinToString("|"), "t|v", "the header row")
+    t.checkStr(r.next().value.joinToString("|"), "1|a,b", "a quoted comma is the cell's")
+    t.checkStr(r.next().value.joinToString("|"), "2|two\nlines", "and a quoted line break")
+    t.checkStr(r.next().value.joinToString("|"), "3|q\"q", "and a doubled quote one quote")
+    t.check(r.next().isNone() && csvError() == "" && !r.isMalformed(), "none at the end, with no reason")
+    t.check(r.next().isNone() && csvError() == "", "and none again after it")
+    t.check(openCsv(dir + "/nope.csv").isNone() && csvError().startsWith("[Errno 2] "), "none for a missing file, csvError str(e) alone")
+    t.check(writeFile(path, "a,\"b\n".bytes()), "a file that ends inside a quote")
+    t.checkStr(strictRows(path)[0].joinToString("|"), "a|b\n", "whose last cell holds the rest, no error")
+    t.checkStr(csvLine(@listOf("a", "b,c", "q\"q", "", "l\nm")), "a,\"b,c\",\"q\"\"q\",,\"l\nm\"\r\n", "csvLine quotes where csv.writer does, its \\r\\n included")
+    t.checkStr(csvLine(@listOf("")) + csvLine(@listOf()), "\"\"\r\n\r\n", "a lone empty cell is quoted, no cells is a bare \\r\\n")
+    t.check(removeTree(dir), "the day file's directory removed")
+    t.finish()
+}

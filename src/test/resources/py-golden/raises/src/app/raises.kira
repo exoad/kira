@@ -1,0 +1,42 @@
+// raises = (D69), which driver.py runs: an exception the extern lists is the Kira throw
+// "Name: str(e)", Name the first listed class it is; any other passes through unchanged.
+
+pub @_extern(raises = "OSError") readText: (path: Str) Str
+
+pub @_extern(raises = "KeyError") lookup: (key: Str) Str
+
+pub @_extern(raises = "ValueError") parse: (text: Str) Int64
+
+pub @_extern(raises = "TimeoutError OSError") fail: (kind: Str) Void
+
+pub @_extern(raises = "json.decoder.JSONDecodeError") decode: (text: Str) Int64
+
+pub @_extern(raises = "OSError") escape: (kind: Str) Void
+
+pub @_extern(raises = "ValueError") wrongResult: () Str
+
+pub caught: (what: Str) Str {
+    try {
+        if what == "missing" {
+            readText("absent.txt")
+        } else if what == "key" {
+            lookup("absent")
+        } else if what == "empty" {
+            "${parse("")}"
+        } else if what == "decode" {
+            "${decode("{")}"
+        } else {
+            fail(what)
+            "no throw"
+        }
+    } on e: Str {
+        "caught ${e}"
+    }
+}
+
+pub main: () Void {
+    trace(parse("42"))
+    for what: Str in @arrOf("missing", "key", "empty", "decode", "timeout", "gone", "denied", "fine") {
+        trace(caught(what))
+    }
+}

@@ -12,7 +12,7 @@ class StdlibMagicTypeTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            @_magic class Int32
+            @_magic Int32: Any
             value: Int32 = 7
             """
         )
@@ -32,7 +32,7 @@ class StdlibMagicTypeTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            @_magic class Int32
+            @_magic Int32: Any
             value: Int32 = 42
             """
         )

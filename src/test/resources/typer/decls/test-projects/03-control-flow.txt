@@ -1,0 +1,8 @@
+module control.flow:app.checks  profile=HOSTED ns=checks imports=[]
+  fn parityLabel: (value: Int32) Str  body
+module control.flow:app.main  profile=HOSTED ns=main_ imports=[control.flow:app.ranges, control.flow:app.checks]
+  fn main: () Void  body
+module control.flow:app.ranges  profile=HOSTED ns=ranges imports=[]
+  fn sumTo: (limit: Int32) Int32  body
+diag error types.use.bare control.flow/app/main.kira:10:20  'sumTo' is not in scope: add `control.flow.app.ranges.sumTo as sumTo` or write `ranges.sumTo` (it is not pub there: mark it `pub` first).
+diag error types.use.bare control.flow/app/main.kira:11:18  'parityLabel' is not in scope: add `control.flow.app.checks.parityLabel as parityLabel` or write `checks.parityLabel` (it is not pub there: mark it `pub` first).

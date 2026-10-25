@@ -1,0 +1,54 @@
+// A type parameter that reaches a Map's key or a Set's element, directly, through another
+// generic or through an alias, is checked where it is instantiated.
+
+pub Holder: Any {
+    pub n: Int32
+}
+
+pub Index<K>: Mutable<Any> {
+    pub m: Mutable<Map<K, Int32>> = Map<K, Int32> { }
+}
+
+pub Bag<T>: Mutable<Any> {
+    pub s: Set<T> = Set<T> { }
+}
+
+pub Outer<T>: Mutable<Any> {
+    pub ix: Index<T> = Index<T> { }
+}
+
+pub Plain<T>: Any {
+    pub v: T
+}
+
+pub Map<K, Str> as Reg<K>
+
+pub put<K>: (k: K) Size {
+    m: Map<K, Int32> = Map<K, Int32> { }
+    m.size()
+}
+
+pub relay<T>: (t: T) Size {
+    put<T>(t)
+}
+
+pub fine: (r: Reg<Int64>) Size {
+    a: Index<Int32> = Index<Int32> { }
+    b: Outer<Str> = Outer<Str> { }
+    c: Bag<Char> = Bag<Char> { }
+    p: Plain<Holder> = Plain<Holder> { Holder { 1 } }
+    put<Int32>(1) + relay<Str>("x") + r.size()
+}
+
+pub keys: (h: Holder) Size {
+    d: Index<Holder> = Index<Holder> { }           // @error types.type.key ; @error types.type.key
+    e: Bag<Holder> = Bag<Holder> { }               // @error types.type.key ; @error types.type.key
+    f: Outer<Holder> = Outer<Holder> { }           // @error types.type.key ; @error types.type.key
+    i: Size = put<Holder>(h)                       // @error types.type.key
+    j: Size = relay<Holder>(h)                     // @error types.type.key
+    i + j
+}
+
+pub regs: (r: Reg<Holder>) Size {               // @error types.type.key
+    r.size()
+}

@@ -1,0 +1,13 @@
+PROJECT: Project = Project { } with {
+    name = "golden.hall"
+    srcDir = "src"
+    target = "cpp"
+    cpp = Cpp {
+        layout = "beside",
+        lineDirectives = false,
+        headerOnly = @listOf("golden.hall.pico.hall"),
+        freestanding = @listOf("golden.hall.pico.hall")
+    }
+    types = "strict"
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

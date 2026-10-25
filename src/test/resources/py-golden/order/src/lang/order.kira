@@ -1,0 +1,149 @@
+// Kira's evaluation order on the py target. D33: a call's receiver and arguments, and an
+// operator's operands, run left to right, and an assignment locates its target (each index)
+// before its value runs. OQ-1: an immutable value's operand, a compound assignment's target
+// included, is read before a call beside it that writes it. Construction: the given values as
+// written, then the defaults in declaration order, then `initially`. && and || short-circuit.
+// The expected output is the C++ backend's run of this same module.
+
+ticks: Mutable<Int32> = 0
+idx: Mutable<Size> = 0
+slots: Mutable<List<Int32>> = List<Int32> { }
+gs: Mutable<Str> = "a"
+
+next: () Int32 {
+    ticks += 1
+    ticks
+}
+
+nextSize: () Size {
+    idx += 1
+    idx
+}
+
+sub: (a: Int32, b: Int32) Int32 {
+    a - b
+}
+
+bumpIdx: () Int32 {
+    idx += 1
+    99
+}
+
+changeS: () Int32 {
+    gs = "b"
+    1
+}
+
+pairS: (s: Str, k: Int32) Str {
+    "${s}${k}"
+}
+
+Box: Mutable<Any> {
+    pub v: Mutable<Int32>
+
+    pub pair: (a: Int32, b: Int32) Int32 {
+        v * 100 + a * 10 + b
+    }
+}
+
+makeBox: () Box {
+    ticks += 1
+    Box { ticks }
+}
+
+Counter: Mutable<Any> {
+    pub n: Mutable<Int32> = 0
+
+    pub bump: () Int32 {
+        n += 10
+        1
+    }
+
+    pub run: () Int32 {
+        n += bump()
+        n
+    }
+
+    pub runPlain: () Int32 {
+        n = n + bump()
+        n
+    }
+}
+
+Track: Mutable<Any> {
+    pub a: Int32
+    pub b: Int32 = next()
+    pub c: Int32
+    pub d: Int32 = next()
+    pub seen: Mutable<Int32> = 0
+
+    initially {
+        seen = next()
+    }
+}
+
+show: (t: Track) Str {
+    "a=${t.a} b=${t.b} c=${t.c} d=${t.d} seen=${t.seen}"
+}
+
+main: () Void {
+    trace(sub(next(), next()))
+    trace(next() - next())
+    trace(sub(sub(next(), next()), next()))
+    trace("${next()}/${next()}")
+    trace(sub(ticks, next()))
+    trace("${ticks}/${next()}")
+    ticks += next()
+    trace(ticks)
+    ticks = ticks + next()
+    trace(ticks)
+    trace(makeBox().pair(next(), next()))
+    slots.add(0)
+    slots.add(0)
+    slots.add(0)
+    slots.add(0)
+    idx = 0
+    slots[nextSize()] = next()
+    trace(slots[1])
+    idx = 0
+    slots[idx] = bumpIdx()
+    trace(slots[0])
+    trace(slots[1])
+    trace(idx)
+    idx = 0
+    slots[nextSize()] += next()
+    trace(slots[1])
+    trace(idx)
+    idx = 2
+    slots[idx] += bumpIdx()
+    trace(slots[2])
+    trace(slots[3])
+    trace(pairS(gs, changeS()))
+    gs = "a"
+    trace("${gs}:${changeS()}")
+    gs = "a"
+    trace(gs + "${changeS()}")
+    c: Mutable<Counter> = Counter { }
+    trace(c.run())
+    trace(c.runPlain())
+    ticks = 0
+    t: Track = Track { a = next(), c = next() }
+    trace(show(t))
+    ticks = 0
+    u: Track = Track { c = next(), a = next() }
+    trace(show(u))
+    ticks = 0
+    if ticks > 0 && next() > 0 {
+        trace("no")
+    }
+    if ticks == 0 || next() > 0 {
+        trace("yes")
+    }
+    trace(ticks)
+    steps: Mutable<Int32> = 0
+    while next() < 5 && steps < 100 {
+        steps += 1
+    }
+    trace(steps)
+    trace(ticks)
+}

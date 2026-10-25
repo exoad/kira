@@ -2,14 +2,18 @@ package net.exoad.kira.compiler.backend.codegen.js
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
+import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.elements.ConstTypeArg
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -17,6 +21,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.core.NamedArguments
 import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
 import net.exoad.kira.source.SourceContext
@@ -110,10 +115,27 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val methodReturnTypes = mutableMapOf<String, String>()
     /** User class name -> method names (for bare `method(args)` calls in bodies). */
     private val methodsByClass = mutableMapOf<String, MutableSet<String>>()
+    /** Free function name -> Kira parameter names, for binding named arguments. */
+    private val functionParamNames = mutableMapOf<String, List<String>>()
+    /**
+     * Which function names each module's calls reach before the ambient
+     * magic names (its own members, then its `use`d modules' `pub` ones).
+     */
+    private val functionScopes: ModuleFunctionScopes by lazy {
+        ModuleFunctionScopes.collect(compilationUnit) { isMagicDecl(it) }
+    }
+    /**
+     * The module whose code is being emitted, so a call in it resolves in
+     * that module's scope; null outside any module's code, where a call
+     * falls back to the intrinsic table.
+     */
+    private var callerModuleUri: String? = null
+    /** "Class.method" -> parameter names. */
+    private val methodParamNames = mutableMapOf<String, List<String>>()
+    /** Method simple name -> the distinct parameter-name lists declared under it (classes and traits). */
+    private val methodParamNamesBySimpleName = mutableMapOf<String, MutableSet<List<String>>>()
     /** Non-magic user class names (generic templates included -- erased in JS). */
     private val userClassNames = mutableSetOf<String>()
-    /** Enum type names in the current unit -- int-like, keep direct operators. */
-    private val enumTypeNames = mutableSetOf<String>()
     private var indentLevel = 0
     private var emittingClassMembers = false
     /** True while emitting a method body -- bare field names become this.field. */
@@ -155,6 +177,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         if (!isMagicDecl(expr)) {
                             val name = functionLikeName(expr.name)
                             knownValueTypes[name] = typeNameOf(expr.def.returnTypeSpecifier)
+                            functionParamNames[name] = expr.def.parameters.map { it.name.value }
                             if (name == "main") hasMain = true
                         }
                     }
@@ -165,12 +188,24 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         userClassNames.add(base)
                         expr.members.filterIsInstance<VariableDecl>().forEach { field ->
                             fieldTypes[field.name.value] = typeNameOf(field.type)
+                            recordContainerTypeArgs(field.name.value, field.type)
                         }
                         expr.members.filterIsInstance<FunctionDecl>().forEach { method ->
                             if (method.isStub()) return@forEach
                             val mname = functionLikeName(method.name)
                             methodsByClass.getOrPut(base) { mutableSetOf() }.add(mname)
                             methodReturnTypes["$base.$mname"] = typeNameOf(method.def.returnTypeSpecifier)
+                            val paramNames = method.def.parameters.map { it.name.value }
+                            methodParamNames["$base.$mname"] = paramNames
+                            methodParamNamesBySimpleName.getOrPut(mname) { linkedSetOf() }.add(paramNames)
+                        }
+                    }
+                    is TraitDecl -> {
+                        if (isMagicDecl(expr)) return@forEach
+                        expr.members.forEach { method ->
+                            val mname = functionLikeName(method.name)
+                            methodParamNamesBySimpleName.getOrPut(mname) { linkedSetOf() }
+                                .add(method.def.parameters.map { it.name.value })
                         }
                     }
                     else -> {}
@@ -190,10 +225,131 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
      */
     fun generate(outputPath: String = DEFAULT_OUTPUT): String {
         clean()
-        val source = buildTranslationUnit()
+        val source = try {
+            buildTranslationUnitOrFail()
+        } catch (e: UnsupportedConstruct) {
+            reportUnsupported(e)
+        }
         val written = if (GeneratedProvider.minifyOutput) minifyWritten(source) else source
         File(outputPath).writeText(written)
         return written
+    }
+
+    // --- the AST contract (design 2.4): this backend fails loudly ---------------
+
+    private val TARGET_NAME = "JS"
+
+    /** [buildTranslationUnit], with every [UnsupportedConstruct] naming this target. */
+    private fun buildTranslationUnitOrFail(): String {
+        try {
+            return buildTranslationUnit()
+        } catch (e: UnsupportedConstruct) {
+            throw e.withTarget(TARGET_NAME)
+        }
+    }
+
+    /**
+     * A construct this backend cannot lower surfaces as a compiler diagnostic
+     * that names the construct and the target, and the compiler exits 1. The
+     * CLI does not catch backend exceptions, and a stack trace is not a
+     * diagnostic; tests use [emitToString], which lets the exception through.
+     */
+    private fun reportUnsupported(e: UnsupportedConstruct): Nothing {
+        val where = compilationUnit.allSources().firstNotNullOfOrNull { source ->
+            runCatching { source.astOrigins[e.node] }.getOrNull()
+                ?.let { "${source.file}:${it.lineNumber}:${it.column}" }
+        }
+        Diagnostics.Logging.warn(
+            "Kira",
+            "\n-- Diagnostic Report: ${e.message}${where?.let { " (at $it)" } ?: ""}\n" +
+                "   Compile this program with --target cpp, or rewrite the construct for the $TARGET_NAME backend."
+        )
+        kotlin.system.exitProcess(1)
+    }
+
+    /**
+     * Every function or method that declares a default parameter value, by
+     * simple name (the resolution named arguments use), with its parameter
+     * list. This backend has no default lowering, so a call that leaves such
+     * a parameter out cannot be emitted.
+     */
+    private val defaultedSignatures: Map<String, List<List<FunctionDeclParameterExpr>>> by lazy {
+        val out = mutableMapOf<String, MutableList<List<FunctionDeclParameterExpr>>>()
+        fun record(decl: FunctionDecl) {
+            if (decl.def.parameters.none { it.defaultValue != null }) return
+            out.getOrPut(functionLikeName(decl.name)) { mutableListOf() }
+                .add(decl.def.parameters)
+        }
+        compilationUnit.allSources().forEach { source ->
+            source.ast.statements.forEach { stmt ->
+                when (val expr = (stmt as? Statement)?.expr ?: stmt) {
+                    is FunctionDecl -> record(expr)
+                    is ClassDecl -> expr.members.filterIsInstance<FunctionDecl>().forEach(::record)
+                    is StructDecl -> expr.members.filterIsInstance<FunctionDecl>().forEach(::record)
+                    is TraitDecl -> expr.members.forEach(::record)
+                    else -> {}
+                }
+            }
+        }
+        out
+    }
+
+    /** The call-site forms of design 2.4 this backend refuses: `mut` arguments and omitted defaults. */
+    private fun guardNewCallForms(call: FunctionCallExpr) {
+        if (call.positionalParameters.any { it.isMut } || call.namedParameters.any { it.isMut }) {
+            throw UnsupportedConstruct(call, "a call-site 'mut' argument", TARGET_NAME)
+        }
+        val callee = when (val name = call.name) {
+            is MemberAccessExpr -> (name.member as? Identifier)?.value ?: return
+            else -> functionLikeName(name)
+        }
+        val signatures = defaultedSignatures[callee] ?: return
+        val omitted = signatures.firstNotNullOfOrNull { params -> omittedDefault(call, params) } ?: return
+        throw UnsupportedConstruct(
+            call,
+            "a call to '$callee' that omits a default-valued parameter ('$omitted')",
+            TARGET_NAME
+        )
+    }
+
+    /**
+     * The first default-valued parameter of [params] that [call] leaves
+     * without an argument, or null. Slots fill the way [NamedArguments.bind]
+     * fills them: positional arguments take the leading parameters and a
+     * named argument takes the one it names, so a skipped middle default
+     * (`g(1, c = 3)` against `(a, b = 2, c = 3)`) is found as well as a
+     * trailing one. Measured before: only the trailing positions were
+     * inspected. A slot the call cannot bind at all (an unknown name, a
+     * missing required parameter) is the analyzer's diagnostic, not this one.
+     */
+    private fun omittedDefault(call: FunctionCallExpr, params: List<FunctionDeclParameterExpr>): String? {
+        val filled = BooleanArray(params.size)
+        for (index in call.positionalParameters.indices) {
+            if (index < params.size) filled[index] = true
+        }
+        for (named in call.namedParameters) {
+            val index = params.indexOfFirst { it.name.value == named.name.value }
+            if (index >= 0) filled[index] = true
+        }
+        return params.withIndex()
+            .firstOrNull { (index, param) -> !filled[index] && param.defaultValue != null }
+            ?.value?.name?.value
+    }
+
+    /**
+     * The type forms of design 2.4 this backend cannot lower: a const type
+     * argument (`Arr<UInt8, 32>`, D6) and `mut T` inside a Tuple's arguments
+     * (`Fx<Tuple1<mut T>, Void>`, D24). Both used to lower silently to the
+     * erased base type, dropping the size and the mutability.
+     */
+    private fun guardNewTypeForms(type: Type) {
+        if (type is ConstTypeArg) {
+            throw UnsupportedConstruct(type, "a const type argument 'T<..., ${type.value.value}>'", TARGET_NAME)
+        }
+        if (type.isMutParam) {
+            throw UnsupportedConstruct(type, "'mut' in an Fx parameter type 'Tuple<mut T>'", TARGET_NAME)
+        }
+        type.children.forEach(::guardNewTypeForms)
     }
 
     /** Minify + obfuscate the user layer, keeping the prelude untouched. */
@@ -225,27 +381,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     /** Build JS text without writing a file -- used by tests. */
     fun emitToString(): String {
         clean()
-        return buildTranslationUnit()
-    }
-
-    /**
-     * Pre-register enum type names before the statement walk. Source order can
-     * put `main` before the enum declaration, and operator lowering must know
-     * a type is an int-like enum even before its decl is emitted.
-     */
-    private fun collectEnumTypes() {
-        emittableSources().forEach { source ->
-            source.ast.statements.forEach { stmt ->
-                val expr: Any? = when (stmt) {
-                    is EnumDecl -> stmt
-                    is Statement -> stmt.expr
-                    else -> null
-                }
-                if (expr is EnumDecl && !isMagicDecl(expr)) {
-                    enumTypeNames.add(expr.name.value)
-                }
-            }
-        }
+        return buildTranslationUnitOrFail()
     }
 
     private fun buildTranslationUnit(): String {
@@ -257,11 +393,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         // Ensure @_opaque / @_extern marks are registered even if semantics skipped apply().
         harvestForeignMarks()
         collectSignatures()
-        collectEnumTypes()
 
         emittableSources().forEach { source ->
+            callerModuleUri = runCatching { source.getModuleUri() }.getOrNull()
             visitRootASTNode(source.ast)
         }
+        callerModuleUri = null
 
         // The C backend gets `main` from the host C runtime; Node has no entry
         // convention, so a Kira `main` is invoked explicitly at the end.
@@ -359,11 +496,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (declHasIntrinsic(decl, "_magic")) {
             return true
         }
+        // The name fallback below covers a stdlib declaration whose mark was
+        // missed. It must never apply to user code: a module's own `Ref` or
+        // `parseInt64` shadows the ambient `kira:*` name and must be emitted.
+        if (!isStdlibDecl(decl)) {
+            return false
+        }
         val name = when (decl) {
             is ClassDecl -> baseTypeNameOf(decl.name)
-            is EnumDecl -> decl.name.value
             is TraitDecl -> baseTypeNameOf(decl.name)
-            is VariantDecl -> baseTypeNameOf(decl.name)
             is TypeAliasDecl -> when (val id = decl.alias.identifier) {
                 is Identifier -> id.value
                 else -> null
@@ -373,6 +514,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             else -> null
         }
         return name != null && discoveredMagicTypes.contains(name)
+    }
+
+    /** True when [decl] is a top-level declaration of a `kira:*` stdlib source. */
+    private fun isStdlibDecl(decl: Decl): Boolean {
+        return compilationUnit.allSources().any { source ->
+            shouldSkipSource(source) && runCatching { source.ast.statements }.getOrNull()?.any { stmt ->
+                stmt === decl || (stmt is Statement && stmt.expr === decl)
+            } == true
+        }
     }
 
     private fun declHasIntrinsic(decl: Decl, intrinsicName: String): Boolean {
@@ -391,6 +541,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private fun isExternFunction(name: String): Boolean = externFunctions.containsKey(name)
 
     private fun baseTypeNameOf(type: Type): String {
+        // Every lowering of a type passes through here, so this is where a
+        // form this backend cannot lower is refused.
+        guardNewTypeForms(type)
         return when (val id = type.identifier) {
             is Identifier -> id.value
             else -> "_anon"
@@ -441,8 +594,29 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 null
             }
             is ObjectInitExpr -> typeNameOf(expr.typeName)
+            // `xs[i]` has the container's declared element type.
+            is ArrayIndexExpr -> elementTypeOf(expr.originExpr)
             else -> null
         }
+    }
+
+    /** Container-typed name -> its type arguments (`List<Str>` -> [Str]). */
+    private val containerTypeArgs = mutableMapOf<String, List<String>>()
+
+    private fun recordContainerTypeArgs(name: String, type: Type) {
+        if (type.children.isEmpty()) return
+        if (!isCollectionType(baseTypeNameOf(type))) return
+        containerTypeArgs[name] = type.children.map { baseTypeNameOf(it) }
+    }
+
+    /** Declared element type of a container-typed expression, when it is a plain name. */
+    private fun elementTypeOf(expr: Expr): String? {
+        val name = when (expr) {
+            is Identifier -> expr.value
+            is MemberAccessExpr -> (expr.member as? Identifier)?.value
+            else -> null
+        } ?: return null
+        return containerTypeArgs[name]?.firstOrNull()
     }
 
     private fun binaryOpSymbol(op: BinaryOp): String {
@@ -451,7 +625,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /**
      * Types that keep direct JS operators. Anything else statically known
-     * (user classes, enums, opaque handles, containers) is a candidate for
+     * (user classes, opaque handles, containers) is a candidate for
      * an `@op_*` overload.
      */
     private val primitiveTypeNames = setOf(
@@ -462,9 +636,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
         val t = receiverTypeOf(expr) ?: return false
-        // Enum types are int-like value types: direct JS operators work and no
-        // @op_* definition is ever emitted for them.
-        return t !in primitiveTypeNames && t !in enumTypeNames
+        return t !in primitiveTypeNames
     }
 
     /** Emit a call to an operator intrinsic (`op_add(...)`, ...). */
@@ -601,12 +773,21 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         methodReturnTypes.clear()
         methodsByClass.clear()
         userClassNames.clear()
-        enumTypeNames.clear()
         indentLevel = 0
         emittingClassMembers = false
         currentMethodClass = null
         suppressThisRewrite = false
         hasMain = false
+        callerModuleUri = null
+    }
+
+    /**
+     * Makes [decl]'s module the scope calls resolve in while its body is
+     * emitted. A declaration no source owns at top level keeps the
+     * enclosing scope.
+     */
+    private fun enterModuleOf(decl: Decl) {
+        functionScopes.moduleOf(decl)?.let { callerModuleUri = it }
     }
 
     override fun visitRootASTNode(node: RootASTNode) {
@@ -619,8 +800,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         when (val expr = statement.expr) {
             is NoExpr -> return
             // Decls and try manage their own terminators / newlines.
-            is ClassDecl, is FunctionDecl, is ModuleDecl, is EnumDecl,
-            is TraitDecl, is VariantDecl, is TypeAliasDecl, is VariableDecl,
+            is ClassDecl, is FunctionDecl, is ModuleDecl,
+            is TraitDecl, is TypeAliasDecl, is VariableDecl,
             is TryExpr -> {
                 expr.accept(this)
                 if (buffer.isNotEmpty() && buffer.last() != '\n') {
@@ -681,17 +862,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndentedLine("}")
     }
 
-    override fun visitDoWhileIterationStatement(doWhileIterationStatement: DoWhileIterationStatement) {
-        appendIndentedLine("do {")
-        indentLevel++
-        doWhileIterationStatement.statements.forEach { it.accept(this) }
-        indentLevel--
-        appendIndented("} while (")
-        doWhileIterationStatement.condition.accept(this)
-        buffer.appendLine(");")
-    }
-
     override fun visitReturnStatement(returnStatement: ReturnStatement) {
+        // A returned `c ? a : b` lowers as the if/else of returns it reads as.
+        (returnStatement.expr as? net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr)?.let { returnsOf(it) }?.let {
+            it.accept(this)
+            return
+        }
         appendIndented("return")
         if (returnStatement.expr !is NoExpr) {
             buffer.append(" ")
@@ -704,35 +880,54 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val iterExpr = forIterationStatement.forIterationExpr
         if (iterExpr.target is RangeExpr) {
             val name = iterExpr.initializer.value
+            // Legacy `for mut i: a..b` is inclusive (design 2.2); the spec
+            // form `for i: T in a..b` is exclusive (D37).
             appendIndented("for (let ")
             buffer.append(name)
             buffer.append(" = ")
             iterExpr.target.begin.accept(this)
             buffer.append("; ")
             buffer.append(name)
-            buffer.append(" <= ")
+            buffer.append(if (iterExpr.isLegacy) " <= " else " < ")
             iterExpr.target.end.accept(this)
             buffer.append("; ++")
             buffer.append(name)
             buffer.appendLine(") {")
+            iterExpr.declaredType?.takeIf { !iterExpr.isLegacy }?.let { knownValueTypes[name] = typeNameOf(it) }
             indentLevel++
             forIterationStatement.body.forEach { it.accept(this) }
             indentLevel--
             appendIndentedLine("}")
             return
         }
-
-        appendIndentedLine("/* unsupported for-target; stub loop */")
-        appendIndentedLine("for (;;) {")
+        // Iteration over a container: an Arr is a native array; KiraList and
+        // KiraSet keep their elements in `.values`. (This used to be a stub
+        // that ran the body exactly once.)
+        val target = iterExpr.target
+        val targetName = (target as? Identifier)?.value ?: target.toString()
+        val name = iterExpr.initializer.value
+        appendIndented("for (let $name of ")
+        when (val recvType = receiverTypeOf(target)) {
+            "Arr" -> target.accept(this)
+            "List", "Set" -> {
+                target.accept(this)
+                buffer.append(".values")
+            }
+            else -> throw IllegalStateException(
+                "for-in over '$targetName': the JS backend needs it to be an Arr, List or Set" +
+                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
+            )
+        }
+        buffer.appendLine(") {")
+        elementTypeOf(target)?.let { knownValueTypes[name] = it }
         indentLevel++
         forIterationStatement.body.forEach { it.accept(this) }
-        appendIndentedLine("break;")
         indentLevel--
         appendIndentedLine("}")
     }
 
     override fun visitUseStatement(useStatement: UseStatement) {
-        appendIndentedLine("// use \"${useStatement.uri.value}\"")
+        appendIndentedLine("// use \"${useStatement.moduleUri}\"")
     }
 
     override fun visitBreakStatement(breakStatement: BreakStatement) {
@@ -791,12 +986,40 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         assignmentExpr.value.accept(this)
     }
 
-    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
+    /**
+     * The call's arguments in parameter order (see [NamedArguments]). A
+     * method callee resolves through the receiver's class when known, else
+     * by simple name when every declaration of it agrees; a call with names
+     * that cannot be bound is refused, never silently reordered.
+     */
+    private fun boundArguments(functionCallExpr: FunctionCallExpr): List<Expr> {
         val nameExpr = functionCallExpr.name
-        val args = buildList {
-            functionCallExpr.positionalParameters.forEach { add(it.value) }
-            functionCallExpr.namedParameters.forEach { add(it.value) }
+        val calleeName: String
+        val parameterNames: List<String>?
+        if (nameExpr is MemberAccessExpr) {
+            calleeName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+            val recvType = receiverTypeOf(nameExpr.origin)
+            parameterNames = methodParamNames["$recvType.$calleeName"]
+                ?: methodParamNamesBySimpleName[calleeName]?.singleOrNull()
+        } else {
+            calleeName = functionLikeName(nameExpr)
+            val cls = currentMethodClass
+            parameterNames = if (cls != null && methodsByClass[cls]?.contains(calleeName) == true) {
+                methodParamNames["$cls.$calleeName"]
+            } else {
+                functionParamNames[calleeName]
+            }
         }
+        return when (val binding = NamedArguments.bind(functionCallExpr, calleeName, parameterNames)) {
+            is NamedArguments.Binding.Ordered -> binding.arguments
+            is NamedArguments.Binding.Unbound -> throw IllegalStateException(binding.message)
+        }
+    }
+
+    override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
+        guardNewCallForms(functionCallExpr)
+        val nameExpr = functionCallExpr.name
+        val args = boundArguments(functionCallExpr)
 
         // Method call: receiver.method(args)
         if (nameExpr is MemberAccessExpr) {
@@ -901,15 +1124,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             emitPrintCall(rawName, args)
             return
         }
-        if (rawName == "assert") {
-            buffer.append("kira_assert(")
-            args.forEachIndexed { i, arg ->
-                if (i > 0) buffer.append(", ")
-                arg.accept(this)
-            }
-            buffer.append(")")
-            return
-        }
         // Bare method call inside a class body: `method(args)` -> `this.method(args)`.
         val cls = currentMethodClass
         if (cls != null && methodsByClass[cls]?.contains(rawName) == true) {
@@ -923,7 +1137,23 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             buffer.append(")")
             return
         }
-        val math = jsIntrinsic(rawName)
+        // A function in the caller's scope (its module's own, or a `pub` one
+        // of a module it `use`s) shadows the ambient magic name of the same
+        // spelling: a user `fx ceil` is called, not Math.ceil, and a user
+        // `fx assert` is called, not the runtime's kira_assert (the C backend
+        // asks the same table, so both pick the same callee). A function some
+        // other module declares is out of scope, and Math.ceil stands.
+        val declaredHere = functionScopes.resolves(callerModuleUri, rawName)
+        if (!declaredHere && rawName == "assert") {
+            buffer.append("kira_assert(")
+            args.forEachIndexed { i, arg ->
+                if (i > 0) buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+        val math = if (declaredHere) null else jsIntrinsic(rawName)
         if (math != null) {
             buffer.append(math)
             buffer.append("(")
@@ -947,6 +1177,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {
         val rawName = intrinsicExpr.intrinsicKey.name
         val args = intrinsicExpr.parameters ?: emptyList()
+        if (rawName == "_static_assert") {
+            throw UnsupportedConstruct(intrinsicExpr, "@_static_assert", TARGET_NAME)
+        }
         if (isPrintLike(rawName)) {
             emitPrintCall(rawName, args)
             return
@@ -1022,17 +1255,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {
         val origin = memberAccessExpr.origin
         val member = memberAccessExpr.member
-        // Enum member access Color.RED -> Color.RED (left is type-ish identifier).
-        if (origin is Identifier && member is Identifier) {
-            if (origin.value.firstOrNull()?.isUpperCase() == true &&
-                member.value.all { it.isUpperCase() || it == '_' || it.isDigit() }
-            ) {
-                buffer.append(origin.value)
-                buffer.append(".")
-                buffer.append(member.value)
-                return
-            }
-        }
         origin.accept(this)
         buffer.append(".")
         val prev = suppressThisRewrite
@@ -1074,7 +1296,15 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {
-        // Arr is a native array: index directly.
+        // Arr is a native array: index directly. A List is a KiraList
+        // wrapper, so it reads through get() (range-checked, like C).
+        if (receiverTypeOf(arrayIndexExpr.originExpr) == "List") {
+            arrayIndexExpr.originExpr.accept(this)
+            buffer.append(".get(")
+            arrayIndexExpr.indexExpr.accept(this)
+            buffer.append(")")
+            return
+        }
         arrayIndexExpr.originExpr.accept(this)
         buffer.append("[")
         arrayIndexExpr.indexExpr.accept(this)
@@ -1087,6 +1317,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitTryExpr(tryExpr: TryExpr) {
+        // Stage 3's try value is a new form on this node: refused, never lowered as a statement.
+        if (tryExpr.isValue) throw UnsupportedConstruct(tryExpr, "a try used as a value", TARGET_NAME)
         appendIndentedLine("try {")
         indentLevel++
         tryExpr.tryBlock.forEach { it.accept(this) }
@@ -1100,11 +1332,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndentedLine("}")
     }
 
-    override fun visitEnumMemberExpr(enumMemberExpr: EnumMemberExpr) {
-        enumMemberExpr.name.accept(this)
-    }
-
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
+        if (objectInitExpr.namedArgs.isNotEmpty()) {
+            throw UnsupportedConstruct(objectInitExpr, "named construction 'T { field = value }'", TARGET_NAME)
+        }
         val baseName = baseTypeNameOf(objectInitExpr.typeName)
         if (objectInitExpr.positionalArgs.isEmpty()) {
             when (baseName) {
@@ -1151,10 +1382,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
-        // Runtime type checks are meaningless in untyped JS; keep the value.
-        buffer.append("(")
-        typeCheckExpr.value.accept(this)
-        buffer.append(")")
+        throw UnsupportedConstruct(typeCheckExpr, "a conformance test 'x == T'", TARGET_NAME)
     }
 
     override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {
@@ -1169,12 +1397,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitWithExpr(withExpr: WithExpr) {
-        buffer.append("({ ")
-        withExpr.members.forEachIndexed { idx, member ->
-            if (idx > 0) buffer.append(", ")
-            member.accept(this)
-        }
-        buffer.append(" })")
+        throw UnsupportedConstruct(withExpr, "a `with` builder", TARGET_NAME)
     }
 
     override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {
@@ -1185,12 +1408,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr
     ) {
         functionCallPositionalParameterExpr.value.accept(this)
-    }
-
-    override fun visitWithExprMember(withExprMember: WithExprMember) {
-        withExprMember.name.accept(this)
-        buffer.append(": ")
-        withExprMember.value.accept(this)
     }
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
@@ -1222,6 +1439,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         indentLevel++
         functionDefExpr.parameters.forEach { param ->
             knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
         }
         functionDefExpr.body!!.forEach { it.accept(this) }
         functionDefExpr.parameters.forEach { param ->
@@ -1231,14 +1449,17 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndented("}")
     }
 
-    override fun visitArrayLiteral(arrayLiteral: ArrayLiteral) {
-        // Arr is a native array; an empty literal is just [].
-        if (arrayLiteral.value.isEmpty()) {
+    override fun visitBuilderExpr(builderExpr: BuilderExpr) {
+        if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
+            throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
+        }
+        // Arr is a native array; an empty one is just [].
+        if (builderExpr.elements.isEmpty()) {
             buffer.append("[]")
             return
         }
         buffer.append("[")
-        arrayLiteral.value.forEachIndexed { i, expr ->
+        builderExpr.elements.forEachIndexed { i, expr ->
             if (i > 0) buffer.append(", ")
             expr.accept(this)
         }
@@ -1283,6 +1504,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         userSymbols.add(variableDecl.name.value)
         val typeName = typeNameOf(variableDecl.type)
         val name = variableDecl.name.value
+        recordContainerTypeArgs(name, variableDecl.type)
         if (emittingClassMembers) {
             fieldTypes[name] = typeName
             return
@@ -1330,6 +1552,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (isMagicDecl(functionDecl)) {
             return
         }
+        enterModuleOf(functionDecl)
         // Methods inside classes: emitted in visitClassDecl.
         if (emittingClassMembers) {
             return
@@ -1355,6 +1578,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         indentLevel++
         functionDecl.def.parameters.forEach { param ->
             knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
         }
         if (functionDecl.def.body != null) {
             functionDecl.def.body!!.forEach { it.accept(this) }
@@ -1370,9 +1594,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
+        if (classDecl.initially != null) {
+            throw UnsupportedConstruct(classDecl, "a class with an 'initially' block", TARGET_NAME)
+        }
         if (isMagicDecl(classDecl)) {
             return
         }
+        enterModuleOf(classDecl)
         val base = baseTypeNameOf(classDecl.name)
         if (isOpaqueTypeName(base)) {
             appendIndentedLine("// @_opaque $base: foreign edge not supported on the JS backend yet")
@@ -1381,12 +1609,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         val className = typeNameOf(classDecl.name)
         val fields = classDecl.members.filterIsInstance<VariableDecl>()
         val methods = classDecl.members.filterIsInstance<FunctionDecl>()
-        val requireFields = fields.filter { field ->
-            field.modifiers.any { it == Modifier.REQUIRE }
-        }
-        val defaultFields = fields.filter { field ->
-            field.modifiers.none { it == Modifier.REQUIRE } && field.value != null
-        }
+        // A field with no value is given at construction; one with a value defaults to it.
+        val requireFields = fields.filter { field -> field.value == null }
+        val defaultFields = fields.filter { field -> field.value != null }
         userSymbols.add(className)
         methods.forEach { userSymbols.add(functionLikeName(it.name)) }
 
@@ -1440,6 +1665,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             indentLevel++
             method.def.parameters.forEach { param ->
                 knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
             }
             val savedClass = currentMethodClass
             currentMethodClass = className
@@ -1461,32 +1687,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndentedLine("// module \"${moduleDecl.uri.value}\"")
     }
 
-    override fun visitEnumDecl(enumDecl: EnumDecl) {
-        if (isMagicDecl(enumDecl)) {
-            return
-        }
-        userSymbols.add(enumDecl.name.value)
-        enumTypeNames.add(enumDecl.name.value)
-        enumDecl.members.forEach { userSymbols.add(it.name.value) }
-        appendIndented("const ")
-        buffer.append(enumDecl.name.value)
-        buffer.append(" = Object.freeze({ ")
-        enumDecl.members.forEachIndexed { index, member ->
-            if (index > 0) buffer.append(", ")
-            buffer.append(member.name.value)
-            buffer.append(": ")
-            buffer.append(index)
-        }
-        buffer.appendLine(" });")
-    }
-
     override fun visitTraitDecl(traitDecl: TraitDecl) {
         // Traits are erased at runtime -- duck typing does the dispatch.
         appendIndentedLine("// trait ${baseTypeNameOf(traitDecl.name)}")
-    }
-
-    override fun visitVariantDecl(variantDecl: VariantDecl) {
-        appendIndentedLine("// variant ${typeNameOf(variantDecl.name)}: no JS lowering in baseline backend")
     }
 
     override fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {

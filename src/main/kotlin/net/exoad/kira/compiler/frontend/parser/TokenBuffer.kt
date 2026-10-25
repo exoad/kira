@@ -30,12 +30,12 @@ class TokenBuffer(
 
     fun peek(offset: Int = 0): Token {
         require(offset >= 0) { "Negative offset not supported: $offset" }
-        require(offset < windowSize) {
-            "Offset $offset exceeds window size $windowSize"
-        }
         val absoluteIndex = position + offset
         if (absoluteIndex >= tokens.size) {
             return eofToken
+        }
+        if (offset >= windowSize) {
+            return tokens[absoluteIndex]
         }
         val cachedToken = window[absoluteIndex and windowMask]
         if (cachedToken != null && absoluteIndex < position + windowFilled) {
@@ -93,6 +93,9 @@ class TokenBuffer(
         }
         windowFilled = endIndex - startIndex
     }
+
+    /** The token just consumed, or null at the start. */
+    fun previous(): Token? = if (position > 0 && position - 1 < tokens.size) tokens[position - 1] else null
 
     fun isAtEnd(): Boolean {
         return position >= tokens.size

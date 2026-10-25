@@ -1,0 +1,34 @@
+{one:1 two:2}
+{one:1 two:2}
+{one:1 two:2 three:3}
+{one:1 two:2 three:3}
+{one:1 two:2 three:3 four:4}
+{one:1 two:2 three:3 four:4 five:5}
+{one:1 two:2 three:3 four:4 five:5 six:6}
+{one:1 two:2 three:3 four:4 five:5 six:6}
+7
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9}
+1
+2
+{n0:1 n1:1}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7}
+0
+{}
+{f0:0 f1:1}
+{f0:0 f1:1}
+14
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7 r:1 push:100}
+4
+{f0:0 f1:1 grow:0}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7 r:1 push:100 eight:8}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7 r:1 push:100 eight:8}
+{f0:0 f1:1 nine:9}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7 r:1 push:100 eight:8 ten:10}
+{one:1 two:2 three:3 four:4 five:5 six:6 poke:9 f0:0 f1:1 f2:2 seven:7 r:1 push:100 eight:8 ten:10}
+{f0:0 f1:1 eleven:11}
+{f0:0 f1:1 eleven:11 twelve:12}
+{f0:0 f1:1 eleven:11 twelve:12}
+{f0:0 f1:1 grow:0}
+{f1:1 eleven:11 twelve:12 zero:0}
+{f1:1 eleven:11 twelve:12 zero:0}

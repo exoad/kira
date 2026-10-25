@@ -1,0 +1,37 @@
+
+numerics - wrapping, literal types, saturating as
+
+  ok    UInt8 200 + 100 wraps to 44
+  ok    so 200 + 100 > 250 is false, where C++'s int says true
+  ok    and 200 + 51 > 250 is true
+  ok    Int8 -(-128) wraps to -128
+  ok    UInt16 ~ stays 16 bits
+  ok    (v & 0xFF) as UInt8
+  ok    Int64 arithmetic
+  ok    a literal-only product is typed Int64, not Int32
+  ok    Size arithmetic
+  ok    constants keep their types and values
+  ok    fixed3(0.25)
+  ok    fixed3(-0.5)
+  ok    fixed3(1.0)
+  ok    fixed3 rounds the third decimal
+  ok    fixed3(0.000499999966f): Float32 arithmetic rounds up
+  ok    where double literals would have printed 0.000
+  ok    v * 1000.0 + 0.5 is Float32 arithmetic
+  ok    as Int32 saturates 1e10
+  ok    and -1e10
+  ok    and takes NaN to 0
+  ok    and truncates toward zero
+  ok    as UInt8 saturates both ways
+  ok    and NaN is 0 there too
+  ok    Int64 as Int32 wraps
+  ok    int to float, and float to float
+  ok    Char as UInt8 is the unsigned code unit
+  ok    UInt8 as Char
+  ok    Char < compares unsigned
+  ok    Int32 / truncates toward zero
+  ok    and % keeps the dividend's sign
+  ok    a constant divisor
+  ok    shifts
+
+32 checks, 0 failed

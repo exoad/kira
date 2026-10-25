@@ -1,0 +1,59 @@
+// A type's own types: Shape.Corner (with its Mark), Shape.Side and Shape.Size, named bare inside Shape.
+
+pub Shape: Mutable<Any> {
+    pub Corner: Any {
+        pub x: Int32 = 0
+        pub y: Int32 = 0
+        pub mark: Mark = Mark { }
+
+        // Inside Corner, Mark is Corner's own; Side is Shape's.
+        pub Mark: Any {
+            pub label: Str = "plain"
+        }
+
+        pub kind: () Str {
+            "corner"
+        }
+
+        pub sideTo: (other: Corner) Side {
+            Side { start = this, end = other }
+        }
+    }
+
+    pub Side: Any {
+        pub start: Corner
+        pub end: Corner
+
+        pub kind: () Str {
+            "side"
+        }
+
+        pub length2: () Int32 {
+            (end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y)
+        }
+    }
+
+    // A nested value type, edited as a copy.
+    pub Size: Struct {
+        pub w: Int32 = 0
+        pub h: Int32 = 0
+    }
+
+    pub corners: List<Corner> = List<Corner> { }
+    pub size: Size = Size { }
+
+    pub first: () Corner {
+        corners.size() > 0 ? corners.get(0) : Corner { x = -1, y = -1 }
+    }
+
+    pub marked: (label: Str) Corner.Mark {
+        Corner.Mark { label = label }
+    }
+}
+
+pub square: (side: Int32) Shape {
+    Shape {
+        corners = @listOf(Shape.Corner { }, Shape.Corner { x = side }, Shape.Corner { x = side, y = side }, Shape.Corner { y = side }),
+        size = Shape.Size { w = side, h = side }
+    }
+}

@@ -1,0 +1,12 @@
+enums.generics.app.status as status
+enums.generics.app.box as box
+
+main: () Void {
+    state: Int32 = READY
+    wrapped: Box<Int32> = Box<Int32> { 7 }
+    value: Int32 = id<Int32>(wrapped.value)
+
+    if state == READY {
+        trace(value)
+    }
+}

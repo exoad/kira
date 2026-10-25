@@ -1,0 +1,38 @@
+// Python's re: the pattern text is Kira's, the engine Python's (Unicode \w, \d and \s; $ before a last \n).
+// Offsets count code points. py only, as the engine is.
+
+// One match of a Regex: re.Match itself.
+pub @_magic Match: Any {
+    // Group n, 0 the whole match; none for a group that took no part. A group the pattern lacks panics.
+    pub group: (n: Int32) Maybe<Str>;
+    pub groupNamed: (name: Str) Maybe<Str>;
+    pub start: () Size;
+    pub end: () Size;
+}
+
+// A compiled pattern: re.Pattern itself.
+pub @_magic Regex: Any {
+    pub search: (text: Str) Maybe<Match>;
+    // Anchored at the start of text, as Python's match is.
+    pub matchStart: (text: Str) Maybe<Match>;
+    // Anchored at offset pos, as match(text, pos) is: ^ still means the start of text.
+    pub matchAt: (text: Str, pos: Size) Maybe<Match>;
+    pub fullMatch: (text: Str) Maybe<Match>;
+    pub findIter: (text: Str) List<Match>;
+    // findall for a pattern of at most one group: each match's group, or the match; more groups panic.
+    pub findAll: (text: Str) List<Str>;
+    // sub(replacement, text): a template, \1 and \g<name> its groups; a bad escape in it panics.
+    pub sub: (replacement: Str, text: Str) Str;
+    // split(text), each group's text kept between the pieces; a group that took no part panics.
+    pub split: (text: Str) List<Str>;
+}
+
+// compile's flags: 0, or the sum of these.
+pub IGNORE_CASE: Int32 = 2
+pub MULTILINE: Int32 = 8
+
+// re.compile(pattern, flags); none for a pattern re refuses, regexError() its reason.
+pub @_magic compile: (pattern: Str, flags: Int32) Maybe<Regex>;
+// Why the last compile on this thread failed, as str(e) gives it ("missing ), unterminated subpattern at
+// position 0"); "" when it did not.
+pub @_magic regexError: () Str;

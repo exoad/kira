@@ -1,0 +1,3 @@
+parityLabel: (value: Int32) Str {
+    value % 2 == 0 ? "even" : "odd"
+}

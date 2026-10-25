@@ -1,0 +1,63 @@
+// HTTP as Python's urllib.request and http.server speak it (HTTP/1.0, a thread a request); py only.
+
+// What a server answered: any status, a 404 or a 500 too, and its body.
+pub HttpReply: Struct {
+    pub status: Int32 = 0
+    pub body: List<UInt8> = @listOf()
+}
+
+// urlopen(url) of an http or https URL, a redirect to any other scheme its 3xx reply: none when no reply came (no
+// connection, a timeout, a bad URL or reply, a body cut short), httpError() saying why; timeoutMs <= 0: no limit.
+pub @_magic httpGet: (url: Str, timeoutMs: Int64) Maybe<HttpReply>;
+// A POST of body as contentType, as httpGet.
+pub @_magic httpPost: (url: Str, body: View<UInt8>, contentType: Str, timeoutMs: Int64) Maybe<HttpReply>;
+// Why the last call of this module on this thread failed, as str(e) gives it; "" when it did not.
+pub @_magic httpError: () Str;
+// The body's text in the encoding json.loads detects (UTF-8, -16 or -32), a lone surrogate kept; none when it is not.
+pub @_magic jsonText: (body: View<UInt8>) Maybe<Str>;
+// A request target's path and query, as urlparse splits them; none where it refuses one.
+pub @_magic urlPath: (target: Str) Maybe<Str>;
+pub @_magic urlQuery: (target: Str) Maybe<Str>;
+// parse_qs(query)'s first value of key.
+pub @_magic queryFirst: (query: Str, key: Str) Maybe<Str>;
+
+// One request to a server: path is the target as sent, its query included; host the Host header, "" without one.
+pub HttpRequest: Struct {
+    pub method: Str = ""
+    pub path: Str = ""
+    pub host: Str = ""
+    pub body: List<UInt8> = @listOf()
+}
+
+// What a handler answers: status 0 closes the connection unanswered, and 400 or more with no body is Python's error
+// page; else Content-Type, Content-Length, then headers in order. A program error: a status past 100..999, a header
+// that sets either of those two, and header text with a line break or past latin-1.
+pub HttpAnswer: Struct {
+    pub status: Int32 = 200
+    pub contentType: Str = "application/json"
+    pub body: List<UInt8> = @listOf()
+    pub headers: Map<Str, Str> = Map<Str, Str> { }
+}
+
+// A ThreadingHTTPServer, bound and listening: each request a thread of its own, the handler a Kira Fx (D76).
+pub @_magic HttpServer: Mutable<Any> {
+    // The port bound, port 0's choice included.
+    pub port: () Int32;
+    // Serves until shutdown() from another thread, then closes: true; false at an error, or on the main thread once an
+    // onSignal handler ran, as it ends kira:os's waits (D78), httpError() saying why.
+    pub @_mutates serve: () Bool;
+    // Ends serve within half a second, or a serve not yet begun at once.
+    pub @_mutates shutdown: () Void;
+}
+
+// GET only (any other method is Python's 501); none when the address cannot be bound, httpError() saying why.
+pub @_magic httpServer: (host: Str, port: Int32, handle: Fx<Tuple1<HttpRequest>, HttpAnswer>) Maybe<HttpServer>;
+// GET and POST. admit(path, contentLength) runs before the body is read (none sent is 0, unreadable -1, clamped to
+// +-2^62): status 0 reads the body (none for a negative length), then calls handle; any other is sent unread and the
+// connection closed.
+pub @_magic httpServerWithPost: (
+    host: Str,
+    port: Int32,
+    handle: Fx<Tuple1<HttpRequest>, HttpAnswer>,
+    admit: Fx<Tuple2<Str, Int64>, HttpAnswer>
+) Maybe<HttpServer>;

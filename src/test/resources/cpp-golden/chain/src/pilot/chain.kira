@@ -1,0 +1,102 @@
+// The behaviour chain: the one class hierarchy bibo has, and Maybe<Class>.
+
+pub ID_WASD: Str = "net.exoad.tt02bibo.wasd"
+pub ID_STOP: Str = "net.exoad.tt02bibo.stop"
+
+pub ACT_NOTHING: Int32 = 0
+pub ACT_CLAMP: Int32 = 1
+pub ACT_PROPOSE: Int32 = 2
+
+pub Reply: Struct {
+    pub act: Int32 = ACT_NOTHING
+    pub throttle: Float32 = 0.0
+    pub steer: Float32 = 0.0
+}
+
+pub Pass: Struct {
+    pub dtMs: Int32 = 0
+    pub nowMs: Int64 = 0
+    pub haveHolder: Bool = false
+}
+
+// A trait lowers to an abstract C++ class; a default body is a virtual with a
+// body, so a C++ test double overrides exactly what it needs.
+pub Behaviour: Mutable<Any> {
+    pub id: () Str;
+    pub name: () Str;
+    pub mayDrive: () Bool {
+        false
+    }
+    pub onLoad: () Void {
+    }
+    pub onUnload: () Void {
+    }
+    pub step: (p: Pass) Reply;
+}
+
+Stop: Mutable<Behaviour> {
+    override pub id: () Str {
+        ID_STOP
+    }
+    override pub name: () Str {
+        "stop"
+    }
+    override pub step: (p: Pass) Reply {
+        Reply { act = ACT_CLAMP, throttle = 0.0 }
+    }
+}
+
+pub make: (wanted: Str) Maybe<Behaviour> {
+    wanted == ID_STOP ? Stop {} : null
+}
+
+pub Chain: Mutable<Any> {
+    loaded: Mutable<List<Behaviour>> = List<Behaviour> {}
+    refusal: Mutable<Str> = ""
+
+    // Why the last load was refused, empty when it loaded.
+    pub why: () Str {
+        refusal
+    }
+
+    pub load: (b: Maybe<Behaviour>) Bool {
+        refusal = ""
+        if b.isNone() {
+            refusal = "no behaviour"
+            false
+        } else {
+            it: Behaviour = b.unwrap()
+            wanted: Str = it.id()
+            if wanted.isEmpty() {
+                refusal = "a behaviour with no id"
+                false
+            } else if has(wanted) {
+                refusal = "already loaded: ${wanted}"
+                false
+            } else {
+                it.onLoad()
+                loaded.add(it)
+                true
+            }
+        }
+    }
+
+    pub size: () Size {
+        loaded.size()
+    }
+
+    pub has: (wanted: Str) Bool {
+        result: Mutable<Bool> = false
+        for b: Behaviour in loaded {
+            if b.id() == wanted {
+                result = true
+                break
+            }
+        }
+        result
+    }
+
+    pub at: (i: Size) Maybe<Behaviour> {
+        i >= loaded.size() ? null : loaded[i]
+    }
+}

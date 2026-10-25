@@ -1,0 +1,30 @@
+golden.decls.lib.shapes as shapes
+golden.decls.lib.shapes.KIND_DOT as KIND_DOT
+golden.decls.lib.shapes.MAX_POINTS as MAX_POINTS
+golden.decls.lib.shapes.Point as Point
+golden.decls.lib.shapes.SCALE as SCALE
+golden.decls.lib.shapes.TAG as TAG
+
+// A module in another directory that uses lib:shapes: the header includes it
+// by relative path, and every name taken from it is fully qualified. It is
+// not header-only, so its prototypes are plain declarations, its state is an
+// inline variable in the header, and it has no source file to write, since
+// nothing here has a body.
+
+pub LEVEL_LOW: Int32 = 0
+pub LEVEL_HIGH: Int32 = 1
+
+pub Cell: Struct {
+    pub at: Point = Point {}
+    pub level: Int32 = LEVEL_LOW
+    pub weight: Float32 = 0.25
+    pub tag: Char = TAG
+}
+
+pub LIMIT: Int32 = SCALE
+pub CELLS: Size = MAX_POINTS
+pub drawn: Mutable<Int32> = 0
+
+pub place: (c: Cell, x: Int32 = LIMIT, kind: Int32 = KIND_DOT) Cell;
+pub render: (cells: List<Cell>, sep: Str = ", ") Str;
+pub best: (cells: Arr<Cell, CELLS>) Maybe<Cell>;

@@ -1,0 +1,108 @@
+// Stage 3's two halves together: a conformance test narrows a ternary's arms, a block value's
+// arms and a body's last expression. The expected output was worked out by hand.
+
+Pt: Struct {
+    pub x: Int32 = 0
+    pub y: Int32 = 0
+}
+
+find: (xs: List<Int32>, v: Int32) Maybe<Int32> {
+    result: Mutable<Maybe<Int32>> = null
+    found: Mutable<Bool> = false
+    for i: Size in 0..xs.size() {
+        if xs[i] == v {
+            result = i as Int32
+            found = true
+            break
+        }
+    }
+    found ? result : null
+}
+
+at: (k: Int32) Maybe<Pt> {
+    k > 0 ? Pt { k, k * 2 } : null
+}
+
+// A ternary whose condition is a test: its first arm sees the value the Maybe holds.
+plusOne: (m: Maybe<Int32>) Int32 {
+    m == Int32 ? m + 1 : 0
+}
+
+// `!=` narrows the second arm, a ternary nested in it too.
+orBig: (m: Maybe<Int32>) Int32 {
+    m != Int32 ? -1 : m > 1 ? m * 100 : m
+}
+
+// The rest of an `&&` in the condition sees the left side's test, and so does the first arm.
+bigOnly: (m: Maybe<Int32>) Int32 {
+    m == Int32 && m > 1 ? m : 0
+}
+
+// An if value whose arms hold statements, narrowed in each arm by the conditions before it.
+score: (m: Maybe<Int32>, p: Maybe<Pt>) Int32 {
+    v: Int32 = if m == Int32 && p == Pt {
+        t: Int32 = m * 10
+        t + p.y
+    } else if m != Int32 {
+        q: Int32 = p == Pt ? p.x : 0
+        q - 1
+    } else {
+        w: Int32 = m
+        w * 2
+    }
+    v
+}
+
+// The body's last expression after an if that always leaves.
+later: (m: Maybe<Int32>, k: Int32) Int32 {
+    m != Int32 ? -k : m * k
+}
+
+// The body's last if, each arm its value.
+label: (m: Maybe<Int32>) Str {
+    if m == Int32 {
+        n: Int32 = m + 1
+        "at ${n}"
+    } else {
+        "none"
+    }
+}
+
+risky: (n: Int32) Int32 {
+    if n > 1 {
+        throw "too far"
+    }
+    n
+}
+
+// A try value in the narrowed arm of a ternary.
+safe: (m: Maybe<Int32>) Int32 {
+    m == Int32 ? (try {
+        risky(m)
+    } on e: Str {
+        -9
+    }) : -5
+}
+
+// A lambda's last expression is a ternary that narrows its parameter.
+viaLambda: (m: Maybe<Int32>) Int32 {
+    g: (x: Maybe<Int32>) Int32 = (x: Maybe<Int32>) Int32 {
+        x == Int32 ? x * 7 : 3
+    }
+    g(m)
+}
+
+main: () Void {
+    xs: List<Int32> = @listOf(5, 6, 7)
+    for v: Int32 in @listOf(5, 7, 9) {
+        m: Maybe<Int32> = find(xs, v)
+        trace(plusOne(m))
+        trace(orBig(m))
+        trace(bigOnly(m))
+        trace(score(m, at(v - 6)))
+        trace(later(m, 4))
+        trace(label(m))
+        trace(safe(m))
+        trace(viaLambda(m))
+    }
+}

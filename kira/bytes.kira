@@ -1,0 +1,44 @@
+// Byte-order-explicit reads and writes over borrowed byte views, and a strict
+// decimal parser over a borrowed character view. None of these allocate, so
+// they are available in the freestanding profile too; fromHex's List is hosted.
+//
+// Every `read*Le` reads little-endian at byte offset `at` and panics when
+// the view is too short; every `write*Le` is the inverse over a `MutView`.
+// The `*Be` set is its big-endian twin (D53): the same widths, the same
+// signedness and the same panic, the most significant byte first.
+
+pub @_magic readU16Le: (buf: View<UInt8>, at: Size) UInt16;
+pub @_magic readU32Le: (buf: View<UInt8>, at: Size) UInt32;
+pub @_magic readU64Le: (buf: View<UInt8>, at: Size) UInt64;
+pub @_magic readF32Le: (buf: View<UInt8>, at: Size) Float32;
+pub @_magic readF64Le: (buf: View<UInt8>, at: Size) Float64;
+
+pub @_magic writeU16Le: (buf: MutView<UInt8>, at: Size, value: UInt16) Void;
+pub @_magic writeU32Le: (buf: MutView<UInt8>, at: Size, value: UInt32) Void;
+pub @_magic writeU64Le: (buf: MutView<UInt8>, at: Size, value: UInt64) Void;
+pub @_magic writeF32Le: (buf: MutView<UInt8>, at: Size, value: Float32) Void;
+pub @_magic writeF64Le: (buf: MutView<UInt8>, at: Size, value: Float64) Void;
+
+pub @_magic readU16Be: (buf: View<UInt8>, at: Size) UInt16;
+pub @_magic readU32Be: (buf: View<UInt8>, at: Size) UInt32;
+pub @_magic readU64Be: (buf: View<UInt8>, at: Size) UInt64;
+pub @_magic readF32Be: (buf: View<UInt8>, at: Size) Float32;
+pub @_magic readF64Be: (buf: View<UInt8>, at: Size) Float64;
+
+pub @_magic writeU16Be: (buf: MutView<UInt8>, at: Size, value: UInt16) Void;
+pub @_magic writeU32Be: (buf: MutView<UInt8>, at: Size, value: UInt32) Void;
+pub @_magic writeU64Be: (buf: MutView<UInt8>, at: Size, value: UInt64) Void;
+pub @_magic writeF32Be: (buf: MutView<UInt8>, at: Size, value: Float32) Void;
+pub @_magic writeF64Be: (buf: MutView<UInt8>, at: Size, value: Float64) Void;
+
+// Strict: an optional sign, then decimal digits and nothing else; none on
+// any other text or on overflow. Locale-free.
+pub @_magic parseInt64: (text: View<Char>) Maybe<Int64>;
+
+// Where pattern first occurs in data at or after start, -1 for nowhere: bytes.find's answer, an empty
+// pattern found at start unless start is past the end.
+pub @_magic findBytes: (data: View<UInt8>, pattern: View<UInt8>, start: Size) Int64;
+// CRC-16/XMODEM (polynomial 0x1021, no reflection, no final XOR) of data from init, as binascii.crc_hqx.
+pub @_magic crc16Xmodem: (data: View<UInt8>, init: UInt16) UInt16;
+// bytes.fromhex: hex pairs in either case, ASCII whitespace between pairs; none for any other text.
+pub @_magic fromHex: (text: Str) Maybe<List<UInt8>>;

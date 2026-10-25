@@ -1,0 +1,7 @@
+pub Box<T>: Any {
+    pub value: T
+}
+
+id<T>: (value: T) T {
+    value
+}

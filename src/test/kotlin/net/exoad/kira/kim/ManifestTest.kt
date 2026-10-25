@@ -24,7 +24,7 @@ build:
         val srcDir = tempDir.resolve("src")
         Files.createDirectories(srcDir)
         val mainKira = srcDir.resolve("main.kira")
-        Files.writeString(mainKira, "module \"demo:main\"\n")
+        Files.writeString(mainKira, "")
 
         val manifest = ManifestLoader.loadFromPath(mf)
         assertEquals("demo", manifest.project.name)

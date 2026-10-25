@@ -1,0 +1,112 @@
+// D33: a container a call gives is located before the key and the value, and once.
+
+Holder: Mutable<Any> {
+    pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    pub xs: Mutable<List<Int32>> = List<Int32> { }
+    pub n: Mutable<Int32> = 0
+    pub tag: Mutable<Int32> = 0
+}
+
+Shelf: Mutable<Any> {
+    pub bags: Mutable<List<Holder>> = List<Holder> { }
+    pub swaps: Mutable<Int32> = 0
+
+    pub swapFirst: () Int32 {
+        b: Mutable<Holder> = Holder { }
+        swaps += 1
+        b.tag = swaps
+        bags[0] = b
+        7
+    }
+
+    pub first: () Holder {
+        bags[0]
+    }
+}
+
+gm: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+gxs: Mutable<List<Int32>> = List<Int32> { }
+
+holderOf: (h: Holder) Holder {
+    trace("holder")
+    h
+}
+
+key: () Str {
+    trace("key")
+    "k"
+}
+
+idx: () Size {
+    trace("idx")
+    0
+}
+
+val: () Int32 {
+    trace("val")
+    1
+}
+
+swapGlobals: () Int32 {
+    gm = Map<Str, Int32> { }
+    gm["x"] = 0
+    gxs = List<Int32> { }
+    gxs.add(9)
+    gxs.add(9)
+    3
+}
+
+show: (b: Holder) Str {
+    ks: Arr<Str> = b.items.keys()
+    s: Mutable<Str> = "holder${b.tag} {"
+    i: Mutable<Size> = 0
+    while i < ks.size() {
+        s = s + " ${ks[i]}"
+        i += 1
+    }
+    s + " }"
+}
+
+main: () Void {
+    h: Mutable<Holder> = Holder { }
+    h.xs.add(0)
+    trace("-- map, impure key and value")
+    holderOf(h).items[key()] = val()
+    trace("-- map, constant key, impure value")
+    holderOf(h).items["c"] = val()
+    trace("-- map, impure key, constant value")
+    holderOf(h).items[key()] = 5
+    trace("-- list")
+    holderOf(h).xs[idx()] = val()
+    trace("-- field")
+    holderOf(h).items = holderOf(h).items
+    trace(h.items.size())
+
+    trace("-- the container is the one the call gave before the value replaced it")
+    sh: Mutable<Shelf> = Shelf { }
+    b0: Mutable<Holder> = Holder { }
+    sh.bags.add(b0)
+    sh.first().items["k"] = sh.swapFirst()
+    trace(show(b0))
+    trace(show(sh.bags[0]))
+    sh.first().xs.add(0)
+    sh.first().xs[0] = sh.swapFirst()
+    trace(sh.bags[0].xs.size())
+
+    trace("-- a global the value replaces")
+    gm["a"] = 1
+    gxs.add(1)
+    gm["g"] = swapGlobals()
+    trace(gm.size())
+    trace(gm.containsKey("g"))
+    gxs[0] = swapGlobals()
+    trace("${gxs[0]} ${gxs[1]}")
+
+    trace("-- compound assignments read the call once")
+    holderOf(h).xs[0] += 5
+    trace(h.xs[0])
+    holderOf(h).xs[idx()] += val()
+    trace(h.xs[0])
+    holderOf(h).n += val()
+    trace(h.n)
+}

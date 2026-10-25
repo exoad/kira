@@ -1,0 +1,75 @@
+kira.args as args
+kira.pytext as pytext
+
+// kira:args (K7): argparse with the program's own prog (deviation 8), its usage, help and error text, 2 for a bad
+// command line and 0 for --help; the driver runs the same parser built in Python, as the sidecars built theirs.
+
+pub spec: () ArgSpec {
+    s: ArgSpec = argSpec("decode", "Decodes the tag heads, 50% of them at most.")
+    s.positional("onnx", "")
+    s.whole("--samples", 200, "")
+    s.whole("--steps-per-epoch", 400, "steps in each epoch")
+    s.text("--out", "runs/tagnet", "")
+    s.text("--plan", null, "pulse:seconds,... in place of --us/--seconds")
+    s.real("--hold", 1.5, "seconds at each point")
+    s.real("--duty", null, "50% of the period at most")
+    s.flag("--export-only", "")
+    s.flag("-v", "print every frame")
+    s
+}
+
+pub parsed: (argv: List<Str>) Parsed {
+    spec().parse(argv)
+}
+
+pub textOf: (p: Parsed, name: Str) Maybe<Str> {
+    p.textOf(name)
+}
+
+pub wholeOf: (p: Parsed, name: Str) Maybe<Int64> {
+    p.wholeOf(name)
+}
+
+pub realOf: (p: Parsed, name: Str) Maybe<Float64> {
+    p.realOf(name)
+}
+
+pub isSet: (p: Parsed, name: Str) Bool {
+    p.isSet(name)
+}
+
+// A flag declared twice, a flag without its dash and a positional with one: each a program error.
+pub twice: () Void {
+    s: ArgSpec = spec()
+    s.whole("--samples", null, "")
+}
+
+pub undashed: () Void {
+    s: ArgSpec = spec()
+    s.text("out", null, "")
+}
+
+pub dashed: () Void {
+    s: ArgSpec = spec()
+    s.positional("--onnx", "")
+}
+
+// --help of a description that names %(prog)s, which argparse would format, and a lone %.
+pub plainHelp: () Void {
+    s: ArgSpec = argSpec("decode", "%(prog)s at 50%")
+    s.parse(@listOf("--help"))
+}
+
+orNone: (m: Maybe<Str>) Str {
+    m.isNone() ? "none" : m.value
+}
+
+realText: (m: Maybe<Float64>) Str {
+    m.isNone() ? "none" : floatRepr(m.value)
+}
+
+pub main: (args: List<Str>) Int32 {
+    p: Parsed = spec().parse(args.from(1).toList())
+    println("onnx=${p.textOf("onnx").value} samples=${p.wholeOf("--samples").value} steps=${p.wholeOf("--steps-per-epoch").value} out=${orNone(p.textOf("--out"))} plan=${orNone(p.textOf("--plan"))} hold=${realText(p.realOf("--hold"))} duty=${realText(p.realOf("--duty"))} export=${p.isSet("--export-only")} v=${p.isSet("-v")}")
+    0
+}

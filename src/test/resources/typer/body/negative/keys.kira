@@ -1,0 +1,31 @@
+// A Map's key and a Set's element are a scalar or a Str, on every target.
+
+pub Holder: Any {
+    pub n: Int32
+}
+
+pub Point: Struct {
+    pub x: Int32 = 0
+}
+
+pub UInt16 as Id
+
+pub count<K>: (m: Map<K, Int32>) Size {
+    m.size()
+}
+
+pub keys: () Void {
+    a: Map<Int32, Holder> = Map<Int32, Holder> { }
+    b: Map<Str, Int32> = Map<Str, Int32> { }
+    d: Set<Char> = Set<Char> { }
+    e: Map<Id, Bool> = Map<Id, Bool> { }
+    f: Set<Float64> = Set<Float64> { }
+    g: Mutable<Map<Holder, Int32>> = Map<Holder, Int32> { }             // @error types.type.key ; @error types.type.key
+    i: Map<Point, Int32> = Map<Point, Int32> { }                   // @error types.type.key ; @error types.type.key
+    j: Set<Holder> = Set<Holder> { }                               // @error types.type.key ; @error types.type.key
+    k: Map<Maybe<Int32>, Int32> = Map<Maybe<Int32>, Int32> { }     // @error types.type.key ; @error types.type.key
+    m: Map<List<Int32>, Int32> = Map<List<Int32>, Int32> { }       // @error types.type.key ; @error types.type.key
+}
+
+pub field: (p: Map<Point, Str>) Void {                          // @error types.type.key
+}

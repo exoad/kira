@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
  */
 class NullSafetyTest {
     private val pet = """
-        pub class Pet {
-            require pub name: Str
+        pub Pet: Any {
+            pub name: Str
         }
     """.trimIndent()
 
@@ -28,7 +28,7 @@ class NullSafetyTest {
     @Test
     fun nullIsDeclaredByTheStdlibRatherThanLexedAsAKeyword() {
         val core = java.io.File("kira/core.kira").readText()
-        assertTrue(core.contains("pub @_magic class Null"), "Null type missing from kira:core")
+        assertTrue(core.contains("pub @_magic Null: Any"), "Null type missing from kira:core")
         assertTrue(core.contains("@_global null: Null"), "null global missing from kira:core")
 
         // If `null` were a keyword the lexer would own it; it must stay an identifier.
@@ -42,7 +42,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Pet = null
             }
             """,
@@ -66,7 +66,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 q: Maybe<Int32> = null
             }
@@ -86,7 +86,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 q: Str = p.name
             }
@@ -106,7 +106,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 trace(p.name)
             }
@@ -126,7 +126,7 @@ class NullSafetyTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 p: Maybe<Pet> = null
                 a: Bool = p.isSome()
                 b: Bool = p.isNone()
@@ -139,5 +139,107 @@ class NullSafetyTest {
             messages.none { it.contains("not available on a 'Maybe'") },
             "isSome/isNone must remain callable, got: $messages"
         )
+    }
+
+    @Test
+    fun aMaybeLocalDoesNotReachTheSameNameInAnotherFunction() {
+        val messages = diagnosticsFor(
+            """
+            first: () Void {
+                s: Maybe<Str> = null
+            }
+
+            second: (s: Str) Size {
+                b: Mutable<Size> = s.length()
+                trace(s.length())
+                c: Size = b > 0 ? s.length() : b
+                c
+            }
+            """,
+            "test:nullsafety.scope"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "the Str parameter s is the s in scope, got: $messages"
+        )
+    }
+
+    @Test
+    fun valueAndIsNullAreTheMaybeApi() {
+        val messages = diagnosticsFor(
+            """
+            find: () Maybe<Str> {
+                null
+            }
+
+            read: () Str {
+                m: Maybe<Str> = find()
+                if m.isNull() {
+                    ""
+                } else {
+                    x: Str = m.value
+                    y: Bool = m.isNull()
+                    x
+                }
+            }
+            """,
+            "test:nullsafety.d40"
+        )
+
+        assertTrue(
+            messages.none { it.contains("not available on a 'Maybe'") },
+            "value and isNull are Maybe's own members (D40), got: $messages"
+        )
+    }
+
+    @Test
+    fun anIfExpressionBranchIsAScopeOfItsOwn() {
+        val messages = diagnosticsFor(
+            """
+            f: (c: Bool, s: Str) Size {
+                k: Size = if c {
+                    s: Maybe<Str> = null
+                    s.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                a: Size = if c {
+                    t: Maybe<Str> = null
+                    t.unwrapOr("zz").size()
+                } else {
+                    0
+                }
+                b: Size = if c {
+                    t: Str = "four"
+                    t.size()
+                } else {
+                    0
+                }
+                n: Size = s.size()
+                n + k + a + b
+            }
+            """,
+            "test:nullsafety.branches"
+        )
+
+        assertTrue(messages.isEmpty(), "each branch's locals stay in the branch, got: $messages")
+    }
+
+    @Test
+    fun aMaybeParametersMisuseIsLeftToTheTyper() {
+        val messages = diagnosticsFor(
+            """
+            $pet
+
+            f: (p: Maybe<Pet>) Str {
+                q: Str = p.name
+                q
+            }
+            """,
+            "test:nullsafety.param"
+        )
+
+        assertTrue(messages.none { it.contains("not available on a 'Maybe'") }, "the typer's types.maybe.member reports it, got: $messages")
     }
 }

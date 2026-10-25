@@ -1,0 +1,60 @@
+kira.path as path
+kira.test as test
+
+// kira:path (K5): os.path's own calls, so main checks what holds on posixpath and ntpath alike and the driver
+// holds each function to os.path on this host.
+
+pub joined: (a: Str, b: Str) Str {
+    joinPath(a, b)
+}
+
+pub joinedAll: (parts: List<Str>) Str {
+    joinPaths(parts)
+}
+
+pub base: (p: Str) Str {
+    baseName(p)
+}
+
+pub dirOf: (p: Str) Str {
+    dirName(p)
+}
+
+pub stem: (p: Str) Str {
+    stripExt(p)
+}
+
+pub norm: (p: Str) Str {
+    normPath(p)
+}
+
+pub absOf: (p: Str) Str {
+    absPath(p)
+}
+
+pub rel: (p: Str, start: Str) Maybe<Str> {
+    relPath(p, start)
+}
+
+pub home: (p: Str) Str {
+    expandUser(p)
+}
+
+pub slash: (p: Str) Str {
+    slashed(p)
+}
+
+pub main: () Int32 {
+    t: Suite = Suite { title = "paths - kira:path on py" }
+    t.checkStr(slashed(joinPath("a", "b.txt")), "a/b.txt", "joinPath puts the host's separator between")
+    t.checkStr(slashed(joinPaths(@listOf("a", "b", "c.d"))), "a/b/c.d", "joinPaths joins every part")
+    t.checkStr(baseName(joinPath("a", "b.txt")) + " " + slashed(dirName(joinPath("a", "b.txt"))), "b.txt a", "baseName and dirName split it again")
+    t.checkStr(baseName("a/") + "|" + dirName("x"), "|", "a trailing separator has no base, a bare name no directory")
+    t.checkStr(stripExt("x/y.tar.gz") + " " + stripExt(".bashrc") + " " + stripExt("a.b/c"), "x/y.tar .bashrc a.b/c", "stripExt drops the last extension only")
+    t.checkStr(slashed(normPath("a/./b/../c")) + " " + normPath(""), "a/c .", "normPath folds . and .., and \"\" is .")
+    t.check(slashed(absPath("x")).endsWith("/x") && absPath("x") == joinPath(absPath("."), "x"), "absPath joins the current directory")
+    t.checkStr(slashed(relPath(joinPath("a", joinPath("b", "c")), "a").unwrapOr("none")) + " " + relPath("a", "a").unwrapOr("none"), "b/c .", "relPath from a start")
+    t.check(relPath("", "a").isNone(), "and none for an empty path")
+    t.checkStr(expandUser("x/~") + " " + "${slashed(expandUser(joinPath("~", "y"))).endsWith("/y")}", "x/~ true", "expandUser reads only a leading ~")
+    t.finish()
+}

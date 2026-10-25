@@ -1,0 +1,5 @@
+// A sidecar that lacks an extern: a panic at import (D67), which driver.py catches.
+
+pub @_extern present: (n: Int32) Int32
+
+pub @_extern absent: (n: Int32) Int32

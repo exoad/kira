@@ -47,10 +47,15 @@ object Diagnostics {
 //    }
 
     fun recordDiagnostics(exception: DiagnosticsException): String {
+        // A diagnostic recorded at SourcePosition.UNKNOWN (line -1) has no
+        // source line to point at, so it renders as its message alone.
+        // Measured before: the locator indexed the line list at -2 and the
+        // compiler died with an IndexOutOfBoundsException instead of a report.
+        val location = exception.location?.takeIf { it.lineNumber >= 1 }
         return """${
             when {
-                exception.location != null -> exception.context.formCanonicalLocatorString(
-                    exception.location,
+                location != null -> exception.context.formCanonicalLocatorString(
+                    location,
                     exception.message,
                     exception.selectorLength
                 )

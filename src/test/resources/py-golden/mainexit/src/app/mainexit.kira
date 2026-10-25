@@ -1,0 +1,52 @@
+// main as a program, which driver.py runs: kira:os args (D71), kira:time's clocks and sleep (D72), an
+// uncaught throw, which exits 70 keeping Python's traceback and its cause (D73), and a panic, which aborts (D81).
+
+kira.os as os
+kira.time as time
+
+@_extern(raises = "OSError") readText: (path: Str) Str
+
+@_extern linger: () Void
+
+main: () Void {
+    a: List<Str> = args()
+    trace(a.size())
+    trace(a[0].endsWith("mainexit_kira.py"))
+    i: Mutable<Size> = 1
+    while i < a.size() {
+        trace(a[i])
+        i += 1
+    }
+    t0: Int64 = monoNowNs()
+    m0: Int64 = monoNowMs()
+    sleepMs(30)
+    sleepMs(-1)
+    // Well under the 30 ms slept, as timer resolution differs between platforms.
+    trace(monoNowNs() - t0 >= 20000000)
+    trace(monoNowMs() - m0 >= 20)
+    trace(wallNowNs() > 1700000000000000000)
+    if a.size() == 3 && a[1] == "throw" {
+        trace(readText(a[2]))
+    }
+    if a.size() == 2 && a[1] == "exit" {
+        exit(4)
+    }
+    if a.size() == 2 && a[1] == "linger" {
+        linger()
+        exit(5)
+    }
+    if a.size() == 2 && a[1] == "panic" {
+        trace(1 / (a.size() as Int32 - 2))
+    }
+    trace("done")
+}
+
+// What driver.py calls with Int64 max, past what Python's sleep takes in one go.
+pub nap: (ms: Int64) Void {
+    sleepMs(ms)
+}
+
+// A Python caller of a Kira function sees exit as SystemExit; only a program's main ends at once.
+pub quit: (code: Int32) Void {
+    exit(code)
+}

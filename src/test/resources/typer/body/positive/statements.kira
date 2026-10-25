@@ -1,0 +1,98 @@
+// Statements (design 5.4): locals, loops (TyperBodyModelTest checks each LoopPlan),
+// if-expressions (R18), assignments to places, throw and try.
+
+pub Cell: Mutable<Any> {
+    pub v: Mutable<Int32> = 0
+}
+
+pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<Str, Int32>, set: Set<Int32>) Int32 {
+    total: Mutable<Int32> = 0
+    for i: Size in 0..4 {                  // @type Size const=0:Size @ 0
+        total += 1
+    }
+    for x: Int32 in xs {                   // @type List<Int32> place=Param(xs) @ xs
+        total += x                         // @type Int32 place=Local(x) @ x
+    }
+    for b: UInt8 in arr {
+        total += b as Int32                // @type Int32 conv=INT_WRAP @ b as Int32
+    }
+    for c: Char in view {
+        if c == ' ' {                      // @type Bool
+            break
+        }
+    }
+    for e: Tuple2<Str, Int32> in names {
+        total += e.second                  // @type Int32 member=Field(Tuple2.second: Int32) @ e.second
+    }
+    for s: Int32 in set {
+        continue
+    }
+    for k: Int32 in 0..total {             // @type Int32 place=Local(total) @ total
+        total -= 1
+    }
+    j: Mutable<Int32> = 0
+    while j < 3 {                          // @type Bool
+        j += 1
+    }
+    while j > 0 {                          // @type Bool
+        j -= 1
+    }
+    total
+}
+
+pub ifs: (a: Int32, neg: Bool) Str {
+    v: Int32 = neg ? -a : a    // @type Int32
+    w: Int8 = a > 0 ? 1 : -1   // @type Int8
+    one: Int8 = a > 0 ? 1 : 0  // @type Int8 const=1:Int8 @ 1
+    label: Str = a == 0 ? "zero" : a > 0 ? "pos" : "neg" // @type Str
+    longer: Int32 = if neg {
+        t: Int32 = a * 2
+        t + 1
+    } else {
+        0
+    }
+    label                           // @type Str
+}
+
+pub places: () Int32 {
+    c: Mutable<Cell> = Cell { }
+    c.v = 3                                // @type Int32 place=Field(Local(c).v) @ c.v
+    c.v += 1                               // @type Void
+    xs: Mutable<List<Int32>> = List<Int32> { }
+    xs.add(1)
+    xs[0] = 5                              // @type Int32 place=Index(Local(xs), LIST) @ xs[0]
+    fixed: Mutable<Arr<Int32, 2>> = @arrOf(1, 2)      // @type Arr<Int32, 2>
+    fixed[1] = fixed[0]                    // @type Int32 place=Index(Local(fixed), ARR) @ fixed[1]
+    m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    m["k"] = 30                            // @type Int32 place=Index(Local(m), MAP) @ m["k"]
+    n: Mutable<Int32> = 0
+    n = 4                                  // @type Void
+    n *= 2                                 // @type Int32 place=Local(n) @ n
+    c.v + n                         // @type Int32
+}
+
+pub throwing: (ok: Bool) Int32 {
+    if !ok {
+        throw "bad"                        // @type Never @ throw "bad"
+    }
+    try {
+        trace(1)
+    } on e: Str {
+        trace(e)                           // @type Str place=Local(e) @ e
+    }
+    1
+}
+
+pub legacyLoop: (n: Int32) Int32 {
+    t: Mutable<Int32> = 0
+    for i: Int32 in 0..(n + 1) {           // @type Int32 const=0:Int32 @ 0
+        t += i                             // @type Int32 place=Local(i) @ i
+    }
+    t
+}
+
+pub early: (x: Int32) Void {
+    if !(x > 0) {
+        trace(x)                               // @type Void call=PRINT
+    }
+}

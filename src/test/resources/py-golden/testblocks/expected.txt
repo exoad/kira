@@ -1,0 +1,20 @@
+true true true true
+false false false false
+true true
+false false
+false false
+big 3
+small 2
+none
+200
+-1
+-1
+1
+0
+2
+40
+1
+0
+true true
+false true
+6

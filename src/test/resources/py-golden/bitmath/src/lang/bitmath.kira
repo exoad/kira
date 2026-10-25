@@ -1,0 +1,803 @@
+kira.math as math
+
+// The shifts, the bitwise compound assignments and kira:math's functions, where Python's own
+// differ from Kira's: `<<` wraps into its type, signed ones included; `>>` is arithmetic on a
+// negative value; `>>>` shifts a signed value's bits as its unsigned counterpart's; a count is
+// any integer type, a constant one bare and any other checked (a count outside 0 until the
+// width stops the program, which the shiftcount golden holds); sqrt, pow, floor, ceil, round,
+// sin, cos, tan and abs are C's, a Float64 for every argument, NaN or an infinity where Python
+// raises, and round takes a half away from zero. The expected output is the C++ backend's run
+// of this same module, built with zig c++ (musl) and with MSVC, which agree; MinGW-w64's C
+// library differs from C's round, taking 0.49999999999999994 to 1.
+
+// A Float64 as trace prints it, every NaN as nan: a NaN's sign is the machine's (x86's default
+// NaN is negative, which C++ prints as -nan), not Kira's.
+show: (v: Float64) Void {
+    if v != v {
+        trace("nan")
+    } else {
+        trace(v)
+    }
+}
+
+ratio: (a: Float64, b: Float64) Float64 {
+    a / b
+}
+
+lessOne: (v: Size) Size {
+    v - 1
+}
+
+lessOneU64: (v: UInt64) UInt64 {
+    v - 1
+}
+
+shlI8: (v: Int8, n: Int32) Int8 {
+    v << n
+}
+
+shrI8: (v: Int8, n: Int32) Int8 {
+    v >> n
+}
+
+ushrI8: (v: Int8, n: Int32) Int8 {
+    v >>> n
+}
+
+constantsI8: (v: Int8) Str {
+    "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+}
+
+compoundI8: (v: Int8, n: Int32) Str {
+    a: Mutable<Int8> = v
+    a &= 0x3C
+    b: Mutable<Int8> = v
+    b |= 0x3C
+    c: Mutable<Int8> = v
+    c ^= 0x3C
+    d: Mutable<Int8> = v
+    d <<= n
+    e: Mutable<Int8> = v
+    e >>= n
+    g: Mutable<Int8> = v
+    g >>>= n
+    h: Mutable<Int8> = v
+    h <<= 7
+    k: Mutable<Int8> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineI8: (v: Int8) Void {
+    l: Mutable<Str> = "Int8 ${v} <<"
+    r: Mutable<Str> = "Int8 ${v} >>"
+    u: Mutable<Str> = "Int8 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 8 {
+        l += " ${shlI8(v, n)}"
+        r += " ${shrI8(v, n)}"
+        u += " ${ushrI8(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI8(v))
+    trace(compoundI8(v, 0))
+    trace(compoundI8(v, 1))
+    trace(compoundI8(v, 7))
+}
+
+shlI16: (v: Int16, n: Int32) Int16 {
+    v << n
+}
+
+shrI16: (v: Int16, n: Int32) Int16 {
+    v >> n
+}
+
+ushrI16: (v: Int16, n: Int32) Int16 {
+    v >>> n
+}
+
+constantsI16: (v: Int16) Str {
+    "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+}
+
+compoundI16: (v: Int16, n: Int32) Str {
+    a: Mutable<Int16> = v
+    a &= 0x3C
+    b: Mutable<Int16> = v
+    b |= 0x3C
+    c: Mutable<Int16> = v
+    c ^= 0x3C
+    d: Mutable<Int16> = v
+    d <<= n
+    e: Mutable<Int16> = v
+    e >>= n
+    g: Mutable<Int16> = v
+    g >>>= n
+    h: Mutable<Int16> = v
+    h <<= 15
+    k: Mutable<Int16> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineI16: (v: Int16) Void {
+    l: Mutable<Str> = "Int16 ${v} <<"
+    r: Mutable<Str> = "Int16 ${v} >>"
+    u: Mutable<Str> = "Int16 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 16 {
+        l += " ${shlI16(v, n)}"
+        r += " ${shrI16(v, n)}"
+        u += " ${ushrI16(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI16(v))
+    trace(compoundI16(v, 0))
+    trace(compoundI16(v, 1))
+    trace(compoundI16(v, 15))
+}
+
+shlI32: (v: Int32, n: Int32) Int32 {
+    v << n
+}
+
+shrI32: (v: Int32, n: Int32) Int32 {
+    v >> n
+}
+
+ushrI32: (v: Int32, n: Int32) Int32 {
+    v >>> n
+}
+
+constantsI32: (v: Int32) Str {
+    "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+}
+
+compoundI32: (v: Int32, n: Int32) Str {
+    a: Mutable<Int32> = v
+    a &= 0x3C
+    b: Mutable<Int32> = v
+    b |= 0x3C
+    c: Mutable<Int32> = v
+    c ^= 0x3C
+    d: Mutable<Int32> = v
+    d <<= n
+    e: Mutable<Int32> = v
+    e >>= n
+    g: Mutable<Int32> = v
+    g >>>= n
+    h: Mutable<Int32> = v
+    h <<= 31
+    k: Mutable<Int32> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineI32: (v: Int32) Void {
+    l: Mutable<Str> = "Int32 ${v} <<"
+    r: Mutable<Str> = "Int32 ${v} >>"
+    u: Mutable<Str> = "Int32 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 32 {
+        l += " ${shlI32(v, n)}"
+        r += " ${shrI32(v, n)}"
+        u += " ${ushrI32(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI32(v))
+    trace(compoundI32(v, 0))
+    trace(compoundI32(v, 1))
+    trace(compoundI32(v, 31))
+}
+
+shlI64: (v: Int64, n: Int32) Int64 {
+    v << n
+}
+
+shrI64: (v: Int64, n: Int32) Int64 {
+    v >> n
+}
+
+ushrI64: (v: Int64, n: Int32) Int64 {
+    v >>> n
+}
+
+constantsI64: (v: Int64) Str {
+    "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+}
+
+compoundI64: (v: Int64, n: Int32) Str {
+    a: Mutable<Int64> = v
+    a &= 0x3C
+    b: Mutable<Int64> = v
+    b |= 0x3C
+    c: Mutable<Int64> = v
+    c ^= 0x3C
+    d: Mutable<Int64> = v
+    d <<= n
+    e: Mutable<Int64> = v
+    e >>= n
+    g: Mutable<Int64> = v
+    g >>>= n
+    h: Mutable<Int64> = v
+    h <<= 63
+    k: Mutable<Int64> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineI64: (v: Int64) Void {
+    l: Mutable<Str> = "Int64 ${v} <<"
+    r: Mutable<Str> = "Int64 ${v} >>"
+    u: Mutable<Str> = "Int64 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 64 {
+        l += " ${shlI64(v, n)}"
+        r += " ${shrI64(v, n)}"
+        u += " ${ushrI64(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsI64(v))
+    trace(compoundI64(v, 0))
+    trace(compoundI64(v, 1))
+    trace(compoundI64(v, 63))
+}
+
+shlU8: (v: UInt8, n: Int32) UInt8 {
+    v << n
+}
+
+shrU8: (v: UInt8, n: Int32) UInt8 {
+    v >> n
+}
+
+ushrU8: (v: UInt8, n: Int32) UInt8 {
+    v >>> n
+}
+
+constantsU8: (v: UInt8) Str {
+    "${v << 0} ${v << 1} ${v << 7} ${v >> 0} ${v >> 1} ${v >> 7} ${v >>> 0} ${v >>> 1} ${v >>> 7}"
+}
+
+compoundU8: (v: UInt8, n: Int32) Str {
+    a: Mutable<UInt8> = v
+    a &= 0x3C
+    b: Mutable<UInt8> = v
+    b |= 0x3C
+    c: Mutable<UInt8> = v
+    c ^= 0x3C
+    d: Mutable<UInt8> = v
+    d <<= n
+    e: Mutable<UInt8> = v
+    e >>= n
+    g: Mutable<UInt8> = v
+    g >>>= n
+    h: Mutable<UInt8> = v
+    h <<= 7
+    k: Mutable<UInt8> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineU8: (v: UInt8) Void {
+    l: Mutable<Str> = "UInt8 ${v} <<"
+    r: Mutable<Str> = "UInt8 ${v} >>"
+    u: Mutable<Str> = "UInt8 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 8 {
+        l += " ${shlU8(v, n)}"
+        r += " ${shrU8(v, n)}"
+        u += " ${ushrU8(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU8(v))
+    trace(compoundU8(v, 0))
+    trace(compoundU8(v, 1))
+    trace(compoundU8(v, 7))
+}
+
+shlU16: (v: UInt16, n: Int32) UInt16 {
+    v << n
+}
+
+shrU16: (v: UInt16, n: Int32) UInt16 {
+    v >> n
+}
+
+ushrU16: (v: UInt16, n: Int32) UInt16 {
+    v >>> n
+}
+
+constantsU16: (v: UInt16) Str {
+    "${v << 0} ${v << 1} ${v << 15} ${v >> 0} ${v >> 1} ${v >> 15} ${v >>> 0} ${v >>> 1} ${v >>> 15}"
+}
+
+compoundU16: (v: UInt16, n: Int32) Str {
+    a: Mutable<UInt16> = v
+    a &= 0x3C
+    b: Mutable<UInt16> = v
+    b |= 0x3C
+    c: Mutable<UInt16> = v
+    c ^= 0x3C
+    d: Mutable<UInt16> = v
+    d <<= n
+    e: Mutable<UInt16> = v
+    e >>= n
+    g: Mutable<UInt16> = v
+    g >>>= n
+    h: Mutable<UInt16> = v
+    h <<= 15
+    k: Mutable<UInt16> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineU16: (v: UInt16) Void {
+    l: Mutable<Str> = "UInt16 ${v} <<"
+    r: Mutable<Str> = "UInt16 ${v} >>"
+    u: Mutable<Str> = "UInt16 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 16 {
+        l += " ${shlU16(v, n)}"
+        r += " ${shrU16(v, n)}"
+        u += " ${ushrU16(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU16(v))
+    trace(compoundU16(v, 0))
+    trace(compoundU16(v, 1))
+    trace(compoundU16(v, 15))
+}
+
+shlU32: (v: UInt32, n: Int32) UInt32 {
+    v << n
+}
+
+shrU32: (v: UInt32, n: Int32) UInt32 {
+    v >> n
+}
+
+ushrU32: (v: UInt32, n: Int32) UInt32 {
+    v >>> n
+}
+
+constantsU32: (v: UInt32) Str {
+    "${v << 0} ${v << 1} ${v << 31} ${v >> 0} ${v >> 1} ${v >> 31} ${v >>> 0} ${v >>> 1} ${v >>> 31}"
+}
+
+compoundU32: (v: UInt32, n: Int32) Str {
+    a: Mutable<UInt32> = v
+    a &= 0x3C
+    b: Mutable<UInt32> = v
+    b |= 0x3C
+    c: Mutable<UInt32> = v
+    c ^= 0x3C
+    d: Mutable<UInt32> = v
+    d <<= n
+    e: Mutable<UInt32> = v
+    e >>= n
+    g: Mutable<UInt32> = v
+    g >>>= n
+    h: Mutable<UInt32> = v
+    h <<= 31
+    k: Mutable<UInt32> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineU32: (v: UInt32) Void {
+    l: Mutable<Str> = "UInt32 ${v} <<"
+    r: Mutable<Str> = "UInt32 ${v} >>"
+    u: Mutable<Str> = "UInt32 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 32 {
+        l += " ${shlU32(v, n)}"
+        r += " ${shrU32(v, n)}"
+        u += " ${ushrU32(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU32(v))
+    trace(compoundU32(v, 0))
+    trace(compoundU32(v, 1))
+    trace(compoundU32(v, 31))
+}
+
+shlU64: (v: UInt64, n: Int32) UInt64 {
+    v << n
+}
+
+shrU64: (v: UInt64, n: Int32) UInt64 {
+    v >> n
+}
+
+ushrU64: (v: UInt64, n: Int32) UInt64 {
+    v >>> n
+}
+
+constantsU64: (v: UInt64) Str {
+    "${v << 0} ${v << 1} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 63}"
+}
+
+compoundU64: (v: UInt64, n: Int32) Str {
+    a: Mutable<UInt64> = v
+    a &= 0x3C
+    b: Mutable<UInt64> = v
+    b |= 0x3C
+    c: Mutable<UInt64> = v
+    c ^= 0x3C
+    d: Mutable<UInt64> = v
+    d <<= n
+    e: Mutable<UInt64> = v
+    e >>= n
+    g: Mutable<UInt64> = v
+    g >>>= n
+    h: Mutable<UInt64> = v
+    h <<= 63
+    k: Mutable<UInt64> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineU64: (v: UInt64) Void {
+    l: Mutable<Str> = "UInt64 ${v} <<"
+    r: Mutable<Str> = "UInt64 ${v} >>"
+    u: Mutable<Str> = "UInt64 ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 64 {
+        l += " ${shlU64(v, n)}"
+        r += " ${shrU64(v, n)}"
+        u += " ${ushrU64(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsU64(v))
+    trace(compoundU64(v, 0))
+    trace(compoundU64(v, 1))
+    trace(compoundU64(v, 63))
+}
+
+shlSize: (v: Size, n: Int32) Size {
+    v << n
+}
+
+shrSize: (v: Size, n: Int32) Size {
+    v >> n
+}
+
+ushrSize: (v: Size, n: Int32) Size {
+    v >>> n
+}
+
+constantsSize: (v: Size) Str {
+    "${v << 0} ${v << 1} ${v << 31} ${v << 32} ${v << 63} ${v >> 0} ${v >> 1} ${v >> 31} ${v >> 32} ${v >> 63} ${v >>> 0} ${v >>> 1} ${v >>> 31} ${v >>> 32} ${v >>> 63}"
+}
+
+compoundSize: (v: Size, n: Int32) Str {
+    a: Mutable<Size> = v
+    a &= 0x3C
+    b: Mutable<Size> = v
+    b |= 0x3C
+    c: Mutable<Size> = v
+    c ^= 0x3C
+    d: Mutable<Size> = v
+    d <<= n
+    e: Mutable<Size> = v
+    e >>= n
+    g: Mutable<Size> = v
+    g >>>= n
+    h: Mutable<Size> = v
+    h <<= 63
+    k: Mutable<Size> = v
+    k >>>= 1
+    "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
+}
+
+lineSize: (v: Size) Void {
+    l: Mutable<Str> = "Size ${v} <<"
+    r: Mutable<Str> = "Size ${v} >>"
+    u: Mutable<Str> = "Size ${v} >>>"
+    n: Mutable<Int32> = 0
+    while n < 64 {
+        l += " ${shlSize(v, n)}"
+        r += " ${shrSize(v, n)}"
+        u += " ${ushrSize(v, n)}"
+        n += 1
+    }
+    trace(l)
+    trace(r)
+    trace(u)
+    trace(constantsSize(v))
+    trace(compoundSize(v, 0))
+    trace(compoundSize(v, 1))
+    trace(compoundSize(v, 63))
+}
+
+shlByU8: (v: UInt32, n: UInt8) UInt32 {
+    v << n
+}
+
+shrBySize: (v: Int64, n: Size) Int64 {
+    v >> n
+}
+
+ushrBy64: (v: Int16, n: Int64) Int16 {
+    v >>> n
+}
+
+bit64: (n: Int32) Int64 {
+    1 << n
+}
+
+byte: (n: Int32) UInt8 {
+    1 << n
+}
+
+mixed: (a: UInt16, b: UInt16, n: Int32) UInt16 {
+    (a << n | b >> n) ^ (a & b) << 2
+}
+
+Flags: Mutable<Any> {
+    pub bits: Mutable<UInt8> = 0
+
+    pub set: (n: Int32) Void {
+        bits |= 1 << n
+    }
+
+    pub clear: (n: Int32) Void {
+        bits &= ~(1 << n)
+    }
+
+    pub flip: (n: Int32) Void {
+        bits ^= 1 << n
+    }
+}
+
+at: (i: Size) Size {
+    trace("at ${i}")
+    i
+}
+
+given: (v: Int32) Int32 {
+    trace("value ${v}")
+    v
+}
+
+indexed: () Void {
+    xs: Mutable<List<Int32>> = List<Int32> { }
+    xs.add(0x0F)
+    xs.add(-16)
+    xs.add(0x70000000)
+    xs[at(0)] |= given(0xF0)
+    xs[at(0)] &= given(0x3C)
+    xs[at(0)] ^= given(-1)
+    xs[at(1)] >>= given(2)
+    xs[at(1)] >>>= given(28)
+    xs[at(2)] <<= given(1)
+    xs[2] <<= 1
+    xs[at(2)] >>>= 31
+    trace(xs[0])
+    trace(xs[1])
+    trace(xs[2])
+}
+
+counts: () Void {
+    trace(shlByU8(1, 31))
+    trace(shlByU8(0xFFFFFFFF, 4))
+    trace(shrBySize(-9223372036854775807 - 1, 63))
+    trace(shrBySize(-5, 1))
+    trace(ushrBy64(-1, 15))
+    trace(ushrBy64(-32768, 0))
+    trace(bit64(0))
+    trace(bit64(62))
+    trace(bit64(63))
+    trace(byte(7))
+    trace(mixed(0xF00F, 0x0FF0, 4))
+    trace(mixed(0xFFFF, 0xFFFF, 15))
+    f: Mutable<Flags> = Flags { }
+    f.set(0)
+    f.set(7)
+    f.set(3)
+    trace(f.bits)
+    f.clear(0)
+    f.flip(7)
+    f.flip(1)
+    trace(f.bits)
+}
+
+rounding: (v: Float64) Void {
+    trace("of")
+    show(v)
+    show(floor(v))
+    show(ceil(v))
+    show(round(v))
+    show(floor(v) - v)
+    show(round(v) - v)
+}
+
+root: (v: Float64) Void {
+    show(sqrt(v))
+    show(abs(v))
+}
+
+trig: (v: Float64) Void {
+    show(sin(v))
+    show(cos(v))
+    show(tan(v))
+}
+
+power: (a: Float64, b: Float64) Void {
+    show(pow(a, b))
+}
+
+maths: () Void {
+    inf: Float64 = ratio(1.0, 0.0)
+    nan: Float64 = ratio(0.0, 0.0)
+    vs: Mutable<List<Float64>> = List<Float64> { }
+    vs.add(0.0)
+    vs.add(-0.0)
+    vs.add(0.5)
+    vs.add(-0.5)
+    vs.add(1.5)
+    vs.add(-1.5)
+    vs.add(2.5)
+    vs.add(-2.5)
+    vs.add(0.4)
+    vs.add(-0.4)
+    vs.add(0.49999999999999994)
+    vs.add(-0.49999999999999994)
+    vs.add(1.0)
+    vs.add(-1.0)
+    vs.add(2.0)
+    vs.add(4503599627370497.0)
+    vs.add(-4503599627370497.0)
+    vs.add(1e300)
+    vs.add(-1e300)
+    vs.add(inf)
+    vs.add(-inf)
+    vs.add(nan)
+    i: Mutable<Size> = 0
+    while i < vs.size() {
+        rounding(vs[i])
+        root(vs[i])
+        i += 1
+    }
+    trace("trig")
+    trig(0.0)
+    trig(-0.0)
+    trig(0.5)
+    trig(-1.0)
+    trig(2.0)
+    trig(inf)
+    trig(-inf)
+    trig(nan)
+    trace("pow")
+    power(2.0, 10.0)
+    power(2.0, 0.5)
+    power(-2.0, 3.0)
+    power(-2.0, 2.0)
+    power(-8.0, 1.0 / 3.0)
+    power(-1.5, 0.5)
+    power(0.0, -1.0)
+    power(-0.0, -1.0)
+    power(-0.0, -2.0)
+    power(0.0, -1.5)
+    power(-0.0, -1.5)
+    power(-0.0, 3.0)
+    power(-0.0, 0.5)
+    power(0.0, 0.0)
+    power(10.0, 309.0)
+    power(-10.0, 309.0)
+    power(-10.0, 310.0)
+    power(10.0, -400.0)
+    power(-10.0, -401.0)
+    power(nan, 0.0)
+    power(nan, 1.0)
+    power(1.0, nan)
+    power(-1.0, inf)
+    power(-1.0, -inf)
+    power(inf, -1.0)
+    power(-inf, -1.0)
+    power(-inf, -2.0)
+    power(-inf, 3.0)
+    power(-inf, 2.0)
+    power(inf, 0.5)
+    power(0.5, -inf)
+    power(0.5, inf)
+    power(2.0, -inf)
+    power(2.0, inf)
+    power(-0.0, -inf)
+    power(0.0, -inf)
+    power(0.0, inf)
+    power(-2.0, 1e300)
+    power(-2.0, 1024.0)
+    power(-2.0, 1025.0)
+    power(-2.0, -1080.0)
+    power(-2.0, -1081.0)
+}
+
+main: () Void {
+    topSize: Size = lessOne(0)
+    highSize: Size = topSize - 0x5A5A5A5A
+    topU64: UInt64 = lessOneU64(0)
+    lineI8(0)
+    lineI8(1)
+    lineI8(-1)
+    lineI8(-128)
+    lineI8(127)
+    lineI8(0x5A)
+    lineI16(0)
+    lineI16(1)
+    lineI16(-1)
+    lineI16(-32768)
+    lineI16(32767)
+    lineI16(0x5A5A)
+    lineI32(0)
+    lineI32(1)
+    lineI32(-1)
+    lineI32(-2147483647 - 1)
+    lineI32(2147483647)
+    lineI32(0x5A5A5A5A)
+    lineI64(0)
+    lineI64(1)
+    lineI64(-1)
+    lineI64(-9223372036854775807 - 1)
+    lineI64(9223372036854775807)
+    lineI64(0x5A5A5A5A5A5A5A5A)
+    lineU8(0)
+    lineU8(1)
+    lineU8(255)
+    lineU8(128)
+    lineU8(127)
+    lineU8(0xA5)
+    lineU16(0)
+    lineU16(1)
+    lineU16(65535)
+    lineU16(32768)
+    lineU16(32767)
+    lineU16(0xA5A5)
+    lineU32(0)
+    lineU32(1)
+    lineU32(4294967295)
+    lineU32(2147483648)
+    lineU32(2147483647)
+    lineU32(0xA5A5A5A5)
+    lineU64(0)
+    lineU64(1)
+    lineU64(topU64)
+    lineU64(9223372036854775807 + 1)
+    lineU64(9223372036854775807)
+    lineU64(topU64 - 0x5A5A5A5A5A5A5A5A)
+    lineSize(0)
+    lineSize(1)
+    lineSize(4294967295)
+    lineSize(2147483648)
+    lineSize(topSize)
+    lineSize(highSize)
+    counts()
+    indexed()
+    maths()
+}

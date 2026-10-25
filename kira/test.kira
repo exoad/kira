@@ -1,0 +1,24 @@
+// bibo's check format, so a Kira test prints exactly what its C++ tests
+// print and the same scripts read both (design 5.10; the runtime is
+// kira/cpp/kira/test.hxx, and runtime.py's _k_Suite on py). Constructing a
+// Suite prints the header:
+//
+//     <newline>
+//     <title>
+//     <blank line>
+//
+// each check prints `  ok    <what>` or `  FAIL  <what>`, a failed checkStr
+// adds `        got  "<got>"` and `        want "<want>"`, and finish prints
+//
+//     <newline>
+//     <N> checks, <M> failed
+//     <blank line>
+//
+// and returns 1 when any check failed, else 0: the process exit code.
+pub @_magic Suite: Mutable<Any> {
+    title: Str
+
+    pub @_mutates check: (ok: Bool, what: Str) Void;
+    pub @_mutates checkStr: (got: Str, want: Str, what: Str) Void;
+    pub finish: () Int32;
+}

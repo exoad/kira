@@ -1,0 +1,8 @@
+PROJECT: Project = Project { } with {
+    name = "ffi.mini"
+    srcDir = "src"
+    target = "c"
+    cSources = @listOf("native/mini_gfx.c")
+    linkFlags = List<Str> { }
+    dependencies = @mapOf("kira_stdlib", "../../../../../kira")
+}

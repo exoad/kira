@@ -1,0 +1,74 @@
+kira.tuples as tuples
+
+minmax: (xs: List<Int32>) Pair<Int32, Int32> {
+    lo: Mutable<Int32> = xs[0]
+    hi: Mutable<Int32> = xs[0]
+    for x: Int32 in xs {
+        if x < lo {
+            lo = x
+        }
+        if x > hi {
+            hi = x
+        }
+    }
+    Pair<Int32, Int32> { lo, hi }
+}
+
+tagged: (name: Str, xs: List<Int32>) Tuple3<Str, List<Int32>, Bool> {
+    Tuple3<Str, List<Int32>, Bool> { name, xs, xs.isEmpty() }
+}
+
+checked: (xs: List<Int32>) Result<List<Int32>, Str> {
+    xs.isEmpty() ? Result.error("empty") : Result.success(xs)
+}
+
+show: (xs: List<Int32>) Str {
+    s: Mutable<Str> = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    s + "]"
+}
+
+main: () Void {
+    p: Pair<Int32, Int32> = minmax(@listOf(4, 9, 1, 7))
+    trace("${p.first} ${p.second} ${p.size()}")
+
+    src: Mutable<List<Int32>> = @listOf(1, 2)
+    t: Tuple3<Str, List<Int32>, Bool> = tagged("t", src)
+    src.add(3)
+    inner: Mutable<List<Int32>> = t.second
+    inner.add(4)
+    trace("${t.first} ${show(t.second)} ${t.third} ${show(inner)} ${show(src)}")
+
+    named: Tuple2<Str, Int32> = Tuple2<Str, Int32> { first = "n", second = 5 }
+    trace("${named.first}${named.second}")
+
+    // a Map's entries, a Map built from them, and a walk over a Map
+    m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    m["b"] = 2
+    m["a"] = 1
+    m["b"] = 3
+    es: Arr<Tuple2<Str, Int32>> = m.entries()
+    trace(es.size())
+    trace("${es[0].first}=${es[0].second} ${es[1].first}=${es[1].second}")
+    again: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "n", 6 }
+    head: Tuple2<Str, Int32> = es[0]
+    built: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(named, head, again) }
+    trace("${built.size()} ${built.get("n").unwrapOr(0)} ${built.keys()[0]}")
+    for e: Tuple2<Str, Int32> in m {
+        trace("${e.first} ${e.second}")
+    }
+
+    // a Result of a List: a copy in, a copy out
+    data: Mutable<List<Int32>> = @listOf(7)
+    r: Result<List<Int32>, Str> = checked(data)
+    data.add(8)
+    got: Mutable<List<Int32>> = r.unwrap()
+    got.add(9)
+    trace("${show(r.unwrap())} ${show(got)} ${show(data)}")
+    trace(checked(List<Int32> { }).unwrapErr())
+}

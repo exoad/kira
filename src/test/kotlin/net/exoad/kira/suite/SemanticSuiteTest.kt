@@ -94,8 +94,8 @@ class SemanticSuiteTest {
     fun healthyFunctionWithParametersAndReturn() {
         assertHealthy(
             """
-            fx add: (a: Int32, b: Int32) Int32 {
-                return a + b
+            add: (a: Int32, b: Int32) Int32 {
+                a + b
             }
             """
         )
@@ -105,11 +105,11 @@ class SemanticSuiteTest {
     fun healthyClassWithFieldsAndMethods() {
         assertHealthy(
             """
-            pub class Counter {
-                require pub value: Int32
+            pub Counter: Any {
+                pub value: Int32
 
-                pub fx increment: () Int32 {
-                    return value + 1
+                pub increment: () Int32 {
+                    value + 1
                 }
             }
             """
@@ -120,36 +120,26 @@ class SemanticSuiteTest {
     fun healthyGenericsWithBounds() {
         assertHealthy(
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            fx id<T>: (value: T) T {
-                return value
+            id<T>: (value: T) T {
+                value
             }
             """
         )
     }
 
     @Test
-    fun healthyEnumTraitAliasVariant() {
+    fun healthyTraitAlias() {
         assertHealthy(
             """
-            pub enum Status {
-                READY,
-                RUNNING
+            pub Speaker: Any {
+                pub speak: () Str;
             }
 
-            pub trait Speaker {
-                pub fx speak: () Str;
-            }
-
-            pub alias MyInt as Int32
-
-            variant Shape {
-                Circle: MyInt
-                Square: MyInt
-            }
+            pub Int32 as MyInt
             """
         )
     }
@@ -158,11 +148,11 @@ class SemanticSuiteTest {
     fun healthyUseImportBringsPublicTypes() {
         val results = analyzeMultiSource(
             listOf(
-                "test/semantic/other.kira" to """module "test:semantic.other"""" + "\n" + """
-                    pub class OtherType { }
+                "test/semantic/other.kira" to """""" + "\n" + """
+                    pub OtherType: Any { pub n: Int32 = 0 }
                     """,
-                "test/semantic/basic.kira" to """module "test:semantic.basic"""" + "\n" + """
-                    use "test:semantic.other"
+                "test/semantic/basic.kira" to """""" + "\n" + """
+                    test.semantic.other as other
                     x: OtherType = OtherType { }
                     """,
             )
@@ -170,34 +160,6 @@ class SemanticSuiteTest {
         assertTrue(
             results.isHealthy,
             results.diagnostics.joinToString("\n") { it.message }
-        )
-    }
-
-    // --- module URI validation ------------------------------------------------
-
-    @Test
-    fun rejectsInvalidModuleUriFormat() {
-        val results = TestCompileSupport.compileSnippet(
-            source = "module \"bad uri\"\nx: Int32 = 1",
-            logicalPath = "test/semantic/basic.kira",
-            runSemantic = true,
-        )
-        val msgs = messages(assertNotNull(results.semanticResults))
-        assertTrue(msgs.any { it.contains("must be in the format") }, msgs.toString())
-    }
-
-    @Test
-    fun rejectsModuleUriNotMatchingFileLocation() {
-        val result = TestCompileSupport.compileSnippet(
-            source = """module "test:semantic.basic" """ + "\n",
-            logicalPath = "somewhere/else.kira",
-            runSemantic = true,
-        )
-        val results = assertNotNull(result.semanticResults)
-        assertFalse(results.isHealthy)
-        assertTrue(
-            messages(results).any { it.contains("does not match the source file location") },
-            messages(results).toString()
         )
     }
 
@@ -216,12 +178,12 @@ class SemanticSuiteTest {
 
     @Test
     fun rejectsDuplicateTypeInModule() {
-        // Enum-vs-enum and enum-vs-class duplicates are diagnosed because the
-        // enum visitor checks the module scope unconditionally.
+        // A trait's visitor checks the module scope unconditionally.
         val msgs = assertUnhealthy(
             """
-            pub enum First { A }
-            pub enum First { B }
+            pub First: Any { pub a: () Int32; }
+            pub First: Any { pub b: () Int32; }
+            pub Impl: First { }
             """
         )
         assertTrue(msgs.any { it.contains("already declared in the current module") }, msgs.toString())
@@ -234,18 +196,19 @@ class SemanticSuiteTest {
         // class passes without a diagnostic.
         assertHealthy(
             """
-            pub class Dup { }
-            pub class Dup { }
+            pub Dup: Any { pub n: Int32 = 0 }
+            pub Dup: Any { pub n: Int32 = 0 }
             """
         )
     }
 
     @Test
-    fun rejectsClassAndEnumSharingAName() {
+    fun rejectsClassAndTraitSharingAName() {
         val msgs = assertUnhealthy(
             """
-            pub class Shared { }
-            pub enum Shared { A, B }
+            pub Shared: Any { pub n: Int32 = 0 }
+            pub Shared: Any { pub a: () Int32; }
+            pub Impl: Shared { }
             """
         )
         assertTrue(msgs.any { it.contains("already declared in the current module") }, msgs.toString())
@@ -257,8 +220,8 @@ class SemanticSuiteTest {
             """
             x: Int32 = 1
 
-            fx f: (x: Int32) Int32 {
-                return x
+            f: (x: Int32) Int32 {
+                x
             }
             """
         )
@@ -288,6 +251,106 @@ class SemanticSuiteTest {
         )
         assertNotNull(results)
         assertTrue(results.isHealthy)
+    }
+
+    // --- named arguments -------------------------------------------------------------
+
+    @Test
+    fun namedArgumentsBindToParameterNames() {
+        assertHealthy(
+            """
+            sub: (a: Int32, b: Int32) Int32 { a - b }
+
+            Esc: Mutable<Any> {
+                pub pulse: Mutable<Int32>
+                pub set: (v: Int32, scale: Int32) Void { pulse = v * scale }
+            }
+
+            main: () Void {
+                x: Int32 = sub(b = 3, a = 10)
+                y: Int32 = sub(10, b = 3)
+                e: Esc = Esc { 0 }
+                e.set(scale = 2, v = 1)
+            }
+            """
+        )
+    }
+
+    @Test
+    fun namedArgumentThatIsNotAParameterIsDiagnosed() {
+        val msgs = assertUnhealthy(
+            """
+            sub: (a: Int32, b: Int32) Int32 { a - b }
+
+            main: () Void {
+                x: Int32 = sub(a = 10, c = 3)
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("no parameter named 'c'") }, msgs.toString())
+    }
+
+    @Test
+    fun duplicateAndMissingNamedArgumentsAreDiagnosed() {
+        val duplicate = assertUnhealthy(
+            """
+            sub: (a: Int32, b: Int32) Int32 { a - b }
+
+            main: () Void {
+                x: Int32 = sub(10, a = 3)
+            }
+            """
+        )
+        assertTrue(duplicate.any { it.contains("given more than once") }, duplicate.toString())
+        val missing = assertUnhealthy(
+            """
+            sub: (a: Int32, b: Int32) Int32 { a - b }
+
+            main: () Void {
+                x: Int32 = sub(b = 3)
+            }
+            """
+        )
+        assertTrue(missing.any { it.contains("without an argument: a") }, missing.toString())
+    }
+
+    @Test
+    fun namedArgumentsBindToTheCallablesTheTyperMakes() {
+        // Result.success and Str.of (D39, D55) have no declaration to read names from.
+        assertHealthy(
+            """
+            main: () Void {
+                v: List<UInt8> = @listOf(104, 105)
+                trace(Str.of(bytes = v))
+                r: Result<Int32, Str> = Result.success(value = 5)
+                e: Result<Int32, Str> = Result.error(value = "no")
+            }
+            """
+        )
+        val msgs = assertUnhealthy(
+            """
+            main: () Void {
+                v: List<UInt8> = @listOf(104, 105)
+                trace(Str.of(text = v))
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("'Str.of' has no parameter named 'text'. Its parameters are: bytes.") }, msgs.toString())
+    }
+
+    @Test
+    fun namedArgumentsOnAnUnresolvableCalleeAreDiagnosed() {
+        // Positional calls to unknown functions still pass (pinned gap above);
+        // a call that uses names has nothing to bind them to, so it is refused
+        // instead of being reordered by guesswork.
+        val msgs = assertUnhealthy(
+            """
+            main: () Void {
+                x: Int32 = mystery(a = 1)
+            }
+            """
+        )
+        assertTrue(msgs.any { it.contains("'mystery' is not a known function or method") }, msgs.toString())
     }
 
     // --- literal/type matching -----------------------------------------------------
@@ -322,26 +385,53 @@ class SemanticSuiteTest {
         assertTrue(msgs.any { it.contains("Type mismatch") }, msgs.toString())
     }
 
+    @Test
+    fun acceptsIntegerLiteralForEveryStdlibIntegerType() {
+        // The stdlib declares the unsigned integers and Size (kira/core.kira); the golden
+        // corpus initialises them from literals (`MAX_PAYLOAD: Size = 1024`).
+        assertHealthy(
+            """
+            a: Int8 = 1
+            b: Int16 = 2
+            c: Int32 = 3
+            d: Int64 = 4
+            e: UInt8 = 5
+            f: UInt16 = 6
+            g: UInt32 = 7
+            h: UInt64 = 8
+            i: Size = 9
+            """
+        )
+    }
+
+    @Test
+    fun rejectsIntegerLiteralForFloatAndCharTypes() {
+        for (type in listOf("Float32", "Float64", "Char", "Bool")) {
+            val msgs = assertUnhealthy(
+                """
+                x: $type = 1
+                """
+            )
+            assertTrue(msgs.any { it.contains("Type mismatch") }, "$type: $msgs")
+        }
+    }
+
     // --- symbol table --------------------------------------------------------------
 
     @Test
     fun resolvesDeclaredTypesAndVariables() {
         val results = analyze(
             """
-            pub class Pet { }
+            pub Pet: Any { pub name: Str = "" }
 
-            pub enum Mood {
-                HAPPY
+            pub Speaker: Any {
+                pub speak: () Str;
             }
 
-            pub trait Speaker {
-                pub fx speak: () Str;
-            }
+            pub Int32 as Age
 
-            pub alias Age as Int32
-
-            fx main: () Void {
-                mut count: Int32 = 0
+            main: () Void {
+                count: Mutable<Int32> = 0
                 friend: Pet = Pet { }
             }
             """
@@ -354,10 +444,6 @@ class SemanticSuiteTest {
         assertEquals(SemanticSymbolKind.TYPE_SPECIFIER, pet.kind)
         assertTrue(pet.relativelyVisible, "public class should be relatively visible")
 
-        val mood = table.resolve("Mood")
-        assertNotNull(mood)
-        assertEquals(SemanticSymbolKind.TYPE_SPECIFIER, mood.kind)
-
         val speaker = table.resolve("Speaker")
         assertNotNull(speaker)
         assertEquals(SemanticSymbolKind.TYPE_SPECIFIER, speaker.kind)
@@ -367,11 +453,11 @@ class SemanticSuiteTest {
     fun resolvesUseImportedTypes() {
         val results = analyzeMultiSource(
             listOf(
-                "test/semantic/other.kira" to """module "test:semantic.other"""" + "\n" + """
-                    pub class OtherType { }
+                "test/semantic/other.kira" to """""" + "\n" + """
+                    pub OtherType: Any { pub n: Int32 = 0 }
                     """,
-                "test/semantic/basic.kira" to """module "test:semantic.basic"""" + "\n" + """
-                    use "test:semantic.other"
+                "test/semantic/basic.kira" to """""" + "\n" + """
+                    test.semantic.other as other
                     x: OtherType = OtherType { }
                     """,
             )
@@ -385,7 +471,7 @@ class SemanticSuiteTest {
     fun resolvesTypeAliasToTarget() {
         val results = analyze(
             """
-            pub alias Age as Int32
+            pub Int32 as Age
             """
         )
         assertTrue(results.isHealthy)
@@ -413,9 +499,9 @@ class SemanticSuiteTest {
     fun scopeStackRetainsModuleScopeAndDeclaredFunctionNames() {
         val results = analyze(
             """
-            fx outer: () Int32 {
+            outer: () Int32 {
                 inner: Int32 = 1
-                return inner
+                inner
             }
             """
         )
@@ -440,8 +526,8 @@ class SemanticSuiteTest {
         // produce a result instead of throwing.
         val results = analyze(
             """
-            fx main: () Void {
-                mut i: Int32 = 0
+            main: () Void {
+                i: Mutable<Int32> = 0
                 while i < 3 {
                     i = i + 1
                 }
@@ -450,7 +536,7 @@ class SemanticSuiteTest {
                 } else {
                     trace("other")
                 }
-                for mut j: 0..5 {
+                for j: Int32 in 0..6 {
                     trace(j)
                 }
             }

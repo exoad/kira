@@ -1,0 +1,255 @@
+kira.bytes as bytes
+
+// bibo's JPEG walkers in Kira (streamenc.py): jpeg_size, the size of a JPEG that has a SOF, an
+// SOS after it and ends in EOI; jpeg_end, the end of the JPEG at an SOI, walked by segment
+// lengths (big-endian, readU16Be: D53) so a table's FF D9 is never taken for its end;
+// split_jpegs, the whole JPEGs in a byte stream, each copied out of it with View.toList (D52),
+// and the rest. The expected output is the C++ backend's run of main over synthetic JPEGs, then
+// the driver's run of these against the hand-written ones.
+
+pub JpegSize: Any {
+    pub w: UInt32
+    pub h: UInt32
+}
+
+pub Jpeg: Mutable<Any> {
+    pub data: List<UInt8>
+}
+
+pub Split: Mutable<Any> {
+    pub jpegs: Mutable<List<Jpeg>> = List<Jpeg> { }
+    pub rest: Mutable<List<UInt8>> = List<UInt8> { }
+}
+
+// The index of the first FF and [second] at or after [start], or null (bytes.find).
+findPair: (buf: View<UInt8>, start: Size, second: UInt8) Maybe<Size> {
+    j: Mutable<Size> = start
+    result: Mutable<Maybe<Size>> = null
+    while j + 2 <= buf.size() {
+        if buf[j] == 0xFF && buf[j + 1] == second {
+            result = j
+            break
+        }
+        j += 1
+    }
+    result
+}
+
+// jpeg_size(frame): (w, h) of a JPEG that has a SOF, an SOS after it and ends in EOI, else null.
+pub jpegSize: (frame: View<UInt8>) Maybe<JpegSize> {
+    n: Size = frame.size()
+    if n < 4 || frame[0] != 0xFF || frame[1] != 0xD8 || frame[n - 2] != 0xFF || frame[n - 1] != 0xD9 {
+        null
+    } else {
+        i: Mutable<Size> = 2
+        w: Mutable<UInt32> = 0
+        h: Mutable<UInt32> = 0
+        result: Mutable<Maybe<JpegSize>> = null
+        while i + 4 <= n {
+            if frame[i] != 0xFF {
+                result = null
+                break
+            }
+            marker: UInt8 = frame[i + 1]
+            if marker == 0xFF {
+                i += 1
+                continue
+            }
+            if (marker >= 0xD0 && marker <= 0xD9) || marker == 0x01 {
+                // an EOI or a restart before any scan
+                result = null
+                break
+            }
+            seg: Size = readU16Be(frame, i + 2) as Size
+            if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC && i + 9 <= n {
+                w = readU16Be(frame, i + 7) as UInt32
+                h = readU16Be(frame, i + 5) as UInt32
+            } else if marker == 0xDA {
+                if w == 0 || h == 0 {
+                    result = null
+                    break
+                }
+                result = JpegSize { w, h }
+                break
+            }
+            i += 2 + seg
+        }
+        result
+    }
+}
+
+// jpeg_end(buf, soi): the index just past the EOI of the JPEG starting at soi, or null while it
+// is incomplete. In the entropy-coded data after SOS an FF is always stuffed or a marker.
+pub jpegEnd: (buf: View<UInt8>, soi: Size) Maybe<Size> {
+    i: Mutable<Size> = soi + 2
+    n: Size = buf.size()
+    result: Mutable<Maybe<Size>> = null
+    while i + 4 <= n {
+        if buf[i] != 0xFF {
+            j: Maybe<Size> = findPair(buf, i, 0xD9)
+            result = j.isNull() ? null : j.value + 2
+            break
+        }
+        marker: UInt8 = buf[i + 1]
+        if marker == 0xFF {
+            i += 1
+        } else if marker == 0xD9 {
+            result = i + 2
+            break
+        } else if (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01 {
+            i += 2
+        } else if marker == 0xDA {
+            j: Maybe<Size> = findPair(buf, i + 2 + (readU16Be(buf, i + 2) as Size), 0xD9)
+            result = j.isNull() ? null : j.value + 2
+            break
+        } else {
+            i += 2 + (readU16Be(buf, i + 2) as Size)
+        }
+    }
+    result
+}
+
+// split_jpegs(buf): the complete JPEGs, and the rest from the SOI of an incomplete one.
+pub splitJpegs: (buf: View<UInt8>) Split {
+    out: Mutable<Split> = Split { }
+    pos: Mutable<Size> = 0
+    result: Mutable<Maybe<Split>> = null
+    found: Mutable<Bool> = false
+    while true {
+        soi: Maybe<Size> = findPair(buf, pos, 0xD8)
+        if soi.isNull() {
+            result = out
+            found = true
+            break
+        }
+        end: Maybe<Size> = jpegEnd(buf, soi.value)
+        if end.isNull() {
+            out.rest = buf.from(soi.value).toList()
+            result = out
+            found = true
+            break
+        }
+        out.jpegs.add(Jpeg { buf.slice(soi.value, end.value - soi.value).toList() })
+        pos = end.value
+    }
+    found ? result.value : out
+}
+
+// ---- main: synthetic JPEGs -------------------------------------------------------------------
+
+append: (out: List<UInt8>, v: View<UInt8>) Void {
+    i: Mutable<Size> = 0
+    while i < v.size() {
+        out.add(v[i])
+        i += 1
+    }
+}
+
+// A marker segment: FF, the marker, its big-endian length (which counts itself) and its body.
+segment: (out: List<UInt8>, marker: UInt8, body: View<UInt8>) Void {
+    n: Size = body.size() + 2
+    out.add(0xFF)
+    out.add(marker)
+    out.add((n >> 8) as UInt8)
+    out.add(n as UInt8)
+    append(out, body)
+}
+
+filled: (n: Size, b: UInt8) List<UInt8> {
+    out: Mutable<List<UInt8>> = List<UInt8> { }
+    while out.size() < n {
+        out.add(b)
+    }
+    out
+}
+
+// SOI, APP0, a DQT whose table holds FF D9, SOF0 at w x h, a DHT, SOS, scan data with a stuffed
+// FF 00 and a restart marker, then EOI unless [cut].
+jpeg: (w: Size, h: Size, cut: Bool) List<UInt8> {
+    out: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8)
+    app0: Arr<UInt8, 14> = @arrOf(0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00)
+    segment(out, 0xE0, app0)
+    dqt: Mutable<List<UInt8>> = filled(65, 0x10)
+    dqt.set(20, 0xFF)
+    dqt.set(21, 0xD9)
+    segment(out, 0xDB, dqt)
+    sof: Mutable<Arr<UInt8, 15>> = @arrOf(0x08, 0, 0, 0, 0, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01)
+    sof[1] = (h >> 8) as UInt8
+    sof[2] = h as UInt8
+    sof[3] = (w >> 8) as UInt8
+    sof[4] = w as UInt8
+    segment(out, 0xC0, sof)
+    segment(out, 0xC4, filled(28, 0x01))
+    sos: Arr<UInt8, 10> = @arrOf(0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F, 0x00)
+    segment(out, 0xDA, sos)
+    scan: Arr<UInt8> = @arrOf(0x12, 0x34, 0xFF, 0x00, 0x56, 0xFF, 0xD0, 0x78, 0x9A, 0xFF, 0x00, 0xBC)
+    out.addAll(scan)
+    if !cut {
+        out.add(0xFF)
+        out.add(0xD9)
+    }
+    out
+}
+
+show: (m: Maybe<JpegSize>) Str {
+    if m.isNull() {
+        "none"
+    } else {
+        s: JpegSize = m.value
+        "${s.w}x${s.h}"
+    }
+}
+
+showEnd: (m: Maybe<Size>) Str {
+    m.isNull() ? "none" : "${m.value}"
+}
+
+main: () Void {
+    a: List<UInt8> = jpeg(640, 480, false)
+    b: List<UInt8> = jpeg(1280, 720, false)
+    c: List<UInt8> = jpeg(320, 240, true)
+    trace(a.size())
+    trace(show(jpegSize(a)))
+    trace(show(jpegSize(b)))
+    trace(show(jpegSize(c)))
+    trace(show(jpegSize(a.slice(0, 2))))
+    trace(showEnd(jpegEnd(a, 0)))
+    trace(showEnd(jpegEnd(c, 0)))
+    // a fill byte FF before a marker is skipped
+    padded: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8, 0xFF)
+    append(padded, a.from(2))
+    trace(show(jpegSize(padded)))
+    trace(showEnd(jpegEnd(padded, 0)))
+    // a JPEG with no SOF, and one whose SOS comes before its SOF
+    bare: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8)
+    sos: Arr<UInt8, 10> = @arrOf(0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F, 0x00)
+    segment(bare, 0xDA, sos)
+    bare.add(0xFF)
+    bare.add(0xD9)
+    trace(show(jpegSize(bare)))
+    trace(showEnd(jpegEnd(bare, 0)))
+    // a restart before any scan
+    early: Mutable<List<UInt8>> = @listOf(0xFF, 0xD8, 0xFF, 0xD0, 0x00, 0x00, 0xFF, 0xD9)
+    trace(show(jpegSize(early)))
+    trace(showEnd(jpegEnd(early, 0)))
+    // a stream: noise, a, b, noise, then the start of c
+    stream: Mutable<List<UInt8>> = @listOf(0x00, 0x11, 0xFF, 0x22)
+    stream.addAll(a.toArr())
+    stream.addAll(b.toArr())
+    stream.add(0x00)
+    stream.add(0xFF)
+    stream.addAll(c.toArr())
+    split: Split = splitJpegs(stream)
+    trace(split.jpegs.size())
+    trace(split.jpegs[0].data.size())
+    trace(split.jpegs[1].data.size())
+    trace(show(jpegSize(split.jpegs[1].data)))
+    trace(split.rest.size())
+    trace(split.rest.size() == c.size())
+    whole: Split = splitJpegs(a)
+    trace(whole.jpegs.size())
+    trace(whole.rest.size())
+    nothing: Split = splitJpegs(sos)
+    trace(nothing.jpegs.size())
+    trace(nothing.rest.size())
+}

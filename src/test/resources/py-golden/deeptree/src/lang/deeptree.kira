@@ -1,0 +1,33 @@
+Node: Mutable<Any> {
+    pub v: Mutable<Int32> = 0
+    pub kids: Mutable<List<Node>> = List<Node> { }
+}
+
+total: (n: Node) Int32 {
+    t: Mutable<Int32> = n.v
+    for k: Node in n.kids {
+        t += total(k)
+    }
+    t
+}
+
+main: () Void {
+    leaf: Mutable<Node> = Node { 1 }
+    mid: Mutable<Node> = Node { 10 }
+    mid.kids.add(leaf)
+    mid.kids.add(leaf)
+    root: Mutable<Node> = Node { 100 }
+    root.kids.add(mid)
+    leaf.v = 5
+    copy: Mutable<Node> = root
+    copy.kids[0].kids[1].v = 1000
+    trace(total(root))
+    trace(total(copy))
+    chain: Mutable<Node> = Node { 0 }
+    for i: Int32 in 0..600 {
+        up: Mutable<Node> = Node { i }
+        up.kids.add(chain)
+        chain = up
+    }
+    trace(total(chain))
+}

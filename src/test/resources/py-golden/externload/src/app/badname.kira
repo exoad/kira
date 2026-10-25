@@ -1,0 +1,3 @@
+// A raises = name that is no Exception class the sidecar or the builtins hold: a panic at import (D69).
+
+pub @_extern(raises = "nosuch.Error") f: () Void

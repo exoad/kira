@@ -12,13 +12,7 @@ sealed class SemanticScope(open val name: String) {
 
     data class Function(override val name: String) : SemanticScope(name)
 
-    data class Enum(override val name: String) : SemanticScope(name)
+    data class Block(override val name: String) : SemanticScope(name)
 
     data class Trait(override val name: String) : SemanticScope(name)
-
-    data class Variant(override val name: String) : SemanticScope(name)
-
-    data class VariantVariance(override val name: String) : SemanticScope(name)
-
-    data class VariantMember(override val name: String) : SemanticScope(name)
 }

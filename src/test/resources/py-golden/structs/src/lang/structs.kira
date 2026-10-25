@@ -1,0 +1,115 @@
+// A type whose fields change is Mutable (stage 4), its values shared: each name below sees the other's change.
+
+pub Pt: Mutable<Any> {
+    pub x: Mutable<Int32> = 0
+    pub y: Mutable<Int32> = 0
+
+    pub sum: () Int32 {
+        x + y
+    }
+
+    pub shift: (dx: Int32) Void {
+        x += dx
+    }
+
+    pub moved: (dx: Int32) Pt {
+        p: Mutable<Pt> = this
+        p.shift(dx)
+        p
+    }
+}
+
+Path: Mutable<Any> {
+    pub name: Str
+    pub pts: Mutable<List<Pt>> = List<Pt> { }
+    pub start: Mutable<Pt> = Pt { 1, 1 }
+    pub last: Mutable<Maybe<Pt>> = null
+}
+
+Holder: Mutable<Any> {
+    pub at: Mutable<Pt> = Pt { }
+
+    pub get: () Pt {
+        at
+    }
+}
+
+origin: Mutable<Pt> = Pt { }
+
+bump: (p: Pt) Void {
+    p.x += 100
+}
+
+norm: (p: Pt) Int32 {
+    p.x * p.x + p.y * p.y
+}
+
+main: () Void {
+    a: Mutable<Pt> = Pt { 1, 2 }
+    b: Mutable<Pt> = a
+    b.x = 10
+    trace("${a.x} ${b.x}")
+    a.shift(5)
+    c: Pt = a.moved(1)
+    trace("${a.x} ${c.x}")
+    bump(a)
+    trace(a.x)
+
+    // in a List: added, read and written as values
+    pts: Mutable<List<Pt>> = List<Pt> { }
+    pts.add(a)
+    a.x = 0
+    trace(pts[0].x)
+    pts[0].x = 7
+    q: Mutable<Pt> = pts[0]
+    q.y = 99
+    trace("${pts[0].x} ${pts[0].y} ${q.y}")
+    pts[0].shift(1)
+    trace(pts[0].x)
+    pts[0] = q
+    q.x = -1
+    trace("${pts[0].x} ${pts.get(0).y}")
+    copied: Mutable<List<Pt>> = pts
+    copied[0].x = 1000
+    trace("${pts[0].x} ${copied[0].x}")
+    lit: List<Pt> = @listOf(a, q)
+    a.y = 55
+    trace("${lit[0].y} ${lit[1].x}")
+
+    // in a class and a struct
+    h: Mutable<Holder> = Holder { }
+    h.at.x = 3
+    got: Mutable<Pt> = h.get()
+    got.x = 4
+    trace(h.at.x)
+    h.at = got
+    got.x = 8
+    trace(h.at.x)
+    path: Mutable<Path> = Path { "p" }
+    path.pts.add(Pt { 2, 2 })
+    other: Mutable<Path> = path
+    other.pts.add(Pt { 3, 3 })
+    other.start.x = 50
+    other.pts[0].y = 9
+    trace("${path.pts.size()} ${other.pts.size()} ${path.start.x} ${path.pts[0].y}")
+    other.last = q
+    q.y = 1
+    trace(other.last.unwrap().y)
+
+    // a global
+    origin.x = 9
+    o: Mutable<Pt> = origin
+    o.x = 1
+    trace(origin.x)
+    origin = o
+    o.x = 2
+    trace(origin.x)
+    trace(norm(Pt { y = 3, x = 4 }))
+
+    // the zero value, and a walk
+    z: Pt = Pt { }
+    trace(z.sum())
+    for p: Pt in pts {
+        trace(p.sum())
+    }
+}

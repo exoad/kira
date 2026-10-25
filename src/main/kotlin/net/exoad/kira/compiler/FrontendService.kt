@@ -8,7 +8,8 @@ import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.kim.DependencyResolver
-import net.exoad.kira.kim.ManifestLoader
+import net.exoad.kira.kim.ProjectFiles
+import net.exoad.kira.kim.ProjectKira
 import net.exoad.kira.kim.ManifestValidator
 import net.exoad.kira.kim.ProjectManifest
 import net.exoad.kira.source.SourceContext
@@ -48,7 +49,7 @@ object FrontendService {
     }
 
     /**
-     * Compile a project rooted at [projectRoot] (directory containing `kira.yaml`
+     * Compile a project rooted at [projectRoot] (directory containing `project.kira` or `kira.yaml`
      * or a folder of `.kira` files). [overlays] maps absolute/canonical paths to
      * unsaved buffer text -- used by the language server for open documents.
      */
@@ -59,10 +60,11 @@ object FrontendService {
         val root = projectRoot.toAbsolutePath().normalize()
         val diagnostics = mutableListOf<Diagnostic>()
 
-        val yamlPath = root.resolve("kira.yaml")
+        // project.kira, else kira.yaml (stage 6 retires it).
+        val yamlPath = ProjectFiles.find(root) ?: root.resolve(ProjectFiles.YAML)
         val manifest: ProjectManifest? = if (Files.exists(yamlPath)) {
             try {
-                val loaded = ManifestLoader.loadFromPath(yamlPath)
+                val loaded = ProjectFiles.loadFromPath(yamlPath)
                 val issues = ManifestValidator.validate(loaded, root)
                 issues.forEach { issue ->
                     diagnostics += Diagnostic(
@@ -80,7 +82,7 @@ object FrontendService {
             } catch (e: Exception) {
                 diagnostics += Diagnostic(
                     file = yamlPath.toString(),
-                    message = "Failed to load kira.yaml: ${e.message}",
+                    message = "Failed to load ${yamlPath.fileName}: ${e.message}",
                     tag = "Manifest",
                     start = SourcePosition(1, 1),
                     end = SourcePosition(1, 1),
@@ -103,12 +105,21 @@ object FrontendService {
         }
         Public.Builtin.intrinsicalStandardLibrarySources =
             stdlib.distinct().sorted().toTypedArray()
+        if (manifest != null && yamlPath.fileName.toString() == ProjectKira.FILE) {
+            val findings = ProjectKira.check(yamlPath, stdlib.distinct().sorted())
+            findings.forEach { f ->
+                diagnostics += Diagnostic(file = yamlPath.toString(), message = f, tag = "Manifest", start = SourcePosition(1, 1), end = SourcePosition(1, 1))
+            }
+            if (findings.isNotEmpty()) {
+                return FrontendResult(null, diagnostics, root, manifest)
+            }
+        }
 
         val workspace = DependencyResolver.resolveProjectSources(manifest, root)
         if (workspace.isEmpty() && stdlib.isEmpty()) {
             diagnostics += Diagnostic(
                 file = root.toString(),
-                message = "No .kira sources found. Add files under src/ or set srcDir in kira.yaml.",
+                message = "No .kira sources found. Add files under src/ or set srcDir in project.kira.",
                 tag = "Frontend",
                 start = SourcePosition(1, 1),
                 end = SourcePosition(1, 1),
@@ -117,7 +128,7 @@ object FrontendService {
         }
 
         val sources = (stdlib + workspace).distinct().sorted()
-        return compileSources(sources, overlays, root, manifest, diagnostics)
+        return compileSources(sources, overlays, root, manifest, diagnostics, ModuleNames.assign(manifest, root, stdlib, workspace))
     }
 
     /**
@@ -130,6 +141,7 @@ object FrontendService {
         projectRoot: Path? = null,
         manifest: ProjectManifest? = null,
         seedDiagnostics: MutableList<Diagnostic> = mutableListOf(),
+        moduleNames: Map<String, String> = emptyMap(),
     ): FrontendResult {
         val diagnostics = seedDiagnostics
         val compilationUnit = CompilationUnit()
@@ -149,7 +161,7 @@ object FrontendService {
                 continue
             }
             try {
-                parseOne(compilationUnit, canonical, text)
+                parseOne(compilationUnit, canonical, text, moduleNames[canonical])
             } catch (e: DiagnosticsException) {
                 diagnostics += fromException(e)
             } catch (e: IllegalStateException) {
@@ -178,7 +190,7 @@ object FrontendService {
             if (path in known) continue
             if (!path.endsWith(".kira")) continue
             try {
-                parseOne(compilationUnit, path, text)
+                parseOne(compilationUnit, path, text, moduleNames[path])
             } catch (e: DiagnosticsException) {
                 diagnostics += fromException(e)
             } catch (e: IllegalStateException) {
@@ -221,9 +233,9 @@ object FrontendService {
         return FrontendResult(compilationUnit, diagnostics.toList(), projectRoot, manifest)
     }
 
-    private fun parseOne(cu: CompilationUnit, path: String, text: String) {
+    private fun parseOne(cu: CompilationUnit, path: String, text: String, moduleName: String? = null) {
         val processed = KiraPreprocessor(text).process().processedContent
-        var ctx = cu.addSource(path, processed, emptyList())
+        var ctx = cu.addSource(path, processed, emptyList(), moduleName)
         val tokens = KiraLexer(ctx).tokenize()
         ctx = cu.addSource(path, ctx.content, tokens)
         KiraSourceParsers.from(ctx).parse()
@@ -253,7 +265,7 @@ object FrontendService {
         }
         var walk: Path? = cur
         while (walk != null) {
-            if (Files.exists(walk.resolve("kira.yaml"))) {
+            if (ProjectFiles.isProject(walk)) {
                 return walk
             }
             walk = walk.parent

@@ -1,0 +1,104 @@
+// Phase A/B coverage in today's syntax: every declaration kind, visibility, markers, generics
+// with bounds, aliases (generic and nested), constant
+// folding, trait flattening with default bodies, and overrides through a superclass and a trait.
+
+pub LIMIT: Int32 = 10
+pub MASK: UInt32 = 4294967295
+pub SHIFTED: Int64 = 1 << 40
+pub HALF: Float32 = 0.5
+pub SCALE: Float64 = HALF_D * 4.0
+HALF_D: Float64 = 0.25
+pub GREETING: Str = "hello, " + "kira"
+pub READY: Bool = LIMIT > 5 && !false
+pub WIDTH: Size = 32
+pub SMALL: Int8 = -128
+pub PRIMES: Arr<Int32> = @arrOf(2, 3, 5, 7)
+pub FIXED: Arr<UInt8, LEN> = @arrOf(1, 2, 3, 4)
+LEN: Size = 4
+pub counter: Mutable<Int32> = 0
+pub nowhere: Maybe<Int32> = null
+
+pub Int64 as Id
+pub Tuple2<A, B> as Pair<A, B>
+pub Pair<Str, Id> as Named
+pub Fx<Tuple2<Str, Int32>, Bool> as Callback
+pub Arr<Arr<Float64>> as Matrix
+
+pub Speaker: Any {
+    pub speak: () Str
+    pub loudness: () Int32 {
+        1
+    }
+}
+
+pub Shouter: Speaker {
+    pub shout: () Str
+    pub loudness: () Int32 {
+        10
+    }
+}
+
+pub Keyed<K>: Any {
+    pub key: () K
+}
+
+pub Animal: Mutable<Any> {
+    pub name: Str
+    pub age: Mutable<Int32> = 0
+
+    pub describe: () Str {
+        name
+    }
+
+    pub birthday: () Void {
+        age = age + 1
+    }
+}
+
+pub Dog: Mutable<Animal>, Shouter, Keyed<Str> {
+    pub breed: Str
+
+    pub describe: () Str {
+        breed
+    }
+
+    pub speak: () Str {
+        "woof"
+    }
+
+    pub shout: () Str {
+        "WOOF"
+    }
+
+    pub key: () Str {
+        name
+    }
+}
+
+pub Box<T: Speaker>: Any {
+    pub value: T
+
+    pub get: () T {
+        value
+    }
+}
+
+pick<T>: (a: T, b: T, first: Bool) T {
+    first ? a : b
+}
+
+pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    f(x)
+}
+
+pub lookup: (names: Map<Str, List<Id>>, key: Str) Maybe<List<Id>> {
+    names.get(key)
+}
+
+pub @_magic intrinsicClock: () Int64;
+
+pub @_opaque Handle: Any
+
+@op_add: (a: Animal, b: Animal) Animal {
+    a
+}

@@ -1,0 +1,111 @@
+kira.pytext as pytext
+kira.json as json
+kira.test as test
+
+// kira:pytext (K6): main pins what bibo's fixtures do (critique 7: int() of "8_0", Arabic-Indic digits, " 82" and
+// "+81", and ValueError's own text); the driver holds every function to Python's own on the running interpreter.
+
+pub intOf: (text: Str) Maybe<Int64> {
+    pyInt(text)
+}
+
+pub floatOf: (text: Str) Maybe<Float64> {
+    pyFloat(text)
+}
+
+pub why: () Str {
+    pyTextError()
+}
+
+pub reprOf: (s: Str) Str {
+    strRepr(s)
+}
+
+pub floatText: (v: Float64) Str {
+    floatRepr(v)
+}
+
+pub jsonText: (text: Str) Str {
+    jsonRepr(Json.parse(text))
+}
+
+pub formatted: (v: Float64, spec: Str) Maybe<Str> {
+    formatFloat(v, spec)
+}
+
+pub rounded: (v: Float64, digits: Int32) Float64 {
+    roundTo(v, digits)
+}
+
+pub roundedInt: (v: Float64) Maybe<Int64> {
+    roundHalfEven(v)
+}
+
+pub cased: (s: Str) List<Str> {
+    @listOf(upper(s), lower(s), strip(s), lstrip(s), rstrip(s))
+}
+
+pub allUpper: (s: Str) Bool {
+    isUpper(s)
+}
+
+pub words: (s: Str) List<Str> {
+    splitSpace(s)
+}
+
+pub lines: (s: Str) List<Str> {
+    splitLines(s)
+}
+
+pub found: (s: Str, sub: Str, start: Size) Int64 {
+    findFrom(s, sub, start)
+}
+
+pub wrapped: (text: Str, width: Size) List<Str> {
+    wrapWords(text, width)
+}
+
+// isSpace, isAlnum, isAlpha and isDigit of a code point, as 0 and 1 in that order.
+pub kinds: (c: Char) Str {
+    "${isSpace(c)} ${isAlnum(c)} ${isAlpha(c)} ${isDigit(c)}"
+}
+
+pub main: () Int32 {
+    t: Suite = Suite { title = "pytext - kira:pytext on py" }
+    t.check(pyInt("8_0").unwrapOr(0) == 80 && pyInt("٨٠").unwrapOr(0) == 80, "pyInt reads 8_0 and Arabic-Indic digits as 80")
+    t.check(pyInt(" 82").unwrapOr(0) == 82 && pyInt("+81").unwrapOr(0) == 81 && pyTextError() == "", "and a space and a sign, with no reason")
+    t.check(pyInt("x").isNone() && pyTextError() == "ValueError: invalid literal for int() with base 10: 'x'", "and none for x, ValueError's own text")
+    t.check(pyInt("1.5").isNone() && pyInt("0x10").isNone() && pyInt("1__0").isNone() && pyInt("").isNone(), "a float, hex, a double _ and nothing are none")
+    t.check(pyInt("9223372036854775807").unwrapOr(0) == 9223372036854775807 && pyTextError() == "", "the last Int64 is read")
+    t.check(pyInt("9223372036854775808").isNone() && pyTextError() == "OverflowError: past 64 bits", "one past it is none, as an OverflowError")
+    t.check(pyFloat(" 1_0.5 ").unwrapOr(0.0) == 10.5 && pyFloat("-Infinity").unwrapOr(0.0) < -1.0e308, "pyFloat reads _, spaces and infinities")
+    t.check(pyFloat("1,5").isNone() && pyTextError() == "ValueError: could not convert string to float: '1,5'", "and none for 1,5, its text Python's")
+    t.checkStr(strRepr("it's") + " " + strRepr("a\"b") + " " + strRepr("\t"), "\"it's\" 'a\"b' '\\t'", "strRepr quotes as repr does")
+    t.checkStr(floatRepr(1.0) + " " + floatRepr(1.0e16) + " " + floatRepr(0.00001) + " " + floatRepr(-0.0), "1.0 1e+16 1e-05 -0.0", "floatRepr is repr's")
+    t.checkStr(jsonRepr(Json.parse("{\"a\": [1, 2.5, true, null, \"x\"]}")), "{'a': [1, 2.5, True, None, 'x']}", "jsonRepr is the repr of what json.loads makes")
+    t.checkStr(formatFloat(1234.5678, ",.2f").unwrapOr("none") + " " + formatFloat(0.000123, "g").unwrapOr("none") + " " + formatFloat(1.5, ".2e").unwrapOr("none"), "1,234.57 0.000123 1.50e+00", "formatFloat is format's")
+    t.check(formatFloat(1.0, "d").isNone() && pyTextError() == "ValueError: Unknown format code 'd' for object of type 'float'", "and none for a spec Python refuses")
+    t.checkStr("${roundTo(2.675, 2)} ${roundTo(0.5, 0)} ${roundTo(1234.5, -2)}", "2.67 0 1200", "roundTo is round's: the double's own value, half to even")
+    t.check(roundTo(1.7976931348623157e308, -308) > 1.7976931348623157e308 && roundTo(-1.7976931348623157e308, -308) < -1.7976931348623157e308, "and past the largest double the infinity of its sign, where round raises")
+    t.check(roundHalfEven(2.5).unwrapOr(9) == 2 && roundHalfEven(-0.5).unwrapOr(9) == 0 && roundHalfEven(3.5).unwrapOr(9) == 4, "roundHalfEven takes a half to even")
+    t.check(roundHalfEven(0.0 / zeroOf(0.0)).isNone() && pyTextError() == "ValueError: cannot convert float NaN to integer", "and none for a NaN")
+    t.check(roundHalfEven(1.0 / zeroOf(0.0)).isNone() && pyTextError() == "OverflowError: cannot convert float infinity to integer", "and an infinity")
+    t.check(roundHalfEven(1.0e19).isNone() && pyTextError() == "OverflowError: past 64 bits", "and past Int64")
+    t.checkStr(cased(" Straße ").joinToString("|"), " STRASSE | straße |Straße|Straße | Straße", "upper, lower and the strips are str's")
+    t.check(isUpper("ABC 1") && !isUpper("1") && !isUpper("Abc"), "isUpper needs a cased character, each upper")
+    t.checkStr(splitSpace(" a b" + ch(31) + "c　d ").joinToString(","), "a,b,c,d", "splitSpace splits at Unicode's spaces")
+    t.checkStr(splitLines("a\nb\r\nc" + ch(133) + "d e f").joinToString(","), "a,b,c,d e,f", "splitLines at every line break Python knows")
+    t.check(findFrom("abcabc", "c", 3) == 5 && findFrom("abc", "", 3) == 3 && findFrom("abc", "", 4) == -1, "findFrom is find's")
+    t.checkStr(wrapWords("a bb ccc-dddd eeeeeeeeee f", 5).joinToString("|"), "a bb|ccc-dddd|eeeeeeeeee|f", "wrapWords breaks no word")
+    t.check(isSpace(' ') && isSpace(133 as Char) && isAlnum('²') && isAlpha('é') && isDigit('²') && !isDigit('½'), "the character classes are Unicode's")
+    t.finish()
+}
+
+zeroOf: (v: Float64) Float64 {
+    v
+}
+
+ch: (code: Int32) Str {
+    c: Char = code as Char
+    "${c}"
+}

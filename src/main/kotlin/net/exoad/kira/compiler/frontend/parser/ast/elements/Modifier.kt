@@ -14,7 +14,10 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
-            WrappingContext.MODULE
+            WrappingContext.MODULE,
+            // `pub mut fx onLoad: () Void { }` in a trait (spec Mutable
+            // Methods; design 5.9 chain): a trait method may mutate `this`.
+            WrappingContext.TRAIT_MEMBER,
         )
     ),
 
@@ -25,8 +28,6 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
-            WrappingContext.ENUM,
-            WrappingContext.ENUM_MEMBER,
             WrappingContext.TRAIT_MEMBER,
             WrappingContext.TRAIT,
             WrappingContext.TYPE_ALIAS
@@ -38,6 +39,34 @@ enum class Modifier(val tokenType: Token.Type, val wrappingContext: Array<Wrappi
             WrappingContext.CLASS_MEMBER,
             WrappingContext.VARIABLE,
             WrappingContext.FUNCTION,
+        )
+    ),
+
+    /**
+     * `override fx ...`: a method that replaces a parent's or a trait's (spec
+     * Inheritance). Allowed on class and trait members; FUNCTION is listed
+     * because a method is re-checked as a function when its body is parsed,
+     * and the parser refuses `override` on a function outside a type body.
+     */
+    OVERRIDE(
+        Token.Type.K_MODIFIER_OVERRIDE,
+        arrayOf(
+            WrappingContext.CLASS_MEMBER,
+            WrappingContext.TRAIT_MEMBER,
+            WrappingContext.FUNCTION,
+        )
+    ),
+
+    /**
+     * `final class Reply { ... }` (charter: "final forbids inheriting"; spec "use final
+     * modifier"; W2.9 1.8): a class modifier only. `final` on a trait, enum, function or field
+     * is refused with the dedicated `parse.final` diagnostic in [net.exoad.kira.compiler.frontend.parser.KiraParser.expectModifiers],
+     * not the generic wrapping-context message.
+     */
+    FINAL(
+        Token.Type.K_MODIFIER_FINAL,
+        arrayOf(
+            WrappingContext.CLASS,
         )
     ),
     ;

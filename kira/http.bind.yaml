@@ -1,0 +1,16 @@
+# kira:http on py: runtime.py's _k_http* helpers over urllib.request and http.server, the reasons on the shared reasons
+# (D86), and _k_HttpServer, whose handler calls the Kira Fx through _k_kirafx (E6). C++ refuses each call (D83).
+
+HttpServer.port:     { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "{self}.port()" } }
+HttpServer.serve:    { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "{self}.serve()" } }
+HttpServer.shutdown: { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "{self}.shutdown()" } }
+
+httpGet:            { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_httpcall({0}, None, None, {1})" } }
+httpPost:           { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_httpcall({0}, {1}, {2}, {3})" } }
+httpError:          { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_httperror()" } }
+jsonText:           { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_jsontext({0})" } }
+urlPath:            { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_urlpart({0}, \"path\")" } }
+urlQuery:           { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_urlpart({0}, \"query\")" } }
+queryFirst:         { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_queryfirst({0}, {1})" } }
+httpServer:         { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_httpbind({0}, {1}, {2}, None)" } }
+httpServerWithPost: { cpp: { unsupported: "Python's urllib and http.server, py only" }, py: { expr: "_k_httpbind({0}, {1}, {2}, {3})" } }

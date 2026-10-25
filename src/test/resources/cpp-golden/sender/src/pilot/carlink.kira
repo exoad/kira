@@ -1,0 +1,7 @@
+// What a write to the Pico's serial port answers, and how long one may wait.
+
+pub LINK_OK: Int32 = 0
+pub LINK_WRITE_FAILED: Int32 = 1
+pub LINK_CLOSED: Int32 = 2
+
+pub WRITE_WAIT_MS: Int32 = 30

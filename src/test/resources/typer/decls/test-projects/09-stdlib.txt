@@ -1,0 +1,5 @@
+module stdlib.tour:app.main  profile=HOSTED ns=main_ imports=[stdlib.tour:app.text]
+  fn main: () Void  body
+module stdlib.tour:app.text  profile=HOSTED ns=text imports=[]
+  fn shout: (value: Str) Str  pub body
+  fn initials: (value: Str) Str  pub body

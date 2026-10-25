@@ -1,0 +1,6 @@
+golden.py.builtinnames.app.main as main
+golden.py.builtinnames.app.main.globals as globals
+
+pub twice: () Int32 {
+    globals * 2
+}

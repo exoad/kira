@@ -1,0 +1,35 @@
+// Json.parse, error, obj, arr, null and of are called on the type: the typer makes them (D64).
+
+// A reference (D63): put and add are seen through every copy.
+pub @_magic Json: Mutable<Any> {
+    pub isNull: () Bool;
+    pub isBool: () Bool;
+    pub isInt: () Bool;
+    pub isFloat: () Bool;
+    pub isStr: () Bool;
+    pub isArr: () Bool;
+    pub isObj: () Bool;
+
+    pub asBool: () Maybe<Bool>;
+    // An integer only: 3.0 is none.
+    pub asInt64: () Maybe<Int64>;
+    // A float, or an integer widened.
+    pub asFloat64: () Maybe<Float64>;
+    pub asStr: () Maybe<Str>;
+
+    // JSON null when the key or index is absent or this is no object or array.
+    pub get: (key: Str) Json;
+    pub at: (index: Size) Json;
+    pub has: (key: Str) Bool;
+    pub keys: () List<Str>;
+    pub size: () Size;
+
+    // A key put again keeps its place. Either one on the wrong kind of Json panics.
+    pub @_mutates put: (key: Str, value: Json) Void;
+    pub @_mutates add: (value: Json) Void;
+
+    // json.dumps(v) and json.dumps(v, indent=indent, ensure_ascii=ascii), byte for byte (D65);
+    // nesting past 512 panics here and fails Json.parse (D66).
+    pub dump: () Str;
+    pub pretty: (indent: Size, ascii: Bool) Str;
+}

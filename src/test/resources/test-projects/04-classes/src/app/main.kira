@@ -1,0 +1,13 @@
+classes.app.model as model
+classes.app.model.Pet as Pet
+classes.app.model.Point as Point
+classes.app.model.Rectangle as Rectangle
+
+main: () Void {
+    rect: Rectangle = Rectangle { Point { 0, 1 }, Point { 1, 0 } }
+    friend: Pet = Pet { "Mochi", "meow" }
+
+    trace(rect.perimeter())
+    trace(friend.name)
+    trace(friend.speak())
+}

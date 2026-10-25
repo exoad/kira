@@ -1,0 +1,6 @@
+pub ticks: Mutable<Int32> = 0
+
+pub tick: () Int32 {
+    ticks += 1
+    ticks
+}

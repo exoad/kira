@@ -1,0 +1,163 @@
+// Kira code handed to the sidecar as an Fx (D75), which driver.py runs once per case: what
+// Python may pass in, what it gets back, and what a callback's panic, throw or exit does.
+
+kira.json as json
+kira.os as os
+
+kept: Mutable<List<Json>> = List<Json> { }
+
+pub Reply: Mutable<Any> {
+    pub status: Int32
+    pub body: List<UInt8>
+}
+
+@_extern each: (xs: List<Str>, f: Fx<Tuple1<Str>, Int32>) Int32
+
+@_extern callWith: (how: Str, f: Fx<Tuple2<Int32, Str>, Str>) Str
+
+@_extern bytesOf: (f: Fx<Tuple0, List<UInt8>>) Str
+
+@_extern render: (path: Str, get: Fx<Tuple1<Str>, Reply>) Str
+
+@_extern keep: (f: Fx<Tuple1<Int32>, Int32>) Void
+
+@_extern callKept: (x: Int32) Int32
+
+@_extern onThread: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32
+
+@_extern swallow: (f: Fx<Tuple0, Int32>) Str
+
+@_extern giveJson: (f: Fx<Tuple1<Json>, Void>) Void
+
+@_extern scribble: () Void
+
+@_extern takeJson: (f: Fx<Tuple0, Json>) Str
+
+@_extern kinds: (f: Fx<Tuple0, Maybe<List<UInt8>>>, g: Fx<Tuple0, Tuple2<List<UInt8>, Int32>>, h: Fx<Tuple0, List<List<UInt8>>>) Str
+
+@_extern pair: (f: Fx<Tuple1<Int32>, Int32>, g: Fx<Tuple1<Int32>, Int32>) Int32
+
+@_extern(raises = "ValueError") positive: (f: Fx<Tuple0, Int32>) Int32
+
+width: (s: Str) Int32 {
+    s.length() as Int32
+}
+
+happy: () Void {
+    calls: Ref<Int32> = Ref<Int32> { value = 0 }
+    println("each ${each(@listOf("a", "bb", "ccc"), (s: Str) Int32 {
+        calls.value = calls.value + 1
+        s.length() as Int32 * 10
+    })}")
+    println("each, a named function ${each(@listOf("abcd"), width)}")
+    println("callWith ${callWith("ok", (n: Int32, s: Str) Str {
+        "${n} ${s}"
+    })}")
+    println("bytesOf ${bytesOf(() List<UInt8> {
+        @listOf(1, 2, 255)
+    })}")
+    println("render ${render("/power", (path: Str) Reply {
+        Reply { 200, path.bytes() }
+    })}")
+    keep((x: Int32) Int32 {
+        calls.value = calls.value + 1
+        x * 3
+    })
+    println("callKept ${callKept(5)} ${callKept(6)}")
+    println("onThread ${onThread((x: Int32) Int32 {
+        x + 100
+    }, 7)}")
+    println("calls ${calls.value}")
+    try {
+        each(@listOf("x"), (s: Str) Int32 {
+            throw "no ${s}"
+        })
+    } on e: Str {
+        println("caught from a callback: ${e}")
+    }
+    try {
+        println("positive ${positive(() Int32 {
+            4
+        })}")
+        positive(() Int32 {
+            -1
+        })
+    } on e: Str {
+        println("caught from raises: ${e}")
+    }
+    giveJson((j: Json) Void {
+        kept.add(j)
+    })
+    scribble()
+    println("a Json Python passed, after Python wrote its own: ${kept[0].dump()}")
+    cfg: Json = Json.parse("{\"a\": 1}")
+    println("takeJson ${takeJson(() Json {
+        cfg
+    })}, Kira's after Python wrote what it got: ${cfg.dump()}")
+    println("kinds ${kinds(() Maybe<List<UInt8>> {
+        @listOf(1, 2)
+    }, () Tuple2<List<UInt8>, Int32> {
+        Tuple2<List<UInt8>, Int32> { @listOf(3), 4 }
+    }, () List<List<UInt8>> {
+        @listOf(@listOf(5))
+    })}")
+}
+
+pub main: () Int32 {
+    a: List<Str> = args()
+    how: Str = a.size() > 1 ? a[1] : "happy"
+    if how == "happy" {
+        happy()
+    } else if how == "none" || how == "bool" || how == "arity" {
+        println(callWith(how, (n: Int32, s: Str) Str {
+            s
+        }))
+    } else if how == "pair" {
+        println(pair((x: Int32) Int32 {
+            x
+        }, (x: Int32) Int32 {
+            x
+        }))
+    } else if how == "panic" {
+        println(each(@listOf("a"), (s: Str) Int32 {
+            xs: List<Int32> = @listOf(1)
+            xs[s.length() + 1]
+        }))
+    } else if how == "swallow-throw" {
+        println(swallow(() Int32 {
+            throw "thrown to a sidecar that catches"
+        }))
+    } else if how == "swallow-panic" {
+        println(swallow(() Int32 {
+            1 / (a.size() as Int32 - 2)
+        }))
+    } else if how == "thread-throw" {
+        println(onThread((x: Int32) Int32 {
+            throw "thrown on Python's thread"
+        }, 1))
+    } else if how == "thread-panic" {
+        println(onThread((x: Int32) Int32 {
+            x / (a.size() as Int32 - 2)
+        }, 1))
+    } else if how == "exit" {
+        println(each(@listOf("a"), (s: Str) Int32 {
+            print("in the callback, unflushed")
+            exit(6)
+        }))
+    } else if how == "thread-exit" {
+        println(onThread((x: Int32) Int32 {
+            exit(5)
+        }, 1))
+    } else if how == "kept-throw" {
+        keep((x: Int32) Int32 {
+            throw "thrown after its extern returned"
+        })
+        try {
+            println(callKept(1))
+        } on e: Str {
+            println("caught: ${e}")
+        }
+    }
+    println("${how} done")
+    0
+}

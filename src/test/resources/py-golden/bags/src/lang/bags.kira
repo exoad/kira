@@ -1,0 +1,86 @@
+// Set, Stack, Queue and Deque are Mutable and shared (stage 4), a Set insertion-ordered (D27).
+
+show: (xs: Arr<Int32>) Str {
+    s: Mutable<Str> = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    s + "]"
+}
+
+count: (s: Set<Str>) Size {
+    s.size()
+}
+
+drain: (q: Queue<Int32>) Int32 {
+    t: Mutable<Int32> = 0
+    while !q.isEmpty() {
+        t += q.dequeue().unwrapOr(0)
+    }
+    t
+}
+
+main: () Void {
+    seen: Mutable<Set<Int32>> = Set<Int32> { }
+    trace(seen.add(3))
+    trace(seen.add(1))
+    trace(seen.add(3))
+    trace(seen.add(2))
+    trace(seen.remove(1))
+    trace(seen.remove(9))
+    trace(seen.add(1))
+    trace("${show(seen.toArr())} ${seen.size()} ${seen.contains(2)} ${seen.isEmpty()}")
+    other: Mutable<Set<Int32>> = seen
+    other.add(7)
+    trace("${seen.size()} ${other.size()}")
+    for v: Int32 in seen {
+        trace(v)
+    }
+    names: Mutable<Set<Str>> = Set<Str> { }
+    names.add("b")
+    names.add("a")
+    trace(count(names))
+    names.clear()
+    trace(names.isEmpty())
+
+    st: Mutable<Stack<Int32>> = Stack<Int32> { }
+    trace(st.pop().isNone())
+    trace(st.peek().isNone())
+    st.push(1)
+    st.push(2)
+    st2: Mutable<Stack<Int32>> = st
+    st2.push(3)
+    trace("${st.peek().unwrap()} ${st.size()} ${st2.size()}")
+    trace(st.pop().unwrap())
+    trace(st.pop().unwrap())
+    trace(st.isEmpty())
+
+    q: Mutable<Queue<Int32>> = Queue<Int32> { }
+    q.enqueue(5)
+    q.enqueue(6)
+    q.enqueue(7)
+    trace("${q.peek().unwrap()} ${q.size()}")
+    q2: Mutable<Queue<Int32>> = q
+    trace(drain(q2))
+    trace("${q.size()} ${q2.size()}")
+    trace(q.dequeue().isNone())
+    q.clear()
+    trace(q.dequeue().isNone())
+
+    d: Mutable<Deque<Int32>> = Deque<Int32> { }
+    d.pushBack(1)
+    d.pushFront(0)
+    d.pushBack(2)
+    trace(d.size())
+    trace(d.popFront().unwrap())
+    trace(d.popBack().unwrap())
+    trace(d.size())
+    d2: Mutable<Deque<Int32>> = d
+    d2.pushBack(9)
+    trace("${d.size()} ${d2.size()} ${d.isEmpty()}")
+    trace(d.popBack().unwrap())
+    trace(d.popFront().isNone())
+}

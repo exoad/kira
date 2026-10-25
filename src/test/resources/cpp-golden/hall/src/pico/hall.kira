@@ -1,0 +1,108 @@
+// hall - the TT-02's three hall lines decoded into signed ticks. PURE and
+// FREESTANDING: the car's Pico runs this, and the host suites test the same
+// generated header. Header-only (build.cpp.headerOnly).
+
+// The ABC states in the order a forward wheel steps through them.
+pub SEQUENCE: Arr<UInt8, 6> = @arrOf(1, 3, 2, 6, 4, 5)
+// A state's place in SEQUENCE; -1 for 0 and 7, which a working sensor never reads.
+pub INDEX_OF: Arr<Int8, 8> = @arrOf(-1, 0, 2, 1, 4, 5, 3, -1)
+pub FORWARD_ASCENDING: Bool = true
+pub WINDOW_MS: UInt32 = 50
+pub PERIOD_BELOW_TICKS: Int32 = 10
+pub STOPPED_US: UInt32 = 250000
+
+pub Decoder: Struct {
+    pub ticks: Int32 = 0
+    pub edges: UInt32 = 0
+    pub skips: UInt32 = 0
+    pub invalid: UInt32 = 0
+    pub repeats: UInt32 = 0
+    pub state: UInt8 = 0
+    pub primed: Bool = false
+    pub lastDir: Int8 = 0
+    pub lastEdgeUs: UInt64 = 0
+    pub periodUs: UInt32 = 0
+
+    pub @_const errors: () UInt32 {
+        skips + invalid
+    }
+
+    // The decoder after one more state: a value type never changes, so the caller rebinds (`d = d.fed(x, t)`).
+    pub @_const fed: (next: UInt8, nowUs: UInt64) Decoder {
+        ticks: Mutable<Int32> = this.ticks
+        edges: Mutable<UInt32> = this.edges
+        skips: Mutable<UInt32> = this.skips
+        invalid: Mutable<UInt32> = this.invalid
+        repeats: Mutable<UInt32> = this.repeats
+        state: Mutable<UInt8> = this.state
+        primed: Mutable<Bool> = this.primed
+        lastDir: Mutable<Int8> = this.lastDir
+        lastEdgeUs: Mutable<UInt64> = this.lastEdgeUs
+        periodUs: Mutable<UInt32> = this.periodUs
+        bits: UInt8 = next & 7
+        idx: Int8 = INDEX_OF[bits as Size]
+        if idx < 0 {
+            invalid += 1
+            state = bits
+            primed = false
+        } else if primed && bits == state {
+            repeats += 1
+        } else if !primed {
+            primed = true
+            state = bits
+            lastEdgeUs = nowUs
+        } else {
+            was: Int32 = INDEX_OF[state as Size] as Int32
+            step: Int32 = (((idx as Int32) - was) + 6) % 6
+            state = bits
+            if step == 1 || step == 5 {
+                dir: Int8 = (step == 1) == FORWARD_ASCENDING ? 1 : -1
+                ticks += dir as Int32
+                lastDir = dir
+                edges += 1
+                gap: UInt64 = nowUs - lastEdgeUs
+                periodUs = gap > 0xFFFFFFFF ? 0xFFFFFFFF : gap as UInt32
+                lastEdgeUs = nowUs
+            } else {
+                skips += 1
+                lastEdgeUs = nowUs
+            }
+        }
+        Decoder { ticks, edges, skips, invalid, repeats, state, primed, lastDir, lastEdgeUs, periodUs }
+    }
+}
+
+pub Speed: Struct {
+    pub windowTps: Int32 = 0
+    pub periodTps: Int32 = 0
+    pub stopped: Bool = false
+    pub usePeriod: Bool = false
+}
+
+pub speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
+    windowTps: Mutable<Int32> = windowTicks * ((1000 / WINDOW_MS) as Int32)
+    sinceEdge: UInt64 = nowUs - d.lastEdgeUs
+    stopped: Bool = !d.primed || sinceEdge > (STOPPED_US as UInt64)
+    periodTps: Mutable<Int32> = 0
+    if !stopped && d.periodUs > 0 {
+        periodTps = ((1000000 / d.periodUs) as Int32) * (d.lastDir as Int32)
+    }
+    if stopped {
+        periodTps = 0
+        windowTps = 0
+    }
+    magnitude: Int32 = windowTicks < 0 ? -windowTicks : windowTicks
+    Speed { windowTps, periodTps, stopped, !stopped && magnitude < PERIOD_BELOW_TICKS && d.periodUs > 0 }
+}
+
+// A decoder after these states, 1 ms apart from t0. Compile-time, so a
+// static_assert can hold the decoder to a walk.
+pub @_const settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
+    d: Mutable<Decoder> = Decoder {}
+    t: Mutable<UInt64> = t0
+    for s: UInt8 in steps {
+        d = d.fed(s, t)
+        t += 1000
+    }
+    d
+}

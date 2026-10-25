@@ -1,0 +1,1178 @@
+// kira/core.hxx - the Kira C++ runtime core, for both profiles.
+//
+// Generated code includes kira/rt.hxx (a hosted module) or this file (a
+// freestanding module). The build chooses the profile, never generated code:
+//
+//     hosted (the default)             C++20 and its standard library
+//     KIRA_PROFILE_FREESTANDING=1      no heap, no exceptions, no RTTI (the Pico)
+//
+// A freestanding build defines kira::panic itself (the board parks its outputs
+// and resets). A hosted build gets the definition below, so a freestanding
+// module's header also links in a host suite that never includes rt.hxx.
+//
+// The floor is gcc 11.4: no <format>, no std::expected, no constexpr
+// std::string, no <span> (View is ours). Every check reaches kira::panic, which
+// is not constexpr: a failing check inside a static_assert is a compile error.
+// KIRA_UNCHECKED=1 turns the bounds, division and shift checks off for a
+// measured hot path; unwrap stays checked.
+//
+// A generated header includes the runtime before its macro guard opens, so
+// this code must survive <windows.h>: every min/max is spelled (f)(...).
+#pragma once
+
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <type_traits>
+#include <utility>
+
+#if defined(KIRA_PROFILE_FREESTANDING) && KIRA_PROFILE_FREESTANDING
+#define KIRA_PROFILE_HOSTED 0
+#else
+#define KIRA_PROFILE_HOSTED 1
+#include <cstdio>
+#include <cstdlib>
+#include <memory>
+#include <vector>
+#endif
+
+namespace kira
+{
+  using Size = std::size_t;
+  using Char = char;
+
+  // ---- failure ---------------------------------------------------------------
+#if KIRA_PROFILE_HOSTED
+  // Flushes stdout so the program's own output comes first, writes
+  // "kira: <what>" to stderr, and aborts.
+  [[noreturn]] inline void panic(const char* what) noexcept
+  {
+      std::fflush(stdout);
+      std::fprintf(stderr, "kira: %s\n", what != nullptr ? what : "panic");
+      std::fflush(stderr);
+      std::abort();
+  }
+#else
+  // The board defines it: it parks the outputs and resets. Declared, never
+  // defined here.
+  [[noreturn]] void panic(const char* what) noexcept;
+#endif
+
+#if defined(KIRA_UNCHECKED) && KIRA_UNCHECKED
+  inline constexpr bool checked = false;
+#else
+  inline constexpr bool checked = true;
+#endif
+
+  // ---- conversions: `as` and bitCast -----------------------------------------
+  // Integer to integer wraps (two's complement, as C++20 defines it). Float to
+  // integer SATURATES and takes NaN to 0: C++'s static_cast is undefined there,
+  // and Kira defines every `as`. Everything else is a static_cast.
+  template<class To, class From>
+  [[nodiscard]] constexpr To as(From v) noexcept
+  {
+      static_assert(std::is_arithmetic_v<To> && std::is_arithmetic_v<From>, "kira::as converts one number to another");
+      if constexpr(std::is_floating_point_v<From> && std::is_integral_v<To>)
+      {
+          if(!(v == v))
+          {
+              return To{0};
+          }
+          if(v <= static_cast<From>(std::numeric_limits<To>::lowest()))
+          {
+              return std::numeric_limits<To>::lowest();
+          }
+          if(v >= static_cast<From>((std::numeric_limits<To>::max)()))
+          {
+              return (std::numeric_limits<To>::max)();
+          }
+          return static_cast<To>(v);
+      }
+      else
+      {
+          return static_cast<To>(v);
+      }
+  }
+
+  // The bits of v read as a To (std::bit_cast without <bit>).
+  template<class To, class From>
+  [[nodiscard]] constexpr To bitCast(const From& v) noexcept
+  {
+      static_assert(sizeof(To) == sizeof(From), "kira::bitCast needs two types of one size");
+      static_assert(std::is_trivially_copyable_v<To> && std::is_trivially_copyable_v<From>,
+                    "kira::bitCast needs trivially copyable types");
+      return __builtin_bit_cast(To, v);
+  }
+
+  // ---- checked integer arithmetic (D10) -------------------------------------
+  // x / 0 and x % 0 panic, and so does the one signed quotient that overflows
+  // (lowest / -1). x % -1 is 0, never the undefined lowest % -1.
+  template<class T>
+  [[nodiscard]] constexpr T div(T a, T b)
+  {
+      static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "kira::div is integer division");
+      if constexpr(checked)
+      {
+          if(b == 0)
+          {
+              panic("integer division by zero");
+          }
+          if constexpr(std::is_signed_v<T>)
+          {
+              if(a == std::numeric_limits<T>::lowest() && b == static_cast<T>(-1))
+              {
+                  panic("integer division overflows");
+              }
+          }
+      }
+      return static_cast<T>(a / b);
+  }
+
+  template<class T>
+  [[nodiscard]] constexpr T mod(T a, T b)
+  {
+      static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "kira::mod is an integer remainder");
+      if constexpr(checked)
+      {
+          if(b == 0)
+          {
+              panic("integer remainder by zero");
+          }
+      }
+      if constexpr(std::is_signed_v<T>)
+      {
+          if(b == static_cast<T>(-1))
+          {
+              return T{0};
+          }
+      }
+      return static_cast<T>(a % b);
+  }
+
+  // The count must be in [0, width of T). The count may be any integer type.
+  template<class T, class N>
+  [[nodiscard]] constexpr T shl(T v, N n)
+  {
+      static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "kira::shl shifts an integer");
+      static_assert(std::is_integral_v<N> && !std::is_same_v<N, bool>, "a shift count is an integer");
+      if constexpr(checked)
+      {
+          if(std::cmp_less(n, 0) || std::cmp_greater_equal(n, std::numeric_limits<std::make_unsigned_t<T>>::digits))
+          {
+              panic("shift count out of range");
+          }
+      }
+      return static_cast<T>(v << n);
+  }
+
+  template<class T, class N>
+  [[nodiscard]] constexpr T shr(T v, N n)
+  {
+      static_assert(std::is_integral_v<T> && !std::is_same_v<T, bool>, "kira::shr shifts an integer");
+      static_assert(std::is_integral_v<N> && !std::is_same_v<N, bool>, "a shift count is an integer");
+      if constexpr(checked)
+      {
+          if(std::cmp_less(n, 0) || std::cmp_greater_equal(n, std::numeric_limits<std::make_unsigned_t<T>>::digits))
+          {
+              panic("shift count out of range");
+          }
+      }
+      return static_cast<T>(v >> n);
+  }
+
+  // A Char's code unit, unsigned on every target: `char` is signed on x86 and
+  // unsigned on ARM, so Char ordering goes through this (D3).
+  [[nodiscard]] constexpr unsigned char ord(Char c) noexcept
+  {
+      return static_cast<unsigned char>(c);
+  }
+
+  [[nodiscard]] constexpr bool isWhitespace(Char c) noexcept
+  {
+      return c == ' ' || (c >= '\t' && c <= '\r');
+  }
+  [[nodiscard]] constexpr bool isDigit(Char c) noexcept
+  {
+      return c >= '0' && c <= '9';
+  }
+  [[nodiscard]] constexpr bool isLetter(Char c) noexcept
+  {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+  }
+
+  // ---- Num.abs and the scalar hashCode (kira/core.bind.yaml) -----------------
+  // abs returns its argument's type: std::abs is ambiguous for uint32_t,
+  // uint64_t and size_t, and returns int for the 8- and 16-bit types. Unsigned
+  // is the identity. The signed lowest stays itself, by unsigned negation,
+  // because integers wrap (D8). A float clears its sign bit, so abs(-0.0) is
+  // +0.0, as fabs and Math.abs give, and a NaN stays a NaN.
+  template<class T>
+  [[nodiscard]] constexpr T abs(T v) noexcept
+  {
+      static_assert(std::is_arithmetic_v<T> && !std::is_same_v<T, bool> && !std::is_same_v<T, Char>,
+                    "kira::abs takes a number");
+      if constexpr(std::is_same_v<T, float>)
+      {
+          return bitCast<float>(bitCast<std::uint32_t>(v) & 0x7FFFFFFFu);
+      }
+      else if constexpr(std::is_same_v<T, double>)
+      {
+          return bitCast<double>(bitCast<std::uint64_t>(v) & 0x7FFFFFFFFFFFFFFFu);
+      }
+      else if constexpr(std::is_unsigned_v<T>)
+      {
+          return v;
+      }
+      else
+      {
+          static_assert(std::is_integral_v<T>, "kira::abs takes Float32, Float64 or an integer");
+          using U = std::make_unsigned_t<T>;
+          return v < T{0} ? static_cast<T>(static_cast<U>(U{0} - static_cast<U>(v))) : v;
+      }
+  }
+
+  // Num.hashCode, and Bool's and Char's: an integer by its value (widened to
+  // Int64, a UInt64 above INT64_MAX wrapping), a float by the bits of its
+  // double, a Bool as 0 or 1, a Char by its code unit. Str has its own,
+  // kira::str::hashCode.
+  template<class T>
+  [[nodiscard]] constexpr std::int64_t hashCode(T v) noexcept
+  {
+      static_assert(std::is_arithmetic_v<T>, "kira::hashCode takes a scalar");
+      if constexpr(std::is_same_v<T, bool>)
+      {
+          return v ? std::int64_t{1} : std::int64_t{0};
+      }
+      else if constexpr(std::is_same_v<T, Char>)
+      {
+          return static_cast<std::int64_t>(ord(v));
+      }
+      else if constexpr(std::is_floating_point_v<T>)
+      {
+          return bitCast<std::int64_t>(static_cast<double>(v));
+      }
+      else
+      {
+          return static_cast<std::int64_t>(v);
+      }
+  }
+
+  // A non-escaping Fx parameter is a template parameter F constrained by this.
+  template<class F, class R, class... A>
+  concept Callable = std::invocable<F&, A...>
+                     && (std::is_void_v<R> || std::convertible_to<std::invoke_result_t<F&, A...>, R>);
+
+  // ---- views -----------------------------------------------------------------
+  // View<T> is Kira's borrowed, read-only span; MutView<T> the writable one.
+  // Both are constexpr and freestanding, made implicitly from a std::array (and,
+  // hosted, a std::vector), and from a pointer and a length only by name.
+  template<class T>
+  struct View
+  {
+      const T* ptr = nullptr;
+      Size len = 0;
+
+      constexpr View() = default;
+      constexpr View(const T* p, Size n) noexcept : ptr(p), len(n)
+      {
+      }
+      template<Size N>
+      constexpr View(const std::array<T, N>& a) noexcept : ptr(a.data()), len(N)
+      {
+      }
+#if KIRA_PROFILE_HOSTED
+      template<class A>
+      View(const std::vector<T, A>& v) noexcept : ptr(v.data()), len(v.size())
+      {
+      }
+#endif
+
+      [[nodiscard]] constexpr Size size() const noexcept
+      {
+          return len;
+      }
+      [[nodiscard]] constexpr bool isEmpty() const noexcept
+      {
+          return len == 0;
+      }
+      [[nodiscard]] constexpr const T* data() const noexcept
+      {
+          return ptr;
+      }
+      [[nodiscard]] constexpr const T* begin() const noexcept
+      {
+          return ptr;
+      }
+      [[nodiscard]] constexpr const T* end() const noexcept
+      {
+          return ptr + len;
+      }
+      [[nodiscard]] constexpr const T& operator[](Size i) const
+      {
+          if constexpr(checked)
+          {
+              if(i >= len)
+              {
+                  panic("index out of range");
+              }
+          }
+          return ptr[i];
+      }
+      // The tail from `at`, and `n` elements from `at`.
+      [[nodiscard]] constexpr View from(Size at) const
+      {
+          if constexpr(checked)
+          {
+              if(at > len)
+              {
+                  panic("slice out of range");
+              }
+          }
+          return View(ptr + at, len - at);
+      }
+      [[nodiscard]] constexpr View slice(Size at, Size n) const
+      {
+          if constexpr(checked)
+          {
+              if(at > len || n > len - at)
+              {
+                  panic("slice out of range");
+              }
+          }
+          return View(ptr + at, n);
+      }
+
+      // Element-wise. A hidden friend, so a std::array or a MutView converts.
+      [[nodiscard]] friend constexpr bool operator==(View a, View b)
+      {
+          if(a.len != b.len)
+          {
+              return false;
+          }
+          for(Size i = 0; i < a.len; ++i)
+          {
+              if(!(a.ptr[i] == b.ptr[i]))
+              {
+                  return false;
+              }
+          }
+          return true;
+      }
+  };
+
+  template<class T>
+  struct MutView
+  {
+      T* ptr = nullptr;
+      Size len = 0;
+
+      constexpr MutView() = default;
+      constexpr MutView(T* p, Size n) noexcept : ptr(p), len(n)
+      {
+      }
+      template<Size N>
+      constexpr MutView(std::array<T, N>& a) noexcept : ptr(a.data()), len(N)
+      {
+      }
+#if KIRA_PROFILE_HOSTED
+      template<class A>
+      MutView(std::vector<T, A>& v) noexcept : ptr(v.data()), len(v.size())
+      {
+      }
+#endif
+
+      [[nodiscard]] constexpr Size size() const noexcept
+      {
+          return len;
+      }
+      [[nodiscard]] constexpr bool isEmpty() const noexcept
+      {
+          return len == 0;
+      }
+      [[nodiscard]] constexpr T* data() const noexcept
+      {
+          return ptr;
+      }
+      [[nodiscard]] constexpr T* begin() const noexcept
+      {
+          return ptr;
+      }
+      [[nodiscard]] constexpr T* end() const noexcept
+      {
+          return ptr + len;
+      }
+      [[nodiscard]] constexpr T& operator[](Size i) const
+      {
+          if constexpr(checked)
+          {
+              if(i >= len)
+              {
+                  panic("index out of range");
+              }
+          }
+          return ptr[i];
+      }
+      [[nodiscard]] constexpr MutView from(Size at) const
+      {
+          if constexpr(checked)
+          {
+              if(at > len)
+              {
+                  panic("slice out of range");
+              }
+          }
+          return MutView(ptr + at, len - at);
+      }
+      [[nodiscard]] constexpr MutView slice(Size at, Size n) const
+      {
+          if constexpr(checked)
+          {
+              if(at > len || n > len - at)
+              {
+                  panic("slice out of range");
+              }
+          }
+          return MutView(ptr + at, n);
+      }
+      constexpr operator View<T>() const noexcept
+      {
+          return View<T>(ptr, len);
+      }
+
+      [[nodiscard]] friend constexpr bool operator==(MutView a, MutView b)
+      {
+          return View<T>(a) == View<T>(b);
+      }
+  };
+
+  // An Arr<T, N> place seen as a span: view for a read, mutView for a `mut` place.
+  template<class T, Size N>
+  [[nodiscard]] constexpr View<T> view(const std::array<T, N>& a) noexcept
+  {
+      return View<T>(a.data(), N);
+  }
+  template<class T, Size N>
+  [[nodiscard]] constexpr MutView<T> mutView(std::array<T, N>& a) noexcept
+  {
+      return MutView<T>(a.data(), N);
+  }
+
+  // a[i]: checked. The mutable overloads return T&, so `kira::at(a, i) = v` works.
+  template<class T, Size N>
+  [[nodiscard]] constexpr const T& at(const std::array<T, N>& a, Size i)
+  {
+      if constexpr(checked)
+      {
+          if(i >= N)
+          {
+              panic("index out of range");
+          }
+      }
+      return a[i];
+  }
+  template<class T, Size N>
+  [[nodiscard]] constexpr T& at(std::array<T, N>& a, Size i)
+  {
+      if constexpr(checked)
+      {
+          if(i >= N)
+          {
+              panic("index out of range");
+          }
+      }
+      return a[i];
+  }
+  template<class T>
+  [[nodiscard]] constexpr const T& at(View<T> v, Size i)
+  {
+      return v[i];
+  }
+  template<class T>
+  [[nodiscard]] constexpr T& at(MutView<T> v, Size i)
+  {
+      return v[i];
+  }
+
+  // `kira::replace(place) = value`: Kira's write over an old value whose drop may run
+  // a `finally`. C++'s operator= drops the old value's parts while it writes the new
+  // one, member by member, so a `finally` run by that drop would see, free or rewrite
+  // a half-written place. Kira stores first and drops the old value after: the old
+  // value is moved out here (a move runs no Kira code), the place takes the new one,
+  // and the old value dies once the store is whole. As for a plain `place = value`,
+  // the right side is evaluated before the place. A proxy place (a std::vector<bool>
+  // element) holds nothing that drops, and is assigned.
+  template<class S>
+  class Replace
+  {
+  public:
+      constexpr explicit Replace(S&& place) noexcept : place_(std::forward<S>(place))
+      {
+      }
+      Replace(const Replace&) = delete;
+      Replace& operator=(const Replace&) = delete;
+      template<class U>
+      constexpr void operator=(U&& value) &&
+      {
+          if constexpr(std::is_lvalue_reference_v<S>)
+          {
+              [[maybe_unused]] std::remove_reference_t<S> old = std::move(place_);
+              place_ = std::forward<U>(value);
+          }
+          else
+          {
+              place_ = std::forward<U>(value);
+          }
+      }
+
+  private:
+      S place_;
+  };
+  template<class S>
+  [[nodiscard]] constexpr Replace<S> replace(S&& place) noexcept
+  {
+      return Replace<S>(std::forward<S>(place));
+  }
+
+  // A string literal as a static View<Char>: "abc" is 3 chars, no terminator.
+  template<Size N>
+  [[nodiscard]] constexpr View<Char> lit(const Char (&s)[N]) noexcept
+  {
+      return View<Char>(s, N - 1);
+  }
+
+  // ---- Maybe -------------------------------------------------------------------
+  // One C++ spelling for generic code: Maybe<T> is std::optional<T> for a value
+  // and, hosted, a nullable std::shared_ptr for a class (rt.hxx's kira::MaybeRc);
+  // a Maybe of a Maybe is a Nested. kira::none converts to each; isSome, unwrap
+  // and unwrapOr are overloaded for both kinds.
+  template<class T>
+  struct MaybeOf
+  {
+      using type = std::optional<T>;
+  };
+  template<class T>
+  using Maybe = typename MaybeOf<T>::type;
+
+  struct None
+  {
+      template<class T>
+      constexpr operator std::optional<T>() const noexcept
+      {
+          return std::nullopt;
+      }
+#if KIRA_PROFILE_HOSTED
+      template<class U>
+      operator std::shared_ptr<U>() const noexcept
+      {
+          return nullptr;
+      }
+#endif
+  };
+  inline constexpr None none{};
+
+  // A Maybe of a Maybe: std::optional<M> plus a constructor and an assignment from
+  // kira::none that are not templates, so none is the outer empty Maybe, as
+  // std::nullopt is. A plain std::optional<M> takes none as an M (its converting
+  // constructor is viable, since an M is made from none): `x = kira::none` would
+  // give Some(None), and `Maybe<M> x = kira::none` would not build.
+  template<class M>
+  class Nested : public std::optional<M>
+  {
+  public:
+      using std::optional<M>::optional;
+      constexpr Nested() noexcept = default;
+      constexpr Nested(None) noexcept
+      {
+      }
+      constexpr Nested(const std::optional<M>& m)
+          : std::optional<M>(m)
+      {
+      }
+      constexpr Nested(std::optional<M>&& m)
+          : std::optional<M>(std::move(m))
+      {
+      }
+      constexpr Nested& operator=(None) noexcept
+      {
+          this->reset();
+          return *this;
+      }
+      // As two std::optional<M>: std's own templates also match an optional against
+      // a Nested as its value, which is ambiguous.
+      [[nodiscard]] friend constexpr bool operator==(const Nested& a, const Nested& b)
+      {
+          return static_cast<const std::optional<M>&>(a) == static_cast<const std::optional<M>&>(b);
+      }
+  };
+  template<class T>
+  struct MaybeOf<std::optional<T>>
+  {
+      using type = Nested<std::optional<T>>;
+  };
+  template<class M>
+  struct MaybeOf<Nested<M>>
+  {
+      using type = Nested<Nested<M>>;
+  };
+
+  template<class T>
+  [[nodiscard]] constexpr bool isSome(const std::optional<T>& m) noexcept
+  {
+      return m.has_value();
+  }
+  // Panics when absent. An rvalue Maybe hands its value out, so nothing
+  // refers into a temporary that is already gone.
+  template<class T>
+  [[nodiscard]] constexpr const T& unwrap(const std::optional<T>& m)
+  {
+      if(!m.has_value())
+      {
+          panic("unwrap of an empty Maybe");
+      }
+      return *m;
+  }
+  template<class T>
+  [[nodiscard]] constexpr T unwrap(std::optional<T>&& m)
+  {
+      if(!m.has_value())
+      {
+          panic("unwrap of an empty Maybe");
+      }
+      return std::move(*m);
+  }
+  template<class T>
+  [[nodiscard]] constexpr T unwrapOr(const std::optional<T>& m, const std::type_identity_t<T>& d)
+  {
+      return m.has_value() ? *m : d;
+  }
+
+  // Member access on a generic T: the value itself. rt.hxx adds *p for a class
+  // handle, so `kira::deref(x).m()` is `.` or `->` as T needs.
+  template<class T>
+  [[nodiscard]] constexpr T& deref(T& v) noexcept
+  {
+      return v;
+  }
+  template<class T>
+  [[nodiscard]] constexpr const T& deref(const T& v) noexcept
+  {
+      return v;
+  }
+
+  // ---- little-endian bytes (kira:bytes) -------------------------------------
+  // Checked: each reads or writes b.slice(at, width).
+  [[nodiscard]] constexpr std::uint16_t readU16Le(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 2);
+      return static_cast<std::uint16_t>(static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8));
+  }
+  [[nodiscard]] constexpr std::uint32_t readU32Le(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 4);
+      return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8)
+             | (static_cast<std::uint32_t>(p[2]) << 16) | (static_cast<std::uint32_t>(p[3]) << 24);
+  }
+  [[nodiscard]] constexpr std::uint64_t readU64Le(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 8);
+      std::uint64_t v = 0;
+      for(Size i = 8; i > 0; --i)
+      {
+          v = (v << 8) | static_cast<std::uint64_t>(p[i - 1]);
+      }
+      return v;
+  }
+  [[nodiscard]] constexpr float readF32Le(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<float>(readU32Le(b, at));
+  }
+  [[nodiscard]] constexpr double readF64Le(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<double>(readU64Le(b, at));
+  }
+  constexpr void writeU16Le(MutView<std::uint8_t> b, Size at, std::uint16_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 2);
+      p[0] = static_cast<std::uint8_t>(v & 0xFFu);
+      p[1] = static_cast<std::uint8_t>((v >> 8) & 0xFFu);
+  }
+  constexpr void writeU32Le(MutView<std::uint8_t> b, Size at, std::uint32_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 4);
+      for(Size i = 0; i < 4; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * i)) & 0xFFu);
+      }
+  }
+  constexpr void writeU64Le(MutView<std::uint8_t> b, Size at, std::uint64_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 8);
+      for(Size i = 0; i < 8; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * i)) & 0xFFu);
+      }
+  }
+  constexpr void writeF32Le(MutView<std::uint8_t> b, Size at, float v)
+  {
+      writeU32Le(b, at, bitCast<std::uint32_t>(v));
+  }
+  constexpr void writeF64Le(MutView<std::uint8_t> b, Size at, double v)
+  {
+      writeU64Le(b, at, bitCast<std::uint64_t>(v));
+  }
+
+  // ---- big-endian bytes (kira:bytes, D53) -------------------------------------
+  // The little-endian set's twins, the most significant byte first; checked the same way.
+  [[nodiscard]] constexpr std::uint16_t readU16Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 2);
+      return static_cast<std::uint16_t>((static_cast<std::uint32_t>(p[0]) << 8) | static_cast<std::uint32_t>(p[1]));
+  }
+  [[nodiscard]] constexpr std::uint32_t readU32Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 4);
+      return (static_cast<std::uint32_t>(p[0]) << 24) | (static_cast<std::uint32_t>(p[1]) << 16)
+             | (static_cast<std::uint32_t>(p[2]) << 8) | static_cast<std::uint32_t>(p[3]);
+  }
+  [[nodiscard]] constexpr std::uint64_t readU64Be(View<std::uint8_t> b, Size at)
+  {
+      const View<std::uint8_t> p = b.slice(at, 8);
+      std::uint64_t v = 0;
+      for(Size i = 0; i < 8; ++i)
+      {
+          v = (v << 8) | static_cast<std::uint64_t>(p[i]);
+      }
+      return v;
+  }
+  [[nodiscard]] constexpr float readF32Be(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<float>(readU32Be(b, at));
+  }
+  [[nodiscard]] constexpr double readF64Be(View<std::uint8_t> b, Size at)
+  {
+      return bitCast<double>(readU64Be(b, at));
+  }
+  constexpr void writeU16Be(MutView<std::uint8_t> b, Size at, std::uint16_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 2);
+      p[0] = static_cast<std::uint8_t>((v >> 8) & 0xFFu);
+      p[1] = static_cast<std::uint8_t>(v & 0xFFu);
+  }
+  constexpr void writeU32Be(MutView<std::uint8_t> b, Size at, std::uint32_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 4);
+      for(Size i = 0; i < 4; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * (3 - i))) & 0xFFu);
+      }
+  }
+  constexpr void writeU64Be(MutView<std::uint8_t> b, Size at, std::uint64_t v)
+  {
+      const MutView<std::uint8_t> p = b.slice(at, 8);
+      for(Size i = 0; i < 8; ++i)
+      {
+          p[i] = static_cast<std::uint8_t>((v >> (8 * (7 - i))) & 0xFFu);
+      }
+  }
+  constexpr void writeF32Be(MutView<std::uint8_t> b, Size at, float v)
+  {
+      writeU32Be(b, at, bitCast<std::uint32_t>(v));
+  }
+  constexpr void writeF64Be(MutView<std::uint8_t> b, Size at, double v)
+  {
+      writeU64Be(b, at, bitCast<std::uint64_t>(v));
+  }
+
+  // bytes.find: where pattern first starts at or after start, -1 for nowhere or a start past the end.
+  [[nodiscard]] constexpr std::int64_t findBytes(View<std::uint8_t> data, View<std::uint8_t> pattern, Size start) noexcept
+  {
+      if(start > data.size() || pattern.size() > data.size() - start)
+      {
+          return -1;
+      }
+      for(Size i = start; i <= data.size() - pattern.size(); ++i)
+      {
+          Size j = 0;
+          while(j < pattern.size() && data.ptr[i + j] == pattern.ptr[j])
+          {
+              ++j;
+          }
+          if(j == pattern.size())
+          {
+              return static_cast<std::int64_t>(i);
+          }
+      }
+      return -1;
+  }
+
+  // CRC-16/XMODEM, binascii.crc_hqx's: polynomial 0x1021 from init, no reflection, no final XOR.
+  [[nodiscard]] constexpr std::uint16_t crc16Xmodem(View<std::uint8_t> data, std::uint16_t init) noexcept
+  {
+      std::uint32_t crc = init;
+      for(Size i = 0; i < data.size(); ++i)
+      {
+          crc ^= static_cast<std::uint32_t>(data.ptr[i]) << 8;
+          for(int bit = 0; bit < 8; ++bit)
+          {
+              crc = ((crc << 1) ^ ((crc & 0x8000u) != 0 ? 0x1021u : 0u)) & 0xFFFFu;
+          }
+      }
+      return static_cast<std::uint16_t>(crc);
+  }
+
+  // ---- text without a heap ---------------------------------------------------
+  // STRICT decimal: an optional sign, then digits, and nothing else; none on
+  // overflow. Locale-free and heap-free: the Pico's parser and the pilot's
+  // Str.toInt64 are this one function.
+  [[nodiscard]] constexpr std::optional<std::int64_t> parseInt64(View<Char> s) noexcept
+  {
+      Size i = 0;
+      bool neg = false;
+      if(i < s.size() && (s.ptr[i] == '+' || s.ptr[i] == '-'))
+      {
+          neg = s.ptr[i] == '-';
+          ++i;
+      }
+      if(i == s.size())
+      {
+          return std::nullopt;
+      }
+      const std::uint64_t limit = neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1;
+      std::uint64_t v = 0;
+      for(; i < s.size(); ++i)
+      {
+          const Char c = s.ptr[i];
+          if(c < '0' || c > '9')
+          {
+              return std::nullopt;
+          }
+          const std::uint64_t d = static_cast<std::uint64_t>(c - '0');
+          if(v > (limit - d) / 10)
+          {
+              return std::nullopt;
+          }
+          v = v * 10 + d;
+      }
+      return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
+  }
+
+  [[nodiscard]] constexpr std::optional<std::int64_t> parseInt64(View<Char> s, std::int32_t radix) noexcept
+  {
+      if(radix < 2 || radix > 36)
+      {
+          panic("radix out of range");
+      }
+      Size i = 0;
+      bool neg = false;
+      if(i < s.size() && (s.ptr[i] == '+' || s.ptr[i] == '-'))
+      {
+          neg = s.ptr[i] == '-';
+          ++i;
+      }
+      if(i == s.size())
+      {
+          return std::nullopt;
+      }
+      const std::uint64_t limit = neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1;
+      const std::uint64_t r = static_cast<std::uint64_t>(radix);
+      std::uint64_t v = 0;
+      for(; i < s.size(); ++i)
+      {
+          const Char c = s.ptr[i];
+          std::uint64_t d = 36;
+          if(c >= '0' && c <= '9')
+          {
+              d = static_cast<std::uint64_t>(c - '0');
+          }
+          else if(c >= 'a' && c <= 'z')
+          {
+              d = static_cast<std::uint64_t>(c - 'a' + 10);
+          }
+          else if(c >= 'A' && c <= 'Z')
+          {
+              d = static_cast<std::uint64_t>(c - 'A' + 10);
+          }
+          if(d >= r || v > (limit - d) / r)
+          {
+              return std::nullopt;
+          }
+          v = v * r + d;
+      }
+      return neg ? static_cast<std::int64_t>(std::uint64_t{0} - v) : static_cast<std::int64_t>(v);
+  }
+
+  namespace impl_
+  {
+    // round(v * scale) for a finite v >= 0 and a scale <= 10^9 in integers only: nearest, a
+    // tie to even, on v's exact value, as printf's %.*f (D50). Saturates past 2^64.
+    [[nodiscard]] constexpr std::uint64_t scaledRound(double v, std::uint64_t scale) noexcept
+    {
+        constexpr std::uint64_t top = (std::numeric_limits<std::uint64_t>::max)();
+        const std::uint64_t bits = bitCast<std::uint64_t>(v);
+        const std::uint64_t field = (bits >> 52u) & 0x7FFu;
+        const std::uint64_t m = (bits & 0xFFFFFFFFFFFFFu) | (field != 0u ? std::uint64_t{1} << 52u : 0u);
+        const std::int32_t e = static_cast<std::int32_t>(field != 0u ? field : 1u) - 1075;
+        // v * scale = n * 2^e, n = m * scale below 2^83 as hi:lo.
+        const std::uint64_t a = (m >> 32u) * scale;
+        const std::uint64_t b = (m & 0xFFFFFFFFu) * scale;
+        const std::uint64_t lo = (a << 32u) + b;
+        const std::uint64_t hi = (a >> 32u) + (lo < b ? 1u : 0u);
+        if(e >= 0)
+        {
+            return hi != 0u || e >= 64 || (e > 0 && (lo >> (64 - e)) != 0u) ? top : lo << e;
+        }
+        const std::int32_t s = -e;
+        if(s > 83)
+        {
+            return 0u;
+        }
+        if(s < 64 && (hi >> s) != 0u)
+        {
+            return top;
+        }
+        const std::uint64_t q = s < 64 ? (lo >> s) | (hi << (64 - s)) : hi >> (s - 64);
+        const std::int32_t k = s - 1;
+        const bool half = ((k < 64 ? lo >> k : hi >> (k - 64)) & 1u) != 0u;
+        const bool below = k < 64 ? k > 0 && (lo << (64 - k)) != 0u : lo != 0u || (k > 64 && (hi << (128 - k)) != 0u);
+        return half && (below || (q & 1u) != 0u) ? (q == top ? top : q + 1u) : q;
+    }
+  }
+
+  // A fixed-capacity text buffer: N chars and a terminator, no heap. Appends
+  // past N are dropped, and truncated() says so. Interpolation into a StrBuf
+  // lowers to clear() and appends.
+  template<Size N>
+  class StrBuf
+  {
+  public:
+      constexpr StrBuf() = default;
+
+      [[nodiscard]] static constexpr Size capacity() noexcept
+      {
+          return N;
+      }
+      [[nodiscard]] constexpr Size size() const noexcept
+      {
+          return len_;
+      }
+      [[nodiscard]] constexpr bool isEmpty() const noexcept
+      {
+          return len_ == 0;
+      }
+      [[nodiscard]] constexpr bool truncated() const noexcept
+      {
+          return cut_;
+      }
+      [[nodiscard]] constexpr View<Char> view() const noexcept
+      {
+          return View<Char>(buf_.data(), len_);
+      }
+      [[nodiscard]] constexpr const Char* data() const noexcept
+      {
+          return buf_.data();
+      }
+      [[nodiscard]] constexpr const Char* c_str() const noexcept
+      {
+          return buf_.data();
+      }
+
+      constexpr void clear() noexcept
+      {
+          len_ = 0;
+          cut_ = false;
+          buf_[0] = '\0';
+      }
+      constexpr void addChar(Char c) noexcept
+      {
+          if(len_ < N)
+          {
+              buf_[len_] = c;
+              ++len_;
+              buf_[len_] = '\0';
+          }
+          else
+          {
+              cut_ = true;
+          }
+      }
+      constexpr void add(View<Char> s) noexcept
+      {
+          for(Size i = 0; i < s.size(); ++i)
+          {
+              addChar(s.ptr[i]);
+          }
+      }
+      constexpr void addUInt(std::uint64_t v) noexcept
+      {
+          Char digits[20] = {};
+          Size n = 0;
+          do
+          {
+              digits[n] = static_cast<Char>('0' + static_cast<int>(v % 10u));
+              ++n;
+              v /= 10u;
+          }
+          while(v != 0u);
+          while(n > 0)
+          {
+              --n;
+              addChar(digits[n]);
+          }
+      }
+      constexpr void addInt(std::int64_t v) noexcept
+      {
+          if(v < 0)
+          {
+              addChar('-');
+              addUInt(std::uint64_t{0} - static_cast<std::uint64_t>(v));
+          }
+          else
+          {
+              addUInt(static_cast<std::uint64_t>(v));
+          }
+      }
+      // `places` decimals (clamped to 0..9), locale-free, rounded as FloatNum.fixed (D50):
+      // 1.5 with 3 is "1.500", 0.25 with 1 "0.2", -0.0 with 1 "-0.0", any NaN "nan".
+      // A magnitude past 1.8e19 / 10^places saturates.
+      constexpr void addFixed(double v, std::int32_t places) noexcept
+      {
+          if(!(v == v))
+          {
+              add(lit("nan"));
+              return;
+          }
+          if((bitCast<std::uint64_t>(v) >> 63u) != 0u)
+          {
+              addChar('-');
+              v = -v;
+          }
+          if(v > (std::numeric_limits<double>::max)())
+          {
+              add(lit("inf"));
+              return;
+          }
+          const std::int32_t p = places < 0 ? 0 : (places > 9 ? 9 : places);
+          std::uint64_t scale = 1;
+          for(std::int32_t i = 0; i < p; ++i)
+          {
+              scale *= 10u;
+          }
+          const std::uint64_t scaled = impl_::scaledRound(v, scale);
+          addUInt(scaled / scale);
+          if(p > 0)
+          {
+              addChar('.');
+              const std::uint64_t frac = scaled % scale;
+              for(std::uint64_t d = scale / 10u; d > 0u; d /= 10u)
+              {
+                  addChar(static_cast<Char>('0' + static_cast<int>((frac / d) % 10u)));
+              }
+          }
+      }
+
+  private:
+      std::array<Char, N + 1> buf_{};
+      Size len_ = 0;
+      bool cut_ = false;
+  };
+
+  // ---- tuples ----------------------------------------------------------------
+  // Aggregates: Tuple2<A, B>{.first = a, .second = b}.
+  struct Tuple0
+  {
+      bool operator==(const Tuple0&) const = default;
+  };
+  template<class A>
+  struct Tuple1
+  {
+      A first;
+      bool operator==(const Tuple1&) const = default;
+  };
+  template<class A, class B>
+  struct Tuple2
+  {
+      A first;
+      B second;
+      bool operator==(const Tuple2&) const = default;
+  };
+  template<class A, class B, class C>
+  struct Tuple3
+  {
+      A first;
+      B second;
+      C third;
+      bool operator==(const Tuple3&) const = default;
+  };
+  template<class A, class B, class C, class D>
+  struct Tuple4
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      bool operator==(const Tuple4&) const = default;
+  };
+  template<class A, class B, class C, class D, class E>
+  struct Tuple5
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      bool operator==(const Tuple5&) const = default;
+  };
+  template<class A, class B, class C, class D, class E, class F>
+  struct Tuple6
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      bool operator==(const Tuple6&) const = default;
+  };
+  template<class A, class B, class C, class D, class E, class F, class G>
+  struct Tuple7
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      G seventh;
+      bool operator==(const Tuple7&) const = default;
+  };
+  template<class A, class B, class C, class D, class E, class F, class G, class H>
+  struct Tuple8
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      G seventh;
+      H eighth;
+      bool operator==(const Tuple8&) const = default;
+  };
+  template<class A, class B, class C, class D, class E, class F, class G, class H, class I>
+  struct Tuple9
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      G seventh;
+      H eighth;
+      I ninth;
+      bool operator==(const Tuple9&) const = default;
+  };
+}

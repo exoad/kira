@@ -1,92 +1,146 @@
-module "kira:collections"
-
 // Container types. `Arr`, `List` and `Map` are the three the C backend lowers
-// today (see docs/backend-c.md); `Set` / `Stack` / `Queue` / `Deque` are
+// today; `Set` / `Stack` / `Queue` / `Deque` are
 // declared so signatures typecheck but still resolve prelude-side.
+//
+// Containers are values (D44): assigning copies, and every method that
+// changes its receiver is a `mut fx`, callable only on a mutable place.
+// Lengths and indices are `Size` (D2).
 
-pub trait Iterable<T> {
-    pub fx size: () Int32
-    pub fx isEmpty: () Bool;
+pub Iterable<T>: Any {
+    pub size: () Size
+    pub isEmpty: () Bool;
 }
 
-pub @_magic class Arr<T>: Iterable<T> {
-    pub fx get: (index: Int32) T;
-    pub fx set: (index: Int32, value: T) Void;
-    pub fx contains: (value: T) Bool;
-    pub fx clone: () Arr<T>;
+// A borrowed, read-only window onto contiguous elements (D5). A view is never
+// returned when it was taken from a local, and never stored in a class field.
+pub @_magic View<T>: Iterable<T> {
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub get: (index: Size) T;
+    pub from: (at: Size) View<T>;
+    pub slice: (at: Size, n: Size) View<T>;
+    // A new List holding a copy of the view's elements (D52): what a view
+    // keeps past the call that lent it, `buf.slice(at, n).toList()`.
+    pub toList: () List<T>;
 }
 
-pub @_magic class List<T>: Iterable<T> {
-    require values: Arr<T>
-
-    pub fx add: (value: T) Void;
-    pub fx addAll: (values: Arr<T>) Void;
-    pub fx get: (index: Int32) T;
-    pub fx set: (index: Int32, value: T) Void;
-    pub fx removeAt: (index: Int32) T;
-    pub fx clear: () Void;
-    pub fx contains: (value: T) Bool;
-    pub fx toArr: () Arr<T>;
+// The mutable counterpart of `View`; converts to `View<T>` implicitly.
+pub @_magic MutView<T>: Iterable<T> {
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub get: (index: Size) T;
+    // Not `mut`: the view itself does not change, only the element it points
+    // at (a `T*` with `T& operator[]`, design section 6). A MutView is passed
+    // by value and never as a `mut` parameter (5.1), so a `mut fx` here would
+    // reject `buf.set(i, v)` on every MutView parameter, its main use.
+    pub set: (index: Size, value: T) Void;
+    pub from: (at: Size) MutView<T>;
+    pub slice: (at: Size, n: Size) MutView<T>;
+    pub view: () View<T>;
+    // View.toList's twin (D52): a `mut` List's slice is a MutView.
+    pub toList: () List<T>;
 }
 
-pub @_magic class Map<K, V> {
-    require values: Arr<Tuple2<K, V>>
-
-    pub fx size: () Int32;
-    pub fx isEmpty: () Bool;
-    pub fx put: (key: K, value: V) Void;
-    pub fx get: (key: K) Maybe<V>;
-    pub fx remove: (key: K) Maybe<V>;
-    pub fx containsKey: (key: K) Bool;
-    pub fx containsValue: (value: V) Bool;
-    pub fx keys: () Arr<K>;
-    pub fx valuesArr: () Arr<V>;
-    pub fx entries: () Arr<Tuple2<K, V>>;
-    pub fx clear: () Void;
+// `Arr<T>` is the growable array; `Arr<T, N>` (D6) is the fixed-size one and
+// the typer applies every method declared here to both spellings.
+pub @_magic Arr<T>: Iterable<T> {
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub get: (index: Size) T;
+    pub @_mutates set: (index: Size, value: T) Void;
+    pub contains: (value: T) Bool;
+    pub clone: () Arr<T>;
+    pub view: () View<T>;
+    pub from: (at: Size) View<T>;
+    pub slice: (at: Size, n: Size) View<T>;
 }
 
-pub @_magic class Set<T> {
-    require values: Arr<T>
+pub @_magic List<T>: Mutable<Iterable<T>> {
+    values: Arr<T>
 
-    pub fx size: () Int32;
-    pub fx isEmpty: () Bool;
-    pub fx add: (value: T) Bool;
-    pub fx remove: (value: T) Bool;
-    pub fx contains: (value: T) Bool;
-    pub fx toArr: () Arr<T>;
-    pub fx clear: () Void;
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates add: (value: T) Void;
+    pub @_mutates addAll: (values: Arr<T>) Void;
+    pub get: (index: Size) T;
+    pub @_mutates set: (index: Size, value: T) Void;
+    pub @_mutates removeAt: (index: Size) T;
+    pub @_mutates clear: () Void;
+    pub contains: (value: T) Bool;
+    pub toArr: () Arr<T>;
+    pub view: () View<T>;
+    pub from: (at: Size) View<T>;
+    pub slice: (at: Size, n: Size) View<T>;
+    // A List<Str> only (D58).
+    pub joinToString: (separator: Str) Str;
+    // Numbers, Chars or Strs (D61), stable; a float as Kotlin's compareTo: -0.0 below 0.0, NaN last.
+    pub @_mutates sort: () Void;
+    // Numbers (D61), left to right from 0 (a float from +0.0): an Int32 or Int64 partial sum past T panics.
+    // The sum stays a T, never widened: Int8, Int16 and the unsigned types wrap.
+    pub sum: () T;
+    // Numbers, Chars or Strs (D61); a float list holding a NaN gives a NaN.
+    pub minOrNull: () Maybe<T>;
+    pub maxOrNull: () Maybe<T>;
 }
 
-pub @_magic class Stack<T> {
-    require values: List<T>
+pub @_magic Map<K, V>: Mutable<Any> {
+    values: Arr<Tuple2<K, V>>
 
-    pub fx size: () Int32;
-    pub fx isEmpty: () Bool;
-    pub fx push: (value: T) Void;
-    pub fx pop: () Maybe<T>;
-    pub fx peek: () Maybe<T>;
-    pub fx clear: () Void;
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates put: (key: K, value: V) Void;
+    pub get: (key: K) Maybe<V>;
+    pub @_mutates remove: (key: K) Maybe<V>;
+    pub containsKey: (key: K) Bool;
+    pub containsValue: (value: V) Bool;
+    pub keys: () Arr<K>;
+    pub valuesArr: () Arr<V>;
+    pub entries: () Arr<Tuple2<K, V>>;
+    pub @_mutates clear: () Void;
 }
 
-pub @_magic class Queue<T> {
-    require values: List<T>
+pub @_magic Set<T>: Mutable<Any> {
+    values: Arr<T>
 
-    pub fx size: () Int32;
-    pub fx isEmpty: () Bool;
-    pub fx enqueue: (value: T) Void;
-    pub fx dequeue: () Maybe<T>;
-    pub fx peek: () Maybe<T>;
-    pub fx clear: () Void;
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates add: (value: T) Bool;
+    pub @_mutates remove: (value: T) Bool;
+    pub contains: (value: T) Bool;
+    pub toArr: () Arr<T>;
+    pub @_mutates clear: () Void;
 }
 
-pub @_magic class Deque<T> {
-    require values: List<T>
+pub @_magic Stack<T>: Mutable<Any> {
+    values: List<T>
 
-    pub fx size: () Int32;
-    pub fx isEmpty: () Bool;
-    pub fx pushFront: (value: T) Void;
-    pub fx pushBack: (value: T) Void;
-    pub fx popFront: () Maybe<T>;
-    pub fx popBack: () Maybe<T>;
-    pub fx clear: () Void;
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates push: (value: T) Void;
+    pub @_mutates pop: () Maybe<T>;
+    pub peek: () Maybe<T>;
+    pub @_mutates clear: () Void;
+}
+
+pub @_magic Queue<T>: Mutable<Any> {
+    values: List<T>
+
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates enqueue: (value: T) Void;
+    pub @_mutates dequeue: () Maybe<T>;
+    pub peek: () Maybe<T>;
+    pub @_mutates clear: () Void;
+}
+
+pub @_magic Deque<T>: Mutable<Any> {
+    values: List<T>
+
+    pub size: () Size;
+    pub isEmpty: () Bool;
+    pub @_mutates pushFront: (value: T) Void;
+    pub @_mutates pushBack: (value: T) Void;
+    pub @_mutates popFront: () Maybe<T>;
+    pub @_mutates popBack: () Maybe<T>;
+    pub @_mutates clear: () Void;
 }

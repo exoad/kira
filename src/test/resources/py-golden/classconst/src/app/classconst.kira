@@ -1,0 +1,22 @@
+// A module constant of a class that runs no initially block, built once when the module loads.
+
+pub Crc: Any {
+    pub poly: Int64 = 4129
+    pub seed: Int64 = 0
+
+    pub twice: () Int64 {
+        poly * 2
+    }
+}
+
+pub CRC: Crc = Crc { }
+pub WIDE: Crc = Crc { 7, 1 }
+
+same: (a: Crc, b: Crc) Bool {
+    a.poly == b.poly
+}
+
+pub main: () Int32 {
+    trace("${CRC.poly} ${CRC.twice()} ${WIDE.poly} ${WIDE.seed} ${same(CRC, CRC)} ${same(CRC, WIDE)}")
+    0
+}

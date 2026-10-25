@@ -1,0 +1,3 @@
+hasAny: (values: Map<Str, Int32>) Bool {
+    !values.isEmpty()
+}

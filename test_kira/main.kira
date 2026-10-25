@@ -1,52 +1,48 @@
-module "test:kira"
-
-fx helperCreateMap: () Map<Str, Int32> {
-    return Map<Str, Int32> { }
+helperCreateMap: () Map<Str, Int32> {
+    Map<Str, Int32> { }
 }
 
-pub class Point {
-    require pub mut x: Int32
-    require pub mut y: Int32
+pub Point: Mutable<Any> {
+    pub x: Mutable<Int32>
+    pub y: Mutable<Int32>
 
-    pub fx dist: () Float64 {
-        return (x * x + y * y) as Float64
+    pub dist: () Float64 {
+        (x * x + y * y) as Float64
     }
 }
 
-trait Printable {
-    fx toStr: () Str
+Printable: Any {
+    toStr: () Str
 }
 
-pub class Circle {
-    require pub center: Point
-    require pub mut radius: Int32
+pub Circle: Mutable<Any> {
+    pub center: Point
+    pub radius: Mutable<Int32>
 
-    pub fx area: () Float64 {
-        return 3.14159 * (radius as Float64) * (radius as Float64)
+    pub area: () Float64 {
+        3.14159 * (radius as Float64) * (radius as Float64)
     }
 }
 
-enum Color {
-    RED = "red",
-    GREEN = "green",
-    BLUE = "blue"
-}
+RED: Str = "red"
+GREEN: Str = "green"
+BLUE: Str = "blue"
 
-fx compute: (values: List<Int32>) Int32 {
-    mut acc: Int32 = 0
-    for mut i: 0..(values.size() - 1) {
+compute: (values: List<Int32>) Int32 {
+    acc: Mutable<Int32> = 0
+    for i: Size in 0..values.size() {
         acc = acc + values[i]
     }
-    return acc
+    acc
 }
 
-fx main: () Void {
-    mut nums: List<Int32> = [1, 2, 3, 4, 5]
-    arr: Arr<Int32> = [ 10, 20, 30 ]
+main: () Void {
+    nums: Mutable<List<Int32>> = @listOf(1, 2, 3, 4, 5)
+    arr: Arr<Int32> = @arrOf( 10, 20, 30 )
     total: Int32 = compute(nums)
     p: Point = Point { 3, 4 }
     c: Circle = Circle { p, 5 }
-    col: Color = Color.RED
+    col: Str = RED
     if total % 2 == 0 {
         // total is even
     } else if total % 3 == 0 {
@@ -54,20 +50,17 @@ fx main: () Void {
     } else {
         // other
     }
-    mut i: Int32 = 0
+    i: Mutable<Int32> = 0
     while i < 3 {
         i = i + 1
     }
-    do {
-        // one-time
-    } while false
-    for mut k: 0..2 {
+    for k: Int32 in 0..3 {
         // loop k
     }
-    for mut idx: 0..(arr.size() - 1) {
+    for idx: Size in 0..arr.size() {
         // access arr[idx]
     }
-    fxSum: Int32 = (fx(a: Int32, b: Int32) Int32 { return a + b })(1, 2)
+    fxSum: Int32 = ((a: Int32, b: Int32) Int32 { a + b })(1, 2)
     try {
         throw "boom"
     } on e: Str {
@@ -75,36 +68,36 @@ fx main: () Void {
     }
 }
 
-pub class Box<T> {
-    require pub value: T
+pub Box<T>: Any {
+    pub value: T
 }
 
-pub class Container<K, V> {
-    require pub mapping: Map<K, List<Arr<V>>>
+pub Container<K, V>: Mutable<Any> {
+    pub mapping: Map<K, List<Arr<V>>>
 }
 
-pub class Deep {
-    require pub data: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>>
+pub Deep: Any {
+    pub data: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>>
 }
 
-fx genericIdentity<T: Int32>: (x: T) T {
-    return x
+genericIdentity<T: Int32>: (x: T) T {
+    x
 }
 
-fx nestedGenerics: () Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
-    return helperCreateMap()
+nestedGenerics: () Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
+    helperCreateMap()
 }
 
 complexVar: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>> = helperCreateMap()
 
-fx identity<T>: (value: T) T {
-    return value
+identity<T>: (value: T) T {
+    value
 }
 
-fx swap<A, B>: (first: A, second: B) Tuple2<B, A> {
-    return Tuple2<B, A> { second, first }
+swap<A, B>: (first: A, second: B) Tuple2<B, A> {
+    Tuple2<B, A> { second, first }
 }
 
-fx makeBox<T>: (value: T) Box<T> {
-    return Box<T> { value }
+makeBox<T>: (value: T) Box<T> {
+    Box<T> { value }
 }

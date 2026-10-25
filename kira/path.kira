@@ -1,0 +1,21 @@
+// Paths by the host's rules: Python's os.path, posixpath or ntpath on Windows; py only for now.
+// Each is text alone, but absPath (the current directory) and expandUser (the home directory).
+
+// os.path.join(a, b): a later absolute part starts over; nothing is normalized.
+pub @_magic joinPath: (a: Str, b: Str) Str;
+// os.path.join(*parts); an empty List panics.
+pub @_magic joinPaths: (parts: List<Str>) Str;
+pub @_magic baseName: (path: Str) Str;
+pub @_magic dirName: (path: Str) Str;
+// splitext's first half: the path without its last extension (".bashrc" has none).
+pub @_magic stripExt: (path: Str) Str;
+// normpath: "." and ".." folded by their text, "" as ".".
+pub @_magic normPath: (path: Str) Str;
+// abspath: joined to the current directory and normalized; links are not resolved.
+pub @_magic absPath: (path: Str) Str;
+// relpath(path, start); none where there is none: another drive, or an empty path.
+pub @_magic relPath: (path: Str, start: Str) Maybe<Str>;
+// expanduser: a leading ~ or ~user from the home directory; the path as it is when there is none.
+pub @_magic expandUser: (path: Str) Str;
+// The path with os.sep written as "/".
+pub @_magic slashed: (path: Str) Str;

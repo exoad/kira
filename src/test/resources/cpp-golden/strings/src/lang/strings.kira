@@ -1,0 +1,77 @@
+// Str: interpolation, `as Str`, the Str helpers and the strict parsers. Every
+// number's text is locale-free, so a process that set a comma-decimal locale
+// still prints 2.5 and parses "2.50".
+
+pub MOOD_CALM: Int32 = 0
+pub MOOD_BUSY: Int32 = 1
+
+pub greet: (name: Str, n: Int32) Str {
+    "hello ${name}, you are ${n}"
+}
+
+// Every piece kind an interpolation takes. A UInt8 is a number, a Char a
+// character.
+pub describe: (b: Bool, f: Float64, g: Float32, c: Char, u: UInt8, m: Int32) Str {
+    "b=${b} f=${f} g=${g} c=${c} u=${u} m=${m}"
+}
+
+pub show: (v: Float64) Str {
+    v as Str
+}
+
+pub flag: (b: Bool) Str {
+    b as Str
+}
+
+// Fixed decimals rounded as printf's %.*f (D50), and lowercase hex (D51).
+pub fixedOf: (v: Float64, places: Int32) Str {
+    v.fixed(places)
+}
+
+pub speedLine: (mps: Float64) Str {
+    "${mps.fixed(1)} m/s"
+}
+
+pub hexOf: (v: Int32) Str {
+    v.toHex()
+}
+
+pub hex64: (v: UInt64) Str {
+    v.toHex()
+}
+
+pub bitsOf: (v: Int16) Str {
+    (v as UInt16).toHex()
+}
+
+pub padded: (v: Int32) Str {
+    (v as Str).padStart(5, '0')
+}
+
+pub parseInt: (s: Str) Maybe<Int64> {
+    s.toInt64()
+}
+
+pub parseFloat: (s: Str) Maybe<Float64> {
+    s.toFloat64()
+}
+
+pub joined: (a: Str, b: Str) Str {
+    a + " " + b
+}
+
+pub bracketed: (s: Str) Str {
+    "<" + s + ">"
+}
+
+pub initial: (s: Str) Char {
+    s[0]
+}
+
+pub same: (a: Str, b: Str) Bool {
+    a == b
+}
+
+pub middle: (s: Str) Str {
+    s.length() < 2 ? "" : s.substring(1, s.length() - 1)
+}

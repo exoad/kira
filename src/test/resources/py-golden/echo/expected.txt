@@ -1,0 +1,8 @@
+echo -> exit 0
+  C0 ONE | C0 TWO
+  C1 ONE | C1 TWO
+  C2 ONE | C2 TWO
+  served 6 lines
+boom -> exit 70
+  talking
+  stderr: kira:errors.Error: a handler threw on boom

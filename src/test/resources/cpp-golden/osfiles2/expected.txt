@@ -1,0 +1,50 @@
+
+osfiles2 - kira:os files on C++ and py
+
+  ok    makeDirs makes the case's directory
+  ok    writeFile writes a new file
+  ok    readText reads it as it is
+  ok    readTextLf reads CRLF and CR as LF
+  ok    readFileHead(3) reads the first 3 bytes
+  ok    and at most the file's 15
+  ok    readFileHead(0) is empty
+  ok    isFile and isDir tell a file from a directory
+  ok    and are false for a missing path, as exists is
+  ok    fileSize is 15, with no error kind
+  ok    fileSize of a missing path is -1, NotFound
+  ok    modifiedS is seconds since 1970
+  ok    and none for a missing path, NotFound
+  ok    readFile of a missing file is none, NotFound, with a reason
+  ok    and a read that works clears both
+  ok    writeFile truncates
+  ok    replaceFile renames a file
+  ok    and over an existing one
+  ok    replaceFile of a missing file is NotFound
+  ok    removeFile removes a file
+  ok    and the second time is NotFound
+  ok    removeFile refuses a directory
+  ok    makeDirs over a file is Exists
+  ok    makeDirs of an empty path is NotFound
+  ok    writeFile into a missing directory is NotFound
+  ok    so is writeFileAtomic
+  ok    writeFileAtomic writes the file whole
+  ok    writeFileAtomic over a directory fails and leaves no temporary
+  ok    listDir lists the names, sorted
+  ok    listDir of a missing directory is empty, NotFound
+  ok    freeBytes is positive, -1 for a missing path
+  ok    openAppend opens a new file
+  ok    empty, and not stale
+  ok    write, size and sync
+  ok    two appenders write in turn
+  ok    each at the file's end
+  ok    a closed FileOut is stale and refuses a write
+  ok    and has no size and no sync
+  ok    openWrite truncates
+  ok    and writes from the start
+  ok    openAppend in a missing directory is none, NotFound
+  ok    env finds PATH and nothing for a name that is not set
+  ok    setAffinity pins this process, or says why it cannot
+  ok    nice(0) is the niceness, or none with a reason
+
+44 checks, 0 failed
+

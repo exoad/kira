@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ModuleDecl
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.core.CompilerIntrinsic
 import java.util.*
 
@@ -20,9 +21,31 @@ import java.util.*
  */
 class SourceContext(val content: String, val file: String, val tokens: List<Token>) {
     private val lines: List<String> = content.lines()
+
+    /** The file's module URI (`project:path.to.file`), set by whoever reads the file; the file is the module. */
+    var moduleName: String? = null
     lateinit var ast: RootASTNode
     lateinit var astOrigins: IdentityHashMap<ASTNode, SourcePosition>
     lateinit var astIntrinsicMarked: IdentityHashMap<ASTNode, Array<CompilerIntrinsic>>
+
+    /**
+     * The marker intrinsics of each marked declaration as the parser saw them,
+     * arguments included: `@_extern("sym")` keeps its "sym" here, where
+     * [astIntrinsicMarked] holds only the registry entries. Same keys as
+     * [astIntrinsicMarked]; read it with [intrinsicInvocationsOf].
+     */
+    lateinit var astIntrinsicInvocations: IdentityHashMap<ASTNode, List<IntrinsicExpr>>
+
+    /** The expressions written inside parentheses, which the AST does not keep. */
+    val astParenthesized: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
+
+    /** The marker invocations on [node], with their arguments; empty when it has none. */
+    fun <T : ASTNode> intrinsicInvocationsOf(node: T): List<IntrinsicExpr> {
+        if (!::astIntrinsicInvocations.isInitialized) {
+            return emptyList()
+        }
+        return astIntrinsicInvocations[node] ?: emptyList()
+    }
 
     /**
      * Returns the module declaration representing this source module
@@ -58,7 +81,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     }
 
     fun with(content: String, tokens: List<Token>? = null): SourceContext {
-        return SourceContext(content, file, tokens ?: this.tokens)
+        return SourceContext(content, file, tokens ?: this.tokens).also { it.moduleName = moduleName }
     }
 
     fun <T : ASTNode> isIntrinsified(node: T): Boolean {

@@ -52,11 +52,11 @@ class MinifiedCodegenTest {
         withMinify {
             val result = compile(
                 """
-                fx add: (a: Int32, b: Int32) Int32 {
-                    return a + b
+                add: (a: Int32, b: Int32) Int32 {
+                    a + b
                 }
 
-                fx main: () Void {
+                main: () Void {
                     trace(add(20, 10))
                 }
                 """,
@@ -67,7 +67,7 @@ class MinifiedCodegenTest {
                 KiraCCodeGenerator(result.compilationUnit).generate(file.path)
                 val text = file.readText()
                 // The runtime prelude stays readable and byte-identical (its
-                // end marker is what regenerate.sh splits on).
+                // end marker is where the user layer starts).
                 assertTrue(text.contains("#endif /* KIRA_RUNTIME_H */"), text)
                 val marker = "#endif /* KIRA_RUNTIME_H */"
                 val user = text.substring(text.indexOf(marker) + marker.length)
@@ -93,7 +93,7 @@ class MinifiedCodegenTest {
         withMinify {
             val result = compile(
                 """
-                fx main: () Void {
+                main: () Void {
                     trace("hello, kira")
                 }
                 """,
@@ -125,7 +125,7 @@ class MinifiedCodegenTest {
         try {
             val result = compile(
                 """
-                fx main: () Void {
+                main: () Void {
                     trace("hi")
                 }
                 """,

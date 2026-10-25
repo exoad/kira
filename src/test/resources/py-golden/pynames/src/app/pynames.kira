@@ -1,0 +1,56 @@
+// Locals and parameters named as Python's keywords and builtins and as the module's own functions:
+// the py target spells each k_<name> (py only; C++ has its own keywords).
+
+pub score: (n: Int32) Int32 {
+    n * 2
+}
+
+EMPTY: List<Int32> = List<Int32> { }
+
+span: (from: Int32, to: Int32 = 10, list: List<Int32> = EMPTY) Int32 {
+    to - from + (list.size() as Int32)
+}
+
+total: (bytes: List<UInt8>) Int32 {
+    sum: Mutable<Int32> = 0
+    for int: UInt8 in bytes {
+        sum += int as Int32
+    }
+    sum
+}
+
+grow: (list: List<Int32>, object: Int32) Void {
+    list.add(object)
+}
+
+apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    f(x)
+}
+
+pub main: () Int32 {
+    from: Int32 = 3
+    list: Mutable<List<Int32>> = List<Int32> { }
+    grow(list, from)
+    grow(object = 4, list = list)
+    trace("${list.size()} ${list[0]} ${list[1]}")
+    bytes: Mutable<List<UInt8>> = List<UInt8> { }
+    bytes.add(7)
+    bytes.add(8)
+    trace(total(bytes))
+    trace(span(from))
+    trace(span(to = 4, from = 1))
+    trace(span(from, list = list))
+    score: Mutable<Int32> = 5
+    score += 1
+    trace(score)
+    lambda: Int32 = apply((int: Int32) Int32 {
+        int + from
+    }, 2)
+    trace(lambda)
+    try {
+        throw "raised ${from}"
+    } on str: Str {
+        trace(str)
+    }
+    0
+}

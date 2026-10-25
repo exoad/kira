@@ -6,14 +6,14 @@ import kotlin.test.assertTrue
 /**
  * Ownership rules the C backend must hold, pinned at the emit level.
  *
- * The behavioural proof is `examples/regenerate.sh --check` plus the
+ * The behavioural proof is TestProjectsRunTest's runs plus the
  * AddressSanitizer / `leaks` sweep; these assertions keep the *shape* honest so
  * a regression shows up as a failing test rather than a corrupted heap.
  */
 class ArcLoweringTest {
     private val pet = """
-        pub class Pet {
-            require pub name: Str
+        pub Pet: Any {
+            pub name: Str
         }
     """.trimIndent()
 
@@ -38,7 +38,7 @@ class ArcLoweringTest {
             """
             $pet
 
-            fx main: () Void {
+            main: () Void {
                 a: Pet = Pet { "m" }
                 b: Pet = a
                 trace(b.name)
@@ -59,8 +59,8 @@ class ArcLoweringTest {
             """
             $pet
 
-            fx main: () Void {
-                mut a: Pet = Pet { "m" }
+            main: () Void {
+                a: Mutable<Pet> = Pet { "m" }
                 a = Pet { "n" }
                 trace(a.name)
             }
@@ -78,8 +78,8 @@ class ArcLoweringTest {
             """
             $pet
 
-            fx main: () Void {
-                for mut i: 0..3 {
+            main: () Void {
+                for i: Int32 in 0..4 {
                     p: Pet = Pet { "m" }
                     trace(p.name)
                 }
@@ -108,11 +108,11 @@ class ArcLoweringTest {
             """
             $pet
 
-            pub class Box {
-                require pub inner: Pet
+            pub Box: Any {
+                pub inner: Pet
             }
 
-            fx main: () Void {
+            main: () Void {
                 b: Box = Box { Pet { "m" } }
                 trace(b.inner.name)
             }
@@ -131,11 +131,11 @@ class ArcLoweringTest {
             """
             $pet
 
-            pub class Box {
-                require pub inner: Pet
+            pub Box: Any {
+                pub inner: Pet
             }
 
-            fx main: () Void {
+            main: () Void {
                 p: Pet = Pet { "m" }
                 b: Box = Box { p }
                 trace(b.inner.name)
@@ -154,13 +154,13 @@ class ArcLoweringTest {
             """
             $pet
 
-            fx make: () Pet {
+            make: () Pet {
                 other: Pet = Pet { "o" }
                 p: Pet = Pet { "m" }
-                return p
+                p
             }
 
-            fx main: () Void {
+            main: () Void {
                 a: Pet = make()
                 trace(a.name)
             }
@@ -186,7 +186,7 @@ class ArcLoweringTest {
     fun containerLocalsAreDisposedAtScopeEnd() {
         val c = emit(
             """
-            fx main: () Void {
+            main: () Void {
                 l: List<Int32> = List<Int32> { }
                 m: Map<Str, Int32> = Map<Str, Int32> { }
                 s: Set<Int32> = Set<Int32> { }

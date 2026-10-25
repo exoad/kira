@@ -1,0 +1,102 @@
+kira.bytes as bytes
+
+// A view's bounds on the py target, as kira::View checks them: a read or write of kira:bytes
+// past the end of its view, a from or slice past the end, and an index past the end of a View
+// or of a MutView lent from part of a longer List, each stops the program; at the end exactly,
+// each gives its value. Each function builds its own buffer of n bytes (0, 1, 2, ...).
+
+ramp: (n: Size) List<UInt8> {
+    out: Mutable<List<UInt8>> = List<UInt8> { }
+    while out.size() < n {
+        out.add(out.size() as UInt8)
+    }
+    out
+}
+
+hex: (v: View<UInt8>) Str {
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
+    while i < v.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + v[i].toHex()
+        i += 1
+    }
+    s
+}
+
+pub read16: (n: Size, at: Size) UInt16 {
+    readU16Le(ramp(n), at)
+}
+
+pub read32: (n: Size, at: Size) UInt32 {
+    readU32Le(ramp(n), at)
+}
+
+pub read64: (n: Size, at: Size) UInt64 {
+    readU64Le(ramp(n), at)
+}
+
+pub readF64: (n: Size, at: Size) Float64 {
+    readF64Le(ramp(n), at)
+}
+
+pub write32: (n: Size, at: Size) Str {
+    buf: Mutable<List<UInt8>> = ramp(n)
+    writeU32Le(buf.view(), at, 0xA1B2C3D4)
+    hex(buf)
+}
+
+pub write64: (n: Size, at: Size) Str {
+    buf: Mutable<List<UInt8>> = ramp(n)
+    writeU64Le(buf.view(), at, 0x1122334455667788)
+    hex(buf)
+}
+
+// A write through a MutView lent from part of the List: its own end is the bound.
+pub writeInside: (n: Size, at: Size, k: Size, off: Size) Str {
+    buf: Mutable<List<UInt8>> = ramp(n)
+    writeU16Le(buf.slice(at, k), off, 0xBEEF)
+    hex(buf)
+}
+
+pub tail: (n: Size, at: Size) Size {
+    buf: List<UInt8> = ramp(n)
+    buf.from(at).size()
+}
+
+pub part: (n: Size, at: Size, k: Size) Size {
+    buf: List<UInt8> = ramp(n)
+    buf.slice(at, k).size()
+}
+
+look: (v: View<UInt8>, i: Size) UInt8 {
+    v[i]
+}
+
+pub peek: (n: Size, at: Size, i: Size) UInt8 {
+    look(ramp(n).from(at), i)
+}
+
+put: (p: MutView<UInt8>, i: Size) Void {
+    p.set(i, 0xEE)
+}
+
+pub poke: (n: Size, at: Size, k: Size, i: Size) Str {
+    buf: Mutable<List<UInt8>> = ramp(n)
+    put(buf.slice(at, k), i)
+    hex(buf)
+}
+
+lookInt: (v: View<Int32>, i: Size) Int32 {
+    v[i]
+}
+
+pub peekInts: (n: Size, at: Size, i: Size) Int32 {
+    xs: Mutable<List<Int32>> = List<Int32> { }
+    while xs.size() < n {
+        xs.add((xs.size() as Int32) * -3)
+    }
+    lookInt(xs.from(at), i)
+}

@@ -1,0 +1,18 @@
+kira.os as os
+
+// Declarations that name kira:os. The module is its runtime header alone:
+// kira/os.hxx defines UdpSocket and Poller, and defines Datagram, Ready and
+// POLL_READ by hand too, so the emitter writes no kira/std/os.kira.hxx that
+// would define them a second time (measured: gcc, clang and MSVC each reject
+// the pair). `Poller {}` is std::make_shared of kira::os::Poller.
+
+pub Link: Mutable<Any> {
+    pub last: Datagram = Datagram { }
+    pub sock: Maybe<UdpSocket> = null
+    pub poll: Poller = Poller {}
+    pub events: Int32 = POLL_READ
+    pub port: Int32 = 0
+}
+
+pub send: (s: UdpSocket, d: Datagram) Bool;
+pub ready: (r: Ready) Bool;

@@ -1,0 +1,26 @@
+55 aa 5 a 64 0 0 0 20 0 0 0 2 0 0 0 1 0 0 0 71 bf bb 9f 0 0 0 0 0 0 0 ff
+55 aa 5 a d0 7 0 0 20 0 0 0 4 0 0 0 0 0 0 0 93 d1 68 e1 0 0 0 0 0 0 0 ff
+100
+32
+1
+ff ff ef be ad de 8 7 6 5 4 3 2 1 0 0
+65535
+3735928559
+72623859790382856
+18446744073709551615
+1.5
+0 0 0 0 0 0 0 80
+inf
+6.02214e+23
+2991091607
+0 0 7 0 0 8 f8 3f
+0
+fb b1 1 1 fe ff 2 1 3 0 10 20 30 61 34
+v1 flags 1 seq 65534 type 258 10 20 30
+1
+1
+fb b1 1 0 0 0 7 0 0 0 65 97
+0
+kira:bytes against struct: 3377 reads and 3377 writes the same, 17246 past the end stopped
+crc16 and crc32 against binascii and zlib: 500 buffers, every CRC the same
+encodeRaw and parseFrame against encode_raw and parse_frame: 2000 frames built the same, 1003 parsed and 997 refused alike

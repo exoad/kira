@@ -1,0 +1,216 @@
+kira.bytes as bytes
+
+// bibo's WebSocket framing in Kira: ws_frame (bibodash.py, webdrive_fake.py), a frame the board
+// sends, FIN set and unmasked in the short, 126 and 127 length forms; and read_frames
+// (webdrive_fake.py), every complete frame at the start of a buffer, masked or not, its length
+// read big-endian (readU16Be, readU64Be: D53) and its payload copied out (View.toList, D52),
+// and the bytes they took. The expected output is the C++ backend's run of main, then the driver's
+// run of these against the hand-written ones.
+
+pub Frame: Mutable<Any> {
+    pub opcode: UInt8
+    pub payload: List<UInt8>
+}
+
+// The length forms: 7 bits, 126 and 16 bits, or 127 and 64 bits, big-endian.
+addLength: (out: List<UInt8>, maskBit: UInt8, n: Size) Void {
+    if n < 126 {
+        out.add(maskBit | (n as UInt8))
+    } else if n < 65536 {
+        out.add(maskBit | 126)
+        out.add((n >> 8) as UInt8)
+        out.add(n as UInt8)
+    } else {
+        out.add(maskBit | 127)
+        k: Mutable<Size> = 8
+        while k > 0 {
+            k -= 1
+            out.add((n >> (k * 8)) as UInt8)
+        }
+    }
+}
+
+// ws_frame(opcode, payload): what the board sends.
+pub encode: (opcode: UInt8, payload: View<UInt8>) List<UInt8> {
+    out: Mutable<List<UInt8>> = List<UInt8> { }
+    out.add(0x80 | opcode)
+    addLength(out, 0, payload.size())
+    i: Mutable<Size> = 0
+    while i < payload.size() {
+        out.add(payload[i])
+        i += 1
+    }
+    out
+}
+
+// What a page sends: the payload masked with a 4-byte key.
+pub encodeMasked: (opcode: UInt8, payload: View<UInt8>, key: View<UInt8>) List<UInt8> {
+    out: Mutable<List<UInt8>> = List<UInt8> { }
+    out.add(0x80 | opcode)
+    addLength(out, 0x80, payload.size())
+    i: Mutable<Size> = 0
+    while i < 4 {
+        out.add(key[i])
+        i += 1
+    }
+    i = 0
+    while i < payload.size() {
+        out.add(payload[i] ^ key[i % 4])
+        i += 1
+    }
+    out
+}
+
+// read_frames(buf): every complete frame at the start of buf goes into out, unmasked; the
+// bytes they took, so buf.from(that) is the rest.
+pub readFrames: (buf: View<UInt8>, out: List<Frame>) Size {
+    at: Mutable<Size> = 0
+    while buf.size() - at >= 2 {
+        b1: UInt8 = buf[at]
+        b2: UInt8 = buf[at + 1]
+        n: Mutable<Size> = (b2 & 0x7F) as Size
+        head: Mutable<Size> = 2
+        if n == 126 {
+            if buf.size() - at < 4 {
+                break
+            }
+            n = readU16Be(buf, at + 2) as Size
+            head = 4
+        } else if n == 127 {
+            if buf.size() - at < 10 {
+                break
+            }
+            n = readU64Be(buf, at + 2) as Size
+            head = 10
+        }
+        masked: Bool = (b2 & 0x80) != 0
+        keyBytes: Size = masked ? 4 : 0
+        if buf.size() - at < head + keyBytes + n {
+            break
+        }
+        start: Size = at + head + keyBytes
+        data: Mutable<List<UInt8>> = buf.slice(start, n).toList()
+        if masked {
+            i: Mutable<Size> = 0
+            while i < n {
+                data[i] ^= buf[at + head + i % 4]
+                i += 1
+            }
+        }
+        out.add(Frame { b1 & 0x0F, data })
+        at = start + n
+    }
+    at
+}
+
+// ---- main: each form, and a stream of them read back -------------------------------------------
+
+pattern: (n: Size, seed: UInt8) List<UInt8> {
+    out: Mutable<List<UInt8>> = List<UInt8> { }
+    b: Mutable<UInt8> = seed
+    while out.size() < n {
+        out.add(b)
+        b = b * 31 + 7
+    }
+    out
+}
+
+hex: (v: View<UInt8>, n: Size) Str {
+    s: Mutable<Str> = ""
+    i: Mutable<Size> = 0
+    while i < n && i < v.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + v[i].toHex()
+        i += 1
+    }
+    s
+}
+
+sum: (v: View<UInt8>) UInt32 {
+    s: Mutable<UInt32> = 0
+    i: Mutable<Size> = 0
+    while i < v.size() {
+        s = s * 33 + (v[i] as UInt32)
+        i += 1
+    }
+    s
+}
+
+same: (a: View<UInt8>, b: View<UInt8>) Bool {
+    if a.size() != b.size() {
+        false
+    } else {
+        i: Mutable<Size> = 0
+        result: Mutable<Bool> = true
+        while i < a.size() {
+            if a[i] != b[i] {
+                result = false
+                break
+            }
+            i += 1
+        }
+        result
+    }
+}
+
+KEY: Arr<UInt8, 4> = @arrOf(0x37, 0xFA, 0x21, 0x3D)
+
+main: () Void {
+    small: List<UInt8> = pattern(5, 3)
+    mid: List<UInt8> = pattern(200, 9)
+    big: List<UInt8> = pattern(70000, 1)
+    edge: List<UInt8> = pattern(125, 4)
+    page: List<UInt8> = pattern(130, 5)
+    a: List<UInt8> = encode(1, small)
+    b: List<UInt8> = encode(2, mid)
+    c: List<UInt8> = encode(2, big)
+    d: List<UInt8> = encode(9, edge)
+    e: List<UInt8> = encodeMasked(1, page, KEY)
+    f: List<UInt8> = encode(8, pattern(0, 0))
+    trace(hex(a, 16))
+    trace(hex(b, 6))
+    trace(b.size())
+    trace(hex(c, 12))
+    trace(c.size())
+    trace(hex(d, 4))
+    trace(hex(e, 10))
+    trace(hex(f, 4))
+    stream: Mutable<List<UInt8>> = List<UInt8> { }
+    stream.addAll(a.toArr())
+    stream.addAll(b.toArr())
+    stream.addAll(c.toArr())
+    stream.addAll(d.toArr())
+    stream.addAll(e.toArr())
+    stream.addAll(f.toArr())
+    whole: Size = stream.size()
+    // and the first 11 bytes of another: its 4-byte header and 7 of its 200 bytes
+    stream.addAll(b.toArr())
+    i: Mutable<Size> = 0
+    while i < 193 {
+        stream.removeAt(stream.size() - 1)
+        i += 1
+    }
+    frames: Mutable<List<Frame>> = List<Frame> { }
+    used: Size = readFrames(stream, frames)
+    trace(frames.size())
+    trace(used == whole)
+    trace(stream.size() - used)
+    i = 0
+    while i < frames.size() {
+        fr: Frame = frames[i]
+        trace("${fr.opcode} ${fr.payload.size()} ${sum(fr.payload)}")
+        i += 1
+    }
+    trace(same(frames[0].payload, small))
+    trace(same(frames[1].payload, mid))
+    trace(same(frames[2].payload, big))
+    trace(same(frames[3].payload, edge))
+    trace(same(frames[4].payload, page))
+    // a short buffer: no frame yet, nothing taken
+    none: Mutable<List<Frame>> = List<Frame> { }
+    trace(readFrames(c.slice(0, 9), none))
+    trace(readFrames(b.slice(0, 3), none))
+    trace(none.size())
+}

@@ -1,0 +1,99 @@
+// Uses lib:units and lib:tally (which uses lib:units too), and app:ring, which uses this module
+// back.
+
+kira.os as os
+golden.py.modules.lib.units as units
+golden.py.modules.lib.units.Meter as Meter
+golden.py.modules.lib.units.NAME as NAME
+golden.py.modules.lib.units.SCALE as SCALE
+golden.py.modules.lib.units.TABLE as TABLE
+golden.py.modules.lib.units.bounded as bounded
+golden.py.modules.lib.units.bump as bump
+golden.py.modules.lib.units.calls as calls
+golden.py.modules.lib.units.seen as seen
+golden.py.modules.lib.units.shown as shown
+golden.py.modules.lib.tally as tally
+golden.py.modules.lib.tally.fresh as fresh
+golden.py.modules.lib.tally.record as record
+golden.py.modules.lib.tally.start as start
+golden.py.modules.lib.tally.total as total
+golden.py.modules.app.ring as ring
+golden.py.modules.app.ring.HOPS as HOPS
+golden.py.modules.app.ring.isOdd as isOdd
+
+pub steps: Mutable<Int32> = 0
+
+// app:ring's constant, read while this module loads, inside the cycle.
+WIDE: Int32 = HOPS * 10
+
+pub isEven: (n: Int32) Bool {
+    steps += 1
+    n == 0 ? true : isOdd(n - 1)
+}
+
+show: (xs: List<Int32>) Str {
+    s: Mutable<Str> = "["
+    i: Mutable<Size> = 0
+    while i < xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+        i += 1
+    }
+    s + "]"
+}
+
+main: () Void {
+    // lib:tally read lib:units as it loaded
+    start.add(5)
+    trace(show(start))
+    trace(show(TABLE))
+    trace(calls)
+    trace(units.calls)
+    trace(SCALE)
+    trace(NAME)
+    trace(shown())
+
+    // a class of another module, built here and there, its method writing both modules' globals
+    m: Mutable<Meter> = Meter { "here" }
+    trace(m.read(3))
+    trace(record(m, 4))
+    trace(m.reads)
+    trace(total)
+    trace(calls)
+    f: Mutable<Meter> = fresh("there")
+    trace(f.label)
+    trace(record(f, 1))
+    trace(f.reads)
+
+    // another module's globals written from here, a List one included
+    calls = 100
+    trace(bump(5))
+    units.calls = units.calls + 1
+    trace(units.calls)
+    seen.add(42)
+    trace(show(seen))
+    mine: Mutable<List<Int32>> = List<Int32> { values = seen.toArr() }
+    mine.add(0)
+    trace(show(seen))
+    trace(show(mine))
+    t: Mutable<List<Int32>> = TABLE.view().toList()
+    t.add(9)
+    trace(show(TABLE))
+    trace(show(t))
+
+    // kira:math's clamp and deg2rad, carried by lib:units
+    trace("${bounded(30.0)}")
+    trace("${bounded(-90.0)}")
+
+    // the cycle, both ways
+    trace(isEven(6))
+    trace(isOdd(7))
+    trace(isEven(3))
+    trace(steps)
+    trace(WIDE)
+
+    // a stdlib constant
+    trace(POLL_WRITE)
+}

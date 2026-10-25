@@ -1,0 +1,100 @@
+// Conformance (stage 3): `value == Identity` and `!=`, decided by the types or tested at run
+// time, and the narrowing a passing test gives a name that cannot change.
+
+pub Shape: Any {
+    pub area: () Int32;
+}
+
+pub Named: Any {
+    pub label: () Str;
+}
+
+pub Circle: Shape, Named {
+    pub radius: Int32
+
+    override pub area: () Int32 {
+        3 * radius * radius
+    }
+
+    override pub label: () Str {
+        "circle"
+    }
+}
+
+pub Square: Shape {
+    pub side: Int32
+
+    override pub area: () Int32 {
+        side * side
+    }
+}
+
+pub Pt: Struct {
+    pub x: Int32 = 0
+}
+
+pub tests: (s: Shape, m: Maybe<Int32>, c: Circle, p: Pt, f: (x: Int32) Int32) Void {
+    a: Bool = s == Circle                  // @type Bool
+    b: Bool = s != Square                  // @type Bool
+    d: Bool = s == Named                   // @type Bool
+    e: Bool = m == Int32                   // @type Bool
+    g: Bool = c == Shape                   // @type Bool ; @warn types.conform.always
+    h: Bool = p == Pt                      // @type Bool ; @warn types.conform.always
+    k: Bool = f == (Int32) Int32           // @type Bool ; @warn types.conform.always
+    n: Bool = m == Maybe<Int32>            // @type Bool ; @warn types.conform.always
+    o: Bool = 3 == Maybe<Int32>            // @type Bool ; @warn types.conform.always
+}
+
+pub narrowing: (s: Shape, m: Maybe<Int32>) Int32 {
+    big: Bool = s == Circle && s.radius > 2 // @type Int32 member=Field(Circle.radius: Int32) @ s.radius
+    if m == Int32 {
+        v: Int32 = m + 1                   // @type Int32 place=Param(m) @ m
+    }
+    if m != Int32 {
+        w: Maybe<Int32> = m                // @type Maybe<Int32> place=Param(m) @ m
+    } else {
+        x: Int32 = m                       // @type Int32 place=Param(m) @ m
+    }
+    tag: Str = s == Named
+        ? s.label()                        // @type Named place=Param(s) @ s
+        : ""
+    s != Circle
+        ? 0
+        : s.radius                         // @type Circle place=Param(s) @ s
+}
+
+pub unchanged: (s: Shape, q: Shape) Int32 {
+    t: Mutable<Shape> = s
+    if t == Circle {
+        u: Shape = t                       // @type Shape place=Local(t) @ t
+    }
+    if q == Circle {
+        r: Shape = q                       // @type Circle place=Param(q) @ q
+    }
+    if s == Circle || s == Square {
+        z: Shape = s                       // @type Shape place=Param(s) @ s
+    }
+    0
+}
+
+// A block that ends in a throw, a continue or a break leaves too, whatever runs before it.
+pub leaving: (s: Shape, t: Shape, m: Maybe<Int32>, k: Int32) Int32 {
+    if m != Int32 {
+        trace(k)
+        throw "none"
+    }
+    total: Mutable<Int32> = m                   // @type Int32 place=Param(m) @ m
+    i: Mutable<Int32> = 0
+    while i < k {
+        i += 1
+        if s != Circle {
+            continue
+        }
+        total += s.radius                  // @type Circle place=Param(s) @ s
+        if t != Square {
+            break
+        }
+        total += t.side                    // @type Square place=Param(t) @ t
+    }
+    total
+}

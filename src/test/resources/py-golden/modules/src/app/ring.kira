@@ -1,0 +1,10 @@
+// A use cycle with app:report: each calls the other.
+
+golden.py.modules.app.report as report
+golden.py.modules.app.report.isEven as isEven
+
+pub HOPS: Int32 = 2
+
+pub isOdd: (n: Int32) Bool {
+    n == 0 ? false : isEven(n - 1)
+}

@@ -24,6 +24,37 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+
+    // The C++ harness (src/test/kotlin/net/exoad/kira/cpp) is
+    // steered by these knobs. `-Dkira.*` on the gradlew command line lands on
+    // the build JVM, not the forked test JVM, so forward it; and register both
+    // the properties and the environment variables as task inputs, so a
+    // changed knob re-runs the tests instead of replaying an up-to-date result.
+    for (key in listOf("kira.cppGoldenDir", "kira.cppRuntimeDir")) {
+        val value = System.getProperty(key) ?: ""
+        if (value.isNotEmpty()) systemProperty(key, value)
+        inputs.property(key, value)
+    }
+    for (key in listOf(
+        "KIRA_TOOLCHAINS", "KIRA_REQUIRE_TOOLCHAINS", "KIRA_CPP_GOLDEN_DIR",
+        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX", "KIRA_PYTHON",
+    )) {
+        inputs.property("env.$key", System.getenv(key) ?: "")
+    }
+    // The files the harness compiles that live outside src/test: the runtimes
+    // (kira/cpp, and kira/py for the py goldens), any golden root and runtime
+    // dir named by the knobs above.
+    // Without these, editing kira/cpp/kira/*.hxx and running `./gradlew test`
+    // replays the previous result as UP-TO-DATE without compiling anything.
+    // A missing directory is an empty tree, not an error.
+    val cppGoldenRoots = (System.getProperty("kira.cppGoldenDir") ?: System.getenv("KIRA_CPP_GOLDEN_DIR") ?: "")
+        .split(File.pathSeparator).map { it.trim() }.filter { it.isNotEmpty() }
+    val cppRuntimeDir = listOfNotNull(System.getProperty("kira.cppRuntimeDir")?.trim()?.takeIf { it.isNotEmpty() })
+    for ((index, dir) in (listOf("kira/cpp", "kira/py") + cppRuntimeDir + cppGoldenRoots).withIndex()) {
+        inputs.files(fileTree(dir))
+            .withPropertyName("cppHarnessTree$index")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
 }
 
 // Compiler reads kira.yaml from the process working directory.
@@ -40,9 +71,20 @@ tasks.register<CreateStartScripts>("startLspScripts") {
     outputDir = layout.buildDirectory.dir("scripts-lsp").get().asFile
 }
 
+// Third: the converter from the old dialect to the clean one (kira-dialect convert|kt [--check] PATH...).
+tasks.register<CreateStartScripts>("startDialectScripts") {
+    applicationName = "kira-dialect"
+    mainClass.set("net.exoad.kira.dialect.DialectMain")
+    classpath = tasks.jar.get().outputs.files + configurations.runtimeClasspath.get()
+    outputDir = layout.buildDirectory.dir("scripts-dialect").get().asFile
+}
+
 tasks.named<Sync>("installDist") {
-    dependsOn("startLspScripts")
+    dependsOn("startLspScripts", "startDialectScripts")
     from(tasks.named("startLspScripts")) {
+        into("bin")
+    }
+    from(tasks.named("startDialectScripts")) {
         into("bin")
     }
 }

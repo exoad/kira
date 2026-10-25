@@ -1,0 +1,50 @@
+kira.os as os
+kira.test as test
+
+// kira:os's FileOut on py (critique 12): a log appended a line at a time, its header written into an empty file only,
+// LF on every OS, and what a closed one answers.
+
+pub append: (path: Str, line: Str) Bool {
+    opened: Maybe<FileOut> = openAppend(path)
+    if opened.isNone() {
+        false
+    } else {
+        f: FileOut = opened.value
+        ok: Bool = (f.size() > 0 || f.write("# header\n".bytes())) && f.write((line + "\n").bytes()) && f.sync()
+        f.close()
+        ok
+    }
+}
+
+pub handle: (path: Str) Maybe<FileOut> {
+    openAppend(path)
+}
+
+pub reason: () Str {
+    lastError()
+}
+
+pub kind: () Str {
+    lastErrorKind()
+}
+
+pub main: () Int32 {
+    t: Suite = Suite { title = "fileout - kira:os's FileOut on py" }
+    root: Str = tempDir("kira-fileout-").value
+    log: Str = root + "/run.log"
+    t.check(append(log, "one") && append(log, "two"), "two lines appended")
+    t.checkStr(Str.of(readFile(log).value), "# header\none\ntwo\n", "the header once, every line ending LF")
+    held: FileOut = openAppend(log).value
+    t.check(held.write("three\n".bytes()) && held.size() == 23 && fileSize(log) == 23, "a write reaches the file before it returns")
+    held.close()
+    held.close()
+    t.check(held.isStale() && !held.write("x".bytes()) && lastError() == "write: the file is closed", "a closed one is stale and says why it writes nothing")
+    t.check(held.size() == -1 && lastError() == "size: the file is closed" && !held.sync(), "and has no size and no sync")
+    fresh: FileOut = openWrite(log).value
+    t.check(fresh.size() == 0 && fresh.write("new\n".bytes()), "openWrite starts the file again")
+    fresh.close()
+    t.check(append(log, "four") && Str.of(readFile(log).value) == "new\nfour\n", "and the next append adds no header to it")
+    t.check(openWrite(root + "/nope/x").isNone() && lastErrorKind() == "NotFound", "openWrite in a missing directory is none, NotFound")
+    t.check(removeTree(root), "the directory is removed")
+    t.finish()
+}

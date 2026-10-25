@@ -1,0 +1,45 @@
+# Magic binding manifest for kira:bytes (C++ and py backends).
+#
+# Every entry is a `cpp` map without a `symbol` key, so the C loader skips it
+# (kira:bytes has no C lowering). The targets live in kira/core.hxx, so they
+# are constexpr and available in the freestanding profile. The reads are
+# `pure` because they only read their view, yet each panics on a short view
+# (D10): the flag means "no spill needed", never "may be dropped" (see
+# core.bind.yaml).
+#
+# The `py` maps call kira/py/runtime.py's _k_rdle, _k_wrle, _k_rdf64 and
+# _k_wrf64 with the width, over a bytearray or a memoryview, each checked as
+# b.slice(at, width) is, and the big-endian set (D53) their twins _k_rdbe,
+# _k_wrbe, _k_rdf64be and _k_wrf64be. The Float32 ones and parseInt64 (a
+# View<Char>) are py: unsupported: the py target holds no Float32, and its text
+# is a Str, never a view (Str.toInt64 is parseInt64 there).
+readU16Le: { cpp: { expr: "kira::readU16Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 2)" } }
+readU32Le: { cpp: { expr: "kira::readU32Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 4)" } }
+readU64Le: { cpp: { expr: "kira::readU64Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdle({0}, {1}, 8)" } }
+readF32Le: { cpp: { expr: "kira::readF32Le({0}, {1})", pure: true, constexpr: true }, py: { unsupported: "Float32 (Float64 is Python's float)" } }
+readF64Le: { cpp: { expr: "kira::readF64Le({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdf64({0}, {1})" } }
+
+writeU16Le: { cpp: { expr: "kira::writeU16Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 2, {2})" } }
+writeU32Le: { cpp: { expr: "kira::writeU32Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 4, {2})" } }
+writeU64Le: { cpp: { expr: "kira::writeU64Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrle({0}, {1}, 8, {2})" } }
+writeF32Le: { cpp: { expr: "kira::writeF32Le({0}, {1}, {2})", constexpr: true }, py: { unsupported: "Float32 (Float64 is Python's float)" } }
+writeF64Le: { cpp: { expr: "kira::writeF64Le({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrf64({0}, {1}, {2})" } }
+
+readU16Be: { cpp: { expr: "kira::readU16Be({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdbe({0}, {1}, 2)" } }
+readU32Be: { cpp: { expr: "kira::readU32Be({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdbe({0}, {1}, 4)" } }
+readU64Be: { cpp: { expr: "kira::readU64Be({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdbe({0}, {1}, 8)" } }
+readF32Be: { cpp: { expr: "kira::readF32Be({0}, {1})", pure: true, constexpr: true }, py: { unsupported: "Float32 (Float64 is Python's float)" } }
+readF64Be: { cpp: { expr: "kira::readF64Be({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_rdf64be({0}, {1})" } }
+
+writeU16Be: { cpp: { expr: "kira::writeU16Be({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrbe({0}, {1}, 2, {2})" } }
+writeU32Be: { cpp: { expr: "kira::writeU32Be({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrbe({0}, {1}, 4, {2})" } }
+writeU64Be: { cpp: { expr: "kira::writeU64Be({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrbe({0}, {1}, 8, {2})" } }
+writeF32Be: { cpp: { expr: "kira::writeF32Be({0}, {1}, {2})", constexpr: true }, py: { unsupported: "Float32 (Float64 is Python's float)" } }
+writeF64Be: { cpp: { expr: "kira::writeF64Be({0}, {1}, {2})", constexpr: true }, py: { expr: "_k_wrf64be({0}, {1}, {2})" } }
+
+parseInt64: { cpp: { expr: "kira::parseInt64({0})", pure: true, constexpr: true }, py: { unsupported: "a View<Char> (text is a Str on the py target, whose toInt64 parses it)" } }
+
+# K5: findBytes and crc16Xmodem are core.hxx's, freestanding too; fromHex makes a List, so it is rt.hxx's.
+findBytes:   { cpp: { expr: "kira::findBytes({0}, {1}, {2})", pure: true, constexpr: true }, py: { expr: "_k_findbytes({0}, {1}, {2})" } }
+crc16Xmodem: { cpp: { expr: "kira::crc16Xmodem({0}, {1})", pure: true, constexpr: true }, py: { expr: "_k_binascii.crc_hqx({0}, {1})" } }
+fromHex:     { cpp: { expr: "kira::fromHex({0})", pure: true }, py: { expr: "_k_fromhex({0})" } }

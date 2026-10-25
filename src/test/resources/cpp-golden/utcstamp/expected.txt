@@ -1,0 +1,22 @@
+
+utcstamp - kira:time utcStamp
+
+  ok    the epoch
+  ok    a stamp's milliseconds are floored
+  ok    a nanosecond short of a millisecond is none
+  ok    and a millisecond is one
+  ok    a nanosecond before 1970 floors to the millisecond before
+  ok    as a whole millisecond before does
+  ok    and one more nanosecond floors past it
+  ok    a day before 1970
+  ok    1900
+  ok    1900 has no leap day
+  ok    2000 has one
+  ok    and March follows it
+  ok    2024's leap day
+  ok    2100 has none
+  ok    the last Int64
+  ok    the first Int64
+
+16 checks, 0 failed
+

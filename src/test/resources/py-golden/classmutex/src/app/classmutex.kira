@@ -1,0 +1,42 @@
+kira.sync as sync
+
+// A Mutex holding a class, and a mut parameter of one: the object itself, changed in place.
+
+Box: Mutable<Any> {
+    pub n: Mutable<Int64> = 0
+    pub seen: Mutable<List<Int64>> = List<Int64> { }
+}
+
+bump: (b: Box, by: Int64) Void {
+    b.n += by
+    b.seen.add(b.n)
+}
+
+pub main: () Int32 {
+    m: Mutex<Box> = Mutex<Box> { value = Box { } }
+    m.lock((b: Box) Void {
+        b.n = 5
+        bump(b, 2)
+    })
+    workers: Mutable<List<Thread>> = List<Thread> { }
+    k: Mutable<Int32> = 0
+    while k < 4 {
+        workers.add(spawn("worker", () Void {
+            i: Mutable<Int32> = 0
+            while i < 100 {
+                m.lock((b: Box) Void {
+                    b.n += 1
+                })
+                i += 1
+            }
+        }))
+        k += 1
+    }
+    for t: Thread in workers {
+        t.join()
+    }
+    m.lock((b: Box) Void {
+        trace("${b.n} ${b.seen.size()} ${b.seen[0]}")
+    })
+    0
+}

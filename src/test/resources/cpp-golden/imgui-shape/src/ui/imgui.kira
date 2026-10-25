@@ -1,0 +1,35 @@
+// Kira's view of Dear ImGui (design 7.5): drift checks against imgui.h, never a
+// copy of it. The viewer's real one is written by tools/kira_imgui_bind.py from
+// the names it uses; this is the shape of what it writes, one of each kind.
+
+// ImVec2 is a value: an extern struct with fields gets a sizeof check too.
+pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
+    pub x: Float32 = 0.0
+    pub y: Float32 = 0.0
+}
+
+// ImDrawList* is a handle C++ owns: opaque, with extern methods under their C++ names.
+pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Mutable<Any> {
+    pub @_mutates @_extern(cpp = "AddLine") addLine: (a: Vec2, b: Vec2, color: UInt32) Void;
+    pub @_mutates @_extern(cpp = "AddRectFilled") addRectFilled: (a: Vec2, b: Vec2, color: UInt32) Void;
+    pub @_extern(cpp = "VtxCount") vertexCount: () Int32;
+}
+
+// Button(label, size = ImVec2()): the C++ default fills what Kira leaves out.
+pub @_extern(cpp = "ImGui::Button", header = "imgui.h") button: (label: Str) Bool;
+
+pub @_extern(cpp = "ImGui::Button", header = "imgui.h") buttonSized: (label: Str, size: Vec2) Bool;
+
+// SliderFloat, Checkbox and InputText write through a pointer, which Kira has no spelling for since stage 4
+// (a parameter is never Mutable): the driver calls them through kira::ffi, as C++ does.
+
+pub @_extern(cpp = "ImGui::GetWindowDrawList", header = "imgui.h") getWindowDrawList: () DrawList;
+
+// ImGui's flag values are extern constants, read by their C++ names as the marker
+// spells them: an enumerator here, and IM_COL32_WHITE, which is a macro (a `::` in
+// front of it would not compile).
+pub @_extern(cpp = "ImGuiWindowFlags_None", header = "imgui.h") WINDOW_FLAGS_NONE: Int32;
+
+pub @_extern(cpp = "ImGuiWindowFlags_NoTitleBar", header = "imgui.h") WINDOW_FLAGS_NO_TITLE_BAR: Int32;
+
+pub @_extern(cpp = "IM_COL32_WHITE", header = "imgui.h") COL_WHITE: UInt32;

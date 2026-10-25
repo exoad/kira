@@ -1,0 +1,17 @@
+
+closures - captures by value, Ref for shared state
+
+  ok    [k]: a free function's local
+  ok    a C++ lambda passes to a template Fx parameter
+  ok    a capturing lambda to a template parameter
+  ok    [c_k = k]: a struct field, copied under its own name
+  ok    [*this]: the struct, copied, for a method call
+  ok    [this]: a class method's lambda that does not escape
+  ok    [self = shared_from_this()]: an escaping lambda sees later writes
+  ok    and keeps the object alive after the last Rc is gone
+  ok    a stack-constructed class still runs its non-escaping lambdas
+  ok    [counter]: a Ref<Int32> is mutable through the copy
+  ok    and a copy of the closure shares it
+  ok    while a new tally starts its own
+
+12 checks, 0 failed

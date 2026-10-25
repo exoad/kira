@@ -1,0 +1,39 @@
+
+regexes - kira:regex on py
+
+  ok    search finds a match and its groups
+  ok    at its offsets
+  ok    a group that took no part is none
+  ok    matchStart, matchAt and fullMatch anchor
+  ok    MULTILINE: ^ and $ at each line
+  ok    ^ in matchAt is still the text's start
+  ok    findAll gives the one group
+  ok    sub's template takes the groups
+  ok    split keeps a group's text
+  ok    compile is none for a bad pattern, regexError str(e) alone
+  ok    and another module reads the same reason
+  ok    which a compile that works clears
+  ok    a repeat past re's limit, an OverflowError, is none too
+
+13 checks, 0 failed
+
+regexes -> 0
+compile is re's: 10 of 10
+search is re's: 110 of 110
+matchStart is re's: 110 of 110
+matchAt is re's: 830 of 830
+fullMatch is re's: 110 of 110
+findIter is re's: 110 of 110
+findAll is re's: 88 of 88
+sub is re's: 440 of 440
+split is re's: 88 of 88
+groups: 12- 12 None 12 None [2, 5]
+regexError is str(e) of each bad pattern, read in app:why: 12 of 12
+a LOCALE flag on a str pattern: None cannot use LOCALE flag with a str pattern
+findAll of two groups: kira: Regex.findAll of a pattern of 2 groups
+sub with a bad escape: kira: Regex.sub's replacement: bad escape \q at position 0
+sub naming a group the pattern lacks: kira: Regex.sub's replacement: unknown group name 'x'
+split by a group that took no part: kira: Regex.split by a group that took no part
+a group the pattern lacks: kira: Match.group of 3, which its pattern lacks
+a name the pattern lacks: kira: Match.group of 'q', which its pattern lacks
+of the types: True True list

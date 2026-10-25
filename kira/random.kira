@@ -1,0 +1,18 @@
+// Python's random.Random, its Mersenne Twister draw for draw; py only, as the generator is.
+
+// random.Random itself, so a Python caller may hand one over. A bad argument panics.
+pub @_magic Random: Mutable<Any> {
+    // random(): [0.0, 1.0).
+    pub @_mutates nextFloat: () Float64;
+    // uniform(lo, hi): lo + (hi - lo) * nextFloat(), hi itself reachable by rounding.
+    pub @_mutates uniform: (lo: Float64, hi: Float64) Float64;
+    // randrange(stop): [0, stop), stop above 0.
+    pub @_mutates below: (stop: Int64) Int64;
+    // randint(lo, hi): [lo, hi], lo at most hi.
+    pub @_mutates between: (lo: Int64, hi: Int64) Int64;
+    // getrandbits(k): k random bits, k in 0..63.
+    pub @_mutates bits: (k: Int32) Int64;
+}
+
+// random.Random(seed).
+pub @_magic newRandom: (seed: Int64) Random;

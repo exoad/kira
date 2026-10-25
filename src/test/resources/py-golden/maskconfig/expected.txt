@@ -1,0 +1,93 @@
+{
+ "on": true,
+ "box": {
+  "front": 0.2,
+  "back": 0.2,
+  "left": 0.1,
+  "right": 0.1
+ },
+ "wedges": []
+}
+{
+ "on": true,
+ "box": {
+  "front": 0.25,
+  "back": 0.2,
+  "left": 0.11,
+  "right": 0.1
+ },
+ "wedges": [
+  {
+   "a0": 156.5,
+   "a1": 170.0,
+   "r_max_mm": 400,
+   "blind": true,
+   "src": "capture"
+  },
+  {
+   "a0": 359.5,
+   "a1": 0.5,
+   "r_max_mm": 250,
+   "blind": false,
+   "src": "manual"
+  }
+ ]
+}
+{
+ "on": false,
+ "box": {
+  "front": 0.312,
+  "back": NaN,
+  "left": 1.5,
+  "right": 0.0
+ },
+ "wedges": [
+  {
+   "a0": 350.0,
+   "a1": 10.25,
+   "r_max_mm": 65535,
+   "blind": true,
+   "src": "manual"
+  },
+  {
+   "a0": 1.0,
+   "a1": 354.88,
+   "r_max_mm": 0,
+   "blind": false,
+   "src": "manual"
+  }
+ ]
+}
+{
+ "on": false,
+ "box": {
+  "front": 0.2,
+  "back": 0.2,
+  "left": 0.1,
+  "right": 0.1
+ },
+ "wedges": []
+}
+ValueError: cannot convert float NaN to integer
+ValueError: cannot convert float NaN to integer
+{
+ "on": true,
+ "box": {
+  "front": 0.2,
+  "back": 0.2,
+  "left": 0.1,
+  "right": 0.1
+ },
+ "wedges": []
+}
+{
+ "on": true,
+ "box": {
+  "front": 0.2,
+  "back": 0.2,
+  "left": 0.1,
+  "right": 0.1
+ },
+ "wedges": []
+}
+reload against lidarmask.py's Mask: 4000 lidar-mask.json texts, 226 unreadable, 371 refused for a NaN edge, every saved text the same

@@ -1,0 +1,8 @@
+module functions:app.greetings  profile=HOSTED ns=greetings imports=[functions:app.utils]
+  fn greeting: () Str  body
+module functions:app.main  profile=HOSTED ns=main_ imports=[functions:app.greetings]
+  fn main: () Void  body
+module functions:app.utils  profile=HOSTED ns=utils imports=[]
+  fn normalize: (text: Str) Str  body
+diag error types.use.bare functions/app/greetings.kira:4:5  'normalize' is not in scope: add `functions.app.utils.normalize as normalize` or write `utils.normalize` (it is not pub there: mark it `pub` first).
+diag error types.use.bare functions/app/main.kira:4:20  'greeting' is not in scope: add `functions.app.greetings.greeting as greeting` or write `greetings.greeting` (it is not pub there: mark it `pub` first).

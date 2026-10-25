@@ -1,0 +1,13 @@
+# kira:path on py: os.path's own calls (posixpath, or ntpath on Windows), and runtime.py's _k_joinall and
+# _k_relpath for join's TypeError on no parts and relpath's ValueError. C++ refuses each call (D83).
+
+joinPath:   { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.join({0}, {1})" } }
+joinPaths:  { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_joinall({0})" } }
+baseName:   { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.basename({0})" } }
+dirName:    { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.dirname({0})" } }
+stripExt:   { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.splitext({0})[0]" } }
+normPath:   { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.normpath({0})" } }
+absPath:    { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.abspath({0})" } }
+relPath:    { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_relpath({0}, {1})" } }
+expandUser: { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "_k_os.path.expanduser({0})" } }
+slashed:    { cpp: { unsupported: "py only for now: Python's os.path has no C++ half yet" }, py: { expr: "{0}.replace(_k_os.sep, \"/\")" } }

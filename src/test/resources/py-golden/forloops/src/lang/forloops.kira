@@ -1,0 +1,183 @@
+log: Mutable<List<Int32>> = @listOf(1, 2, 3)
+other: Mutable<List<Int32>> = List<Int32> { }
+
+Bag: Mutable<Any> {
+    pub items: Mutable<List<Int32>>
+    pub seen: Mutable<List<Int32>> = List<Int32> { }
+
+    pub note: (v: Int32) Void {
+        seen.add(v)
+    }
+
+    pub walk: () Int32 {
+        n: Mutable<Int32> = 0
+        for x: Int32 in items {
+            note(x * 10)
+            n += x
+        }
+        n
+    }
+}
+
+Cell: Mutable<Any> {
+    pub v: Mutable<Int32>
+}
+
+endAt: (n: Int32) Int32 {
+    trace("end ${n}")
+    n
+}
+
+startAt: (n: Int32) Int32 {
+    trace("start ${n}")
+    n
+}
+
+elsewhere: () Int32 {
+    other.add(9)
+    1
+}
+
+sumView: (xs: View<Int32>) Int32 {
+    t: Mutable<Int32> = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    t
+}
+
+sumBytes: (bs: View<UInt8>) UInt32 {
+    t: Mutable<UInt32> = 0
+    for b: UInt8 in bs {
+        t += b as UInt32
+    }
+    t
+}
+
+walkParam: (xs: List<Int32>) Int32 {
+    t: Mutable<Int32> = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    t
+}
+
+walkMut: (xs: List<Int32>) Int32 {
+    t: Mutable<Int32> = 0
+    for x: Int32 in xs {
+        t += x
+    }
+    xs.add(t)
+    t
+}
+
+made: () List<Int32> {
+    @listOf(4, 5, 6)
+}
+
+show: (xs: List<Int32>) Str {
+    s: Mutable<Str> = "["
+    for i: Size in 0..xs.size() {
+        if i > 0 {
+            s = s + " "
+        }
+        s = s + "${xs[i]}"
+    }
+    s + "]"
+}
+
+main: () Void {
+    // ranges: the start, then the end, each once; empty and backwards ranges
+    for i: Int32 in startAt(1)..endAt(4) {
+        trace(i)
+    }
+    for i: Int32 in 5..5 {
+        trace(i)
+    }
+    for i: Int32 in 5..2 {
+        trace(i)
+    }
+    n: Mutable<Int32> = 3
+    for i: Int32 in 0..n {
+        n += 10
+        trace(i)
+    }
+    trace(n)
+    for u: UInt8 in 250..255 {
+        trace(u)
+    }
+    lo: Int64 = -2
+    for i: Int64 in lo..1 {
+        trace(i)
+    }
+
+    // break and continue, nested
+    for i: Int32 in 0..4 {
+        if i == 1 {
+            continue
+        }
+        for j: Int32 in 0..10 {
+            if j == 2 {
+                break
+            }
+            trace(i * 10 + j)
+        }
+    }
+
+    xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
+    for x: Int32 in xs {
+        trace(x)
+    }
+    for x: Int32 in xs {
+        for y: Int32 in xs {
+            trace(x * y)
+        }
+    }
+
+    // a field, while a method writes another field of the object
+    bag: Mutable<Bag> = Bag { @listOf(1, 2) }
+    trace(bag.walk())
+    trace(show(bag.seen))
+    for x: Int32 in bag.items {
+        bag.note(x)
+    }
+    trace(show(bag.seen))
+
+    // a global, while a call writes another global
+    for x: Int32 in log {
+        trace(x + elsewhere())
+    }
+    trace(show(other))
+
+    // parameters, a call's List, views
+    trace(walkParam(xs))
+    zs: Mutable<List<Int32>> = @listOf(1, 2)
+    trace(walkMut(zs))
+    trace(show(zs))
+    for x: Int32 in made() {
+        trace(x)
+    }
+    trace(sumView(xs))
+    trace(sumView(xs.from(2)))
+    octets: List<UInt8> = @listOf(200, 100, 7)
+    trace(sumBytes(octets))
+    trace(sumBytes(octets.slice(1, 2)))
+    for b: UInt8 in octets {
+        trace(b)
+    }
+    fixed: Arr<Int32, 3> = Arr<Int32, 3> { }
+    for x: Int32 in fixed {
+        trace(x)
+    }
+
+    // a List of objects: the loop writes the objects, not the List
+    cells: Mutable<List<Cell>> = List<Cell> { }
+    cells.add(Cell { 1 })
+    cells.add(Cell { 2 })
+    for c: Cell in cells {
+        c.v = c.v * 5
+    }
+    for c: Cell in cells {
+        trace(c.v)
+    }
+}

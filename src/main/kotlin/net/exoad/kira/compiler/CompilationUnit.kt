@@ -4,10 +4,8 @@ import net.exoad.kira.compiler.analysis.semantic.KiraSymbolTable
 import net.exoad.kira.compiler.analysis.semantic.SemanticSymbol
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.EnumDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
-import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariantDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.lexer.Token
@@ -17,7 +15,8 @@ import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
 
-class CompilationUnit {
+/** [bootstrap]: read the stdlib under `kira/` in the working directory first, as the CLI does. */
+class CompilationUnit(bootstrap: Boolean = true) {
     private val sources = mutableMapOf<String, SourceContext>()
     private val magicTypeNames = mutableSetOf<String>()
     /** Foreign opaque class names → C pointer handles (no Kira ARC). */
@@ -29,13 +28,13 @@ class CompilationUnit {
     init {
         try {
             val kiraRoot = File("kira")
-            if (kiraRoot.exists() && kiraRoot.isDirectory) {
+            if (bootstrap && kiraRoot.exists() && kiraRoot.isDirectory) {
                 kiraRoot.walkTopDown()
                     .filter { it.isFile && it.extension == "kira" }
                     .forEach { sourceFile ->
                         val pre = KiraPreprocessor(sourceFile.readText())
                         val processed = pre.process()
-                        val ctx = addSource(sourceFile.canonicalPath, processed.processedContent, emptyList())
+                        val ctx = addSource(sourceFile.canonicalPath, processed.processedContent, emptyList(), ModuleNames.stdlib(sourceFile.path))
                         val lexer = KiraLexer(ctx)
                         val tokens = lexer.tokenize()
                         addSource(sourceFile.canonicalPath, ctx.content, tokens)
@@ -47,8 +46,10 @@ class CompilationUnit {
         }
     }
 
-    fun addSource(file: String, content: String, tokens: List<Token>): SourceContext {
+    /** A source of [file]; a [moduleName] given once is kept when the file is added again with its tokens. */
+    fun addSource(file: String, content: String, tokens: List<Token>, moduleName: String? = null): SourceContext {
         val ctx = SourceContext(content, file, tokens)
+        ctx.moduleName = moduleName ?: sources[file]?.moduleName
         sources[file] = ctx
         return ctx
     }
@@ -140,9 +141,7 @@ class CompilationUnit {
         return when (this) {
             is ClassDecl -> (name.identifier as? Identifier)?.value
             is TraitDecl -> (name.identifier as? Identifier)?.value
-            is VariantDecl -> (name.identifier as? Identifier)?.value
             is TypeAliasDecl -> (alias.identifier as? Identifier)?.value
-            is EnumDecl -> name.value
             else -> null
         }
     }

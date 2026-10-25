@@ -1,10 +1,10 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -36,8 +36,12 @@ class RuntimeSuiteTest {
             runSemantic = false,
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        assumeTrue(
-            result.compileResult.exitCode == 0,
+        // A compile failure is a compiler bug, not a missing toolchain: it
+        // must FAIL, never skip. (It used to be an assumption, which hid
+        // every non-compiling lowering behind a green run.)
+        assertEquals(
+            0,
+            result.compileResult.exitCode,
             "cc failed. stderr:\n${result.compileResult.stderr}\nC:\n$generated"
         )
         val exec = assertNotNull(result.runResult, "binary did not run")
@@ -55,7 +59,7 @@ class RuntimeSuiteTest {
     fun helloWorld() {
         assertStdout("hello, kira\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 trace("hello, kira")
             }
             """
@@ -66,7 +70,7 @@ class RuntimeSuiteTest {
     fun arithmeticAndOrderOfOperations() {
         assertStdout("5\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 a: Int32 = 1 + 2 * 3 - 4 / 2
                 trace(a)
             }
@@ -78,11 +82,11 @@ class RuntimeSuiteTest {
     fun functionCallAndReturn() {
         assertStdout("8\n") {
             """
-            fx add: (a: Int32, b: Int32) Int32 {
-                return a + b
+            add: (a: Int32, b: Int32) Int32 {
+                a + b
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(add(5, 3))
             }
             """
@@ -95,7 +99,7 @@ class RuntimeSuiteTest {
     fun ifElseBranches() {
         assertStdout("two\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 x: Int32 = 2
                 if x == 1 {
                     trace("one")
@@ -111,8 +115,8 @@ class RuntimeSuiteTest {
     fun whileLoop() {
         assertStdout("0\n1\n2\n3\n4\n") {
             """
-            fx main: () Void {
-                mut i: Int32 = 0
+            main: () Void {
+                i: Mutable<Int32> = 0
                 while i < 5 {
                     trace(i)
                     i = i + 1
@@ -126,8 +130,8 @@ class RuntimeSuiteTest {
     fun forRangeLoop() {
         assertStdout("0\n1\n2\n3\n") {
             """
-            fx main: () Void {
-                for mut i: 0..3 {
+            main: () Void {
+                for i: Int32 in 0..4 {
                     trace(i)
                 }
             }
@@ -139,8 +143,8 @@ class RuntimeSuiteTest {
     fun breakAndContinue() {
         assertStdout("1\n2\n3\n") {
             """
-            fx main: () Void {
-                for mut i: 0..10 {
+            main: () Void {
+                for i: Int32 in 0..11 {
                     if i == 0 {
                         continue
                     }
@@ -160,16 +164,16 @@ class RuntimeSuiteTest {
     fun classConstructionAndMethods() {
         assertStdout("Mochi\nmeow\n") {
             """
-            pub class Pet {
-                require pub name: Str
-                require pub sound: Str
+            pub Pet: Any {
+                pub name: Str
+                pub sound: Str
 
-                pub fx speak: () Str {
-                    return sound
+                pub speak: () Str {
+                    sound
                 }
             }
 
-            fx main: () Void {
+            main: () Void {
                 friend: Pet = Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())
@@ -181,40 +185,18 @@ class RuntimeSuiteTest {
     // --- enums / generics ------------------------------------------------------------
 
     @Test
-    fun enumComparison() {
-        assertStdout("ready\n") {
-            """
-            pub enum Status {
-                READY,
-                RUNNING,
-                DONE
-            }
-
-            fx main: () Void {
-                state: Status = Status.READY
-                if state == Status.READY {
-                    trace("ready")
-                } else {
-                    trace("other")
-                }
-            }
-            """
-        }
-    }
-
-    @Test
     fun genericIdentityAndBox() {
         assertStdout("7\n") {
             """
-            pub class Box<T> {
-                require pub value: T
+            pub Box<T>: Any {
+                pub value: T
             }
 
-            fx id<T>: (value: T) T {
-                return value
+            id<T>: (value: T) T {
+                value
             }
 
-            fx main: () Void {
+            main: () Void {
                 wrapped: Box<Int32> = Box<Int32> { 7 }
                 trace(id<Int32>(wrapped.value))
             }
@@ -228,53 +210,53 @@ class RuntimeSuiteTest {
     fun traitDispatchThroughVtable() {
         assertStdout("Rex\nwoof\nLuna\nmeow\n8\n") {
             """
-            pub trait Speaker {
-                pub fx speak: () Str
-                pub fx name: () Str
+            pub Speaker: Any {
+                pub speak: () Str
+                pub name: () Str
             }
 
-            pub trait Noisy: Speaker {
-                pub fx loudness: () Int32
+            pub Noisy: Speaker {
+                pub loudness: () Int32
             }
 
-            pub class Dog: Noisy {
-                require pub label: Str
+            pub Dog: Noisy {
+                pub label: Str
 
-                pub fx speak: () Str {
-                    return "woof"
+                pub speak: () Str {
+                    "woof"
                 }
 
-                pub fx name: () Str {
-                    return label
+                pub name: () Str {
+                    label
                 }
 
-                pub fx loudness: () Int32 {
-                    return 8
-                }
-            }
-
-            pub class Cat: Speaker {
-                require pub label: Str
-
-                pub fx speak: () Str {
-                    return "meow"
-                }
-
-                pub fx name: () Str {
-                    return label
+                pub loudness: () Int32 {
+                    8
                 }
             }
 
-            fx announce: (s: Speaker) Void {
+            pub Cat: Speaker {
+                pub label: Str
+
+                pub speak: () Str {
+                    "meow"
+                }
+
+                pub name: () Str {
+                    label
+                }
+            }
+
+            announce: (s: Speaker) Void {
                 trace(s.name())
                 trace(s.speak())
             }
 
-            fx noiseLevel: (s: Noisy) Int32 {
-                return s.loudness()
+            noiseLevel: (s: Noisy) Int32 {
+                s.loudness()
             }
 
-            fx main: () Void {
+            main: () Void {
                 dog: Dog = Dog { "Rex" }
                 cat: Cat = Cat { "Luna" }
                 announce(dog)
@@ -291,8 +273,8 @@ class RuntimeSuiteTest {
     fun arrIndexAndSize() {
         assertStdout("10\n") {
             """
-            fx main: () Void {
-                numbers: Arr<Int32> = [10, 20, 30]
+            main: () Void {
+                numbers: Arr<Int32> = @arrOf(10, 20, 30)
                 trace(numbers[0])
             }
             """
@@ -311,8 +293,8 @@ class RuntimeSuiteTest {
             source = TestCompileSupport.wrapModule(
                 "test:runtime.nested",
                 """
-                fx main: () Void {
-                    grid: Arr<Arr<Int32>> = [[1, 2], [3, 4]]
+                main: () Void {
+                    grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
                     trace(grid[1][0])
                 }
                 """
@@ -321,8 +303,9 @@ class RuntimeSuiteTest {
             runSemantic = false,
         )
         val result = TestCompileSupport.compileAndRunC(generated, cc)
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-            result.compileResult.exitCode != 0,
+        assertNotEquals(
+            0,
+            result.compileResult.exitCode,
             "nested Arr now compiles -- the pinned gap is fixed, update this test"
         )
         // The emitted shape is still worth pinning even though cc rejects it.
@@ -336,11 +319,11 @@ class RuntimeSuiteTest {
         // CodegenSuiteTest.genericCallReturnTypeNotThreadedIntoPrintFormat.
         assertStdout("1\n2\n3\n") {
             """
-            fx id<T>: (value: T) T {
-                return value
+            id<T>: (value: T) T {
+                value
             }
 
-            fx main: () Void {
+            main: () Void {
                 trace(id<Int8>(1))
                 trace(id<Int16>(2))
                 trace(id<Int32>(3))
@@ -353,7 +336,7 @@ class RuntimeSuiteTest {
     fun mapPutGetWithMaybe() {
         assertStdout("1\n36\n-1\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 ages: Map<Str, Int32> = Map<Str, Int32> { }
                 ages.put("ada", 36)
                 found: Maybe<Int32> = ages.get("ada")
@@ -370,7 +353,7 @@ class RuntimeSuiteTest {
     fun listOfStrings() {
         assertStdout("2\ngrace\n1\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 names: List<Str> = List<Str> { }
                 names.add("ada")
                 names.add("grace")
@@ -386,7 +369,7 @@ class RuntimeSuiteTest {
     fun setDeduplicates() {
         assertStdout("2\n1\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 seen: Set<Int32> = Set<Int32> { }
                 seen.add(1)
                 seen.add(2)
@@ -402,7 +385,7 @@ class RuntimeSuiteTest {
     fun stackAndQueue() {
         assertStdout("10\n1\n1\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 undo: Stack<Int32> = Stack<Int32> { }
                 undo.push(10)
                 top: Maybe<Int32> = undo.pop()
@@ -426,7 +409,7 @@ class RuntimeSuiteTest {
     fun stringMethods() {
         assertStdout("4\nKIRA\n1\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 s: Str = "  Kira  "
                 t: Str = s.trim()
                 trace(t.length())
@@ -441,7 +424,7 @@ class RuntimeSuiteTest {
     fun numConversion() {
         assertStdout("7\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 n: Int32 = 7
                 trace(n.toInt64())
             }
@@ -453,7 +436,7 @@ class RuntimeSuiteTest {
     fun assertHelper() {
         assertStdout("ok\n") {
             """
-            fx main: () Void {
+            main: () Void {
                 assert(true, "fine")
                 trace("ok")
             }

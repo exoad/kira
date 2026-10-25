@@ -35,14 +35,9 @@ object TestCompileSupport {
         return "${parts[0]}/${parts[1].replace('.', '/')}.kira"
     }
 
-    fun wrapModule(moduleUri: String, body: String): String {
-        return buildString {
-            append("module \"")
-            append(moduleUri)
-            appendLine("\"")
-            appendLine()
-            appendLine(body.trimIndent())
-        }
+    /** [body] as the text of module [moduleUri]: the file is the module, named by the path [logicalPathForModule] gives it. */
+    fun wrapModule(@Suppress("UNUSED_PARAMETER") moduleUri: String, body: String): String {
+        return body.trimIndent() + "\n"
     }
 
     fun compileSnippet(
@@ -58,6 +53,8 @@ object TestCompileSupport {
         val srcWithTokens = cu.addSource(logicalPath, src.content, tokens)
 
         KiraSourceParsers.from(srcWithTokens).parse()
+        // Each import's module and each type's role, as every reader of a parsed unit sees them.
+        net.exoad.kira.compiler.DialectLink.link(cu)
 
         val semantics = if (runSemantic) {
             KiraSemanticAnalyzer(cu).validateAST()
@@ -110,27 +107,68 @@ object TestCompileSupport {
         return KiraJSCodeGenerator(result.compilationUnit).emitToString()
     }
 
+    val isWindows: Boolean = System.getProperty("os.name").lowercase().contains("win")
+
+    /**
+     * The C compiler the runtime tests drive: `$CC` when set, otherwise the
+     * first of clang / cc / gcc found on PATH. Returns a path
+     * [ProcessBuilder] can run on the host OS -- on Windows that is the
+     * `.exe`, never the MSYS `/c/...` spelling `which` prints.
+     */
     fun findCCompiler(): String? {
-        val candidates = listOf("clang", "cc", "gcc")
+        return findTool("CC", listOf("clang", "cc", "gcc"))
+    }
+
+    /** `$NODE` when set, otherwise node / nodejs on PATH. */
+    fun findNode(): String? {
+        return findTool("NODE", listOf("node", "nodejs"))
+    }
+
+    /**
+     * The installed CLI launcher from `installDist`: the POSIX script on
+     * Linux/macOS, the `.bat` on Windows.
+     */
+    fun installedKiraLauncher(): File {
+        val bin = File("build/install/kira/bin")
+        return if (isWindows) File(bin, "kira.bat") else File(bin, "kira")
+    }
+
+    private fun findTool(envOverride: String, candidates: List<String>): String? {
+        val override = System.getenv(envOverride)?.trim()
+        if (!override.isNullOrEmpty()) {
+            val asFile = File(override)
+            if (asFile.isFile) {
+                return asFile.absolutePath
+            }
+            return findOnPath(override) ?: override
+        }
         for (candidate in candidates) {
-            val proc = ProcessBuilder("which", candidate).start()
-            val out = proc.inputStream.bufferedReader().readText().trim()
-            proc.waitFor()
-            if (proc.exitValue() == 0 && out.isNotBlank()) {
-                return out
+            val found = findOnPath(candidate)
+            if (found != null) {
+                return found
             }
         }
         return null
     }
 
-    fun findNode(): String? {
-        val candidates = listOf("node", "nodejs")
-        for (candidate in candidates) {
-            val proc = ProcessBuilder("which", candidate).start()
-            val out = proc.inputStream.bufferedReader().readText().trim()
-            proc.waitFor()
-            if (proc.exitValue() == 0 && out.isNotBlank()) {
-                return out
+    /** Search PATH for [name]; on Windows also try the PATHEXT spellings. */
+    private fun findOnPath(name: String): String? {
+        val path = System.getenv("PATH") ?: return null
+        val extensions = if (isWindows) {
+            listOf("") + (System.getenv("PATHEXT") ?: ".EXE;.BAT;.CMD")
+                .split(';')
+                .filter { it.isNotBlank() }
+                .map { it.lowercase() }
+        } else {
+            listOf("")
+        }
+        for (dir in path.split(File.pathSeparatorChar)) {
+            if (dir.isBlank()) continue
+            for (ext in extensions) {
+                val candidate = File(dir, name + ext)
+                if (candidate.isFile && (isWindows || candidate.canExecute())) {
+                    return candidate.absolutePath
+                }
             }
         }
         return null
@@ -175,10 +213,18 @@ object TestCompileSupport {
             .directory(workingDir)
             .start()
 
+        // Drain stderr on its own thread so a chatty compiler cannot block on
+        // a full pipe while we wait on stdout.
+        val stderrHolder = StringBuilder()
+        val stderrReader = Thread { stderrHolder.append(process.errorStream.bufferedReader().readText()) }
+        stderrReader.start()
         val stdout = process.inputStream.bufferedReader().readText()
-        val stderr = process.errorStream.bufferedReader().readText()
+        stderrReader.join()
         val code = process.waitFor()
 
-        return ProcessResult(code, stdout, stderr)
+        // A Windows C runtime writes "\r\n" for every "\n" on a text-mode
+        // pipe; the tests assert the program's text, not the host's line
+        // ending. No-op on Linux/macOS.
+        return ProcessResult(code, stdout.replace("\r", ""), stderrHolder.toString())
     }
 }

@@ -1,0 +1,9 @@
+# kira:csv on py: runtime.py's _k_CsvReader over csv.reader, _k_opencsv, and _k_csvline over csv.writer; the
+# reasons are on the shared reasons (D86). C++ refuses each call (D83).
+
+CsvReader.next:        { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "{self}.next()" } }
+CsvReader.isMalformed: { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "{self}.isMalformed()" } }
+CsvReader.close:       { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "{self}.close()" } }
+openCsv:  { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "_k_opencsv({0})" } }
+csvLine:  { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "_k_csvline({0})" } }
+csvError: { cpp: { unsupported: "Python's csv module, py only" }, py: { expr: "_k_csverror()" } }

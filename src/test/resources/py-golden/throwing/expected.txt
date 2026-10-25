@@ -1,0 +1,20 @@
+12
+not a number: x1
+7
+guarded: not a number: q
+-1
+bottom after 4
+3
+amy has 3, not 9
+3
+1
+caught, the message unread
+first inner
+second again
+222
+ok 8 8
+err negative: -3 negative: -3 true
+1
+0
+err negative: -1 negative: -1 true
+ok 0 0

@@ -1,0 +1,5 @@
+// A sidecar that matches its externs, a builtin standing in for one: it loads.
+
+pub @_extern sleepS: (seconds: Float64) Void
+
+pub @_extern(raises = "Missing") g: () Void

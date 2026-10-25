@@ -1,0 +1,5 @@
+// A Void main: _k_run() gives Python None, and the program exits 0.
+
+pub main: () Void {
+    println("quiet ran")
+}
