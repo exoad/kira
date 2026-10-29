@@ -11,6 +11,7 @@ frontend net.exoad.kira.suite.Lexer*
 frontend net.exoad.kira.suite.Parser*
 frontend net.exoad.kira.suite.OperatorMemberParseTest
 frontend net.exoad.kira.suite.AliasImportTest
+frontend net.exoad.kira.suite.DeclShortTest
 types net.exoad.kira.types.*
 types net.exoad.kira.NullSafetyTest
 types net.exoad.kira.OperatorOverloadTest
@@ -19,6 +20,7 @@ types net.exoad.kira.suite.SemanticSuiteTest
 types net.exoad.kira.suite.NarrowedValueTest
 types net.exoad.kira.suite.NestedTypeTest
 types net.exoad.kira.suite.BlockValueTest
+types net.exoad.kira.suite.PrimInitTest
 stdlib net.exoad.kira.StdlibCppBindingsTest
 stdlib net.exoad.kira.StdlibLayoutAndBodiesTest
 stdlib net.exoad.kira.StdlibLoweringTest
