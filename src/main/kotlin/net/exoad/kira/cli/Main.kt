@@ -49,6 +49,14 @@ private fun applyTargetOverride(target: String) {
 }
 
 fun main(args: Array<String>) {
+    // `kira --fix-decl-repeat <file.kira>...` rewrites `x: T = T { .. }` to `x: T { .. }` in place (rules.decl.repeat's fix).
+    if (args.firstOrNull() == "--fix-decl-repeat") {
+        for (f in args.drop(1)) {
+            val n = net.exoad.kira.compiler.fix.DeclRepeatFix.rewriteFile(File(f))
+            println("$f: $n")
+        }
+        return
+    }
     // Minimal CLI: `kira --target js|c|cpp|py|neko|none` overrides project.kira's
     // target; `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated

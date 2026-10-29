@@ -26,6 +26,8 @@ data class TyperOptions(
     val freestanding: List<String> = emptyList(),
     val headerOnly: List<String> = emptyList(),
     val namespaces: Map<String, String> = emptyMap(),
+    /** Tell `x: T = T { .. }` (rules.decl.repeat); the backends ask for it, a typer test does not. */
+    val hintDeclRepeat: Boolean = false,
 )
 
 /** Phase C: types every body. W2.1 sets [KiraTyper.bodyTyper]. */

@@ -29,7 +29,7 @@ object CppModuleEmitterFactory {
 
     /** As [create], with the parts stated (a test swaps one for a fake). */
     fun create(unit: CompilationUnit, options: CppOptions, parts: CppEmitParts): CppModuleEmitter {
-        val program = KiraTyper.run(unit, TyperMode.STRICT, TyperOptions(options.freestanding, options.headerOnly, options.namespaces))
+        val program = KiraTyper.run(unit, TyperMode.STRICT, TyperOptions(options.freestanding, options.headerOnly, options.namespaces, hintDeclRepeat = true))
         val diagnostics = program.diagnostics.map { convert(it) }
         if (program.hasErrors) {
             return FailedEmitter(diagnostics)

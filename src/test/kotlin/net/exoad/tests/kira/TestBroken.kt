@@ -28,7 +28,7 @@ class TestBroken {
     fun testUnderscoresInNormalIdentifiersNotAllowed() {
         // The lexer reads the whole file first, so `a_b` is refused before `A_T` is parsed.
         refusedAs("\nA_T: Any {}\n\na_b: Int32 = 123", "KiraLexer::lexIdentifier", "Underscores are not allowed in 'a_b'")
-        refusedAs("\nA_T: Any {}", "parse.type.name", "'A_T' is a constant's name")
+        refusedAs("\nA_T: Any {\n    pub x: Int32\n}", "parse.type.name", "'A_T' is a constant's name")
     }
 
     @Test

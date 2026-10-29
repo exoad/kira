@@ -108,7 +108,7 @@ object KiraPyBackend {
         val root = projectRoot.toAbsolutePath().normalize()
         val diagnostics = mutableListOf<CppDiagnostic>()
         val planned = mutableListOf<PyPlannedFile>()
-        val program = KiraTyper.run(unit, TyperMode.STRICT, TyperOptions())
+        val program = KiraTyper.run(unit, TyperMode.STRICT, TyperOptions(hintDeclRepeat = true))
         diagnostics += program.diagnostics.map { CppModuleEmitterFactory.convert(it) }
         val runtime = PyRuntime.load(program)
         if (runtime == null) {

@@ -235,7 +235,7 @@ class DialectFixTest {
 
     @Test
     fun aValueWrittenAsATypeOrAnImportInABodySaysWhatItIs() {
-        val local = refused("Cfg: Any {\n    pub x: Int32 = 1\n}\nmain: () Void {\n    c: Cfg { }\n}")
+        val local = refused("Cfg: Any {\n    pub x: Int32 = 1\n}\nmain: () Void {\n    c: Cfg {\n        pub x: Int32 = 1\n    }\n}")
         assertEquals("parse.type.name", local.tag)
         assertTrue(local.message.contains("'c: Cfg { }' declares nothing") && local.message.contains("'c: Cfg = ...'"), local.message)
         val function = refused("f: Int32 {\n    return 1\n}")

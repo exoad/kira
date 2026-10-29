@@ -612,7 +612,7 @@ class ParserSuiteTest {
         assertEquals(2, declsOf(ast).size, ast.toString())
         // Rejected: types, functions, parameters and type parameters.
         for ((bad, tag, words) in listOf(
-            Triple("A_T: Any {}", "parse.type.name", "'A_T' is a constant's name"),
+            Triple("A_T: Any {\n    pub x: Int32\n}", "parse.type.name", "'A_T' is a constant's name"),
             Triple("Int32 as A_B", "KiraParser::expectConventionalName", "Type alias 'A_B' does not conform to PascalCase"),
             Triple("MY_FN: () Void {}", "KiraParser::expectConventionalName", "Function 'MY_FN' does not conform to camelCase"),
             Triple("f: (X_Y: Int32) Void {}", "KiraParser::expectConventionalName", "Parameter 'X_Y' does not conform to camelCase"),

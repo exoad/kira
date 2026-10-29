@@ -972,12 +972,15 @@ class KiraParser(
             return parseFunctionRest(origin, name, generics, modifiers, marks)
         }
         val ident = name as Identifier
+        val typeStart = buffer.createCheckpoint().position
         val written = parseType()
         if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL)) {
             refuseMut(modifiers, MUT_TYPE)
             return parseTypeDecl(origin, ident, generics, written, modifiers, marks)
         }
-        if (at(Token.Type.S_COMMA) || at(Token.Type.S_OPEN_BRACE)) {
+        // `x: T { .. }` with the brace on the type's line is `x: T = T { .. }`; a brace that starts a line is refused as before.
+        val shortForm = at(Token.Type.S_OPEN_BRACE) && !startsOnNewLine() && !opensMembers()
+        if (at(Token.Type.S_COMMA) || (at(Token.Type.S_OPEN_BRACE) && !shortForm)) {
             refuseValueShapedType(ident, written, origin)
         }
         refuseMut(modifiers, MUT_BINDING)
@@ -996,13 +999,22 @@ class KiraParser(
         }
         expectModifiers(modifiers, WrappingContext.VARIABLE)
         var value: Expr? = null
-        if (at(Token.Type.S_EQUAL)) {
+        var repeatFrom: Token? = null
+        if (shortForm) {
+            // The block constructs the type again, as a node of its own (for `Mutable<U>`, U).
+            val again = reparseType(typeStart).let { mutableInner(it) ?: it }
+            value = parseObjectInitBody(context.astOrigins[again] ?: origin, again)
+            while (at(Token.Type.K_WITH)) value = parseWithExpr(value!!)
+        } else if (at(Token.Type.S_EQUAL)) {
+            repeatFrom = buffer.previous()
             advancePointer()
             value = parseExpr()
         }
         val decl = VariableDecl(ident, first, value, modifiers?.keys?.toList() ?: emptyList())
         attachIntrinsics(decl)
-        return putOrigin(decl, origin)
+        putOrigin(decl, origin)
+        if (repeatFrom != null) noteDeclRepeat(decl, ident, first, repeatFrom)
+        return decl
     }
 
     /** After `name<T>:` at a `(`: the parameters and result, then a body, `= value`, or neither (a slot). */
@@ -2900,7 +2912,30 @@ class KiraParser(
      */
     private fun parseObjectInit(): ObjectInitExpr {
         val origin = here()
-        val typeName = parseType()
+        return parseObjectInitBody(origin, parseType())
+    }
+
+    /** At a `{` that opens a member (`pub x: T`, `x: T`) or a `return`: a type's or a function's body, never a construction's arguments. */
+    private fun opensMembers(): Boolean {
+        val t = peek(1)
+        return t.type.name.startsWith("K_MODIFIER_") || t.type == Token.Type.K_RETURN || (t.type == Token.Type.IDENTIFIER && peek(2).type == Token.Type.S_COLON)
+    }
+
+    /** The type just before `x: T {` read a second time, so the construction owns a node of its own. */
+    private fun reparseType(start: Int): Type {
+        val saved = buffer
+        buffer = TokenBuffer(tokens)
+        try {
+            if (start > 0) buffer.advance(start)
+            return parseType()
+        } finally {
+            buffer = saved
+        }
+    }
+
+    /** The `{ .. }` of a construction of [typeName], at the pointer. */
+    private fun parseObjectInitBody(origin: SourcePosition, typeName: Type): ObjectInitExpr {
+        braceTokens.add(peek())
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val args = mutableListOf<Expr>()
         val named = mutableListOf<FunctionCallNamedParameterExpr>()
@@ -2930,7 +2965,31 @@ class KiraParser(
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return putOrigin(ObjectInitExpr(typeName, args, named), origin)
+        return putOrigin(ObjectInitExpr(typeName, args, named).also { braceOf[it] = braceTokens.removeAt(braceTokens.lastIndex) }, origin)
+    }
+
+    /** The `{` token of each construction parsed, and the ones still open. */
+    private val braceOf = java.util.IdentityHashMap<ObjectInitExpr, Token>()
+    private val braceTokens = ArrayList<Token>()
+
+    /**
+     * Notes `x: T = T { .. }` (or `x: Mutable<U> = U { .. }`, a `with` after it allowed) for the rules.decl.repeat hint
+     * and its rewrite, when the text between the type and the `{` is only ` = T ` on one line.
+     */
+    private fun noteDeclRepeat(decl: VariableDecl, name: Identifier, declared: Type, equalFrom: Token) {
+        var init = decl.value
+        while (init is WithExpr) init = init.receiver
+        val built = (init as? ObjectInitExpr) ?: return
+        val declaredText = net.exoad.kira.compiler.analysis.types.KiraUnparser.type(declared)
+        if (declaredText != net.exoad.kira.compiler.analysis.types.KiraUnparser.type(built.typeName)) return
+        val brace = braceOf[built] ?: return
+        val line = equalFrom.canonicalLocation.lineNumber
+        if (brace.canonicalLocation.lineNumber != line) return
+        val start = equalFrom.canonicalLocation.column + equalFrom.content.length
+        val end = brace.canonicalLocation.column
+        val text = context.content.lines().getOrNull(line - 1)?.takeIf { it.length >= end - 1 }?.substring(start - 1, end - 1) ?: return
+        if (!Regex("[ \t]*=[ \t]*[A-Za-z0-9_<>, ]+[ \t]*").matches(text)) return
+        context.astDeclRepeats.add(net.exoad.kira.source.DeclRepeat(decl, name.value, declaredText, decl.modifiers.contains(net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier.MUTABLE), line, start, end))
     }
 
     private fun parsePrimaryWithIndexing(): Expr {

@@ -39,6 +39,9 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     /** The expressions written inside parentheses, which the AST does not keep. */
     val astParenthesized: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
 
+    /** Declarations written `x: T = T { .. }` whose repeated type can be dropped (`x: T { .. }`), in source order. */
+    val astDeclRepeats: MutableList<DeclRepeat> = mutableListOf()
+
     /** The marker invocations on [node], with their arguments; empty when it has none. */
     fun <T : ASTNode> intrinsicInvocationsOf(node: T): List<IntrinsicExpr> {
         if (!::astIntrinsicInvocations.isInitialized) {
@@ -156,3 +159,10 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         }
     }
 }
+
+/**
+ * One `x: T = T { .. }` the short form `x: T { .. }` says without the repeat: [decl] is the declaration ([type] its constructed type, [mutable] when written as `Mutable<type>`), and the
+ * text from [startColumn] up to [endColumn] (1-based, on [line], a line of the preprocessed content) is the ` = T `
+ * a rewrite replaces with one space.
+ */
+class DeclRepeat(val decl: ASTNode, val local: String, val type: String, val mutable: Boolean, val line: Int, val startColumn: Int, val endColumn: Int)
