@@ -11,7 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Every test class must sit in exactly one stage of ci/stages.txt, so a new
+  # test file is never silently left out of the stage jobs below.
+  stage-coverage:
+    name: Stage coverage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,8 +29,184 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Test
-        run: ./gradlew test
+      - name: Check every test class is in exactly one stage
+        run: ./gradlew checkStages
+
+  frontend:
+    name: Stage frontend (lexer, parser)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage frontend
+        run: ./gradlew test -Pstage=frontend
+
+  types:
+    name: Stage types (typer and rule passes)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage types
+        run: ./gradlew test -Pstage=types
+
+  stdlib:
+    name: Stage stdlib (stdlib layout, lowering, bindings)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage stdlib
+        run: ./gradlew test -Pstage=stdlib
+
+  codegen:
+    name: Stage codegen (JS, C, minifier, builders)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage codegen
+        run: ./gradlew test -Pstage=codegen
+
+  corpus:
+    name: Stage corpus (conformance, parity, runtime, CLI suites)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage corpus
+        run: ./gradlew test -Pstage=corpus
+
+  tooling:
+    name: Stage tooling (LSP, project files)
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test stage tooling
+        run: ./gradlew test -Pstage=tooling
+
+  # The py backend and every test that runs generated Python. Python 3.10 is
+  # the boards' version (Ubuntu 22.04); 3.12 is what ubuntu-latest ships.
+  # KIRA_REQUIRE_PYTHON=1 makes a missing Python a failure, never a silent skip.
+  py:
+    name: Stage py (Python ${{ matrix.python }})
+    needs: stage-coverage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Test stage py
+        env:
+          KIRA_PYTHON: ${{ steps.python.outputs.python-path }}
+          KIRA_REQUIRE_PYTHON: "1"
+        run: |
+          "$KIRA_PYTHON" --version
+          ./gradlew test -Pstage=py
+
+  # The whole CLI builds once every stage is green.
+  install:
+    name: Install CLI
+    needs: [frontend, types, stdlib, codegen, corpus, tooling, py]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Install CLI
         run: ./gradlew installDist
@@ -68,7 +247,7 @@ jobs:
         env:
           KIRA_REQUIRE_TOOLCHAINS: "1"
           KIRA_TOOLCHAINS: gcc,clang,zig-aarch64,arm
-        run: ./gradlew test --tests 'net.exoad.kira.cpp.*'
+        run: ./gradlew test -Pstage=cpp
 
   # The board floor: gcc 11.4, which Ubuntu 22.04, the Orange Pi and JetPack 6
   # all ship. Only gcc is exercised here.
@@ -92,7 +271,7 @@ jobs:
           KIRA_TOOLCHAINS: gcc
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          ./gradlew test --tests 'net.exoad.kira.cpp.*'
+          ./gradlew test -Pstage=cpp
 
   # cl 19.4x through vcvars64.bat, found with vswhere.
   cpp-msvc:
@@ -115,4 +294,4 @@ jobs:
         env:
           KIRA_REQUIRE_TOOLCHAINS: "1"
           KIRA_TOOLCHAINS: msvc
-        run: ./gradlew test --tests 'net.exoad.kira.cpp.*'
+        run: ./gradlew test -Pstage=cpp

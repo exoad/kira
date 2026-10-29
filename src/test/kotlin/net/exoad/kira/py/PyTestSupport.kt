@@ -70,7 +70,20 @@ object PyTestSupport {
                 }
             }
         }
-        null
+        missing()
+    }
+
+    /** Whether `KIRA_REQUIRE_PYTHON=1` makes a missing Python a failure, as KIRA_REQUIRE_TOOLCHAINS does for compilers. */
+    val pythonRequired: Boolean get() = System.getenv("KIRA_REQUIRE_PYTHON")?.trim() == "1"
+
+    /** No Python found: a failure when required, else null after saying loudly that the Python run tests will not run. */
+    private fun missing(): Nothing? {
+        val what = "no Python found (set KIRA_PYTHON or put python3 or python on PATH)"
+        if (pythonRequired) {
+            throw AssertionError("KIRA_REQUIRE_PYTHON=1 and $what")
+        }
+        System.err.println("*** KIRA PYTHON RUN TESTS SKIPPED: $what; they pass while measuring nothing. Set KIRA_REQUIRE_PYTHON=1 to fail instead. ***")
+        return null
     }
 
     /** The version line of [python] (`3.10.11`), for the test output. */
