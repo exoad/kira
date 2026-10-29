@@ -148,9 +148,27 @@ class PrimInitTest {
 
     @Test
     fun aModuleConstantFromABlockIsAsConstantAsTheEqualsForm() {
-        val block = TyperTestSupport.snippet("LIMIT: Int32 { 5 }\nWIDTH: Int32 { LIMIT * 2 }\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0)\n}")
-        val equals = TyperTestSupport.snippet("LIMIT: Int32 = 5\nWIDTH: Int32 = LIMIT * 2\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0)\n}")
+        val block = TyperTestSupport.snippet("LIMIT: Int32 { 5 }\nWIDTH: Int32 { LIMIT * 2 }\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)\n}")
+        val equals = TyperTestSupport.snippet("LIMIT: Int32 = 5\nWIDTH: Int32 = LIMIT * 2\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)\n}")
+        expectNoErrors(equals)
+        expectNoErrors(block)
         assertEquals(equals.diagnostics.map { it.code }, block.diagnostics.map { it.code })
+    }
+
+    @Test
+    fun aModuleConstantFromARunTimeValueIsRefusedAsTheEqualsFormRefusesIt() {
+        val pre = "now: () Int32 {
+    1
+}
+"
+        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = now()
+main: () Void {
+}").diagnostics.map { it.code }
+        val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { now() }
+main: () Void {
+}").diagnostics.map { it.code }
+        assertTrue(equals.contains("types.const.not-constant"), equals.toString())
+        assertEquals(equals, block)
     }
 
     @Test
