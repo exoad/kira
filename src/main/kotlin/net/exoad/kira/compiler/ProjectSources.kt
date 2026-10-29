@@ -71,7 +71,9 @@ object ProjectSources {
         val sources = mutableListOf<String>()
         project.dependencies.values.forEach { path ->
             val resolved = resolvePath(projectRoot, path) ?: return@forEach
-            sources.addAll(scanKiraFiles(resolved))
+            // A dependency's project.kira configures that dependency; it is none of its modules.
+            val absolute = resolved.toAbsolutePath().normalize()
+            sources.addAll(scanKiraFiles(resolved).filterNot { ProjectFile.isProjectFile(Path.of(it), absolute) })
         }
 
         return sources.distinct().sorted()

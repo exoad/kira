@@ -23,8 +23,10 @@ import java.nio.file.Path
  */
 object StdlibLayout {
     fun stdlibRoot(): Path? {
-        val fromSources = Public.Builtin.intrinsicalStandardLibrarySources
-            .firstOrNull { it.endsWith(".kira") }
+        // The sources hold every dependency's modules, sorted by path: the stdlib is the one that has
+        // core.kira, not whichever dependency sorts first.
+        val sources = Public.Builtin.intrinsicalStandardLibrarySources.filter { it.endsWith(".kira") }
+        val fromSources = (sources.firstOrNull { Path.of(it).fileName.toString() == "core.kira" } ?: sources.firstOrNull())
             ?.let { Path.of(it).parent }
         if (fromSources != null && Files.isDirectory(fromSources)) {
             return fromSources

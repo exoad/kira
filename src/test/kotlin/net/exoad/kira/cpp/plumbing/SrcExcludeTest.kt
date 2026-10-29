@@ -30,6 +30,19 @@ class SrcExcludeTest {
     }
 
     @Test
+    fun aDependencysProjectFileIsNoModuleOfTheProject() {
+        val root = PlumbingTestSupport.tempProject("srcexclude-dep")
+        PlumbingTestSupport.write(root, "app/src/main.kira", "")
+        PlumbingTestSupport.write(root, "lib/project.kira", "")
+        PlumbingTestSupport.write(root, "lib/src/util.kira", "")
+        val app = root.resolve("app")
+        val project = Project("app", dependencies = mapOf("lib" to "../lib"))
+        val sources = ProjectSources.dependencies(project, app)
+            .map { root.relativize(java.nio.file.Path.of(it).normalize()).toString().replace('\\', '/') }
+        assertEquals(listOf("lib/src/util.kira"), sources)
+    }
+
+    @Test
     fun withoutExcludesEverythingUnderSrcDirIsASource() {
         val root = PlumbingTestSupport.tempProject("srcexclude-none")
         PlumbingTestSupport.write(root, "src/app/main.kira", "")
