@@ -349,6 +349,38 @@ namespace kira::ffi
       return Arg<T>{};
   }
 
+#if KIRA_PROFILE_HOSTED
+  // An Fx argument of an extern call, which C++ may declare as a std::function or as a plain function pointer (a C
+  // callback, such as attachInterrupt's void(*)(void)). A Kira function value converts to both: to the std::function
+  // as it is, and to the function pointer it holds when it is a plain function, which a named Kira function is. A value
+  // that captures state has no such pointer, so a parameter that takes one panics instead of calling the wrong thing.
+  template<class F>
+  struct FnArg;
+  template<class R, class... A>
+  struct FnArg<std::function<R(A...)>>
+  {
+      using Plain = R (*)(A...);
+
+      std::function<R(A...)> fn;
+
+      FnArg(std::function<R(A...)> f) : fn(std::move(f)) {}
+
+      operator std::function<R(A...)>() const
+      {
+          return fn;
+      }
+
+      operator Plain() const
+      {
+          const Plain* plain = fn.template target<Plain>();
+          if(plain == nullptr)
+          {
+              panic("a callback that captures state cannot be a C function pointer");
+          }
+          return *plain;
+      }
+  };
+#endif
   // What an extern result or an extern constant reaches Kira as (the head of this
   // file): the declared type T, by static_cast, which the check proved loses
   // nothing; a Maybe value by value, so that its null-pointer case is the Str's;

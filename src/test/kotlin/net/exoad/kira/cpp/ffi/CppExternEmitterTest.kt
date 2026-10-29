@@ -251,6 +251,47 @@ class CppExternEmitterTest {
     }
 
     /**
+     * `@_callback` marks an extern whose `Fx` parameters are C callbacks: the call passes
+     * `kira::ffi::FnArg<kira::Fn<...>>(f)` and the check states the same proxy, which converts to a
+     * std::function or a function pointer. Unmarked, an `Fx` stays a kira::Fn, which templates and
+     * overload sets rely on (ExternFxRunTest). Measured on an ESP32: a Kira handler reaches a
+     * hardware timer's interrupt through the marked form.
+     */
+    @Test
+    fun aCallbackMarkerPassesAnFxAsAFnArgAndAnUnmarkedFxStaysAKiraFn() {
+        val c = callsOf(
+            """
+            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<Tuple0, Void>) Void;
+
+            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<Tuple0, Void>) Void;
+
+            onEdge: () Void {
+            }
+
+            main: () Int32 {
+                attach(onEdge)
+                plain(onEdge)
+                0
+            }
+            """
+        )
+        assertEquals("::probe::attach(kira::ffi::FnArg<kira::Fn<void()>>(kira::Fn<void()>(onEdge)))", c.text("attach", null, "onEdge"))
+        assertEquals("::probe::plain(kira::Fn<void()>(onEdge))", c.text("plain", null, "onEdge"))
+        val h = header(
+            """
+            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<Tuple0, Void>) Void;
+
+            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<Tuple0, Void>) Void;
+            """
+        )
+        assertLines(
+            h,
+            "KIRA_EXTERN_CHECK((probe::attach(std::declval<kira::ffi::FnArg<kira::Fn<void()>>>()), 0), int, \"attach\");",
+            "KIRA_EXTERN_CHECK((probe::plain(kira::ffi::arg<kira::Fn<void()>>()), 0), int, \"plain\");",
+        )
+    }
+
+    /**
      * Rounds 1-4 refused a computed `Str` argument feeding a call whose result, `mut` argument
      * or `mut` receiver could point into it ("policy 1"), tracked here through `carriesPointer`.
      * Decision 4b (30-second-class.md, section 7.4) deletes that check from this emitter: an

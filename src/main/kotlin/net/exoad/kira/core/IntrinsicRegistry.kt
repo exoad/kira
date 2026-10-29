@@ -32,6 +32,7 @@ object IntrinsicRegistry {
             StaticAssertIntrinsic,
             InferIntrinsic,
             MutatesIntrinsic,
+            CallbackIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics are known names the parser accepts as identifiers; they are not
         // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
@@ -88,6 +89,7 @@ object IntrinsicRegistry {
         ConstIntrinsic.name,
         InferIntrinsic.name,
         MutatesIntrinsic.name,
+        CallbackIntrinsic.name,
     )
 
     /**
@@ -110,6 +112,21 @@ object IntrinsicRegistry {
      * `@_mutates` (stage 4): on a function the host supplies (a `@_magic`, `@_opaque` or `@_extern` type's), the
      * host's code changes the receiver (`List.add`); a function with a body says so by its body. No arguments.
      */
+    /**
+     * `@_callback` (extern callbacks): on an `@_extern` function, its `Fx` parameters are C callbacks: C++ declares them
+     * as a function pointer, a std::function or both, so each is passed as a kira::ffi::FnArg, which converts to either.
+     * Left off, an `Fx` parameter is a kira::Fn (std::function), which templates and overload sets rely on. No arguments.
+     */
+    object CallbackIntrinsic : CompilerIntrinsic("_callback", setOf(FunctionDecl::class)) {
+        override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
+            if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {
+                throw KiraRuntimeException("@_callback takes no arguments (modifier like)")
+            }
+        }
+
+        override fun apply(invocation: IntrinsicExpr, target: ASTNode, compilationUnit: CompilationUnit, context: SourceContext): ASTNode = NoExpr
+    }
+
     object MutatesIntrinsic : CompilerIntrinsic("_mutates", setOf(FunctionDecl::class)) {
         override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
             if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {

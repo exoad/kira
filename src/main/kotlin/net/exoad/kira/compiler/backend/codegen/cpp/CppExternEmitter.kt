@@ -114,6 +114,7 @@ object CppExternEmitter : CppExternsPart {
 
     /** The macro of `kira/ffi.hxx` every check states. */
     const val CHECK = "KIRA_EXTERN_CHECK"
+    const val CALLBACK_MARKER = "_callback"
 
     /** The macro of `kira/ffi.hxx` a struct field is checked with: its exact type and its offset. */
     const val FIELD_CHECK = "KIRA_EXTERN_FIELD"
@@ -128,6 +129,9 @@ object CppExternEmitter : CppExternsPart {
     // ---- the marker -----------------------------------------------------------------------------
 
     /** The `@_extern` marker of [sym], or null when it carries none (a member inherits its owner's). */
+    /** Whether [fn] is marked `@_callback`: its Fx parameters are C callbacks, passed as a kira::ffi::FnArg. */
+    private fun takesCallbacks(fn: FnSymbol): Boolean = fn.markers.any { it.name == CALLBACK_MARKER }
+
     fun externOf(sym: Symbol): Foreign.Extern? = when (sym) {
         is ClassSymbol -> sym.foreign
         is TraitSymbol -> sym.foreign
@@ -294,7 +298,7 @@ object CppExternEmitter : CppExternsPart {
             fn.isMutMethod -> "std::declval<${cppName(owner)}&>()."
             else -> "std::declval<const ${cppName(owner)}&>()."
         }
-        val args = fn.params.joinToString(", ") { checkArg(ctx, it) }
+        val args = fn.params.joinToString(", ") { checkArg(ctx, it, takesCallbacks(fn)) }
         val invoke = "$receiver${cppName(fn)}($args)"
         if (fn.ret == KType.Void) {
             w.line("$CHECK(($invoke, 0), int, \"$what\");")
@@ -317,10 +321,11 @@ object CppExternEmitter : CppExternsPart {
      * overload taking T itself and one taking a type T converts to would rank equal (both
      * user-defined conversions) and the check would be ambiguous where the call is not.
      */
-    private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol): String = when {
+    private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol, callbacks: Boolean): String = when {
         isUnsafe(p.type) -> "std::declval<${checkType(ctx, p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM)}>()"
         p.byRef -> "kira::ffi::out(std::declval<${checkType(ctx, p.type, Pos.VALUE)}&>())"
         p.type == KType.Str -> "kira::ffi::in(std::declval<const kira::Str&>())"
+        callbacks && p.type is KType.Fn -> "std::declval<kira::ffi::FnArg<${checkType(ctx, p.type, Pos.VALUE)}>>()"
         takesProxy(p.type) -> "kira::ffi::arg<${checkType(ctx, p.type, Pos.VALUE)}>()"
         else -> "std::declval<${checkType(ctx, p.type, Pos.PARAM)}>()"
     }
@@ -399,7 +404,8 @@ object CppExternEmitter : CppExternsPart {
         // it or given something that may hold it (a handle to the C++ object that keeps it,
         // which as a class or opaque receiver or argument always counts); a C++ callback
         // registry is reached through such a handle, never through a free function taking none.
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy) }
+        val callbacks = takesCallbacks(fn)
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy, callbacks) }
         val text = "$callee(${texts.joinToString(", ")})"
         return if (marked) declared(ctx, fn.ret, text) else text
     }
@@ -546,11 +552,18 @@ object CppExternEmitter : CppExternsPart {
      * by-reference type (`kira::List<std::int32_t>(gl)`, `kira::Rc<ns::C>(h)`, a value class's
      * copy constructor). Each copy lives to the end of the call's full-expression.
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean, proxied: Boolean): String {
+    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean, proxied: Boolean, callbacks: Boolean): String {
         if (p == null) {
             return text
         }
         val expr = (binding as? ArgBinding.Given)?.expr
+        if (proxied && callbacks && expr != null && !p.byRef && p.type is KType.Fn) {
+            // A C callback (@_callback): the proxy converts to the std::function or the function pointer C++ declares. A
+            // named function or a lambda is first made the Fn it converts to.
+            val fn = ctx.spell(p.type, Pos.VALUE)
+            val made = if (convertsToParam(ctx.model.coercion(expr)) || !isFnValue(ctx, expr)) "$fn($text)" else text
+            return "kira::ffi::FnArg<$fn>($made)"
+        }
         if (proxied && expr != null && convertsToParam(ctx.model.coercion(expr))) {
             return "${ctx.spell(p.type, Pos.VALUE)}($text)"
         }
