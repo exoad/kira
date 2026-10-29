@@ -124,6 +124,35 @@ class CppDeclEmitterTest {
         assertContains(s, "  namespace\n  {\n    [[maybe_unused]] std::int32_t calls = 0;\n    [[maybe_unused]] constexpr float LOCAL = 0.10f;\n  }")
     }
 
+    /**
+     * `@_iram` places a function's code in IRAM: its prototype and its definition both carry the section attribute, so
+     * the function is one place in the image whatever the file it lands in. A function without the marker carries none.
+     */
+    @Test
+    fun anIramFunctionCarriesTheSectionAttributeInItsPrototypeAndItsDefinition() {
+        val (emitted, _) = DeclTestSupport.emitWith(
+            DeclTestSupport.module(
+                "test:main",
+                """
+                count: Mutable<Int32> = 0
+
+                pub @_iram onEdge: () Void {
+                    count = count + 1
+                }
+
+                pub plain: () Void {
+                    count = count + 2
+                }
+                """,
+            ),
+            uri = "test:main",
+        )
+        val attr = "__attribute__((section(\".iram1\"))) "
+        assertContains(CppWriter.normalize(emitted.header), "${attr}void onEdge();")
+        assertContains(CppWriter.normalize(emitted.source ?: fail("no source")), "${attr}void onEdge()")
+        assertTrue(!CppWriter.normalize(emitted.header).contains("${attr}void plain"), "plain has no IRAM attribute")
+    }
+
     @Test
     fun aPrivateDeclarationSomethingNamesIsNotMarkedUnused() {
         val (emitted, _) = DeclTestSupport.emitWith(

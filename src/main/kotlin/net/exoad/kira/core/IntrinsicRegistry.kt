@@ -33,6 +33,7 @@ object IntrinsicRegistry {
             InferIntrinsic,
             MutatesIntrinsic,
             CallbackIntrinsic,
+            IramIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics are known names the parser accepts as identifiers; they are not
         // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
@@ -90,6 +91,7 @@ object IntrinsicRegistry {
         InferIntrinsic.name,
         MutatesIntrinsic.name,
         CallbackIntrinsic.name,
+        IramIntrinsic.name,
     )
 
     /**
@@ -117,6 +119,21 @@ object IntrinsicRegistry {
      * as a function pointer, a std::function or both, so each is passed as a kira::ffi::FnArg, which converts to either.
      * Left off, an `Fx` parameter is a kira::Fn (std::function), which templates and overload sets rely on. No arguments.
      */
+    /**
+     * `@_iram` (interrupt handlers): on a function, its C++ prototype and definition carry the section attribute that
+     * places its code in IRAM, so an interrupt can run while the flash cache is off (writes, erases). The function's
+     * callees must be IRAM too; the compiler does not check that. The cpp target only; other targets ignore it.
+     */
+    object IramIntrinsic : CompilerIntrinsic("_iram", setOf(FunctionDecl::class)) {
+        override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
+            if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {
+                throw KiraRuntimeException("@_iram takes no arguments (modifier like)")
+            }
+        }
+
+        override fun apply(invocation: IntrinsicExpr, target: ASTNode, compilationUnit: CompilationUnit, context: SourceContext): ASTNode = NoExpr
+    }
+
     object CallbackIntrinsic : CompilerIntrinsic("_callback", setOf(FunctionDecl::class)) {
         override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
             if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isNotEmpty()) {

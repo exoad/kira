@@ -708,6 +708,10 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         return "$unused$type $name$default"
     }
 
+    /** `@_iram`: the section attribute that places the function's code in IRAM, with its trailing space, or "". */
+    private fun iramAttribute(fn: FnSymbol): String =
+        if (fn.markers.any { it.name == IRAM_MARKER }) "__attribute__((section(\".iram1\"))) " else ""
+
     /**
      * The prototype lines: a template head, then `[[nodiscard]] constexpr|inline RET name(params = defaults) const;`.
      * A private function of the `.cxx` that nothing in the module calls is `[[maybe_unused]]` (`-Wunused-function`).
@@ -723,7 +727,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         val params = fn.params.joinToString(", ") { paramText(it, withDefault = true, markUnused = false, fn) }
         val constSuffix = if (owner != null && !fn.isMutMethod) " const" else ""
-        return templateHead(fn) + "$unused$nodiscard$specifier${returnText(fn)} ${ctx.names.escape(fn.name)}($params)$constSuffix;"
+        return templateHead(fn) + "$unused$nodiscard${iramAttribute(fn)}$specifier${returnText(fn)} ${ctx.names.escape(fn.name)}($params)$constSuffix;"
     }
 
     /**
@@ -751,7 +755,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         templateHead(fn).forEach { w.line(it) }
         val qualifier = owner?.let { ownerQualifier(it) } ?: ""
-        w.block("$specifier${returnText(fn)} $qualifier${ctx.names.escape(fn.name)}($params)$constSuffix") {
+        w.block("${iramAttribute(fn)}$specifier${returnText(fn)} $qualifier${ctx.names.escape(fn.name)}($params)$constSuffix") {
             ctx.body(fn, fn.body ?: emptyList(), this)
         }
     }
@@ -915,6 +919,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         const val MACRO_PUSH = "kira/macro_push.hxx"
         const val MACRO_POP = "kira/macro_pop.hxx"
         const val STATIC_ASSERT = "_static_assert"
+        const val IRAM_MARKER = "_iram"
         const val MACRO_NAME_CODE = "cpp.macro-name"
         const val STRUCT_EQUALITY_CODE = "cpp.struct-equality"
         const val NO_BODY_CODE = "cpp.no-body"
