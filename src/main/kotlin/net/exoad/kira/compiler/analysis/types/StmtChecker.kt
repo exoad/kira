@@ -17,6 +17,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
@@ -208,6 +209,7 @@ internal class StmtChecker(private val c: PhaseC) {
         }
         return when (init) {
             is BuilderExpr -> init.elements.firstNotNullOfOrNull { el -> notConstantInit(el, model.types[el] ?: KType.Error) }
+            is PrimInitExpr -> notConstantInit(init.value, type)
             is ObjectInitExpr -> {
                 val ri = model.inits[init] ?: return NO_REASON
                 val cls = ri.cls ?: return NO_REASON
@@ -279,6 +281,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 val rc = model.calls[e] ?: return NO_REASON
                 notConstantCall(e, rc)
             }
+            is PrimInitExpr -> notConstant(e.value)
             is ObjectInitExpr -> {
                 val ri = model.inits[e] ?: return NO_REASON
                 if (!facts.isLiteralType(ri.type)) {

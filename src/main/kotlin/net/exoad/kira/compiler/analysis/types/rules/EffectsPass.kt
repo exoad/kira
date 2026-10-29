@@ -37,6 +37,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
@@ -231,6 +232,7 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>) {
             is AssignmentExpr -> write(model.places[n.target])
             is CompoundAssignmentExpr -> write(model.places[n.left])
             is PlaceAssignmentExpr -> write(model.places[n.target])
+            is PrimInitExpr -> Effect.PURE
             is ObjectInitExpr -> {
                 val ri = model.inits[n] ?: return Effect.IMPURE
                 val given = ri.fields.filterIsInstance<FieldInit.Given>().mapTo(HashSet()) { it.field }
@@ -540,6 +542,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects) {
             is AssignmentExpr -> own(model.places[e.target], f)
             is CompoundAssignmentExpr -> own(model.places[e.left], f)
             is PlaceAssignmentExpr -> own(model.places[e.target], f)
+            is PrimInitExpr -> true
             is ObjectInitExpr -> model.inits[e]?.let { ri ->
                 CallReach.construction(ri.cls, ri.fields.filterIsInstance<FieldInit.Given>().associate { it.field to it.expr }, model, f.known)
             } ?: false

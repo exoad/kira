@@ -904,6 +904,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (shouldSkipSource(source)) return@forEach
             walkExprs(source.ast) { expr ->
                 when (expr) {
+                    is PrimInitExpr -> {}
                     is ObjectInitExpr -> requestClassSpecialization(expr.typeName)
                     is FunctionCallExpr -> {
                         val fname = functionLikeName(expr.name)
@@ -2954,6 +2955,11 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
+        // A primitive's block is its one value (typed as `x: T = value` is); a user type of that name is built as any class.
+        if (objectInitExpr is PrimInitExpr && !userClassNames.contains(typeNameOf(objectInitExpr.typeName))) {
+            objectInitExpr.value.accept(this)
+            return
+        }
         if (objectInitExpr.namedArgs.isNotEmpty()) {
             throw UnsupportedConstruct(objectInitExpr, "named construction 'T { field = value }'", TARGET_NAME)
         }

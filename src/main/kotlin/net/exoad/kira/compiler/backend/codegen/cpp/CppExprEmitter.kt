@@ -46,6 +46,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
@@ -356,6 +357,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is ThisExpr -> thisValue(e)
             is MemberAccessExpr -> memberAccess(e)
             is FunctionCallExpr -> call(e)
+            is PrimInitExpr -> coerced(e.value, role)
             is ObjectInitExpr -> construction(e)
             is ArrayIndexExpr -> index(e)
             is BinaryExpr -> binary(e)

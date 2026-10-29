@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.core.NamedArguments
@@ -1124,6 +1125,20 @@ internal class CallResolver(private val c: PhaseC) {
         }
         if (t.containsError()) {
             return bail()
+        }
+        if (t.prim != null || t == KType.Str) {
+            // A primitive's block is its one value, typed as `x: T = value` types it (no implicit zero value).
+            if (e is PrimInitExpr) {
+                c.exprs.check(e.value, t, ctx, scope, "${t.display()} { }")
+                return t
+            }
+            c.report(
+                "types.init.primitive-arity",
+                "${t.display()} { } takes exactly one value and has no implicit zero value: write '${t.display()} { value }', not ${if (e.positionalArgs.isEmpty() && e.namedArgs.isEmpty()) "an empty block" else "${e.positionalArgs.size + e.namedArgs.size} values or a named one"}.",
+                e,
+            )
+            bail()
+            return t
         }
         val nominal = t as? KType.Nominal
         val cls = nominal?.sym as? ClassSymbol

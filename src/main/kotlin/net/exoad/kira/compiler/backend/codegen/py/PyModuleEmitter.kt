@@ -56,6 +56,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
@@ -1189,6 +1190,7 @@ class PyModuleEmitter(
             is ThisExpr -> if (f.cls != null) Py("self", PyPrec.ATOM) else refusePy(e, "this outside a method")
             is MemberAccessExpr -> member(e, f)
             is FunctionCallExpr -> callExpr(e, f)
+            is PrimInitExpr -> expr(e.value, f)
             is ObjectInitExpr -> construction(e, f)
             is ArrayIndexExpr -> index(e, f)
             is BinaryExpr -> binary(e, f)

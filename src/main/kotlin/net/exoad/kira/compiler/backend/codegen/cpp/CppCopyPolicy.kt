@@ -25,6 +25,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
@@ -193,6 +194,7 @@ class CppCopyPolicy(private val lower: CppLowering) {
             return false
         }
         return when (e) {
+            is PrimInitExpr -> isPrvalue(e.value, direct)
             is IntegerLiteral, is FloatLiteral, is CharLiteral, is StringLiteral, is NullLiteral, is BuilderExpr,
             is InterpolatedStringLiteral, is ObjectInitExpr, is LambdaExpr, is BinaryExpr, is UnaryExpr, is TypeCastExpr,
             -> true

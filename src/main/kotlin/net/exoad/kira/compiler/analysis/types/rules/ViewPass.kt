@@ -51,6 +51,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
@@ -628,6 +629,7 @@ internal class ViewPass : RulePass {
                         report(n, TYPE, c.typeMessage("This lambda's result", ret!!, held, c.remedyFor(held)), "returns a ${ret.display()}")
                     }
                 }
+                is PrimInitExpr -> {}
                 is ObjectInitExpr -> if (n !in covered) {
                     val t = model.inits[n]?.type ?: return
                     c.misplaced(t, false, sc)?.let { held ->

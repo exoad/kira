@@ -39,6 +39,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
@@ -934,6 +935,7 @@ class CppHoister(private val lower: CppLowering) {
                 is FunctionCallExpr -> if (!isPureCall(node)) return IMPURE
                 is IntrinsicExpr -> if (node.intrinsicKey.name == "_trace_") return IMPURE
                 is ThrowExpr, is TryExpr, is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> return IMPURE
+                is PrimInitExpr -> {}
                 is ObjectInitExpr -> if (constructionRank(node) == IMPURE) return IMPURE
                 is Expr -> lower.model.opCalls[node]?.let { rc -> if (rc.fn != null && !provedPure(rc)) return IMPURE }
                 else -> {}

@@ -49,6 +49,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
@@ -1638,6 +1639,7 @@ class CppClassFacts(private val program: TypedProgram) {
                 return
             }
             val effect = when (node) {
+                is PrimInitExpr -> false
                 is FunctionCallExpr, is ObjectInitExpr, is ThrowExpr, is TryExpr, is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr -> true
                 is IntrinsicExpr -> node.intrinsicKey.name != "_static_assert"
                 is Expr -> model.opCall(node) != null

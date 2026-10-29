@@ -2965,7 +2965,15 @@ class KiraParser(
             }
         }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
-        return putOrigin(ObjectInitExpr(typeName, args, named).also { braceOf[it] = braceTokens.removeAt(braceTokens.lastIndex) }, origin)
+        val node = if (args.size == 1 && named.isEmpty() && isPrimitiveName(typeName)) PrimInitExpr(typeName, args[0]) else ObjectInitExpr(typeName, args, named)
+        return putOrigin(node.also { braceOf[it] = braceTokens.removeAt(braceTokens.lastIndex) }, origin)
+    }
+
+    /** A bare primitive's name (`Int32`, `Float64`, `Bool`, `Char`, `Str`...), as written. */
+    private fun isPrimitiveName(t: Type): Boolean {
+        val id = t.identifier as? Identifier ?: return false
+        return t.isHermit() && id !is QualifiedIdentifier && id !is IntrinsicExpr &&
+            (net.exoad.kira.compiler.analysis.types.Prim.byKiraName(id.value) != null || id.value == "Str")
     }
 
     /** The `{` token of each construction parsed, and the ones still open. */

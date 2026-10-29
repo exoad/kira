@@ -4,6 +4,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
@@ -126,6 +127,7 @@ class ConstEval(private val program: TypedProgram, private val resolver: TypeRes
         is UnaryExpr -> unary(e, expected, module)
         is BinaryExpr -> binary(e, expected, module)
         is TypeCastExpr -> cast(e, module)
+        is PrimInitExpr -> model.consts[e.value] ?: fold(e.value, model.types[e] ?: expected, module)
         is BuilderExpr -> if (e.kind == Builder.ARR) array(e, expected, module) else null
         else -> null
     }
