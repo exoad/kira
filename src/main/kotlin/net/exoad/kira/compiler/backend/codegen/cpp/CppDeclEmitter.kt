@@ -755,9 +755,14 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         }
         templateHead(fn).forEach { w.line(it) }
         val qualifier = owner?.let { ownerQualifier(it) } ?: ""
+        val iram = fn.markers.any { it.name == IRAM_MARKER }
+        if (iram) {
+            ctx.iramBody = fn
+        }
         w.block("${iramAttribute(fn)}$specifier${returnText(fn)} $qualifier${ctx.names.escape(fn.name)}($params)$constSuffix") {
             ctx.body(fn, fn.body ?: emptyList(), this)
         }
+        ctx.iramBody = null
     }
 
     /** `Pair<T>::` for an out-of-line member of a generic struct, `Point::` otherwise. */

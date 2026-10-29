@@ -1558,8 +1558,22 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
+    /**
+     * rules.iram.callee: inside an `@_iram` body, a call to a Kira function with a body must be to an `@_iram` one,
+     * since an interrupt handler runs while the flash cache may be off. Externs and magic functions are exempt: the
+     * compiler cannot see their code, so their IRAM placement is the binding's own concern.
+     */
+    private fun checkIramCallee(e: FunctionCallExpr, callee: FnSymbol) {
+        val caller = ctx.iramBody ?: return
+        if (!callee.hasBody || callee.markers.any { it.name == CppDeclEmitter.IRAM_MARKER } || CppExternEmitter.externOf(callee) != null) {
+            return
+        }
+        ctx.diag(e, "rules.iram.callee", "'${callee.name}' is not @_iram, so '${caller.name}' (@_iram) cannot call it: an interrupt handler runs while the flash cache may be off")
+    }
+
     private fun freeCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a free call without its function")
+        checkIramCallee(e, fn)
         val (ops, slots) = arguments(rc)
         val name = ctx.qualified(fn) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         return hoister.lower(ops, rc.returnType, node = e, consumer = policy.callConsumer(rc, null)) { texts -> CppEx("$name(${argList(slots, texts)})", CppPrec.POSTFIX) }
@@ -1567,6 +1581,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun methodCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a method call without its method")
+        checkIramCallee(e, fn)
         val (argOps, argSlots) = arguments(rc)
         val name = ctx.names.escape(fn.name) + if (fn.typeParams.isNotEmpty()) explicitTypeArgs(e, rc.typeArgs) else ""
         val receiver = rc.receiver

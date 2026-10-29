@@ -153,6 +153,55 @@ class CppDeclEmitterTest {
         assertTrue(!CppWriter.normalize(emitted.header).contains("${attr}void plain"), "plain has no IRAM attribute")
     }
 
+    /** rules.iram.callee: an @_iram body may call only @_iram Kira functions, and externs (their code is the binding's). */
+    @Test
+    fun anIramBodyMayCallOnlyIramFunctionsAndExterns() {
+        fun errorsOf(body: String): List<String> {
+            val (emitted, _) = DeclTestSupport.emitWith(DeclTestSupport.module("test:main", body), uri = "test:main")
+            return emitted.diagnostics.filter { it.isError }.map { it.render() }
+        }
+        val plain = errorsOf(
+            """
+            count: Mutable<Int32> = 0
+
+            helper: () Void {
+                count = count + 1
+            }
+
+            pub @_iram onEdge: () Void {
+                helper()
+            }
+            """,
+        )
+        assertTrue(plain.any { it.contains("rules.iram.callee") && it.contains("'helper'") }, "a plain callee is refused: $plain")
+
+        val iram = errorsOf(
+            """
+            count: Mutable<Int32> = 0
+
+            pub @_iram helper: () Void {
+                count = count + 1
+            }
+
+            pub @_iram onEdge: () Void {
+                helper()
+            }
+            """,
+        )
+        assertTrue(iram.isEmpty(), "an IRAM callee is allowed: $iram")
+
+        val extern = errorsOf(
+            """
+            pub @_extern(cpp = "digitalWrite", header = "Arduino.h") digitalWrite: (pin: UInt8, level: UInt8) Void;
+
+            pub @_iram onEdge: () Void {
+                digitalWrite(2, 1)
+            }
+            """,
+        )
+        assertTrue(extern.none { it.contains("rules.iram.callee") }, "an extern is trusted, not refused: $extern")
+    }
+
     @Test
     fun aPrivateDeclarationSomethingNamesIsNotMarkedUnused() {
         val (emitted, _) = DeclTestSupport.emitWith(

@@ -581,6 +581,9 @@ class CppEmitContextImpl(
 
     fun body(fn: FnSymbol?, statements: List<Statement>, w: CppWriter) = parts.stmts.body(this, fn, statements, w)
 
+    /** The `@_iram` function whose body is being emitted, or null: its calls may reach only IRAM code (rules.iram.callee). */
+    var iramBody: FnSymbol? = null
+
     fun lambda(l: LambdaExpr, parentPrec: Int = 0): String = parts.lambdas.emit(this, l, parentPrec)
 
     /**
