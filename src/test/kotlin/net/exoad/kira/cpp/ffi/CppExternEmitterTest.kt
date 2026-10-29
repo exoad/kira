@@ -185,6 +185,8 @@ class CppExternEmitterTest {
 
             pub @_extern(cpp = "probe::LIMIT", header = "probe.hxx") LIMIT: Int32;
 
+            pub @_extern(cpp = "&probe::port", header = "probe.hxx") PORT: Buffer;
+
             main: () Int32 {
                 s: Str = name()
                 m: Maybe<Int32> = find()
@@ -203,6 +205,10 @@ class CppExternEmitterTest {
         val limit = c.ctx.symbol.members["LIMIT"] as GlobalSymbol
         assertEquals("kira::ffi::declared<kira::Str>(probe::VERSION)", CppExternEmitter.constant(c.ctx, version))
         assertEquals("kira::ffi::declared<std::int32_t>(probe::LIMIT)", CppExternEmitter.constant(c.ctx, limit))
+        // A marker that spells an expression (`&probe::port`, a global object's address as the handle) is
+        // parenthesised, so a member call on it (`(&probe::port)->begin()`) binds as written.
+        val port = c.ctx.symbol.members["PORT"] as GlobalSymbol
+        assertEquals("(&probe::port)", CppExternEmitter.constant(c.ctx, port))
     }
 
     /**

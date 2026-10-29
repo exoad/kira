@@ -120,6 +120,7 @@ object CppExternEmitter : CppExternsPart {
 
     /** The namespace an extern struct's layout twin goes in: lowercase with `_`, which no Kira name can be. */
     const val LAYOUT_NAMESPACE = "ffi_"
+    private val PLAIN_NAME = Regex("[A-Za-z_:][A-Za-z0-9_:]*")
 
     /** The message a failing check prints; tests grep for it. */
     const val DRIFT_MESSAGE = "no longer matches its C++ header"
@@ -701,7 +702,12 @@ object CppExternEmitter : CppExternsPart {
      * same spelling; a marker that wants the global one writes it (`cpp = "::bibo::LIMIT"`),
      * and it passes through unchanged.
      */
-    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String = declared(ctx, sym.type, cppName(sym))
+    override fun constant(ctx: CppEmitContextImpl, sym: GlobalSymbol): String {
+        val name = cppName(sym)
+        // A marker may spell an expression (`cpp = "&Serial"`): parenthesised, so a member call on it binds as written.
+        val text = if (PLAIN_NAME.matches(name)) name else "($name)"
+        return declared(ctx, sym.type, text)
+    }
 
     /**
      * Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its
