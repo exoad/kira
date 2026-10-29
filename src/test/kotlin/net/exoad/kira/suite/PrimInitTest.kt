@@ -157,17 +157,19 @@ class PrimInitTest {
 
     @Test
     fun aModuleConstantFromARunTimeValueIsRefusedAsTheEqualsFormRefusesIt() {
-        val pre = "now: () Int32 {
-    1
-}
-"
-        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = now()
-main: () Void {
-}").diagnostics.map { it.code }
-        val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { now() }
-main: () Void {
-}").diagnostics.map { it.code }
+        val pre = "now: () Int32 {\n    1\n}\n"
+        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = now()\nmain: () Void {\n}").diagnostics.map { it.code }
+        val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { now() }\nmain: () Void {\n}").diagnostics.map { it.code }
         assertTrue(equals.contains("types.const.not-constant"), equals.toString())
+        assertEquals(equals, block)
+    }
+
+    @Test
+    fun aModuleConstantFromARunTimeGlobalIsRefusedAsTheEqualsFormRefusesIt() {
+        val pre = "counter: Mutable<Int32> = 1\n"
+        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = counter\nmain: () Void {\n}").diagnostics.map { it.code }
+        val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { counter }\nmain: () Void {\n}").diagnostics.map { it.code }
+        assertTrue(equals.any { it.startsWith("types.") }, equals.toString())
         assertEquals(equals, block)
     }
 
