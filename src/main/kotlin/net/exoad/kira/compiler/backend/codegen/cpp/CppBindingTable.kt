@@ -141,14 +141,6 @@ class CppBindingTable : CppBindingsPart {
             return out
         }
 
-        /** Whether [t] is a magic class (a runtime container, a scalar's class, Str's): its members bind through the manifests. */
-        fun isMagicReceiver(t: KType, program: TypedProgram): Boolean = when (t) {
-            is KType.Scalar, KType.Str -> true
-            is KType.Nominal -> (t.sym as? ClassSymbol)?.kind == ClassKind.MAGIC
-            is KType.Fn -> program.builtins.classOf(t) != null
-            else -> false
-        }
-
         /** The magic class name of [t] (`Arr`, `View`, `Maybe`), or null. */
         fun magicName(t: KType?): String? = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.takeIf { it.kind == ClassKind.MAGIC }?.name
 

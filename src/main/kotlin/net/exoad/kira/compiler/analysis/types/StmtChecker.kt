@@ -229,31 +229,6 @@ internal class StmtChecker(private val c: PhaseC) {
     }
 
     /**
-     * An expression C++ can evaluate in a constant expression on the gcc 11.4 floor: it
-     * folded, or it is built with builtin operators, indexing and field access from literals,
-     * module constants of literal types (a `Str` constant is its folded `const
-     * char*`), constructions of literal types (a struct of literal fields, `Arr<T, N>`, a
-     * tuple), `@_const` calls and magic calls whose cpp binding is `constexpr: true`
-     * ([MagicBindings]) - and every value on the way is of a literal type
-     * ([TypeFacts.isLiteralType]). A global of a non-literal type is `inline const`,
-     * initialized at run time, so `DYN.size()`, `LST[0]` and `BAG.n` are no constants: g++
-     * refuses the `inline constexpr` the emitter spells for their literal-typed targets ('the
-     * value of DYN is not usable in a constant expression'), and a static assert on one has
-     * no C++ spelling at all. The manifests' `constexpr` flag holds only under the same
-     * condition (`Arr.size` is constexpr on a std::array, not on the std::vector an `Arr<T>`
-     * is), which is why a constexpr call's receiver and arguments are literal-typed too.
-     *
-     * Three calls hide in other shapes and are held to the call rule: an operator with an
-     * `@op_*` overload ([TypedModel.opCalls]) is a call of that function, constant only when
-     * it is `@_const`; a construction that leaves a field to its default runs the default
-     * (`W { }` with `n: Int32 = seed()` is `W{}` over a default member initializer that calls
-     * `seed()`), and a call that leaves a parameter to its default passes the default. And
-     * `s[i]` on a `Str` is `kira::str::at`, which is not constexpr (rt.hxx), even on a folded
-     * `Str` constant: it would build a std::string from the `const char*` first.
-     */
-    fun isConstantExpr(e: Expr): Boolean = notConstant(e) == null
-
-    /**
      * Why [e] is no constant expression, or null when it is one: the first offending leaf,
      * as a parenthesised clause for a diagnostic (`" ('sqrt' runs at run time: ...)"`), or
      * [NO_REASON] when the shape itself is the reason (a plain call, a local).

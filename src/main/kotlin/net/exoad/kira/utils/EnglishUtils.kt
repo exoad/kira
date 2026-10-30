@@ -7,13 +7,6 @@ object EnglishUtils {
         } else ""
     }
 
-    fun getPossessivePluralSuffix(count: Int, uppercase: Boolean = false, useSmartQuotes: Boolean = false): String {
-        return if (count > 1) {
-            val quote = if (useSmartQuotes) "’" else "'"
-            if (uppercase) "${quote}S" else "${quote}s"
-        } else ""
-    }
-
     private val vowelCodes = setOf(65, 69, 73, 79, 85, 97, 101, 105, 111, 117)
     fun isVowel(char: Char): Boolean {
         return char.code in vowelCodes

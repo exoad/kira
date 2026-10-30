@@ -44,8 +44,6 @@ class KiraLanguageServer : LanguageServer, LanguageClientAware {
         documents.remove(uri)
     }
 
-    fun getDocument(uri: String): String? = documents[uri]
-
     override fun initialize(params: InitializeParams): CompletableFuture<InitializeResult> {
         workspaceRoot = params.workspaceFolders
             ?.firstOrNull()

@@ -108,15 +108,5 @@ class TokenBuffer(
     fun createCheckpoint(): TokenBufferCheckpoint {
         return TokenBufferCheckpoint(position)
     }
-
-    fun restoreCheckpoint(checkpoint: TokenBufferCheckpoint): Boolean {
-        val targetPosition = checkpoint.position
-        val positionDiff = position - targetPosition
-        if (positionDiff >= 0 && positionDiff < windowSize) {
-            position = targetPosition
-            return true
-        }
-        return false
-    }
 }
 

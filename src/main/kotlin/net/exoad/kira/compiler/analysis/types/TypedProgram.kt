@@ -88,7 +88,4 @@ class TypedProgram(
         }
         return best
     }
-
-    /** The source that contains [node], or null. */
-    fun sourceOf(node: ASTNode): SourceContext? = locate(node)?.first
 }

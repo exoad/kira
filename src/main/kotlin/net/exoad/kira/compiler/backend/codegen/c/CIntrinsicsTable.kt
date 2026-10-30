@@ -32,10 +32,6 @@ object CIntrinsicsTable {
         "assert" to CIntrinsicBinding("kira_assert"),
     )
 
-    fun resolveFunction(name: String): String {
-        return bindings[name]?.functionName ?: name
-    }
-
     /** Null when [name] is not a known intrinsic; callers should keep the original spelling. */
     fun resolveFunctionOrNull(name: String): String? {
         return bindings[name]?.functionName

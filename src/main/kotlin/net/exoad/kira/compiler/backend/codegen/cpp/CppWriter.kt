@@ -56,8 +56,6 @@ class CppWriter {
     }
 
     fun ifBlock(condition: String, body: CppWriter.() -> Unit): CppWriter = block(ifHead(condition), body = body)
-    fun elseIfBlock(condition: String, body: CppWriter.() -> Unit): CppWriter = block("else ${ifHead(condition)}", body = body)
-    fun elseBlock(body: CppWriter.() -> Unit): CppWriter = block("else", body = body)
     fun whileBlock(condition: String, body: CppWriter.() -> Unit): CppWriter = block(whileHead(condition), body = body)
     fun forBlock(clauses: String, body: CppWriter.() -> Unit): CppWriter = block(forHead(clauses), body = body)
 

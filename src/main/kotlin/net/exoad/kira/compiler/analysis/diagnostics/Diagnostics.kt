@@ -33,19 +33,6 @@ object Diagnostics {
         logger.useParentHandlers = false
     }
 
-//    fun useDiagnostics() {
-//        logger.level = Level.ALL
-//        // i learned it the hard way that just setting the logger's level doesnt work.
-//        // YOU HAVE TO DO IT FOR ALL THE HANDLERS???
-//        // bruh why is this a thing, cant they just built it in? i dont really understand why this isnt done under the hood
-//        logger.handlers.forEach { it.level = Level.ALL }
-//    }
-
-//    fun silenceDiagnostics() {
-//        logger.level = Level.OFF
-//        logger.handlers.forEach { it.level = Level.OFF }
-//    }
-
     fun recordDiagnostics(exception: DiagnosticsException): String {
         // A diagnostic recorded at SourcePosition.UNKNOWN (line -1) has no
         // source line to point at, so it renders as its message alone.

@@ -374,11 +374,6 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>) {
         else -> null
     }
 
-    private fun selfOf(owner: net.exoad.kira.compiler.analysis.types.TypeSymbol): KType? = when (owner) {
-        is ClassSymbol -> owner.selfType
-        else -> null
-    }
-
     /** A write: PURE only to the writer's own storage. */
     private fun write(p: Place?): Effect = if (localWrite(p)) Effect.PURE else Effect.IMPURE
 

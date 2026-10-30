@@ -124,40 +124,6 @@ sealed class Token(
         }
 
         companion object {
-            fun isBinaryOperator(vararg token: Type): Boolean {
-                return when {
-                    token.size == 1 -> when (token[0]) {
-                        OP_RANGE, S_DOT,
-                        OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
-                        OP_CMP_NEQ, OP_CMP_LEQ, OP_CMP_EQL,
-                        S_OPEN_ANGLE, S_CLOSE_ANGLE,
-                        OP_CMP_AND, OP_CMP_OR,
-                        OP_BIT_XOR, OP_BIT_SHL,
-                        S_AND, S_PIPE,
-                            -> true
-
-                        else -> false
-                    }
-
-                    token.size == 2 &&
-                            token[0] == S_CLOSE_ANGLE &&
-                            (token[1] == S_EQUAL || token[1] == S_CLOSE_ANGLE) -> true
-
-                    token.size == 3 &&
-                            token[0] == S_CLOSE_ANGLE &&
-                            token[1] == S_CLOSE_ANGLE &&
-                            token[2] == S_CLOSE_ANGLE -> true
-
-                    token.size == 4 &&
-                            token[0] == S_CLOSE_ANGLE &&
-                            token[1] == S_CLOSE_ANGLE &&
-                            token[2] == S_CLOSE_ANGLE &&
-                            token[3] == S_EQUAL -> true
-
-                    else -> false
-                }
-            }
-
             val modifiers = entries.filter { it.name.startsWith("K_MODIFIER_") }.toTypedArray()
             val literals = entries.filter { it.name.startsWith("L_") }.toTypedArray()
         }

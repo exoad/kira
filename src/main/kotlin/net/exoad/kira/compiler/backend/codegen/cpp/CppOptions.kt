@@ -67,7 +67,6 @@ data class CppOptions(
     }
 
     companion object {
-        const val DEFAULT_OUT_DIR = "gen/kira"
         const val DEFAULT_HEADER_EXT = ".kira.hxx"
         const val DEFAULT_SOURCE_EXT = ".kira.cxx"
         const val STDLIB_URI_PREFIX = "kira:"

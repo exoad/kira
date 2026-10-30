@@ -78,11 +78,6 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
         return moduleUri
     }
 
-
-    fun getLines(): List<String> {
-        return lines
-    }
-
     fun with(content: String, tokens: List<Token>? = null): SourceContext {
         return SourceContext(content, file, tokens ?: this.tokens).also { it.moduleName = moduleName }
     }

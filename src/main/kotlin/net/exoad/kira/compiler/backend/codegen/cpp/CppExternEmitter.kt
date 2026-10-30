@@ -475,9 +475,6 @@ object CppExternEmitter : CppExternsPart {
         return "kira::ffi::field<${ctx.spell(f.type, if (f.isMut) Pos.MUT_VALUE else Pos.FIELD)}>($text)"
     }
 
-    /** Whether [f] is a field of an extern struct: a read of it is a boundary crossing ([field]). */
-    fun isExternField(f: FieldSymbol): Boolean = (f.owner as? ClassSymbol)?.let { externOf(it) } != null
-
     /** `->` for a class or an opaque handle (an `Rc` or a pointer), `.` for a struct (a value). */
     private fun accessor(owner: TypeSymbol): String = when {
         owner is ClassSymbol && owner.isStruct -> "."

@@ -107,9 +107,6 @@ class Builtins(declared: Collection<ClassSymbol>) {
             put("CStr", emptyList())
         }
 
-        /** The names of the nominal builtins, in design order. */
-        val NOMINAL: Set<String> get() = NOMINAL_PARAMS.keys
-
         /** `Arr` takes its element type and, optionally, a constant size. */
         const val ARR = "Arr"
 

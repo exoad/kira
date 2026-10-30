@@ -6,14 +6,6 @@ import java.nio.file.Paths
 
 object Public {
 
-    val flagsDefault = mapOf(
-        "useDiagnosticsUnicode" to true,
-        "beVerbose" to false,
-    )
-
-    // Restored mutable flags map used by tests and runtime toggles
-    var flags: Map<String, Boolean> = flagsDefault.toMutableMap()
-
     object Builtin {
         var intrinsicalStandardLibrarySources: Array<String> = emptyArray()
 

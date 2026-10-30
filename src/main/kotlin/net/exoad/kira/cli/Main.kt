@@ -105,7 +105,6 @@ fun main(args: Array<String>) {
         }
     }
     val result = measureTimedValue {
-//        Diagnostics.silenceDiagnostics()
         val projectRoot: Path = Paths.get(".").toAbsolutePath().normalize()
         var project: Project? = null
         val projectFile = ProjectFile.find(projectRoot)

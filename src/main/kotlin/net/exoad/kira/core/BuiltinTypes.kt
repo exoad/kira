@@ -75,8 +75,4 @@ object BuiltinTypes {
     val booleanTypes = mapOf(
         "Bool" to arrayOf(Token.Type.X_ANY)
     )
-
-    fun allBuiltinTypes(): Map<String, Array<Token.Type>> {
-        return integerTypes + floatTypes + booleanTypes + sequenceTypes + unitTypes + referenceTypes
-    }
 }

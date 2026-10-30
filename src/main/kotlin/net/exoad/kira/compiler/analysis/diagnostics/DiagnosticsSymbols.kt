@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.analysis.diagnostics
 
 /**
- * These symbols will still be present even if [net.exoad.kira.Public.Flags.useDiagnosticsUnicode] is `false`
+ * These symbols are always present.
  */
 object DiagnosticsSymbols {
     /**

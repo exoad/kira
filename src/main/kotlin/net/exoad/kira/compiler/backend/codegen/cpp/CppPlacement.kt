@@ -620,15 +620,6 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * [structs] in the order [ordered] gives them (a struct after every struct it holds by
-     * value, and after the values it names).
-     */
-    fun sortStructs(structs: List<ClassSymbol>): List<ClassSymbol> {
-        val wanted = structs.toCollection(java.util.Collections.newSetFromMap(IdentityHashMap<ClassSymbol, Boolean>()))
-        return ordered.filterIsInstance<ClassSymbol>().filter { it in wanted }
-    }
-
-    /**
      * Whether the private type [sym] needs a forward declaration: some declaration placed
      * before it in [ordered] names it (through a `List<T>`, a `Maybe<C>` or a signature).
      * Exported types are always forward-declared (design 4.2 item 5).

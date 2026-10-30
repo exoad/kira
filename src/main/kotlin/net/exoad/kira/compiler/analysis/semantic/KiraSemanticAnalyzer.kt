@@ -175,31 +175,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
-    fun expectSymbol(symbolName: String, symbolKind: SemanticSymbolKind) {
-        val res = compilationUnit.symbolTable.resolve(symbolName)
-        pumpOnTrue(
-            res == null || res.kind != symbolKind, "Expected a $symbolKind for '$symbolName', but got '$res'",
-            location = res?.declaredAt?.toPosition() ?: SourcePosition.UNKNOWN,
-            selectorLength = res!!.name.length
-        )
-    }
-
-    fun expectDeclared(
-        symbolName: String,
-        location: SourcePosition?,
-        helpMessage: String = "'$symbolName' is not available at this scope. Or it has not been declared.",
-    ) {
-        val res = compilationUnit.symbolTable.resolve(symbolName)
-        if (res == null) {
-            pump(
-                "'${symbolName}' is an unknown symbol here.",
-                location = location ?: SourcePosition.UNKNOWN,
-                selectorLength = symbolName.length,
-                help = helpMessage
-            )
-        }
-    }
-
     fun expectTypeNotDeclaredInModule(symbolName: String, location: SourcePosition?) {
         val moduleScope = try {
             compilationUnit.symbolTable.findScope(SemanticScope.Module(context.getModuleUri()))
@@ -213,32 +188,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 location = location ?: SourcePosition.UNKNOWN,
                 selectorLength = symbolName.length,
                 help = "Rename this type or remove the previous declaration. Shadowing types in the module scope is not allowed."
-            )
-        }
-    }
-
-    fun expectNotDeclared(
-        symbolName: String,
-        location: SourcePosition?,
-        helpMessage: String = "Shadowing is not allowed. Rename this or the previous declaration.",
-    ) {
-        val res = compilationUnit.symbolTable.resolve(symbolName)
-        if (res != null) {
-            pump(
-                "'${symbolName}' was already declared at ${res.declaredAt}",
-                location = location ?: SourcePosition.UNKNOWN,
-                selectorLength = symbolName.length,
-                help = helpMessage
-            )
-        }
-    }
-
-    fun expectType(symbolName: String, typeName: String) {
-        val res = compilationUnit.symbolTable.resolve(symbolName)
-        if (res == null || res.kind != SemanticSymbolKind.TYPE_SPECIFIER || res.name == typeName) {
-            pump(
-                "Expected ${EnglishUtils.prependIndefiniteArticle(typeName)} for $symbolName, but got '$res'",
-                location = res?.declaredAt?.toPosition() ?: SourcePosition.UNKNOWN
             )
         }
     }

@@ -90,10 +90,6 @@ class CompilationUnit(bootstrap: Boolean = true) {
         }
     }
 
-    fun isOpaqueType(name: String): Boolean {
-        return opaqueTypeNames.contains(name)
-    }
-
     fun allOpaqueTypes(): Set<String> {
         return opaqueTypeNames.toSet()
     }
