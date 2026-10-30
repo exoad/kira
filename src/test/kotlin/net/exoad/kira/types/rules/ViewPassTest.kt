@@ -1125,7 +1125,8 @@ class ViewPassTest {
             }
             """,
         )
-        assertEquals(List(14) { "rules.view.write" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        // The program reads Maybe values with no isNull() check on purpose; types.maybe.unchecked-value is that warning, not this test's subject.
+        assertEquals(List(14) { "rules.view.write" }, p.diagnostics.filter { it.code != "types.maybe.unchecked-value" }.map { it.code }, TyperTestSupport.render(p))
         // O2 as LentPlaces records it: the call spelling is the index spelling's place, rooted at pick(h).items.
         val lent = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items.get(0)"))
         val indexed = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items[0]"))

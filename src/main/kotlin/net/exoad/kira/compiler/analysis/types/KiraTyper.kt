@@ -95,6 +95,9 @@ object KiraTyper {
         guard(program, "cast precedence") {
             CastPrecedence(program).warn()
         }
+        guard(program, "maybe value check") {
+            MaybeValueCheck(program).warn()
+        }
         rulePasses.forEach { pass ->
             guard(program, "rule pass ${pass.name}") {
                 pass.run(program)

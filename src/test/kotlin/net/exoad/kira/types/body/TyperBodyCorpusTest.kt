@@ -48,8 +48,12 @@ class TyperBodyCorpusTest {
             DynamicTest.dynamicTest(dir.name) {
                 val program = TyperTestSupport.project(dir, TyperMode.STRICT)
                 // No error. A NamingPass warning is allowed: the decls golden renames LIMIT, width and Mode on purpose,
-                // and those names are its subject (40-round3 4.4).
-                assertTrue(program.diagnostics.none { it.isError || !it.code.startsWith("rules.naming.") }, "${dir.name}:\n${TyperTestSupport.render(program)}")
+                // and those names are its subject (40-round3 4.4). types.maybe.unchecked-value is a warning on a Maybe's
+                // `.value` read with no isNull() check; the goldens read Maybe values as written, and the warning is allowed.
+                assertTrue(
+                    program.diagnostics.none { it.isError || (!it.code.startsWith("rules.naming.") && it.code != "types.maybe.unchecked-value") },
+                    "${dir.name}:\n${TyperTestSupport.render(program)}",
+                )
                 val problems = program.workspaceModules.flatMap { untypedValues(program, it) }
                 assertTrue(problems.isEmpty(), "${dir.name}: value expressions without a type, or typed <error>:\n${problems.joinToString("\n")}")
             }
