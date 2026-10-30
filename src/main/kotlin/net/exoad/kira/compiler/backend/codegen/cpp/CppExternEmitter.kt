@@ -24,6 +24,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.CharLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
@@ -496,6 +497,20 @@ object CppExternEmitter : CppExternsPart {
             return text
         }
         return "kira::ffi::field<${ctx.spell(f.type, if (f.isMut) Pos.MUT_VALUE else Pos.FIELD)}>($text)"
+    }
+
+    /**
+     * `T { }` of an extern class or struct with no values (item 2) is its C++ default construction: `std::make_shared<T>()`
+     * for a class, the `kira::Rc` a Kira class is, and `T()` for a struct. A C++ type with no default constructor fails
+     * there, in C++. Null for any other construction (an `@_opaque` handle, or a construction with values).
+     */
+    fun defaultConstruction(ctx: CppEmitContextImpl, e: ObjectInitExpr): String? {
+        val cls = (ctx.model.types[e] as? KType.Nominal)?.sym as? ClassSymbol ?: return null
+        if (cls.foreign !is Foreign.Extern || cls.kind == ClassKind.OPAQUE || e.positionalArgs.isNotEmpty() || e.namedArgs.isNotEmpty()) {
+            return null
+        }
+        val name = globalName(cls)
+        return if (cls.isStruct) "$name()" else "std::make_shared<$name>()"
     }
 
     /** `->` for a class or an opaque handle (an `Rc` or a pointer), `.` for a struct (a value). */

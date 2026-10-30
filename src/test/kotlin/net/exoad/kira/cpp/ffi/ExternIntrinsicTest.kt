@@ -151,6 +151,39 @@ class ExternIntrinsicTest {
         )
     }
 
+    /**
+     * `T { }` of an extern class or struct is its C++ default construction (item 2): accepted with no values, and
+     * refused with values, since the C++ side owns a constructor's arguments. An `@_opaque` handle is never built here.
+     */
+    @Test
+    fun anExternClassOrStructIsBuiltWithNoValues() {
+        val extern = """
+            pub @_extern(cpp = "probe::Car", header = "probe.hxx") Car: Any {
+                pub speed: () Int32;
+            }
+
+            pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
+                pub x: Float32 = 0.0
+                pub y: Float32 = 0.0
+            }
+        """
+        TyperTestSupport.expectNoErrors(TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car = Car { }\n    v: Vec2 = Vec2 { }\n    0\n}"))
+        val withValues = TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car = Car { 1 }\n    0\n}")
+        assertTrue(withValues.diagnostics.any { it.message.contains("Car is made by the C/C++ side") }, withValues.diagnostics.map { it.message }.toString())
+        val opaque = TyperTestSupport.snippet(
+            """
+            pub @_opaque @_extern(cpp = "probe::Handle", header = "probe.hxx") Handle: Any {
+            }
+
+            main: () Int32 {
+                h: Handle = Handle { }
+                0
+            }
+            """
+        )
+        assertTrue(opaque.diagnostics.any { it.message.contains("Handle is made by the C/C++ side") }, opaque.diagnostics.map { it.message }.toString())
+    }
+
     /** `@_enum` types a parameter of an extern function, so it is refused on a Kira function or a prototype, and it names a C++ enum. */
     @Test
     fun anEnumMarkerNeedsAnExternOnTheSameFunction() {

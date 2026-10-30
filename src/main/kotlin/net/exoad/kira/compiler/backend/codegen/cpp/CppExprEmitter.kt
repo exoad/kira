@@ -1315,6 +1315,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * `T{}`.
      */
     private fun construction(e: ObjectInitExpr): CppEx {
+        CppExternEmitter.defaultConstruction(ctx, e)?.let { return CppEx(it, CppPrec.POSTFIX) }
         val ri = model.init(e) ?: return internal(e, "no construction was recorded")
         val cls = ri.cls ?: return internal(e, "a construction without a class")
         val t = ri.type

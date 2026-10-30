@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.cpp.decls.DeclTestSupport
+import net.exoad.kira.cpp.exprs.CppExprTestSupport
 import net.exoad.kira.types.TyperTestSupport
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -493,6 +494,37 @@ class CppExternEmitterTest {
                 assertEquals(net.exoad.kira.compiler.analysis.types.Effect.IMPURE, c.ctx.model.effect(e), "EffectsPass ranks $name")
             }
         }
+    }
+
+    /**
+     * `T { }` of an extern class or struct (item 2) is the C++ default construction: a class handle is
+     * `std::make_shared<T>()`, the `kira::Rc` a Kira class is, and a struct is `T()`. The C++ type's own
+     * default constructor is what builds it, so a type with none fails at the construction in C++.
+     */
+    @Test
+    fun anExternClassOrStructIsConstructedByItsDefaultConstructor() {
+        val module = CppExprTestSupport.Module(
+            "app:m",
+            """
+            pub @_extern(cpp = "probe::Car", header = "probe.hxx") Car: Any {
+                pub speed: () Int32;
+            }
+
+            pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
+                pub x: Float32 = 0.0
+                pub y: Float32 = 0.0
+            }
+
+            made: () Int32 {
+                car: Car { }
+                v: Vec2 { }
+                car.speed()
+            }
+            """,
+        )
+        val source = CppExprTestSupport.emit("ffi-default-construct", listOf(module)).source(module)
+        assertTrue(source.contains("std::make_shared<::probe::Car>()"), source)
+        assertTrue(source.contains("::ImVec2()"), source)
     }
 
     /**

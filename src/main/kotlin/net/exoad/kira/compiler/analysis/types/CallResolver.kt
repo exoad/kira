@@ -1142,7 +1142,12 @@ internal class CallResolver(private val c: PhaseC) {
         }
         val nominal = t as? KType.Nominal
         val cls = nominal?.sym as? ClassSymbol
+        // An extern class or struct built with no values is its C++ default construction (the C++ emitter spells it);
+        // its members are the C++ side's, so no Kira field is filled here.
+        val defaultExtern = cls != null && cls.kind != ClassKind.OPAQUE && cls.foreign is Foreign.Extern &&
+            e.positionalArgs.isEmpty() && e.namedArgs.isEmpty()
         val refused = when {
+            defaultExtern -> null
             cls == null -> "${t.display()} is not a class or struct"
             cls.kind == ClassKind.MAGIC && (Builtins.prim(cls.name) != null || cls.name in Builtins.SPECIAL || cls.name in setOf("View", "MutView", "Fx", "Unsafe", "Any", "Num")) ->
                 "${t.display()} is not constructed with { }" + if (cls.name == "View" || cls.name == "MutView") "; take a view of a container with .view(), .from() or .slice()" else ""
@@ -1154,6 +1159,9 @@ internal class CallResolver(private val c: PhaseC) {
         if (refused != null) {
             c.report("types.init.not-constructible", "$refused.", e)
             return bail()
+        }
+        if (defaultExtern) {
+            return t
         }
         cls!!
         val magic = cls.kind == ClassKind.MAGIC
