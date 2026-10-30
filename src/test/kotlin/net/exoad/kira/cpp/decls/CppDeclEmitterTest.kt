@@ -153,6 +153,29 @@ class CppDeclEmitterTest {
         assertTrue(!CppWriter.normalize(emitted.header).contains("${attr}void plain"), "plain has no IRAM attribute")
     }
 
+    /** rules.iram.callee: a call through an Fx value runs a closure, which an @_iram body may not reach. */
+    @Test
+    fun anIramBodyMayNotCallThroughAFunctionValue() {
+        val (emitted, _) = DeclTestSupport.emitWith(
+            DeclTestSupport.module(
+                "test:main",
+                """
+                pub @_iram onEdge: (f: Fx<Tuple0, Void>) Void {
+                    f()
+                }
+
+                pub plain: (f: Fx<Tuple0, Void>) Void {
+                    f()
+                }
+                """,
+            ),
+            uri = "test:main",
+        )
+        val errors = emitted.diagnostics.filter { it.isError }.map { it.render() }
+        assertTrue(errors.any { it.contains("rules.iram.callee") && it.contains("'onEdge'") }, "a call through a function value in an IRAM body is refused: $errors")
+        assertTrue(errors.none { it.contains("'plain'") }, "a plain function may call a function value: $errors")
+    }
+
     /** rules.iram.callee: an @_iram body may call only @_iram Kira functions, and externs (their code is the binding's). */
     @Test
     fun anIramBodyMayCallOnlyIramFunctionsAndExterns() {

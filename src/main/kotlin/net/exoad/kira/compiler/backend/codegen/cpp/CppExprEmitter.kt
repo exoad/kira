@@ -1574,6 +1574,12 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         ctx.diag(e, "rules.iram.callee", "'${callee.name}' is not @_iram, so '${caller.name}' (@_iram) cannot call it: an interrupt handler runs while the flash cache may be off")
     }
 
+    /** rules.iram.callee: a call through an Fx value runs a closure, which an interrupt handler may not reach. */
+    private fun checkIramFnValue(e: FunctionCallExpr) {
+        val caller = ctx.iramBody ?: return
+        ctx.diag(e, "rules.iram.callee", "a call through a function value in '${caller.name}' (@_iram): an interrupt handler runs while the flash cache may be off, and a closure may not run there")
+    }
+
     private fun freeCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
         val fn = rc.fn ?: return internal(e, "a free call without its function")
         checkIramCallee(e, fn)
@@ -1623,6 +1629,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * one of a variable `f`), so the call would never run.
      */
     private fun fnValueCall(e: FunctionCallExpr, rc: ResolvedCall): CppEx {
+        checkIramFnValue(e)
         val (argOps, argSlots) = arguments(rc)
         // The callee is evaluated first (D33); as an operand it is spilled with the arguments.
         val calleeOp = usedOperand(e.name, byRef = true) { coerced(e.name) }
