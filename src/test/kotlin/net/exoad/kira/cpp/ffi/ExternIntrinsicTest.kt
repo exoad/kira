@@ -151,6 +151,23 @@ class ExternIntrinsicTest {
         )
     }
 
+    /** `@_enum` types a parameter of an extern function, so it is refused on a Kira function or a prototype, and it names a C++ enum. */
+    @Test
+    fun anEnumMarkerNeedsAnExternOnTheSameFunction() {
+        assertRefused(
+            """
+            pub @_enum(mode = "bibo::Mode") setPlain: (mode: Int32) Void;
+            """,
+            "@_enum needs @_extern on the same function",
+        )
+        assertRefused(
+            """
+            pub @_enum(mode = 3) @_extern(cpp = "bibo::setMode", header = "bibo.hxx") setMode: (mode: Int32) Void;
+            """,
+            "@_enum's 'mode' is a string literal, not IntegerLiteral",
+        )
+    }
+
     @Test
     fun aMethodTakesTheMarkerOnlyInsideAnExternClass() {
         assertRefused(

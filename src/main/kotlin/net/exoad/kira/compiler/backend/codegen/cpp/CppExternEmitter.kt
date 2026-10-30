@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
+import net.exoad.kira.compiler.analysis.types.Marker
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
@@ -116,6 +117,9 @@ object CppExternEmitter : CppExternsPart {
     const val CHECK = "KIRA_EXTERN_CHECK"
     const val CALLBACK_MARKER = "_callback"
 
+    /** The marker that names the C++ enum of an integer parameter (`@_enum(mode = "ns::Mode")`). */
+    const val ENUM_MARKER = "_enum"
+
     /** The macro of `kira/ffi.hxx` a struct field is checked with: its exact type and its offset. */
     const val FIELD_CHECK = "KIRA_EXTERN_FIELD"
 
@@ -131,6 +135,10 @@ object CppExternEmitter : CppExternsPart {
     /** The `@_extern` marker of [sym], or null when it carries none (a member inherits its owner's). */
     /** Whether [fn] is marked `@_callback`: its Fx parameters are C callbacks, passed as a kira::ffi::FnArg. */
     private fun takesCallbacks(fn: FnSymbol): Boolean = fn.markers.any { it.name == CALLBACK_MARKER }
+
+    /** The C++ enum each parameter [fn]'s `@_enum` marker names takes, by the Kira parameter's name. */
+    private fun enumParams(fn: FnSymbol): Map<String, String> =
+        fn.markers.firstOrNull { it.name == ENUM_MARKER }?.namedParameters?.mapValues { Marker.markerText(it.value) }.orEmpty()
 
     fun externOf(sym: Symbol): Foreign.Extern? = when (sym) {
         is ClassSymbol -> sym.foreign
@@ -298,7 +306,20 @@ object CppExternEmitter : CppExternsPart {
             fn.isMutMethod -> "std::declval<${cppName(owner)}&>()."
             else -> "std::declval<const ${cppName(owner)}&>()."
         }
-        val args = fn.params.joinToString(", ") { checkArg(ctx, it, takesCallbacks(fn)) }
+        val enums = enumParams(fn)
+        for (name in enums.keys) {
+            val p = fn.params.firstOrNull { it.name == name }
+            if (p == null) {
+                ctx.diag(fn.decl ?: return, CppModuleEmitterFactory.UNSUPPORTED_CODE, "'$name' is no parameter of '${fn.name}': @_enum names a parameter of the extern")
+            } else if (p.byRef || (p.type as? KType.Scalar)?.prim?.isInteger != true) {
+                ctx.diag(p.decl ?: fn.decl ?: return, CppModuleEmitterFactory.UNSUPPORTED_CODE, "'$name' of '${fn.name}' is not an integer parameter: @_enum types a C++ enum that takes a Kira integer")
+            } else {
+                val enumName = global(enums.getValue(name))
+                val integerType = checkType(ctx, p.type, Pos.VALUE)
+                w.line("static_assert(std::is_enum_v<$enumName> && sizeof($enumName) == sizeof($integerType), \"Kira's $what.$name $DRIFT_MESSAGE\");")
+            }
+        }
+        val args = fn.params.joinToString(", ") { checkArg(ctx, it, takesCallbacks(fn), enums[it.name]) }
         val invoke = "$receiver${cppName(fn)}($args)"
         if (fn.ret == KType.Void) {
             w.line("$CHECK(($invoke, 0), int, \"$what\");")
@@ -321,7 +342,8 @@ object CppExternEmitter : CppExternsPart {
      * overload taking T itself and one taking a type T converts to would rank equal (both
      * user-defined conversions) and the check would be ambiguous where the call is not.
      */
-    private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol, callbacks: Boolean): String = when {
+    private fun checkArg(ctx: CppEmitContextImpl, p: ParamSymbol, callbacks: Boolean, enumType: String?): String = when {
+        enumType != null && !p.byRef -> "static_cast<${global(enumType)}>(std::declval<${checkType(ctx, p.type, Pos.VALUE)}>())"
         isUnsafe(p.type) -> "std::declval<${checkType(ctx, p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM)}>()"
         p.byRef -> "kira::ffi::out(std::declval<${checkType(ctx, p.type, Pos.VALUE)}&>())"
         p.type == KType.Str -> "kira::ffi::in(std::declval<const kira::Str&>())"
@@ -405,7 +427,8 @@ object CppExternEmitter : CppExternsPart {
         // which as a class or opaque receiver or argument always counts); a C++ callback
         // registry is reached through such a handle, never through a free function taking none.
         val callbacks = takesCallbacks(fn)
-        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy, callbacks) }
+        val enums = enumParams(fn)
+        val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy, callbacks, enums) }
         val text = "$callee(${texts.joinToString(", ")})"
         return if (marked) declared(ctx, fn.ret, text) else text
     }
@@ -549,11 +572,26 @@ object CppExternEmitter : CppExternsPart {
      * by-reference type (`kira::List<std::int32_t>(gl)`, `kira::Rc<ns::C>(h)`, a value class's
      * copy constructor). Each copy lives to the end of the call's full-expression.
      */
-    private fun argument(ctx: CppEmitContextImpl, p: ParamSymbol?, binding: ArgBinding?, text: String, copy: Boolean, proxied: Boolean, callbacks: Boolean): String {
+    private fun argument(
+        ctx: CppEmitContextImpl,
+        p: ParamSymbol?,
+        binding: ArgBinding?,
+        text: String,
+        copy: Boolean,
+        proxied: Boolean,
+        callbacks: Boolean,
+        enums: Map<String, String>,
+    ): String {
         if (p == null) {
             return text
         }
         val expr = (binding as? ArgBinding.Given)?.expr
+        val enumType = enums[p.name]
+        if (proxied && enumType != null && !p.byRef) {
+            // An @_enum parameter: the Kira integer is converted to the C++ enum with an explicit cast.
+            val integer = expr?.let { typedLiteral(ctx, p.type, it, text) } ?: text
+            return "static_cast<${global(enumType)}>($integer)"
+        }
         if (proxied && callbacks && expr != null && !p.byRef && p.type is KType.Fn) {
             // A C callback (@_callback): the proxy converts to the std::function or the function pointer C++ declares. A
             // named function or a lambda is first made the Fn it converts to.

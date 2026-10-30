@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.core.intrinsics.ConstIntrinsic
 import net.exoad.kira.core.intrinsics.DeclIntrinsic
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
@@ -34,6 +35,7 @@ object IntrinsicRegistry {
             MutatesIntrinsic,
             CallbackIntrinsic,
             IramIntrinsic,
+            EnumIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics are known names the parser accepts as identifiers; they are not
         // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
@@ -92,6 +94,7 @@ object IntrinsicRegistry {
         MutatesIntrinsic.name,
         CallbackIntrinsic.name,
         IramIntrinsic.name,
+        EnumIntrinsic.name,
     )
 
     /**
@@ -132,6 +135,32 @@ object IntrinsicRegistry {
         }
 
         override fun apply(invocation: IntrinsicExpr, target: ASTNode, compilationUnit: CompilationUnit, context: SourceContext): ASTNode = NoExpr
+    }
+
+    /**
+     * `@_enum` (extern enums): on an `@_extern` function, each named parameter is a C++ enum that takes a Kira
+     * integer. Kira has no enum type, so the marker names the C++ one: `@_enum(mode = "ns::Mode")`. The call
+     * converts the integer with an explicit cast; the cpp target only, other targets ignore it.
+     */
+    object EnumIntrinsic : CompilerIntrinsic("_enum", setOf(FunctionDecl::class)) {
+        override fun validate(invocation: IntrinsicExpr, compilationUnit: CompilationUnit, context: SourceContext) {
+            if (!invocation.parameters.isNullOrEmpty() || invocation.namedParameters.isEmpty()) {
+                throw KiraRuntimeException("@_enum names the C++ enum of each parameter: @_enum(mode = \"ns::Mode\")")
+            }
+            invocation.namedParameters.forEach { (name, value) ->
+                if (value !is StringLiteral) {
+                    throw KiraRuntimeException("@_enum's '$name' is a string literal, not ${value::class.simpleName}")
+                }
+            }
+        }
+
+        override fun apply(invocation: IntrinsicExpr, target: ASTNode, compilationUnit: CompilationUnit, context: SourceContext): ASTNode {
+            val marks = runCatching { context.astIntrinsicMarked[target] }.getOrNull().orEmpty()
+            if (marks.none { it.name == ExternIntrinsic.name }) {
+                throw KiraRuntimeException("@_enum needs @_extern on the same function: it types the C++ enum of an extern's parameter")
+            }
+            return NoExpr
+        }
     }
 
     object CallbackIntrinsic : CompilerIntrinsic("_callback", setOf(FunctionDecl::class)) {

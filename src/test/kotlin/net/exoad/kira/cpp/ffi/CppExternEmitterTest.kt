@@ -494,4 +494,54 @@ class CppExternEmitterTest {
             }
         }
     }
+
+    /**
+     * `@_enum(param = "C++ enum")` (item 1): a parameter whose C++ type is an enum takes a Kira
+     * integer, which the call converts with an explicit `static_cast<E>`. Kira has no enum type,
+     * so the marker names the C++ one; the check states the same cast and asserts the enum has the
+     * integer's size. An integer parameter the marker does not name is passed as it is.
+     */
+    @Test
+    fun anEnumParameterTakesAKiraIntegerThroughAnExplicitCast() {
+        val body = """
+            pub @_enum(mode = "bibo::Mode") @_extern(cpp = "bibo::setMode", header = "bibo.hxx") setMode: (mode: Int32) Void;
+
+            pub @_enum(mode = "bibo::Mode") @_extern(cpp = "bibo::applyMode", header = "bibo.hxx") applyMode: (mode: Int32) Void;
+
+            pub @_extern(cpp = "bibo::setCount", header = "bibo.hxx") setCount: (n: Int32) Void;
+
+            main: () Int32 {
+                setMode(2)
+                mode: Int32 = 1
+                applyMode(mode)
+                setCount(2)
+                0
+            }
+        """
+        val c = callsOf(body)
+        assertEquals("::bibo::setMode(static_cast<::bibo::Mode>(std::int32_t{2}))", c.text("setMode", null, "2"))
+        assertEquals("::bibo::applyMode(static_cast<::bibo::Mode>(mode))", c.text("applyMode", null, "mode"))
+        assertEquals("::bibo::setCount(std::int32_t{2})", c.text("setCount", null, "2"))
+        val h = header(body)
+        assertLines(
+            h,
+            "static_assert(std::is_enum_v<::bibo::Mode> && sizeof(::bibo::Mode) == sizeof(std::int32_t), \"Kira's setMode.mode no longer matches its C++ header\");",
+            "KIRA_EXTERN_CHECK((bibo::setMode(static_cast<::bibo::Mode>(std::declval<std::int32_t>())), 0), int, \"setMode\");",
+            "KIRA_EXTERN_CHECK((bibo::setCount(kira::ffi::arg<std::int32_t>()), 0), int, \"setCount\");",
+        )
+    }
+
+    /** An `@_enum` name must be a parameter of its extern, and an integer one: a float or a missing name is refused. */
+    @Test
+    fun anEnumMarkerNamesAnIntegerParameterOfItsExtern() {
+        val errors = errorsOf(
+            """
+            pub @_enum(nope = "bibo::Mode") @_extern(cpp = "bibo::setMode", header = "bibo.hxx") setMode: (mode: Int32) Void;
+
+            pub @_enum(ratio = "bibo::Ratio") @_extern(cpp = "bibo::setRatio", header = "bibo.hxx") setRatio: (ratio: Float32) Void;
+            """
+        )
+        assertTrue(errors.any { it.contains("'nope' is no parameter of 'setMode'") }, errors.toString())
+        assertTrue(errors.any { it.contains("'ratio' of 'setRatio' is not an integer") }, errors.toString())
+    }
 }
