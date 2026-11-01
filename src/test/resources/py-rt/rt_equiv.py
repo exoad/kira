@@ -300,6 +300,9 @@ def shape_of(name, obj):
         slots = obj.__dict__.get("__slots__")
         return ("class", tuple(c.__name__ if c.__module__ != "rt" else "rt." + c.__name__ for c in obj.__bases__),
                 tuple(sorted(methods.items())), tuple(slots) if slots is not None else None)
+    if isinstance(obj, type):
+        # A class from elsewhere (the shared Error) is its name and its bases: a panic is a RuntimeError, a throw is not.
+        return ("type", obj.__module__, obj.__qualname__, tuple((b.__module__, b.__qualname__) for b in obj.__mro__[1:]))
     if hasattr(obj, "__code__") and getattr(obj, "__module__", None) in (None, "rt") and callable(obj):
         return ("function", sig(obj))
     if name == "_k_unset":
@@ -469,17 +472,25 @@ def coverage(rt, cases):
 # ---- closure check -------------------------------------------------------------------------------------------------
 
 class Binder(ast.NodeVisitor):
-    """The names a module's top level binds. A def or class binds its own name and nothing inside it (a method name,
-    a parameter or a local is not a definition a call elsewhere can reach); a `global` makes a function bind its name."""
+    """The names a module's top level really binds. A def or class binds its own name and nothing inside it; a
+    function binds a `global` name only by assigning it. A bare annotation, a del, an `except as` (unbound again when
+    the handler ends) and the target of a loop over an empty literal bind nothing."""
 
     def __init__(self):
         self.names = set()
 
     def visit_FunctionDef(self, n):
         self.names.add(n.name)
-        for g in ast.walk(n):
-            if isinstance(g, ast.Global):
-                self.names.update(g.names)
+        declared = {g for x in ast.walk(n) if isinstance(x, ast.Global) for g in x.names}
+        stored = set()
+        for x in ast.walk(n):
+            if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store):
+                stored.add(x.id)
+            elif isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                stored.add(x.name)
+            elif isinstance(x, (ast.Import, ast.ImportFrom)):
+                stored.update((a.asname or a.name).split(".")[0] for a in x.names)
+        self.names.update(declared & stored)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -495,8 +506,26 @@ class Binder(ast.NodeVisitor):
     visit_SetComp = visit_DictComp = visit_GeneratorExp = visit_ListComp
 
     def visit_Name(self, n):
-        if isinstance(n.ctx, (ast.Store, ast.Del)):
+        if isinstance(n.ctx, ast.Store):
             self.names.add(n.id)
+
+    def visit_AnnAssign(self, n):
+        if n.value is not None:
+            self.visit(n.target)
+            self.visit(n.value)
+
+    def visit_AugAssign(self, n):
+        self.visit(n.value)
+
+    def visit_For(self, n):
+        it = n.iter
+        empty = (isinstance(it, (ast.Tuple, ast.List, ast.Set)) and not it.elts) or (isinstance(it, ast.Dict) and not it.keys)             or (isinstance(it, ast.Constant) and isinstance(it.value, (str, bytes)) and not it.value)
+        if not empty:
+            self.visit(n.target)
+        for x in [it] + n.body + n.orelse:
+            self.visit(x)
+
+    visit_AsyncFor = visit_For
 
     def visit_Import(self, n):
         self.names.update((a.asname or a.name).split(".")[0] for a in n.names)
@@ -504,9 +533,8 @@ class Binder(ast.NodeVisitor):
     visit_ImportFrom = visit_Import
 
     def visit_ExceptHandler(self, n):
-        if n.name:
-            self.names.add(n.name)
-        self.generic_visit(n)
+        for x in n.body:
+            self.visit(x)
 
 
 def bound_names(tree):
@@ -709,13 +737,16 @@ def mode_coverage(args):
     entered = {own[ln] for ln in lines & hit if ln in own}
     say("never_entered", ",".join(sorted({own[ln] for ln in lines if ln in own} - entered)))
     # The branches only one host runs for real: each is said to be run or not on this one, never left out.
-    unrun = []
+    unrun, gone = [], []
     for label, owner, frag in PLATFORM_BRANCHES:
         found = [ln for ln in lines if own.get(ln) == owner and frag in text[ln - 1]]
         state = "absent" if not found else "hit" if all(ln in hit for ln in found) else "uncovered"
         say("branch." + label, state)
-        if state == "uncovered":
+        if state != "hit":
             unrun.append(label)
+            if state == "absent":
+                gone.append(label)
+    say("branches_absent", ",".join(gone))
     say("branches_uncovered", ",".join(unrun))
     shape = shapes(rt)
     say("constants_compared", "%d/%d" % (sum(1 for n in defs["constant"] if n in shape), len(defs["constant"])))
@@ -769,8 +800,8 @@ def mode_strip(args):
     say("dead.functions", "%d/%d" % (f, fl))
     say("dead.classes", "%d/%d" % (c, cl))
     say("dead.methods", "%d/%d" % (m, ml))
-    # All the listed names are there (before the deletion) or none is (after it); a part means the lists have drifted.
-    say("dead.state", "present" if (f, c, m) == (fl, cl, ml) else "gone" if (f, c, m) == (0, 0, 0) else "DRIFTED")
+    # Every listed name is there (before the deletion) or no function and no method is (after it; the classes stay).
+    say("dead.state", "present" if (f, c, m) == (fl, cl, ml) else "gone" if f == 0 and m == 0 else "DRIFTED")
     return 0
 
 

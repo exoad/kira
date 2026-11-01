@@ -94,6 +94,12 @@ class PyRuntimeEquivTest {
         println("host ${r.one("platform")}: line coverage $pct%; host-only branches not run here: ${unrun.ifEmpty { "none" }}")
         // The host-only branches are run through fakes on any host, so none may be left; a list here is never silent.
         assertEquals("", unrun, "host-only branches the corpus did not run on ${r.one("platform")}")
+        assertEquals("", r.one("branches_absent"), "a host-only branch whose line text is no longer in the runtime")
+        // The check can fail: the same behaviour in other words leaves the POSIX kill line unfound, and that is a failure.
+        val reworded = variant("kill-reworded.py", "            self.p.kill()", "            self.p.kill( )")
+        val w = harness("coverage", "--rt", reworded.absolutePath)
+        assertEquals("process-kill", w.one("branches_absent"), w.raw)
+        assertTrue("process-kill" in w.one("branches_uncovered").split(","), w.raw)
         val (compared, constants) = r.one("constants_compared").split("/").map { it.toInt() }
         assertEquals(constants, compared)
     }
@@ -105,6 +111,7 @@ class PyRuntimeEquivTest {
         assertEquals(0, r.int("missed"))
         assertEquals(0, r.int("pycache_dirs"))
         println("mutants: ${r.one("mutants")}, flaky differences refused as catches: ${r.one("flakes")}")
+        assertEquals(0, r.int("flakes"), "a difference that did not repeat was refused as a catch")
         val mutants = r.lines.filterKeys { it.startsWith("mutant.") }
         assertTrue(mutants.size >= 55, "only ${mutants.size} mutants")
         for ((id, verdict) in mutants) {
@@ -143,6 +150,11 @@ class PyRuntimeEquivTest {
         val local = variant("reasons-plain.py", "_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_threading.local())", "_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_types.SimpleNamespace())")
         val l = harness("equiv", "--a", rt(), "--b", local.absolutePath)
         assertEquals(1, l.code)
+        // The shared Error's base: a throw must not be a RuntimeError, which is what a panic raises.
+        val base = variant("error-base.py", "(_k_builtins.Exception,), {\"__module__\": \"kira:errors\"}", "(_k_builtins.RuntimeError,), {\"__module__\": \"kira:errors\"}")
+        val b = harness("equiv", "--a", rt(), "--b", base.absolutePath)
+        assertEquals(1, b.code, b.raw)
+        assertTrue(b.lines["shape_diff"].orEmpty().any { "_k_Error" in it }, b.raw)
         val gone = variant("function-gone.py", "def _k_hex(v):\n    return \"%x\" % v\n", "")
         val g = harness("equiv", "--a", rt(), "--b", gone.absolutePath)
         assertEquals(1, g.code)
@@ -164,10 +176,16 @@ class PyRuntimeEquivTest {
             assertEquals(2 + 6, s.int("stripped"), "the stripped count is the two functions and six methods")
             assertTrue(r.int("skipped") > 0, "the dead cases ran against a runtime without them")
         }
-        // The check can fail: a runtime that renames one dead function leaves the lists matching only part of it.
-        val renamed = variant("dead-renamed.py", "def _k_mapset(m, v):", "def _k_mapput(m, v):")
-        val d = harness("strip-dead", "--rt", renamed.absolutePath, "--out", File(scratch, "stripped2.py").absolutePath)
-        if (s.one("dead.state") == "present") assertEquals("DRIFTED", d.one("dead.state"))
+        // Stripping what is stripped changes nothing, and what is left reads as gone: no function, no method, classes stay.
+        val again = harness("strip-dead", "--rt", stripped.absolutePath, "--out", File(scratch, "stripped2.py").absolutePath)
+        assertEquals("gone", again.one("dead.state"), again.raw)
+        assertEquals("0/2", again.one("dead.functions"))
+        assertEquals("0", again.one("stripped"))
+        // The check can fail: one dead function back in a runtime that has none (or a third copy of one) is a part, not all.
+        val drifted = File(scratch, "dead-drifted.py")
+        drifted.writeText(runtime.readText() + "\n\ndef _k_mapset(m, v):\n    return m\n", Charsets.UTF_8)
+        val d = harness("strip-dead", "--rt", drifted.absolutePath, "--out", File(scratch, "stripped3.py").absolutePath)
+        assertEquals("DRIFTED", d.one("dead.state"), d.raw)
     }
 
     @Test
@@ -190,6 +208,35 @@ class PyRuntimeEquivTest {
         assertEquals(1, m.code)
         val undefined = m.lines["undefined"].orEmpty().map { it.substringBefore(":") }.toSet()
         assertTrue(setOf("_k_clone", "_k_set", "_k_inner", "_k_inner2") == undefined, m.raw)
+        // Nor is a name that only looks bound: a bare annotation, a global never assigned, a del, an except-as, a loop over nothing.
+        val use = "\n\ndef _k_planted():\n    return _k_clone(1)\n"
+        val looks = mapOf(
+            "annotation" to "_k_clone: object\n",
+            "global" to "def _k_g():\n    global _k_clone\n    return _k_clone\n",
+            "del" to "del _k_clone\n",
+            "except-as" to "try:\n    pass\nexcept ValueError as _k_clone:\n    pass\n",
+            "empty-for" to "for _k_clone in ():\n    pass\n",
+        )
+        for ((id, text) in looks) {
+            val f = File(scratch, "planted-looks-$id.py")
+            f.writeText(text + use, Charsets.UTF_8)
+            val r2 = harness("closure", "--rt", rt(), "--append", f.absolutePath)
+            assertEquals(1, r2.code, "$id must leave _k_clone undefined: ${r2.raw}")
+            assertTrue(r2.lines["undefined"].orEmpty().any { it.startsWith("_k_clone:") }, "$id: ${r2.raw}")
+        }
+        // And the real bindings still count: an assignment, a valued annotation, a global assigned in a function, a loop over items.
+        val real = mapOf(
+            "assign" to "_k_clone = print\n",
+            "annotated" to "_k_clone: object = print\n",
+            "global" to "def _k_g():\n    global _k_clone\n    _k_clone = print\n",
+            "for" to "for _k_clone in (print,):\n    pass\n",
+        )
+        for ((id, text) in real) {
+            val f = File(scratch, "planted-real-$id.py")
+            f.writeText(text + use, Charsets.UTF_8)
+            val r3 = harness("closure", "--rt", rt(), "--append", f.absolutePath)
+            assertEquals(0, r3.code, "$id binds _k_clone: ${r3.raw}")
+        }
     }
 
     @Test
@@ -230,18 +277,28 @@ class PyRuntimeEquivTest {
             println("python 3.10 host ${cov.one("platform")}: line coverage ${cov.one("line_coverage")}%")
             assertEquals("", cov.one("branches_uncovered"))
         }
-        // What the name list and the feature_version parse let through, each in the body of a helper the corpus calls.
+        // What the name list and the feature_version parse let through, each in the body of a helper the corpus calls. Each
+        // raises only for the feature (a probe that spawns or imports nothing else), so on a Python that has it the plant
+        // must pass, and on 3.10 the mismatch must name the feature.
+        class Plant(val expr: String, val since: Int, val names: String)
         val plants = mapOf(
-            "math-sumprod" to "__import__(\"math\").sumprod([1], [1])",
-            "from-bytes-no-order" to "int.from_bytes(b\"\\x01\")",
-            "atomic-group" to "__import__(\"re\").compile(\"(?>ab)+\")",
-            "popen-process-group" to "__import__(\"subprocess\").Popen([\"x\"], process_group=0)",
+            "math-sumprod" to Plant("__import__(\"math\").sumprod([1], [1])", 12, "sumprod"),
+            "from-bytes-no-order" to Plant("int.from_bytes(b\"\\x01\")", 11, "byteorder"),
+            "atomic-group" to Plant("__import__(\"re\").compile(\"(?>ab)+\")", 11, "unknown extension"),
+            "popen-process-group" to Plant("__import__(\"inspect\").signature(__import__(\"subprocess\").Popen).parameters[\"process_group\"]", 11, "process_group"),
         )
-        for ((id, expr) in plants) {
-            val planted = variant("later-$id.py", "def _k_hex(v):\n    return \"%x\" % v\n", "def _k_hex(v):\n    _k_unused = $expr\n    return \"%x\" % v\n")
+        val here = harness("parse", "--rt", rt()).one("interpreter").split(".")[1].toInt()
+        for ((id, plant) in plants) {
+            val planted = variant("later-$id.py", "def _k_hex(v):\n    return \"%x\" % v\n", "def _k_hex(v):\n    _k_unused = ${plant.expr}\n    return \"%x\" % v\n")
             val p = harness("equiv", "--a", rt(), "--b", planted.absolutePath, py = py)
             assertEquals(1, p.code, "$id must fail on Python 3.10")
             assertTrue(p.int("mismatches") > 0, p.raw)
+            assertTrue(p.lines["mismatch"].orEmpty().any { plant.names in it }, "$id: the mismatch must name ${plant.names}: ${p.raw.take(2000)}")
+            if (here >= plant.since) {
+                val ok = harness("equiv", "--a", rt(), "--b", planted.absolutePath)
+                assertEquals(0, ok.code, "$id must pass on the default Python 3.$here: ${ok.raw.take(2000)}")
+                assertEquals(0, ok.int("mismatches"), "$id on 3.$here")
+            }
         }
     }
 
