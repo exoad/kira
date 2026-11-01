@@ -717,6 +717,9 @@ def main():
     for s in sub.choices.values():
         s.add_argument("--timeout", type=int, default=600)
     args = p.parse_args()
+    # A child that reads the stdin it inherits must meet the end of it, not a test runner's open pipe.
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
     sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     if args.repo is None:
         args.repo = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
