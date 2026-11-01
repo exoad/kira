@@ -660,6 +660,12 @@ internal class StmtChecker(private val c: PhaseC) {
             return LoopKind.ARR to KType.Error
         }
         val element = facts.elementOf(t)
+        c.ranges.elementOf(t)?.let { e ->
+            if (!facts.isInteger(e)) {
+                c.report("types.for.range-type", "A range counts integers; ${e.display()} is not an integer type.", target)
+            }
+            return LoopKind.RANGE_VALUE to e
+        }
         return when {
             facts.isArr(t) && element != null -> LoopKind.ARR to element
             facts.isList(t) && element != null -> LoopKind.LIST to element
@@ -672,7 +678,7 @@ internal class StmtChecker(private val c: PhaseC) {
             else -> {
                 c.report(
                     "types.for.not-iterable",
-                    "${t.display()} cannot be iterated; a for loop takes a range, an Arr, a List, a Set, a View or a Map" +
+                    "${t.display()} cannot be iterated; a for loop takes a range, a Range, an Arr, a List, a Set, a View or a Map" +
                         if (t == KType.Str) " (for a Str, iterate s.view())." else ".",
                     target,
                 )

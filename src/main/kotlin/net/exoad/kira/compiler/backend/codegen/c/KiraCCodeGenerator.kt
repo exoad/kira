@@ -2403,6 +2403,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
+        // `x in r` and a range as a value need the typed model, which this backend does not read.
+        if (binaryExpr.operator == BinaryOp.IN) {
+            throw UnsupportedConstruct(binaryExpr, "`in` outside a for loop (x in a..b, x in r)", TARGET_NAME)
+        }
         val opName = OperatorIntrinsics.binaryName(binaryExpr.operator)
         // Non-primitive operands desugar to the op_* overload. When a side's
         // type is unknown we keep the direct C operator (status quo).
@@ -2901,11 +2905,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitRangeExpr(rangeExpr: RangeExpr) {
-        buffer.append("(")
-        rangeExpr.begin.accept(this)
-        buffer.append(" .. ")
-        rangeExpr.end.accept(this)
-        buffer.append(")")
+        // A for loop's own range never reaches here; any other is a Range value.
+        throw UnsupportedConstruct(rangeExpr, "a range as a value (a..b outside a for loop's head)", TARGET_NAME)
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {

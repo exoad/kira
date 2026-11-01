@@ -61,6 +61,7 @@ internal class PhaseC(val program: TypedProgram) {
     val withs = WithTyper(this)
     val builders = BuilderTyper(this)
     val conforms = ConformanceTyper(this)
+    val ranges = RangeTyper(this)
     val bindings = MagicBindings()
 
     /** The lambda whose body declares each local or parameter (absent: declared outside every lambda). */
@@ -243,16 +244,7 @@ internal class ExprTyper(private val c: PhaseC) {
             c.stmts.tryExpr(e, ctx, scope)
             KType.Void
         }
-        is RangeExpr -> {
-            synth(e.begin, ctx, scope)
-            synth(e.end, ctx, scope)
-            c.report(
-                "types.range.position",
-                "A range a..b is a for loop's iterable only (for i: T in a..b); it is not a value (D47).",
-                e,
-            )
-            KType.Error
-        }
+        is RangeExpr -> c.ranges.value(e, hint, ctx, scope)
         is TypeCheckExpr -> c.conforms.test(e, ctx, scope)
         is WithExpr -> c.withs.with(e, hint, ctx, scope)
         NoExpr -> KType.Void
@@ -563,6 +555,7 @@ internal class ExprTyper(private val c: PhaseC) {
                 lt
             }
             in LiteralTyper.EQUALITY, in LiteralTyper.ORDERING -> comparison(e, ctx, scope)
+            BinaryOp.IN -> c.ranges.membership(e, ctx, scope)
             in LiteralTyper.ARITHMETIC, in LiteralTyper.BITS -> {
                 val (lt, rt) = operands(e.leftExpr, e.rightExpr, numericHint ?: hint?.takeIf { it == KType.Str }, ctx, scope)
                 if (lt.containsError() || rt.containsError()) {

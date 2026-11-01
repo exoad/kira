@@ -563,7 +563,8 @@ internal class ExclusivityPass : RulePass {
 
         private fun loop(s: ForIterationStatement) {
             val plan = model.loops[s] ?: return
-            if (plan.kind == LoopKind.RANGE) {
+            // A range loop reads its ends once, before the first step.
+            if (plan.kind == LoopKind.RANGE || plan.kind == LoopKind.RANGE_VALUE) {
                 return
             }
             val target = s.forIterationExpr.target

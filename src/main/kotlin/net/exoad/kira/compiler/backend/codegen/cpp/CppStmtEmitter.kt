@@ -182,6 +182,20 @@ class CppStmtEmitter : CppStmtPart {
         val typeText = if (declared != null) ctx.spell(declared, Pos.VALUE) else ctx.spell(plan.element, Pos.VALUE, fe)
         return state.block {
             val name = state.declare(variable, ctx.names.escape(fe.initializer.value)) { taken(ctx, it) }
+            if (plan.kind == LoopKind.RANGE_VALUE) {
+                // Both ends included: the Range is read once, and the step stops at its end before
+                // `++` could pass the type's last value. `continue` in the body takes the step too.
+                val r = state.fresh("${name.lowercase()}_r")
+                val more = state.fresh("${name.lowercase()}_more")
+                val rangeType = ctx.spell(model.require(fe.target), Pos.VALUE, fe.target)
+                val head = "$typeText $name = $r.begin; $more; $more = $name != $r.end && (++$name, true)"
+                val inner = listOf(
+                    "const $rangeType $r = ${lower.emit(fe.target, CppPrec.ASSIGN)};",
+                    "bool $more = $r.begin <= $r.end;",
+                    CppWriter.forHead(head),
+                ) + block(ctx, s.body)
+                return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
+            }
             val head = when (plan.kind) {
                 LoopKind.RANGE -> {
                     val range = fe.target as? RangeExpr ?: return@block listOf(lower.internal(fe, "a range loop without a range").text + ";")

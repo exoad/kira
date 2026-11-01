@@ -1,4 +1,5 @@
-// An inclusive range of numbers: begin..end holds both ends.
+// An inclusive range of numbers: `a..b` holds a, b and every number between (D47 as decided 2026-11-01).
+// `x in a..b` with a written range builds no Range: the backends lower it to two comparisons.
 
 pub Range<T: Num>: Struct {
     pub begin: T
@@ -6,5 +7,9 @@ pub Range<T: Num>: Struct {
 
     pub contains: (value: T) Bool {
         value >= begin && value <= end
+    }
+
+    pub @_op_in_: (value: T) Bool {
+        contains(value)
     }
 }

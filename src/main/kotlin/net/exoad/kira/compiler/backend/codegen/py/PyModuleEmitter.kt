@@ -784,6 +784,7 @@ class PyModuleEmitter(
                 val it = wrap(expr(target, f), PyPrec.POSTFIX)
                 if (walksUnwritten(target, s.body)) it else copyOf(Py(it, PyPrec.POSTFIX), t).text
             }
+            LoopKind.RANGE_VALUE -> "${wrap(expr(target, f), PyPrec.POSTFIX)}._k_steps()"
             LoopKind.VIEW -> wrap(expr(target, f), PyPrec.TERNARY)
             LoopKind.MAP -> {
                 val items = "${wrap(expr(target, f), PyPrec.POSTFIX)}.items()"
@@ -1192,6 +1193,7 @@ class PyModuleEmitter(
             is FunctionCallExpr -> callExpr(e, f)
             is PrimInitExpr -> expr(e.value, f)
             is ObjectInitExpr -> construction(e, f)
+            is RangeExpr -> call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY))
             is ArrayIndexExpr -> index(e, f)
             is BinaryExpr -> binary(e, f)
             is UnaryExpr -> unary(e, f)
@@ -1464,6 +1466,10 @@ class PyModuleEmitter(
                 else -> ref(fn, c)?.let { Py("$it(${userArgs(c, rc, f)})", PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
             }
             CallKind.METHOD -> {
+                if (fn != null && isRuntimeStruct(fn.owner) && fn.body != null && rc.receiver != null) {
+                    // A Kira-bodied method of a runtime struct (Range.contains) is the runtime class's own.
+                    return Py("${wrap(objectOf(rc.receiver, f), PyPrec.POSTFIX)}.${fn.name}(${userArgs(c, rc, f)})", PyPrec.POSTFIX)
+                }
                 if (fn == null || !isUserClass(fn.owner)) {
                     return refusePy(c, "this method call")
                 }
@@ -1790,6 +1796,9 @@ class PyModuleEmitter(
     }
 
     private fun binary(e: BinaryExpr, f: Frame): Py {
+        if (e.operator == BinaryOp.IN) {
+            return membership(e, f)
+        }
         if (model.opCall(e) != null) {
             return refusePy(e, "an operator overload")
         }
@@ -1804,6 +1813,34 @@ class PyModuleEmitter(
             }
             else -> refusePy(e, "the operator ${spelled(op)}")
         }
+    }
+
+    /**
+     * `x in a..b` is Python's chained `a <= x <= b` (x runs once) when both ends are PURE, else
+     * `_k_within(x, a, b)`, which runs the three in Kira's order (D33). `x in r` for a Range r is
+     * `r._op_in_(x)`, or `_k_inop(x, r)` when both sides have effects.
+     */
+    private fun membership(e: BinaryExpr, f: Frame): Py {
+        val xp = expr(e.leftExpr, f)
+        val x = wrap(xp, PyPrec.TERNARY)
+        val range = e.rightExpr as? RangeExpr
+        if (range != null) {
+            val a = expr(range.begin, f)
+            val b = expr(range.end, f)
+            if (model.effect(range.begin) == Effect.PURE && model.effect(range.end) == Effect.PURE) {
+                return Py("${wrap(a, PyPrec.CMP + 1)} <= ${wrap(xp, PyPrec.CMP + 1)} <= ${wrap(b, PyPrec.CMP + 1)}", PyPrec.CMP)
+            }
+            return call("_k_within", x, wrap(a, PyPrec.TERNARY), wrap(b, PyPrec.TERNARY))
+        }
+        val fn = model.opCall(e)?.fn ?: return refusePy(e, "an `in` the typer did not resolve")
+        if (!isRuntimeStruct(fn.owner)) {
+            return refusePy(e, "`in` through ${fn.owner?.name}'s @_op_in_ (an operator overload)")
+        }
+        val r = expr(e.rightExpr, f)
+        if (model.effect(e.leftExpr) == Effect.PURE || model.effect(e.rightExpr) == Effect.PURE) {
+            return Py("${wrap(r, PyPrec.POSTFIX)}._op_in_($x)", PyPrec.POSTFIX)
+        }
+        return call("_k_inop", x, wrap(r, PyPrec.TERNARY))
     }
 
     /** `value == Identity` (stage 3): a constant the types decided, `isinstance`, or a Maybe's `is not None`. */
@@ -2301,7 +2338,7 @@ class PyModuleEmitter(
 
     /** A stdlib struct the runtime defines as `_k_<Name>` (D84): built with every field, copied and compared as a user struct, never crossing to a sidecar. */
     private fun isRuntimeStruct(owner: Any?): Boolean =
-        owner is ClassSymbol && owner.kind == ClassKind.STRUCT && owner.module.isStdlib && owner.typeParams.isEmpty() && "_k_${owner.name}" in runtime.names
+        owner is ClassSymbol && owner.kind == ClassKind.STRUCT && owner.module.isStdlib && "_k_${owner.name}" in runtime.names
 
     /** A class whose fields are its Python object's attributes. */
     private fun hasFields(owner: Any?): Boolean = isUserClass(owner) || isRuntimeStruct(owner)
@@ -2386,6 +2423,8 @@ class PyModuleEmitter(
                 }
                 runtimeClass(s) != null -> t.typeArgs().firstNotNullOfOrNull { unsupportedType(it) }
                 s.kind == ClassKind.MAGIC -> "the type ${s.name}"
+                // A generic runtime struct (Range<T>) holds its type arguments: Python erases them.
+                isRuntimeStruct(s) && s.typeParams.isNotEmpty() -> t.typeArgs().firstNotNullOfOrNull { unsupportedType(it) }
                 isRuntimeStruct(s) -> s.fields.firstNotNullOfOrNull { unsupportedType(it.type) }
                 isUserClass(s) || isOpaque(t) -> null
                 else -> "the ${if (s.typeParams.isNotEmpty()) "generic " else ""}${s.kind.name.lowercase()} ${s.name}"

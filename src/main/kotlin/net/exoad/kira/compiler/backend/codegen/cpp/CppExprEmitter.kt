@@ -47,6 +47,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
@@ -359,6 +360,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is FunctionCallExpr -> call(e)
             is PrimInitExpr -> coerced(e.value, role)
             is ObjectInitExpr -> construction(e)
+            is RangeExpr -> rangeValue(e)
             is ArrayIndexExpr -> index(e)
             is BinaryExpr -> binary(e)
             is UnaryExpr -> unary(e)
@@ -991,6 +993,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     private fun binary(e: BinaryExpr): CppEx {
         val op = e.operator
+        if (op == BinaryOp.IN) {
+            return membership(e)
+        }
         val rc = model.opCall(e)
         if (rc != null) {
             // An @op_* overload: C++ resolves the same operator to the same function. A member
@@ -1089,6 +1094,61 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 }
                 else -> infix(l, sym, r, prec)
             }
+        }
+    }
+
+    /**
+     * `x in a..b` is `a <= x && x <= b` with no Range built; `x` runs once (spilled when it has an
+     * effect) and the three run in Kira's order x, a, b (D33). Any other `x in r` is `r._op_in_(x)`.
+     */
+    private fun membership(e: BinaryExpr): CppEx {
+        val range = e.rightExpr as? RangeExpr ?: return inCall(e)
+        val x = e.leftExpr
+        val ops = listOf(operand(x, range.begin), operand(range.begin, x), operand(range.end, x))
+        val consumer = runtimeUses(ops, listOf(x, range.begin, range.end))
+        val once = hoister.rank(x) == CppHoister.IMPURE
+        // An end at the type's own limit always holds; gcc's -Wtype-limits refuses `0u <= x`.
+        val low = !atLimit(range.begin, min = true)
+        val high = !atLimit(range.end, min = false)
+        return hoister.lower(ops, KType.BOOL, force = once, consumer = consumer) { (xt, a, b) ->
+            val tests = listOfNotNull(infix(a, "<=", xt, CppPrec.REL).takeIf { low }, infix(xt, "<=", b, CppPrec.REL).takeIf { high })
+            when (tests.size) {
+                2 -> infix(tests[0], "&&", tests[1], CppPrec.AND)
+                1 -> tests[0]
+                else -> CppEx("(static_cast<void>(${xt.text}), true)", CppPrec.PRIMARY)
+            }
+        }
+    }
+
+    /** Whether [e] is a constant at its integer type's least ([min]) or greatest value. */
+    private fun atLimit(e: Expr, min: Boolean): Boolean {
+        val c = model.const(e) as? ConstValue.IntConst ?: return false
+        return c.value == (if (min) c.prim.minValue else c.prim.maxValue)
+    }
+
+    /** `x in r` through the `@_op_in_` of r's type: x is evaluated before r (D33), the call made on r. */
+    private fun inCall(e: BinaryExpr): CppEx {
+        val rc = model.opCall(e) ?: return internal(e, "an `in` the typer did not resolve")
+        val fn = rc.fn ?: return internal(e, "an `in` without its operator")
+        checkIramCallee(e, fn)
+        val receiver = e.rightExpr
+        val (argOps, argSlots) = arguments(rc)
+        val recvOp = receiverOperand(receiver, rc, fn, memberStyle = false, lending = false) { coerced(receiver) }
+        val ops = argOps + listOfNotNull(recvOp)
+        val name = ctx.names.escape(fn.name)
+        return hoister.lower(ops, KType.BOOL, node = e, consumer = policy.callConsumer(rc, typeOf(receiver))) { texts ->
+            val callee = accessWith(receiver, if (recvOp != null) texts[argOps.size] else null, typeOf(receiver)) + name
+            CppEx("$callee(${argList(argSlots, texts)})", CppPrec.POSTFIX)
+        }
+    }
+
+    /** `a..b` as a value: kira:range's Range struct, its ends in Kira's order (D33). */
+    private fun rangeValue(e: RangeExpr): CppEx {
+        val t = typeOf(e)
+        val ops = listOf(operandOf(e.begin) { coerced(e.begin) }, operandOf(e.end) { coerced(e.end) })
+        val typeText = ctx.spell(t, Pos.VALUE, e)
+        return hoister.lower(ops, t) { (a, b) ->
+            CppEx("$typeText{.begin = ${wrap(a, CppPrec.ASSIGN)}, .end = ${wrap(b, CppPrec.ASSIGN)}}", CppPrec.POSTFIX)
         }
     }
 
@@ -1566,7 +1626,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * since an interrupt handler runs while the flash cache may be off. Externs and magic functions are exempt: the
      * compiler cannot see their code, so their IRAM placement is the binding's own concern.
      */
-    private fun checkIramCallee(e: FunctionCallExpr, callee: FnSymbol) {
+    private fun checkIramCallee(e: Expr, callee: FnSymbol) {
         val caller = ctx.iramBody ?: return
         if (!callee.hasBody || callee.markers.any { it.name == CppDeclEmitter.IRAM_MARKER } || CppExternEmitter.externOf(callee) != null) {
             return

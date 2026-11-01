@@ -37,6 +37,9 @@ sealed interface Capture {
 enum class LoopKind {
     /** `for i: T in a..b`: exclusive upper bound. */
     RANGE,
+
+    /** `for i: T in r` over a `Range<T>` value: both ends included, as `i in r` says. */
+    RANGE_VALUE,
     ARR,
     LIST,
     SET,
