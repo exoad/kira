@@ -168,6 +168,8 @@ def floats():
     grid("float", "_k_min", [1, -3, 2 ** 63], [1, -3, 2 ** 63 + 1])
     grid("float", "_k_max", [1, -3, 2 ** 63], [1, -3, 2 ** 63 + 1])
     grid("float", "_k_roundto", FLOATS[:30] + [1e300, 123456.789], [-400, -3, -1, 0, 1, 2, 3, 15, 400])
+    # A rounding that overflows is the infinity of the value's sign.
+    calls("float", "_k_roundto", [(v, n) for v in (1.7e308, -1.7e308, 1.5e308, -1.5e308, 5e307, -5e307) for n in (-308, -307, -306)])
     grid("float", "_k_pyformat", FLOATS + [3, 10 ** 30], ["", ".2f", "e", "g", ".3e", "10.4", "x", ">10", "%", ",.2f", "+.1f", "nope"])
 
 
@@ -370,6 +372,11 @@ def json_cases(repo):
         call("json", "_k_jstrict", text)
         call("json", "_k_jbig", text)
         call("json", "_k_jdeep", text, len(text))
+    # A document over 512 opens that never goes 512 deep: the closes must lower the depth, or the 513th open is "too deep".
+    for text in ("[" * 300 + "]" * 300 + "[" * 300, "[" * 512 + "]" + "[", "[" * 512 + "]" + "[" + "]" * 512, "{" * 256 + "[" * 256 + "]" * 256 + "}" * 256 + "[" * 300,
+                 "[" * 513, "[" * 512 + "[", "[{" * 300 + "}]" * 300 + "[" * 100, "[]" * 600, "}" * 600 + "[" * 513):
+        call("json", "_k_jdeep", text, len(text))
+        call("json", "_k_jdeep", text, len(text) // 2)
     call("json", "_k_jint64", "9223372036854775807")
     calls("json", "_k_jint64", [(s,) for s in ("9223372036854775807", "9223372036854775808", "-9223372036854775808", "-9223372036854775809", "0", "1" * 25, "-0")])
     # depth: lists and objects 1 .. 1500 deep, built here so no copy walks them
@@ -645,6 +652,17 @@ def files():
     for i, plan in enumerate(plans):
         add("os", "FileOut plan %d" % i, lambda ctx, plan=plan: fileout(ctx, plan), fs=True, needs=("_k_FileOut", "_k_openout"))
     add("os", "FileOut stale", lambda ctx: (lambda o: (os.remove(os.path.join(ctx.tmp, "o.bin")), o.isStale(), o.close())[1:])(ctx.rt["_k_openout"](os.path.join(ctx.tmp, "o.bin"), "wb")), fs=True)
+    def stale(ctx):
+        R = ctx.rt
+        path = os.path.join(ctx.tmp, "s.bin")
+        f = open(path, "wb")
+        here, gone = R["_k_FileOut"](f, path), R["_k_FileOut"](f, os.path.join(ctx.tmp, "gone.bin"))
+        log = [here.isStale(), gone.isStale()]
+        f.close()
+        return log + [here.isStale(), gone.isStale(), R["_k_FileOut"](None, path).isStale()]
+
+    # A path that is not there, with the file still open: a host that will not remove an open file (Windows) shows it too.
+    add("os", "FileOut stale by path", stale, fs=True, needs=("_k_FileOut",))
     add("os", "_k_openout bad mode", lambda ctx: (ctx.rt["_k_openout"](os.path.join(ctx.tmp, "o"), "zz"), ctx.rt["_k_oserror"]()), fs=True)
     add("os", "_k_openout append", lambda ctx: (put(ctx, "o", b"12"), (lambda f: (f.write(b"34"), f.close()))(ctx.rt["_k_openout"](os.path.join(ctx.tmp, "o"), "ab")))[1], fs=True)
     add("os", "FileOut default", lambda ctx: (lambda f: (f.write(b"x"), f.size(), f.sync(), f.isStale(), f.close()))(ctx.rt["_k_FileOut"]()))
@@ -756,6 +774,17 @@ def files():
         return log
 
     add("os", "UdpSocket loopback", udp, needs=("_k_UdpSocket", "_k_Datagram"))
+
+    def udp_idle(ctx):
+        # Nothing has been sent: the drive link's usual path is a recvFrom that finds nothing and says so.
+        u = ctx.rt["_k_UdpSocket"]()
+        log = [u.bind("127.0.0.1", 0)]
+        into = bytearray(8)
+        log += [u.recvFrom(into), u.recvFrom(into), bytes(into), ctx.rt["_k_oserror"]()]
+        u.close()
+        return log
+
+    add("os", "UdpSocket idle recvFrom", udp_idle, needs=("_k_UdpSocket",))
     for host, port in (("", 0), ("127.0.0.1", 0), ("1.2.3.4", 5), ("localhost", 5), ("::1", 5), ("256.1.1.1", 5), ("127.0.0.1", -1), ("127.0.0.1", 65535), ("127.0.0.1", 65536), ("1.2.3", 1)):
         add("os", "_k_addr %r %d" % (host, port), lambda ctx, host=host, port=port: (ctx.rt["_k_addr"](host, port), ctx.rt["_k_oserror"]()))
 
@@ -852,6 +881,148 @@ def poller(ctx):
         b.close()
 
 
+class FakePoll:
+    """select.poll() with a scripted answer, recording what the runtime registered and asked."""
+
+    def __init__(self, script, log):
+        self.script, self.log = script, log
+
+    def register(self, h, mask):
+        self.log.append(("register", h, mask))
+
+    def poll(self, t):
+        self.log.append(("poll", t))
+        return list(self.script)
+
+
+def fake_select(script):
+    def over(ctx):
+        log = ctx.__dict__.setdefault("plog", [])
+        return {"poll": lambda: FakePoll(script, log), "POLLIN": 1, "POLLPRI": 2, "POLLOUT": 4, "POLLERR": 8, "POLLHUP": 16, "POLLNVAL": 32}
+
+    return over
+
+
+class FakeSock:
+    """A UDP socket that answers each recv with the next of a script: an exception to raise or a (bytes, source)."""
+
+    def __init__(self, script):
+        self.script = list(script)
+
+    def _next(self):
+        x = self.script.pop(0)
+        if isinstance(x, BaseException):
+            raise x
+        return x
+
+    def recvfrom(self, n):
+        return self._next()
+
+    def recvfrom_into(self, into):
+        data, src = self._next()
+        into[:len(data)] = data
+        return len(data), src
+
+    def close(self):
+        pass
+
+
+class FakeChild:
+    def __init__(self, log):
+        self.log, self._handle = log, 7
+
+    def poll(self):
+        return None
+
+    def kill(self):
+        self.log.append("kill")
+
+
+def posix_branches():
+    """The branches only one host reaches, run through fakes on any host (a real POSIX host also runs the real ones)."""
+    posix, nt = {"name": "posix"}, {"name": "nt"}
+    add("os", "_k_readyin posix poll", lambda ctx: [ctx.rt["_k_readyin"](5, 0.25), ctx.rt["_k_readyin"](5, 0), ctx.__dict__["plog"]],
+        fakes={"_k_os": posix, "_k_select": fake_select([(5, 1)])}, needs=("_k_readyin",))
+    add("os", "_k_readyin posix none", lambda ctx: [ctx.rt["_k_readyin"](5, 1.5), ctx.__dict__["plog"]], fakes={"_k_os": posix, "_k_select": fake_select([])}, needs=("_k_readyin",))
+    # Poller.once: every poll event mask, the hang-up alone (a pipe whose writer closed) among them
+    for i, script in enumerate(([(3, 16)], [(3, 1), (4, 4)], [(5, 8)], [(3, 32)], [(3, 16 | 4)], [(3, 1 | 4), (5, 8 | 16)], [(3, 2)], [])):
+        for s in (None, 0, 0.5):
+            def run(ctx, s=s):
+                p = ctx.rt["_k_Poller"]()
+                for h, e in ((3, 1), (4, 2), (5, 3), (-1, 1)):
+                    p.add(h, e)
+                return [p.once(s), ctx.__dict__["plog"]]
+
+            add("os", "Poller.once posix %d %r" % (i, s), run, fakes={"_k_os": posix, "_k_select": fake_select(script)}, needs=("_k_Poller", "_k_Ready"))
+    # a real hang-up: the writer of a pipe closes with nothing sent, so a POSIX host answers POLLHUP alone
+    if os.name != "nt":
+        def pipe_hup(ctx):
+            r, w = os.pipe()
+            try:
+                p = ctx.rt["_k_Poller"]()
+                p.add(r, 1)
+                before = [(x.handle == r, x.events) for x in p.wait(0)]
+                os.close(w)
+                w = -1
+                return before, [(x.handle == r, x.events) for x in p.wait(500)]
+            finally:
+                os.close(r)
+                if w >= 0:
+                    os.close(w)
+
+        add("os", "Poller real pipe hang-up", pipe_hup, needs=("_k_Poller", "_k_Ready"))
+    # syncdir: the fsync and the close of a directory descriptor
+    for fail in (None, errno.EIO):
+        def run(ctx):
+            return ctx.rt["_k_syncdir"](ctx.tmp), ctx.__dict__["slog"]
+
+        def over(ctx, fail=fail):
+            log = ctx.__dict__.setdefault("slog", [])
+
+            def fsync(fd):
+                log.append(("fsync", fd))
+                if fail:
+                    raise OSError(fail, "io")
+
+            return {"name": "posix", "open": lambda d, flags: log.append(("open", flags)) or 77, "fsync": fsync, "close": lambda fd: log.append(("close", fd))}
+
+        add("host", "_k_syncdir fake fd %r" % fail, run, fakes={"_k_os": over}, fs=True, needs=("_k_syncdir",))
+
+    # Process.kill: POSIX kills the child, Windows terminates its handle and ignores a refusal
+    def kill(ctx, running):
+        log = ctx.__dict__.setdefault("klog", [])
+        p = ctx.rt["_k_Process"](FakeChild(log) if running else None)
+        return [p.kill(), log]
+
+    add("os", "Process.kill posix", lambda ctx: kill(ctx, True), fakes={"_k_os": posix}, needs=("_k_Process",))
+    add("os", "Process.kill posix none", lambda ctx: kill(ctx, False), fakes={"_k_os": posix}, needs=("_k_Process",))
+    for refuse in (False, True):
+        def over(ctx, refuse=refuse):
+            log = ctx.__dict__.setdefault("klog", [])
+
+            def term(handle, code):
+                log.append(("terminate", handle, code))
+                if refuse:
+                    raise PermissionError(5, "denied")
+
+            return {"_winapi": type("W", (), {"TerminateProcess": staticmethod(term)})()}
+
+        add("os", "Process.kill nt refuse=%s" % refuse, lambda ctx: kill(ctx, True), fakes={"_k_os": nt, "_k_subprocess": over}, needs=("_k_Process",))
+    # recvFrom on both hosts' calls: data, nothing waiting, the reset a closed peer leaves (ignored on Windows), a hard error
+    src = ("10.0.0.9", 4242)
+    scripts = ([(b"ab", src)], [BlockingIOError(11, "again")], [ConnectionResetError(104, "reset"), (b"x", src)], [ConnectionResetError(104, "reset"), BlockingIOError(11, "again")],
+               [OSError(errno.EIO, "io")], [(b"longer than the buffer", src)], [(b"", src)])
+    for osname in ("posix", "nt"):
+        for i, script in enumerate(scripts):
+            def run(ctx, script=script):
+                u = ctx.rt["_k_UdpSocket"]()
+                u.s = FakeSock(script)
+                into = bytearray(4)
+                return [u.recvFrom(into), bytes(into), ctx.rt["_k_oserror"](), len(u.s.script)]
+
+            add("os", "UdpSocket.recvFrom fake %s %d" % (osname, i), run, fakes={"_k_os": {"name": osname}}, needs=("_k_UdpSocket", "_k_Datagram"))
+
+
 def waits():
     import socket
     add("os", "_k_readyin", lambda ctx: (lambda a, b: (ctx.rt["_k_readyin"](a, 0.01), b.send(b"x"), ctx.rt["_k_readyin"](a, 1.0), a.close(), b.close())[0::2])(*socket.socketpair()))
@@ -915,6 +1086,34 @@ def waits():
 
             add("misc", "_k_waitfor ms %d flips %d" % (ms, flips), run)
     add("os", "_k_onsignal", lambda ctx: ctx.rt["_k_onsignal"](99999, ctx.rt["_k_Atomic"](False, None)), needs=("_k_onsignal",))
+    def onsignal_real(ctx):
+        # A real signal on the main thread: the handler stores true and counts it, and a wait in slices is interrupted.
+        import signal
+        sig = getattr(signal, "SIGUSR1", None) or signal.SIGBREAK
+        old = signal.getsignal(sig)
+        flag = ctx.rt["_k_Atomic"](False, None)
+        n = {"i": 0}
+
+        def once(s):
+            n["i"] += 1
+            if n["i"] == 2:
+                signal.raise_signal(sig)
+            if n["i"] > 6:
+                raise AssertionError("not interrupted after six slices")
+            return False
+
+        try:
+            ok = ctx.rt["_k_onsignal"](sig, flag)
+            before = flag.load()
+            try:
+                waited = ctx.rt["_k_sliced"](-1, once)
+            except BaseException as x:
+                waited = (type(x).__qualname__, getattr(x, "errno", None))
+            return ok, before, flag.load(), waited, n["i"], ctx.rt["_k_errors"]().__dict__.get("signalled", 0)
+        finally:
+            signal.signal(sig, old)
+
+    add("os", "_k_onsignal real signal", onsignal_real, needs=("_k_onsignal", "_k_Atomic"))
     add("os", "_k_onsignal off-thread", lambda ctx: (lambda out: (threading.Thread(target=lambda: out.append(ctx.rt["_k_onsignal"](2, ctx.rt["_k_Atomic"](False, None)))).start(), time.sleep(0.05), out)[2])([]))
     add("os", "_k_escapestdout", lambda ctx: ctx.rt["_k_escapestdout"](), fakes={"_k_sys": lambda ctx: {"stdout": type("S", (), {"reconfigure": lambda s, **k: ctx.__dict__.setdefault("seen", k)})()}})
     add("os", "_k_escapestdout none", lambda ctx: ctx.rt["_k_escapestdout"]())
@@ -1093,9 +1292,15 @@ def http_loopback(ctx):
     t.start()
     base = "http://127.0.0.1:%d" % port["n"]
     for path, data, ctype in (("/ok", None, None), ("/empty404", None, None), ("/body500", None, None), ("/close", None, None), ("/to-ok", None, None), ("/to-gopher", None, None),
-                              ("/echo", b"abc", "text/plain"), ("/echo", b"", None), ("/big", b"x", None), ("/other", None, None), ("/ok?q=1", None, None)):
+                              ("/echo", b"abc", "text/plain"), ("/echo", b"", None), ("/big", None, None), ("/big", b"x", None), ("/other", None, None), ("/ok?q=1", None, None)):
         r = R["_k_httpcall"](base + path, data, ctype, 3000)
-        out.append((path, r, R["_k_httperror"]().replace(str(port["n"]), "PORT")[:60]))
+        why = R["_k_httperror"]().replace(str(port["n"]), "PORT")[:60]
+        if path == "/big" and data is not None:
+            # The server answers 413 and closes without reading the body, so the client sees the 413 or a reset by
+            # timing alone. The GET above is the exact 413; here only "a 413 or no reply" is kept, the admit call is in seen.
+            ok = r is None or r.status == 413
+            r, why = ("413 or aborted", ok), ""
+        out.append((path, r, why))
     srv.shutdown()
     t.join()
     out.append(("again", srv.serve(), srv.shutdown()))
@@ -1145,18 +1350,6 @@ def misc():
     add("misc", "CsvReader default", lambda ctx: (lambda r: [r.next(), r.isMalformed(), r.close()])(ctx.rt["_k_CsvReader"]()))
     calls("misc", "_k_csvline", [(c,) for c in ([], [""], ["a", "b"], ["a,b", 'q"q', "n\nl"], [1, None, 2.5], ["é", "\U0001F600"], ["\x00"], [["x"]], "abc", ["a\rb"])])
     # args
-    def args(ctx, build, argv):
-        R = ctx.rt
-        spec = R["_k_ArgSpec"]("prog", "about %(prog)")
-        try:
-            build(spec)
-            parsed = spec.parse(argv)
-            return [(n, getattr(parsed, n)(x) if True else None) for n, x in ()] , parsed
-        except SystemExit as e:
-            return "exit", e.code
-        except BaseException as e:
-            return type(e).__qualname__, str(e)
-
     def full(spec):
         spec.positional("src", "the source 100%")
         spec.text("--name", "dflt", "a name")
@@ -1306,6 +1499,7 @@ def build(repo):
     hosts()
     files()
     waits()
+    posix_branches()
     ffi()
     misc()
     return sorted(CASES, key=lambda c: KIND_ORDER.index(c.kind))

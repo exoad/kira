@@ -22,11 +22,26 @@ class PyRuntimeEquivTest {
         fun int(key: String): Int = one(key).toInt()
     }
 
-    private fun harness(mode: String, vararg args: String, python: String? = PyTestSupport.python): Result {
-        assumeTrue(python != null, "no Python on PATH (set KIRA_PYTHON)")
-        val cmd = listOf(python!!, File(dir, "rt_equiv.py").absolutePath, mode) + args + listOf("--repo", PyTestSupport.repoRoot.absolutePath)
+    /** An interpreter command, and how a path of this machine reads to it (a WSL distro sees C:\\x as /mnt/c/x). */
+    private class Py(val cmd: List<String>, val label: String, val path: (String) -> String = { it })
+
+    /** PY310: a Python 3.10 path, or `wsl:<distro>` for that distro's python3.10 (the Linux run); null when unset. */
+    private fun py310(): Py? {
+        val v = System.getenv("PY310")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (!v.startsWith("wsl:")) return Py(listOf(v), v)
+        val distro = v.removePrefix("wsl:")
+        return Py(listOf("wsl", "-d", distro, "--", "python3.10"), v) { p ->
+            if (p.length > 2 && p[1] == ':') "/mnt/" + p[0].lowercaseChar() + p.substring(2).replace('\\', '/') else p
+        }
+    }
+
+    private fun harness(mode: String, vararg args: String, py: Py? = null): Result {
+        val use = py ?: PyTestSupport.python?.let { Py(listOf(it), it) }
+        assumeTrue(use != null, "no Python on PATH (set KIRA_PYTHON)")
+        val argv = args.map { if (it.startsWith("--") || !(File(it).isAbsolute)) it else use!!.path(it) }
+        val cmd = use!!.cmd + listOf(use.path(File(dir, "rt_equiv.py").absolutePath), mode) + argv + listOf("--repo", use.path(PyTestSupport.repoRoot.absolutePath))
         val run = PyTestSupport.run(cmd, PyTestSupport.repoRoot)
-        println("rt_equiv $mode ${args.joinToString(" ")}: exit ${run.exitCode}\n${run.stdout.lines().filter { !it.startsWith("kind.") && !it.startsWith("outcome.") }.joinToString("\n")}")
+        println("rt_equiv $mode ${args.joinToString(" ")} [${use.label}]: exit ${run.exitCode}\n${run.stdout.lines().filter { !it.startsWith("kind.") && !it.startsWith("outcome.") }.joinToString("\n")}")
         if (run.stderr.isNotBlank()) println("stderr:\n${run.stderr.take(3000)}")
         // The harness never writes bytecode: a __pycache__ in py-rt would mean a mutant or a corpus module hit the disk.
         assertTrue(dir.walkTopDown().none { it.name == "__pycache__" }, "a __pycache__ appeared under $dir")
@@ -66,14 +81,19 @@ class PyRuntimeEquivTest {
     }
 
     @Test
-    fun `every function and class of the runtime is run by the corpus`() {
+    fun `the corpus runs the runtime's lines, and says which host-only branches it did not`() {
         val r = harness("coverage", "--rt", rt())
         assertEquals(0, r.code, r.raw)
-        for (kind in listOf("function", "class")) {
-            val (hit, total) = r.one("covered.$kind").split("/").map { it.toInt() }
-            assertEquals(total, hit, "uncovered $kind: ${r.lines["uncovered.$kind"]}")
-            assertTrue(total >= if (kind == "function") 150 else 25, "only $total ${kind}s found")
-        }
+        assertEquals("", r.one("never_entered"), "a function or method no case entered")
+        val lines = r.int("lines")
+        assertTrue(lines >= 1400, "only $lines executable lines found")
+        val pct = r.one("line_coverage").toDouble()
+        // A ratchet: the lines left are error paths of sockets, pipes and imports; a lane that adds code adds cases.
+        assertTrue(pct >= 93.0, "line coverage fell to $pct% (${r.int("lines_uncovered")} of $lines lines)")
+        val unrun = r.one("branches_uncovered")
+        println("host ${r.one("platform")}: line coverage $pct%; host-only branches not run here: ${unrun.ifEmpty { "none" }}")
+        // The host-only branches are run through fakes on any host, so none may be left; a list here is never silent.
+        assertEquals("", unrun, "host-only branches the corpus did not run on ${r.one("platform")}")
         val (compared, constants) = r.one("constants_compared").split("/").map { it.toInt() }
         assertEquals(constants, compared)
     }
@@ -84,8 +104,9 @@ class PyRuntimeEquivTest {
         assertEquals(0, r.code, r.raw)
         assertEquals(0, r.int("missed"))
         assertEquals(0, r.int("pycache_dirs"))
+        println("mutants: ${r.one("mutants")}, flaky differences refused as catches: ${r.one("flakes")}")
         val mutants = r.lines.filterKeys { it.startsWith("mutant.") }
-        assertTrue(mutants.size >= 45, "only ${mutants.size} mutants")
+        assertTrue(mutants.size >= 55, "only ${mutants.size} mutants")
         for ((id, verdict) in mutants) {
             if (id.startsWith("mutant.control-")) {
                 assertEquals(listOf("MISSED"), verdict, "$id is a no-op, so nothing may catch it")
@@ -110,6 +131,18 @@ class PyRuntimeEquivTest {
         val m = harness("equiv", "--a", rt(), "--b", methods.absolutePath)
         assertEquals(1, m.code)
         assertTrue(m.lines["shape_diff"].orEmpty().any { "_k_Mutex" in it }, m.raw)
+        // The sentinel, the per-thread reasons and the shared decoder are compared too, not passed as opaque objects.
+        val decoder = variant("decoder-lax.py", "_k_jdecoder = _k_json.JSONDecoder()", "_k_jdecoder = _k_json.JSONDecoder(strict=False)")
+        val d = harness("equiv", "--a", rt(), "--b", decoder.absolutePath)
+        assertEquals(1, d.code)
+        assertTrue(d.lines["shape_diff"].orEmpty().any { "_k_jdecoder" in it }, d.raw)
+        val unset = variant("unset-none.py", "_k_unset = object()", "_k_unset = None")
+        val u = harness("equiv", "--a", rt(), "--b", unset.absolutePath)
+        assertEquals(1, u.code)
+        assertTrue(u.lines["shape_diff"].orEmpty().any { "_k_unset" in it }, u.raw)
+        val local = variant("reasons-plain.py", "_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_threading.local())", "_k_reasons = _k_errors().__dict__.setdefault(\"reasons\", _k_types.SimpleNamespace())")
+        val l = harness("equiv", "--a", rt(), "--b", local.absolutePath)
+        assertEquals(1, l.code)
         val gone = variant("function-gone.py", "def _k_hex(v):\n    return \"%x\" % v\n", "")
         val g = harness("equiv", "--a", rt(), "--b", gone.absolutePath)
         assertEquals(1, g.code)
@@ -120,14 +153,21 @@ class PyRuntimeEquivTest {
     fun `the names the dead-code lane deletes may go without the harness failing`() {
         val stripped = File(scratch, "stripped.py")
         val s = harness("strip-dead", "--rt", rt(), "--out", stripped.absolutePath)
-        println("dead names stripped from the copy: ${s.one("stripped")}")
+        println("dead names: functions ${s.one("dead.functions")}, classes ${s.one("dead.classes")}, methods ${s.one("dead.methods")} (${s.one("dead.state")}); stripped from the copy: ${s.one("stripped")}")
+        // Every listed name is in the runtime or none is; a part means the lists in rt_cases.py no longer match it.
+        assertTrue(s.one("dead.state") != "DRIFTED", "DEAD_FUNCTIONS, DEAD_CLASSES and DEAD_METHODS match only part of the runtime: ${s.raw}")
         // The corpus must have stood on the copy too: its other cases all still equal, the dead ones skipped.
         val r = harness("equiv", "--a", rt(), "--b", stripped.absolutePath)
         assertEquals(0, r.code, r.raw)
         assertEquals(0, r.int("mismatches"))
-        if (s.int("stripped") > 0) {
+        if (s.one("dead.state") == "present") {
+            assertEquals(2 + 6, s.int("stripped"), "the stripped count is the two functions and six methods")
             assertTrue(r.int("skipped") > 0, "the dead cases ran against a runtime without them")
         }
+        // The check can fail: a runtime that renames one dead function leaves the lists matching only part of it.
+        val renamed = variant("dead-renamed.py", "def _k_mapset(m, v):", "def _k_mapput(m, v):")
+        val d = harness("strip-dead", "--rt", renamed.absolutePath, "--out", File(scratch, "stripped2.py").absolutePath)
+        if (s.one("dead.state") == "present") assertEquals("DRIFTED", d.one("dead.state"))
     }
 
     @Test
@@ -143,10 +183,17 @@ class PyRuntimeEquivTest {
         assertEquals(1, p.code)
         assertEquals(1, p.int("tokens_undefined"), p.raw)
         assertTrue(p.one("undefined").startsWith("_k_nosuch:"), p.raw)
+        // A name that exists only as a method, a parameter or a local is not a definition a call elsewhere can reach.
+        val methods = File(scratch, "planted-methods.py")
+        methods.writeText("def _k_planted():\n    return _k_clone(1) + _k_set(2)\n\n\ndef _k_local():\n    _k_inner = 1\n    return _k_inner + _k_inner2\n", Charsets.UTF_8)
+        val m = harness("closure", "--rt", rt(), "--append", methods.absolutePath)
+        assertEquals(1, m.code)
+        val undefined = m.lines["undefined"].orEmpty().map { it.substringBefore(":") }.toSet()
+        assertTrue(setOf("_k_clone", "_k_set", "_k_inner", "_k_inner2") == undefined, m.raw)
     }
 
     @Test
-    fun `the runtime parses as Python 3_10`() {
+    fun `the runtime parses as Python 3_10 as far as a newer interpreter can say`() {
         val r = harness("parse", "--rt", rt())
         assertEquals(0, r.code, r.raw)
         assertEquals(0, r.int("parse310_problems"))
@@ -163,15 +210,38 @@ class PyRuntimeEquivTest {
             assertEquals(1, p.code, "${e.key} must fail")
             assertTrue(p.lines["problem"].orEmpty().any { e.value in it }, p.raw)
         }
-        val py310 = System.getenv("PY310")?.trim()?.takeIf { it.isNotEmpty() }
-        if (py310 == null) {
-            println("PY310 is not set: Python 3.10 was not run. The runtime was parsed with feature_version=(3,10) on ${r.one("interpreter")}.")
-        } else {
-            val real = harness("parse", "--rt", rt(), python = py310)
-            assertEquals(0, real.code, real.raw)
-            assertTrue(real.one("interpreter").startsWith("3.10"), "PY310 is ${real.one("interpreter")}")
-            val eq = harness("equiv", "--a", rt(), "--b", rt(), python = py310)
-            assertEquals(0, eq.code, eq.raw)
+    }
+
+    @Test
+    fun `the runtime runs on a real Python 3_10 and a later feature is refused there`() {
+        val py = py310()
+        // An assumption, so the report counts a skip: set PY310 to a Python 3.10 path, or wsl:<distro> for a distro's python3.10.
+        assumeTrue(py != null, "PY310 is not set: the runtime was not run on Python 3.10")
+        val real = harness("parse", "--rt", rt(), py = py)
+        assertEquals(0, real.code, real.raw)
+        assertTrue(real.one("interpreter").startsWith("3.10"), "PY310 is ${real.one("interpreter")}")
+        val eq = harness("equiv", "--a", rt(), "--b", rt(), py = py)
+        assertEquals(0, eq.code, eq.raw)
+        assertEquals(0, eq.int("mismatches"))
+        // On a POSIX 3.10 the host-only branches run for real, so the coverage report may not list any.
+        if (eq.one("python").startsWith("3.10")) {
+            val cov = harness("coverage", "--rt", rt(), py = py)
+            assertEquals(0, cov.code, cov.raw)
+            println("python 3.10 host ${cov.one("platform")}: line coverage ${cov.one("line_coverage")}%")
+            assertEquals("", cov.one("branches_uncovered"))
+        }
+        // What the name list and the feature_version parse let through, each in the body of a helper the corpus calls.
+        val plants = mapOf(
+            "math-sumprod" to "__import__(\"math\").sumprod([1], [1])",
+            "from-bytes-no-order" to "int.from_bytes(b\"\\x01\")",
+            "atomic-group" to "__import__(\"re\").compile(\"(?>ab)+\")",
+            "popen-process-group" to "__import__(\"subprocess\").Popen([\"x\"], process_group=0)",
+        )
+        for ((id, expr) in plants) {
+            val planted = variant("later-$id.py", "def _k_hex(v):\n    return \"%x\" % v\n", "def _k_hex(v):\n    _k_unused = $expr\n    return \"%x\" % v\n")
+            val p = harness("equiv", "--a", rt(), "--b", planted.absolutePath, py = py)
+            assertEquals(1, p.code, "$id must fail on Python 3.10")
+            assertTrue(p.int("mismatches") > 0, p.raw)
         }
     }
 
