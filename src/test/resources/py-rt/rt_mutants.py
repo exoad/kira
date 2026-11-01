@@ -1,7 +1,5 @@
-# Planted mutants for rt_equiv.py: one small edit each to a copy of the runtime, which the harness must tell apart
-# from the original. `old` must occur once in the source, so an edit that stopped matching fails loudly instead of
-# passing as "caught nothing". The controls change nothing that runs and must NOT be caught: they show a pass is
-# not an accident of the comparison.
+# Planted mutants for rt_equiv.py: one small edit each to a copy of the runtime, which the harness must catch.
+# `old` must occur once, so a stale edit fails loudly; the controls change nothing that runs and must not be caught.
 import collections
 
 Mutant = collections.namedtuple("Mutant", "id old new control")
