@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
+import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Symbol
@@ -196,17 +197,46 @@ class CppStmtEmitter : CppStmtPart {
                 ) + block(ctx, s.body)
                 return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
             }
+            if (plan.kind == LoopKind.UNTIL && plan.bounds == null) {
+                // An Until value: read once, counted while below its end.
+                val r = state.fresh("${name.lowercase()}_r")
+                val untilType = ctx.spell(model.require(fe.target), Pos.VALUE, fe.target)
+                val inner = listOf(
+                    "const $untilType $r = ${lower.emit(fe.target, CppPrec.ASSIGN)};",
+                    CppWriter.forHead("$typeText $name = $r.begin; $name < $r.end; ++$name"),
+                ) + block(ctx, s.body)
+                return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
+            }
+            val range = fe.target as? RangeExpr
+            if (plan.kind == LoopKind.RANGE && range != null) {
+                val start = lower.emit(range.begin, CppPrec.ASSIGN)
+                val last = model.const(range.end) as? ConstValue.IntConst
+                if (last == null || last.value == last.prim.maxValue) {
+                    // Both ends included: the end is read once, and the step stops there before `++`
+                    // could pass the type's last value. `continue` in the body takes the step too.
+                    val end = state.fresh("${name.lowercase()}_last")
+                    val more = state.fresh("${name.lowercase()}_more")
+                    val head = "$typeText $name = $start, $end = ${lower.emit(range.end, CppPrec.ASSIGN)}; $more && $name <= $end; " +
+                        "$more = $name != $end && (++$name, true)"
+                    val inner = listOf("bool $more = true;", CppWriter.forHead(head)) + block(ctx, s.body)
+                    return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
+                }
+            }
             val head = when (plan.kind) {
                 LoopKind.RANGE -> {
-                    val range = fe.target as? RangeExpr ?: return@block listOf(lower.internal(fe, "a range loop without a range").text + ";")
-                    val start = lower.emit(range.begin, CppPrec.ASSIGN)
-                    val cmp = "<"
-                    if (model.const(range.end) != null) {
+                    range ?: return@block listOf(lower.internal(fe, "a range loop without a range").text + ";")
+                    // A constant end below the type's last value: `<=` it, with no temporary.
+                    "$typeText $name = ${lower.emit(range.begin, CppPrec.ASSIGN)}; $name <= ${lower.emit(range.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
+                }
+                LoopKind.UNTIL -> {
+                    val bounds = plan.bounds ?: return@block listOf(lower.internal(fe, "an until loop without its bounds").text + ";")
+                    val start = lower.emit(bounds.begin, CppPrec.ASSIGN)
+                    if (model.const(bounds.end) != null) {
                         // A literal or constant bound needs no temporary.
-                        "$typeText $name = $start; $name $cmp ${lower.emit(range.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
+                        "$typeText $name = $start; $name < ${lower.emit(bounds.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
                     } else {
                         val end = state.fresh("${name.lowercase()}_end")
-                        "$typeText $name = $start, $end = ${lower.emit(range.end, CppPrec.ASSIGN)}; $name $cmp $end; ++$name"
+                        "$typeText $name = $start, $end = ${lower.emit(bounds.end, CppPrec.ASSIGN)}; $name < $end; ++$name"
                     }
                 }
                 else -> {

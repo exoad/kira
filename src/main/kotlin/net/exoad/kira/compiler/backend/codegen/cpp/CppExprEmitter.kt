@@ -357,7 +357,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             is Identifier -> identifier(e)
             is ThisExpr -> thisValue(e)
             is MemberAccessExpr -> memberAccess(e)
-            is FunctionCallExpr -> call(e)
+            is FunctionCallExpr -> model.halfOpens[e]?.let { untilValue(e, it) } ?: call(e)
             is PrimInitExpr -> coerced(e.value, role)
             is ObjectInitExpr -> construction(e)
             is RangeExpr -> rangeValue(e)
@@ -1139,6 +1139,16 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         return hoister.lower(ops, KType.BOOL, node = e, consumer = policy.callConsumer(rc, typeOf(receiver))) { texts ->
             val callee = accessWith(receiver, if (recvOp != null) texts[argOps.size] else null, typeOf(receiver)) + name
             CppEx("$callee(${argList(argSlots, texts)})", CppPrec.POSTFIX)
+        }
+    }
+
+    /** `a.until(b)` or `xs.indices()` as a value: kira:range's Until struct, its ends in Kira's order (D33). */
+    private fun untilValue(e: Expr, b: net.exoad.kira.compiler.analysis.types.HalfOpen): CppEx {
+        val t = typeOf(e)
+        val ops = listOf(operandOf(b.begin) { coerced(b.begin) }, operandOf(b.end) { coerced(b.end) })
+        val typeText = ctx.spell(t, Pos.VALUE, e)
+        return hoister.lower(ops, t) { (a, z) ->
+            CppEx("$typeText{.begin = ${wrap(a, CppPrec.ASSIGN)}, .end = ${wrap(z, CppPrec.ASSIGN)}}", CppPrec.POSTFIX)
         }
     }
 

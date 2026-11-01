@@ -776,9 +776,14 @@ class PyModuleEmitter(
         val target = fe.target
         val over = when (plan.kind) {
             LoopKind.RANGE -> {
+                // Both ends included: Python's range stops before its second argument.
                 val r = target as? RangeExpr ?: return refuse(fe, "a range loop without a range").let { emptyList() }
-                call("range", wrap(expr(r.begin, f), PyPrec.TERNARY), wrap(expr(r.end, f), PyPrec.TERNARY)).text
+                val last = (model.const(r.end) as? ConstValue.IntConst)?.let { (it.value + java.math.BigInteger.ONE).toString() }
+                    ?: "${wrap(expr(r.end, f), PyPrec.ADD)} + 1"
+                call("range", wrap(expr(r.begin, f), PyPrec.TERNARY), last).text
             }
+            LoopKind.UNTIL -> plan.bounds?.let { b -> call("range", wrap(expr(b.begin, f), PyPrec.TERNARY), wrap(expr(b.end, f), PyPrec.TERNARY)).text }
+                ?: "${wrap(expr(target, f), PyPrec.POSTFIX)}._k_steps()"
             LoopKind.LIST, LoopKind.ARR -> {
                 val t = typeOf(target) ?: return emptyList()
                 val it = wrap(expr(target, f), PyPrec.POSTFIX)
@@ -1190,7 +1195,7 @@ class PyModuleEmitter(
             is Identifier -> identifier(e, f)
             is ThisExpr -> if (f.cls != null) Py("self", PyPrec.ATOM) else refusePy(e, "this outside a method")
             is MemberAccessExpr -> member(e, f)
-            is FunctionCallExpr -> callExpr(e, f)
+            is FunctionCallExpr -> model.halfOpens[e]?.let { b -> call("_k_Until", wrap(expr(b.begin, f), PyPrec.TERNARY), wrap(expr(b.end, f), PyPrec.TERNARY)) } ?: callExpr(e, f)
             is PrimInitExpr -> expr(e.value, f)
             is ObjectInitExpr -> construction(e, f)
             is RangeExpr -> call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY))

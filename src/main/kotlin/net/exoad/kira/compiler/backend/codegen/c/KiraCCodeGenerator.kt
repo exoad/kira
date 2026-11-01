@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.c
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.backend.codegen.HalfOpenSyntax
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
 import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
@@ -2316,21 +2317,34 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
         val iterExpr = forIterationStatement.forIterationExpr
-        if (iterExpr.target is RangeExpr) {
+        val target = iterExpr.target
+        if (HalfOpenSyntax.isIndices(target)) {
+            throw UnsupportedConstruct(target, "xs.indices() (write 0.until(xs.size()))", TARGET_NAME)
+        }
+        val until = HalfOpenSyntax.until(target)
+        if (target is RangeExpr || until != null) {
             val name = cName(iterExpr.initializer.value)
-            // `for i: T in a..b` is exclusive with a typed variable (D37).
             val declared = iterExpr.declaredType?.let { typeNameOf(it) }
-            appendIndented("for(${declared?.let { mapTypeName(it) } ?: "Int32"} ")
-            buffer.append(name)
-            buffer.append(" = ")
-            iterExpr.target.begin.accept(this)
-            buffer.append("; ")
-            buffer.append(name)
-            buffer.append(" < ")
-            iterExpr.target.end.accept(this)
-            buffer.append("; ++")
-            buffer.append(name)
-            buffer.appendLine(")")
+            val cType = declared?.let { mapTypeName(it) } ?: "Int32"
+            if (target is RangeExpr) {
+                // `for i: T in a..b` holds b: the end is read once, and the step stops there before `++`
+                // could pass the type's last value; `continue` takes the step too.
+                appendIndentedLine("{")
+                indentLevel++
+                appendIndentedLine("_Bool ${name}_more = 1;")
+                appendIndented("for($cType $name = ")
+                target.begin.accept(this)
+                buffer.append(", ${name}_last = ")
+                target.end.accept(this)
+                buffer.appendLine("; ${name}_more && $name <= ${name}_last; ${name}_more = $name != ${name}_last && (++$name, 1))")
+            } else {
+                // `a.until(b)`: the end left out.
+                appendIndented("for($cType $name = ")
+                until!!.first.accept(this)
+                buffer.append("; $name < ")
+                until.second.accept(this)
+                buffer.appendLine("; ++$name)")
+            }
             appendIndentedLine("{")
             indentLevel++
             pushArcScope()
@@ -2341,6 +2355,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             popArcScope(terminated = endsWithReturn(forIterationStatement.body))
             indentLevel--
             appendIndentedLine("}")
+            if (target is RangeExpr) {
+                indentLevel--
+                appendIndentedLine("}")
+            }
             return
         }
         // Iteration over a container. The target is evaluated once into a
@@ -2349,7 +2367,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // element type, and that read is borrowed: it is never registered
         // as an ARC local of the body. (This path used to be a stub that ran
         // the body exactly once.)
-        val target = iterExpr.target
         val targetName = (target as? Identifier)?.value ?: target.toString()
         val recvType = receiverTypeOf(target)
         val (seqType, sizeOf, getAt) = when (recvType) {
@@ -2685,6 +2702,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
+        if (HalfOpenSyntax.isEither(functionCallExpr)) {
+            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices` outside a for loop's head", TARGET_NAME)
+        }
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
         // Method call: receiver.method(args) -> Class_method(&receiver, args)

@@ -61,6 +61,16 @@ fun main(args: Array<String>) {
         }
         return
     }
+    // `kira --fix-range-loops <file.kira>...` rewrites each `for i: T in a..b` that left b out (before ranges held
+    // their end) to `xs.indices()` or `a.until(b)` in place, and names any loop it left alone.
+    if (args.firstOrNull() == "--fix-range-loops") {
+        for (f in args.drop(1)) {
+            val r = net.exoad.kira.compiler.fix.RangeLoopFix.rewriteFile(File(f))
+            println("$f: indices ${r.indices}, until ${r.until}, left ${r.skipped.size}")
+            r.skipped.forEach { println("  left: $it") }
+        }
+        return
+    }
     // Minimal CLI: `kira --target js|c|cpp|py|none` overrides project.kira's
     // target; `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated

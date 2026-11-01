@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ArrayIndexExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
@@ -630,8 +631,11 @@ internal class StmtChecker(private val c: PhaseC) {
             }
             kind = LoopKind.RANGE
             element = declared
+            minusOne(target)
         } else {
-            val (k, el) = iteration(target, c.exprs.synth(target, ctx, scope))
+            // `a.until(b)` in a loop's head takes the loop variable's type, as a range's ends do.
+            val t = c.exprs.type(target, declared.takeIf { facts.isInteger(it) }?.let { c.ranges.untilOf(it) }, ctx, scope)
+            val (k, el) = iteration(target, t)
             kind = k
             element = el
             if (!el.containsError() && !declared.containsError() && el != declared) {
@@ -647,11 +651,28 @@ internal class StmtChecker(private val c: PhaseC) {
         model.declSyms[fe] = variable
         model.refs[fe.initializer] = variable
         ctx.lambda?.let { c.declaredIn[variable] = it }
-        model.loops[s] = LoopPlan(kind, element, variable)
+        model.loops[s] = LoopPlan(kind, element, variable, model.halfOpens[target].takeIf { kind == LoopKind.UNTIL })
         val bodyScope = scope.child()
         bodyScope.declare(name, variable)
         c.withs.declares(name, fe, bodyScope)
         loopBody(s.body, ctx, bodyScope)
+    }
+
+    /** A loop to `n - 1` (a range holds its end now) reads better as `until`: a hint, not an error. */
+    private fun minusOne(range: RangeExpr) {
+        val end = range.end as? BinaryExpr ?: return
+        if (end.operator != BinaryOp.SUB || (end.rightExpr as? IntegerLiteral)?.value != 1L) {
+            return
+        }
+        val n = KiraUnparser.text(end.leftExpr)
+        val start = KiraUnparser.text(range.begin)
+        c.report(
+            "types.for.minus-one",
+            "A range holds its end, so this loop stops at $n - 1; `${if (start.all { it.isLetterOrDigit() || it == '_' || it == '.' }) start else "($start)"}.until($n)` says that " +
+                "and is empty when $n is $start (or `xs.indices()` for 0 up to a size), where `$n - 1` of an unsigned 0 panics (D8).",
+            range,
+            Severity.WARNING,
+        )
     }
 
     /** What iterating a value of type [t] yields. */
@@ -660,6 +681,7 @@ internal class StmtChecker(private val c: PhaseC) {
             return LoopKind.ARR to KType.Error
         }
         val element = facts.elementOf(t)
+        c.ranges.untilElement(t)?.let { return LoopKind.UNTIL to it }
         c.ranges.elementOf(t)?.let { e ->
             if (!facts.isInteger(e)) {
                 c.report("types.for.range-type", "A range counts integers; ${e.display()} is not an integer type.", target)

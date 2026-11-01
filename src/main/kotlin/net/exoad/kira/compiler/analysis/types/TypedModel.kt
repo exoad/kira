@@ -35,11 +35,14 @@ sealed interface Capture {
 }
 
 enum class LoopKind {
-    /** `for i: T in a..b`: exclusive upper bound. */
+    /** `for i: T in a..b`: both ends included (owner, 2026-11-01; D37's half-open loop is gone). */
     RANGE,
 
     /** `for i: T in r` over a `Range<T>` value: both ends included, as `i in r` says. */
     RANGE_VALUE,
+
+    /** `for i: T in a.until(b)`, `xs.indices()` or an `Until<T>` value: the end left out. */
+    UNTIL,
     ARR,
     LIST,
     SET,
@@ -61,7 +64,15 @@ data class LoopPlan(
     val kind: LoopKind,
     val element: KType,
     val variable: Symbol?,
+    /** An [LoopKind.UNTIL] loop's written start and end (`a.until(b)`, `xs.indices()`); null over an Until value. */
+    val bounds: HalfOpen? = null,
 )
+
+/**
+ * `a.until(b)` or `xs.indices()` (typer-made, lane RANGE): [begin] up to [end], [end] left out. For
+ * `indices()` both are made by the typer, `0` and `xs.size()` (`xs.length()` on a Str), typed as written.
+ */
+data class HalfOpen(val begin: Expr, val end: Expr)
 
 /**
  * A `with` (WithTyper): [temp] holds the receiver (a copy when [copy]), [self] is the bare
@@ -236,6 +247,9 @@ class TypedModel {
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
     val captures: IdentityHashMap<LambdaExpr, List<Capture>> = IdentityHashMap()
     val loops: IdentityHashMap<ForIterationStatement, LoopPlan> = IdentityHashMap()
+
+    /** Every `a.until(b)` and `xs.indices()`, keyed by its member access: what the backends lower it to. */
+    val halfOpens: IdentityHashMap<Expr, HalfOpen> = IdentityHashMap()
 
     /** Whether an if-expression can become a C++ ternary (R18). */
     val ifShape: IdentityHashMap<IfExpr, Boolean> = IdentityHashMap()

@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.js
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.backend.codegen.HalfOpenSyntax
 import net.exoad.kira.compiler.backend.codegen.KiraCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.MinifyLanguage
 import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
@@ -878,19 +879,29 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
         val iterExpr = forIterationStatement.forIterationExpr
-        if (iterExpr.target is RangeExpr) {
+        val target = iterExpr.target
+        if (HalfOpenSyntax.isIndices(target)) {
+            throw UnsupportedConstruct(target, "xs.indices() (write 0.until(xs.size()))", TARGET_NAME)
+        }
+        val until = HalfOpenSyntax.until(target)
+        if (target is RangeExpr || until != null) {
             val name = iterExpr.initializer.value
-            // `for i: T in a..b` is exclusive (D37).
             appendIndented("for (let ")
             buffer.append(name)
             buffer.append(" = ")
-            iterExpr.target.begin.accept(this)
-            buffer.append("; ")
-            buffer.append(name)
-            buffer.append(" < ")
-            iterExpr.target.end.accept(this)
-            buffer.append("; ++")
-            buffer.append(name)
+            if (target is RangeExpr) {
+                // `for i: T in a..b` holds b, read once.
+                target.begin.accept(this)
+                buffer.append(", ${name}_last = ")
+                target.end.accept(this)
+                buffer.append("; $name <= ${name}_last; ++$name")
+            } else {
+                // `a.until(b)`: the end left out.
+                until!!.first.accept(this)
+                buffer.append("; $name < ")
+                until.second.accept(this)
+                buffer.append("; ++$name")
+            }
             buffer.appendLine(") {")
             iterExpr.declaredType?.let { knownValueTypes[name] = typeNameOf(it) }
             indentLevel++
@@ -902,7 +913,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         // Iteration over a container: an Arr is a native array; KiraList and
         // KiraSet keep their elements in `.values`. (This used to be a stub
         // that ran the body exactly once.)
-        val target = iterExpr.target
         val targetName = (target as? Identifier)?.value ?: target.toString()
         val name = iterExpr.initializer.value
         appendIndented("for (let $name of ")
@@ -1020,6 +1030,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
+        if (HalfOpenSyntax.isEither(functionCallExpr)) {
+            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices` outside a for loop's head", TARGET_NAME)
+        }
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
         val args = boundArguments(functionCallExpr)

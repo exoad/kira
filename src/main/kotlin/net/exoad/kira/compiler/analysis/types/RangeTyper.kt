@@ -1,7 +1,11 @@
 package net.exoad.kira.compiler.analysis.types
 
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
+import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.FloatLiteral
@@ -25,6 +29,93 @@ internal class RangeTyper(private val c: PhaseC) {
     /** `T` of a `Range<T>`, else null. */
     fun elementOf(t: KType?): KType? =
         (t as? KType.Nominal)?.takeIf { rangeClass() != null && it.sym === rangeClass() }?.typeArgs()?.firstOrNull()
+
+    /** kira:range's Until, or null when the stdlib has none. */
+    fun untilClass(): ClassSymbol? = c.program.module(MODULE)?.members?.get(UNTIL) as? ClassSymbol
+
+    fun untilOf(t: KType): KType = untilClass()?.let { KType.Nominal(it, listOf(TypeArg.Ty(t))) } ?: KType.Error
+
+    /** `T` of an `Until<T>`, else null. */
+    fun untilElement(t: KType?): KType? =
+        (t as? KType.Nominal)?.takeIf { untilClass() != null && it.sym === untilClass() }?.typeArgs()?.firstOrNull()
+
+    /**
+     * `a.until(b)` on an integer, or `xs.indices()` on a Str, List, Arr, View or MutView: an `Until<T>`,
+     * recorded in `TypedModel.halfOpens`. Null when [e] is neither (a user type's own `until`), for
+     * ordinary member typing to take over. [hint] is the expected type, `Until<T>` in a loop's head.
+     */
+    fun halfOpen(call: FunctionCallExpr, hint: KType?, ctx: BodyContext, scope: Scope): KType? {
+        val access = call.name as? MemberAccessExpr ?: return null
+        val name = (access.member as? Identifier)?.takeIf { it.javaClass == Identifier::class.java }?.value ?: return null
+        if (call.typeArguments.isNotEmpty() || call.namedParameters.isNotEmpty() || untilClass() == null) {
+            return null
+        }
+        return when {
+            name == "until" && call.positionalParameters.size == 1 -> until(call, access.origin, call.positionalParameters[0].value, untilElement(hint), ctx, scope)
+            name == "indices" && call.positionalParameters.isEmpty() -> indices(call, access.origin, ctx, scope)
+            else -> null
+        }
+    }
+
+    private fun until(e: FunctionCallExpr, begin: Expr, end: Expr, hint: KType?, ctx: BodyContext, scope: Scope): KType? {
+        val wanted = hint?.takeIf { facts.isInteger(it) }
+        val bt: KType
+        val et: KType
+        if (!c.literals.isLiteralOnly(begin)) {
+            bt = c.exprs.type(begin, wanted, ctx, scope)
+            if (!bt.containsError() && !facts.isInteger(bt)) {
+                return null
+            }
+            et = c.exprs.type(end, bt.takeIf { !it.containsError() }, ctx, scope)
+        } else if (!c.literals.isLiteralOnly(end)) {
+            et = c.exprs.type(end, wanted, ctx, scope)
+            bt = c.exprs.type(begin, et.takeIf { facts.isInteger(it) } ?: wanted, ctx, scope)
+        } else {
+            bt = c.exprs.type(begin, wanted, ctx, scope)
+            et = c.exprs.type(end, bt.takeIf { !it.containsError() }, ctx, scope)
+        }
+        if (bt.containsError() || et.containsError()) {
+            return KType.Error
+        }
+        if (!facts.isInteger(bt) || !facts.isInteger(et)) {
+            c.report("types.until.element", "`until` counts integers; ${(if (facts.isInteger(bt)) et else bt).display()} is not one.", e)
+            return KType.Error
+        }
+        if (bt != et) {
+            c.report(
+                "types.until.mismatch",
+                "`until` counts from and to one type; this is ${bt.display()}.until(${et.display()})" + numericHint(bt, et) + ".",
+                e,
+            )
+            return KType.Error
+        }
+        model.halfOpens[e] = HalfOpen(begin, end)
+        return untilOf(bt)
+    }
+
+    /** `xs.indices()`: 0 up to `xs.size()` (`xs.length()` on a Str), both made here and typed as if written. */
+    private fun indices(e: FunctionCallExpr, xs: Expr, ctx: BodyContext, scope: Scope): KType? {
+        val xt = c.exprs.synth(xs, ctx, scope)
+        if (xt.containsError()) {
+            return KType.Error
+        }
+        val size = when {
+            xt == KType.Str -> "length"
+            facts.isList(xt) || facts.isArr(xt) || facts.isView(xt) || facts.isMutView(xt) -> "size"
+            else -> return null
+        }
+        val zero = IntegerLiteral(0)
+        val end = FunctionCallExpr(MemberAccessExpr(xs, Identifier(size)), emptyList(), emptyList())
+        val origins = ctx.module.source.astOrigins
+        origins[e]?.let { at -> listOf(zero, end, end.name, (end.name as MemberAccessExpr).member).forEach { origins[it] = at } }
+        c.exprs.type(zero, KType.SIZE, ctx, scope)
+        if (c.exprs.synth(end, ctx, scope) != KType.SIZE) {
+            c.report("types.internal", "internal typer failure: ${xt.display()}.$size() is not a Size.", e)
+            return KType.Error
+        }
+        model.halfOpens[e] = HalfOpen(zero, end)
+        return untilOf(KType.SIZE)
+    }
 
     /** `a..b` as a value: both ends of one number type `T`, a `Range<T>`. */
     fun value(e: RangeExpr, hint: KType?, ctx: BodyContext, scope: Scope): KType {
@@ -179,5 +270,6 @@ internal class RangeTyper(private val c: PhaseC) {
     companion object {
         const val MODULE = "kira:range"
         const val NAME = "Range"
+        const val UNTIL = "Until"
     }
 }
