@@ -445,7 +445,7 @@ class CppExternEmitterTest {
     /**
      * R-G (40-round3 2, round-2 w2-6 #7): one predicate says C++ supplies a body,
      * `FnSymbol.suppliedByCpp`, and every reader agrees with it: the typer's call kind
-     * (`CallKind.EXTERN`, what the expression part dispatches on), [CppExternEmitter.isExternCall],
+     * (`CallKind.EXTERN`, what the expression part dispatches on)
      * and EffectsPass (IMPURE). One callee of each kind: an `@_extern` function, an `@_extern`
      * class's method, a bodiless `pub` prototype, a bodiless method of an `@_opaque` class; and
      * three that are not: a Kira function with a body, a class's bodiless method (a slot a
@@ -488,7 +488,6 @@ class CppExternEmitterTest {
             val fn = call.fn ?: fail("no callee for $name")
             assertEquals(want, fn.suppliedByCpp, "suppliedByCpp($name)")
             assertEquals(want, call.kind == net.exoad.kira.compiler.analysis.types.CallKind.EXTERN, "the call kind of $name is ${call.kind}")
-            assertEquals(want, CppExternEmitter.isExternCall(call), "isExternCall($name)")
             if (want) {
                 val e = c.ctx.model.calls.entries.first { it.value === call }.key
                 assertEquals(net.exoad.kira.compiler.analysis.types.Effect.IMPURE, c.ctx.model.effect(e), "EffectsPass ranks $name")

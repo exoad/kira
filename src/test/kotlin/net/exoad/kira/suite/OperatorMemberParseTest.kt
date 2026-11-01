@@ -55,7 +55,7 @@ class OperatorMemberParseTest {
         )
         // Base holds no state and is a parent, so it is a trait: Leaf is the one class.
         val leaf = decls(ast).filterIsInstance<ClassDecl>().single()
-        val eq = leaf.members.filterIsInstance<FunctionDecl>().single { it.isIntrinsicOverload() }
+        val eq = leaf.members.filterIsInstance<FunctionDecl>().single { it.name is IntrinsicExpr }
         assertTrue(Modifier.OVERRIDE in eq.modifiers)
         assertEquals("_op_eq_", assertIs<IntrinsicExpr>(eq.name).intrinsicKey.name)
     }

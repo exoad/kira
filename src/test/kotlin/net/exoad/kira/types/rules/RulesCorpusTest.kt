@@ -1,5 +1,6 @@
 package net.exoad.kira.types.rules
 
+import net.exoad.kira.compiler.ProjectFile
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.ClassKind
@@ -64,7 +65,7 @@ class RulesCorpusTest {
 
     /** The typer options the case's project file asks for: its cpp freestanding globs (hall, text), so ProfilePass runs as the CLI would run it. */
     private fun options(dir: File): TyperOptions {
-        val cpp = net.exoad.kira.compiler.ProjectFile.loadIn(dir.toPath())?.cpp ?: return TyperOptions()
+        val cpp = ProjectFile.find(dir.toPath())?.let(ProjectFile::load)?.cpp ?: return TyperOptions()
         return TyperOptions(freestanding = cpp.freestanding, headerOnly = cpp.headerOnly)
     }
 

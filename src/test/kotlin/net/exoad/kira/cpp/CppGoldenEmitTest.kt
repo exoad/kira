@@ -65,7 +65,7 @@ class CppGoldenEmitTest {
 
     private fun check(case: CppGoldenCase) {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val project = ProjectFile.loadIn(caseRoot)!!
+        val project = ProjectFile.find(caseRoot)?.let(ProjectFile::load)!!
         val issues = project.issues(caseRoot)
         assertTrue(issues.isEmpty(), "${case.name}: project file issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
 

@@ -361,7 +361,7 @@ object OopTestSupport {
      */
     fun emitCase(case: CppGoldenCase, parts: CppEmitParts = partsOverStandard(), tweak: (TypedProgram) -> Unit = {}): List<GeneratedFile> {
         val caseRoot = case.dir.toPath().toAbsolutePath().normalize()
-        val project = ProjectFile.loadIn(caseRoot)!!
+        val project = ProjectFile.find(caseRoot)?.let(ProjectFile::load)!!
         val workspace = ProjectSources.workspace(project, caseRoot)
         val names = net.exoad.kira.compiler.ModuleNames.assign(project, caseRoot, emptyList(), workspace)
         val unit = CompilationUnit()

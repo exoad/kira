@@ -69,9 +69,6 @@ object ProjectFile {
         return parse(Files.readString(path), path.toString())
     }
 
-    /** [dir]'s project, its project.kira read; null when it has none. */
-    fun loadIn(dir: Path): Project? = find(dir)?.let(::load)
-
     /** Each project file read, by its path and when it was last written: a rewritten one is read again. */
     private val loaded = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<Project>>()
 

@@ -1,7 +1,6 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.analysis.semantic.KiraSymbolTable
-import net.exoad.kira.compiler.analysis.semantic.SemanticSymbol
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
@@ -66,18 +65,10 @@ class CompilationUnit(bootstrap: Boolean = true) {
         return sources.values
     }
 
-    fun resolveSymbol(name: String): SemanticSymbol? {
-        return symbolTable.resolve(name)
-    }
-
     fun registerMagicType(name: String) {
         if (name.isNotBlank()) {
             magicTypeNames.add(name)
         }
-    }
-
-    fun isMagicType(name: String): Boolean {
-        return magicTypeNames.contains(name)
     }
 
     fun allMagicTypes(): Set<String> {

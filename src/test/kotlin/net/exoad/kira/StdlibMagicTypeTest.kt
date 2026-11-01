@@ -23,7 +23,7 @@ class StdlibMagicTypeTest {
             runSemantic = true
         )
 
-        assertTrue(result.compilationUnit.isMagicType("Int32"))
+        assertTrue("Int32" in result.compilationUnit.allMagicTypes())
     }
 
     @Test

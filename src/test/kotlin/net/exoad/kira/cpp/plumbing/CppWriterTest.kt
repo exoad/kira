@@ -68,13 +68,13 @@ class CppWriterTest {
             blank()
             block("bool fieldInt(const kira::Str& text, const kira::Str& key, std::int32_t& out)") {
                 line("kira::Str raw = \"\";")
-                ifBlock("!field(text, key, raw)") {
+                block(CppWriter.ifHead("!field(text, key, raw)")) {
                     line("return false;")
                 }
-                whileBlock("at < buf.size()") {
+                block(CppWriter.whileHead("at < buf.size()")) {
                     line("at += 1;")
                 }
-                forBlock("std::size_t i = 0; i < n; ++i") {
+                block(CppWriter.forHead("std::size_t i = 0; i < n; ++i")) {
                     line("sum += i;")
                 }
                 blank()
@@ -143,7 +143,6 @@ class CppWriterTest {
         assertEquals("if(a)", CppWriter.ifHead("a"))
         assertEquals("while(a)", CppWriter.whileHead("a"))
         assertEquals("for(;;)", CppWriter.forHead(";;"))
-        assertEquals("switch(k)", CppWriter.switchHead("k"))
     }
 
     @Test

@@ -1,6 +1,7 @@
 package net.exoad.kira.types
 
 import net.exoad.kira.compiler.CompilationUnit
+import net.exoad.kira.compiler.ProjectFile
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.KiraTyper
 import net.exoad.kira.compiler.analysis.types.TypeDiagnostic
@@ -81,7 +82,7 @@ object TyperTestSupport {
         val files = src.walkTopDown().filter { it.isFile && it.extension == "kira" }.sortedBy { it.path }.toList()
         require(files.isNotEmpty()) { "no .kira files under $src" }
         // The project's own naming: its project file's name and srcDir, as the CLI gives them.
-        val project = net.exoad.kira.compiler.ProjectFile.loadIn(dir.toPath())
+        val project = ProjectFile.find(dir.toPath())?.let(ProjectFile::load)
         val names = net.exoad.kira.compiler.ModuleNames.assign(project, dir.toPath(), emptyList(), files.map { it.canonicalPath })
         val sources = files.map { Src(it.canonicalPath, it.readText(), names[it.canonicalPath]) }
         return type(*sources.toTypedArray(), mode = mode, options = options)

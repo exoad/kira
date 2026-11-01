@@ -772,14 +772,6 @@ object CppExternEmitter : CppExternsPart {
         return declared(ctx, sym.type, text)
     }
 
-    /**
-     * Whether [call] is one the expression part must hand to [CppExternEmitter.call]: its
-     * callee's body C++ supplies (R-G, [suppliedByCpp]). The typer gives every such call
-     * [net.exoad.kira.compiler.analysis.types.CallKind.EXTERN], which is what the expression
-     * part dispatches on; the two agree by construction and a test pins it.
-     */
-    fun isExternCall(call: ResolvedCall): Boolean = call.fn?.suppliedByCpp == true
-
     private const val CSTR = "CStr"
     private const val UNSAFE = "Unsafe"
     private const val MAYBE = "Maybe"

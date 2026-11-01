@@ -49,6 +49,5 @@ class FrontendCompilationPipelineTest {
             semantics.isHealthy,
             semantics.diagnostics.joinToString("\n") { it.message }
         )
-        assertNotNull(result.compilationUnit.resolveSymbol("TestType"))
     }
 }

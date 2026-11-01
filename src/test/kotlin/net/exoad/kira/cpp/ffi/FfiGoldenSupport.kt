@@ -50,7 +50,7 @@ object FfiGoldenSupport {
     fun emit(caseName: String): CaseEmission {
         val caseRoot = File(corpus, caseName).toPath().toAbsolutePath().normalize()
         assertTrue(Files.isDirectory(caseRoot), "no golden case at $caseRoot")
-        val project = ProjectFile.loadIn(caseRoot)!!
+        val project = ProjectFile.find(caseRoot)?.let(ProjectFile::load)!!
         val issues = project.issues(caseRoot)
         assertTrue(issues.isEmpty(), "$caseName: project file issues: ${issues.joinToString { "${it.field}: ${it.message}" }}")
         val workspace = ProjectSources.workspace(project, caseRoot)

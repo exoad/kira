@@ -26,14 +26,6 @@ data class PyBinding(
     /** The placeholders in the order the expression names them. */
     val placeholders: List<String> get() = PLACEHOLDER.findAll(expr).map { it.groupValues[1] }.toList()
 
-    /** Whether the placeholders appear once each, `self` first and the arguments in order. */
-    val isOrdered: Boolean
-        get() {
-            val names = placeholders
-            val want = (if ("self" in names) listOf("self") else emptyList()) + names.filter { it != "self" }.sortedBy { it.toInt() }
-            return names == want && names.toSet().size == names.size
-        }
-
     /** The expression's own precedence: fully parenthesized, or a call, subscript or attribute. */
     val prec: Int get() = if (PyRuntime.isWrapped(expr)) PyPrec.ATOM else PyPrec.POSTFIX
 

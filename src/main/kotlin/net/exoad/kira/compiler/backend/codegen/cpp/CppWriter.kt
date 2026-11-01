@@ -55,10 +55,6 @@ class CppWriter {
         return braced(head, NAMESPACE_INDENT, "", body)
     }
 
-    fun ifBlock(condition: String, body: CppWriter.() -> Unit): CppWriter = block(ifHead(condition), body = body)
-    fun whileBlock(condition: String, body: CppWriter.() -> Unit): CppWriter = block(whileHead(condition), body = body)
-    fun forBlock(clauses: String, body: CppWriter.() -> Unit): CppWriter = block(forHead(clauses), body = body)
-
     private fun braced(head: String, bodyIndent: Int, trailer: String, body: CppWriter.() -> Unit): CppWriter {
         line(head)
         line("{")
@@ -97,7 +93,6 @@ class CppWriter {
         fun ifHead(condition: String): String = "if($condition)"
         fun whileHead(condition: String): String = "while($condition)"
         fun forHead(clauses: String): String = "for($clauses)"
-        fun switchHead(subject: String): String = "switch($subject)"
 
         /** Any text to the writer's conventions: LF endings, no trailing whitespace, one final newline. */
         fun normalize(text: String): String {
