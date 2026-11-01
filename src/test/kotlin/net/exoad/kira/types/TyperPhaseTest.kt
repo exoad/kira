@@ -303,10 +303,8 @@ class TyperPhaseTest {
 
     @Test
     fun externArgumentsAreRecordedVerbatimOnceTheParserKeepsThem() {
-        // The frontend package's parser records marker arguments (SourceContext.intrinsicInvocationsOf),
-        // and DeclarationCollector.invocationsOf reads them directly. The parser is on cpp-backend, so
-        // this never skips there (a half-present parser fails in TyperTestSupport.hasDialectParser).
-        TyperTestSupport.assumeDialectParser("reading @_extern arguments")
+        // The parser records marker arguments (SourceContext.intrinsicInvocationsOf) and
+        // DeclarationCollector.invocationsOf reads them directly.
         val p = snippet(
             """
             pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
