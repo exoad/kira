@@ -1,4 +1,5 @@
 {
+  "comment": "Read by R3 (hot helpers within 1.2x of this base) and by the stdlib S lanes (a body with no fast path within 1.2x of its hand block); recorded by rt_equiv.py bench --record.",
   "python": "3.12.5",
   "platform": "Windows-11-10.0.26200-SP0",
   "calibration_us": 14152.9,
