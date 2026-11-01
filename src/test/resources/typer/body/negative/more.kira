@@ -125,7 +125,7 @@ pub yetMore: (i: Int32, s: Str, xs: List<Int32>, f: Fx<Tuple1<Int32>, Int32>) Vo
     } on e: Int32 {                        // @error types.try.type
         trace(e)
     }
-    r: Int32 = 0..3                        // @error types.range.position
+    r: Int32 = 0..3                        // @error types.assign.mismatch
     v3: View<UInt8> = View<UInt8> { }      // @error types.init.not-constructible; @error rules.view.local
     pt: Point = Point { 1, 2 }             // @error types.init.arity
     pt2: Point = Point { 1, x = 2 }        // @error types.init.duplicate

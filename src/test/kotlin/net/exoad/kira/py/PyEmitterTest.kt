@@ -137,6 +137,78 @@ class PyEmitterTest {
     }
 
     @Test
+    fun xInALiteralRangeIsAChainedComparisonThatRunsXOnce() {
+        val py = python(
+            """
+            pub link: (code: Int32) Bool {
+                code in 9..13
+            }
+
+            pub inside: (x: Int32, y: Int32, n: Int32) Bool {
+                (x in 0..n) == (y in 0..n)
+            }
+
+            pub bump: () Int32 {
+                println("bump")
+                5
+            }
+
+            pub ran: (x: Int32) Bool {
+                x in bump()..9
+            }
+            """
+        )
+        assertTrue(py.contains("return 9 <= code <= 13"), py)
+        // A chain is parenthesized where it is an operand, as any comparison is.
+        assertTrue(py.contains("return (0 <= x <= n) == (0 <= y <= n)"), py)
+        // An end with an effect: _k_within runs x, then each end, once.
+        assertTrue(py.contains("return _k_within(x, bump(), 9)"), py)
+        assertFalse(py.contains("_k_Range("), "a literal range under `in` builds no Range:\n$py")
+    }
+
+    @Test
+    fun aRangeValueIsTheRuntimesRangeAndItsLoopIncludesItsEnd() {
+        val py = python(
+            """
+            pub f: (x: Int32) Int32 {
+                r: Range<Int32> = 1..4
+                t: Mutable<Int32> = 0
+                for i: Int32 in r {
+                    t += i
+                }
+                for j: Int32 in 1..4 {
+                    t += j
+                }
+                x in r && r.contains(x) ? t + r.end : 0
+            }
+            """
+        )
+        assertTrue(py.contains("r = _k_Range(1, 4)"), py)
+        assertTrue(py.contains("for i in r._k_steps():"), py)
+        assertTrue(py.contains("for j in range(1, 4):"), "a literal range's loop stays half-open:\n$py")
+        assertTrue(py.contains("r._op_in_(x) and r.contains(x)"), py)
+        assertTrue(py.contains("class _k_Range:"), py)
+    }
+
+    @Test
+    fun aUserTypesInOperatorIsAnOperatorOverloadPyRefuses() {
+        val body = """
+            pub Box: Struct {
+                pub lo: Int32
+
+                pub @_op_in_: (v: Int32) Bool {
+                    v >= lo
+                }
+            }
+
+            pub f: (b: Box) Bool {
+                4 in b
+            }
+            """
+        refused(body, "`in` through Box's @_op_in_")
+    }
+
+    @Test
     fun aUseOfTheStdlibBindsItsMagicFunctions() {
         val py = python(
             """
@@ -2351,7 +2423,7 @@ class PyEmitterTest {
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
-        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Ready"), structs.map { it.name }.sorted())
+        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Range", "Ready"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
             // pyName: a field that is not pub is _name.

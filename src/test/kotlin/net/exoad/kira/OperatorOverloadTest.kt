@@ -118,15 +118,17 @@ class OperatorOverloadTest {
             "_op_bitnot_" to { OperatorIntrinsics.memberName(UnaryOp.BIT_NOT) },
             "_op_not_" to { OperatorIntrinsics.memberName(UnaryOp.NOT) },
             "_op_pos_" to { OperatorIntrinsics.memberName(UnaryOp.POS) },
+            // Lane RANGE (owner, 2026-11-01): `x in r` is r's member `@_op_in_`.
+            "_op_in_" to { OperatorIntrinsics.memberName(BinaryOp.IN) },
         )
-        assertEquals(23, table.size, "1.3.1's table has 23 names")
+        assertEquals(24, table.size, "1.3.1's table has 23 names, and `in` makes 24")
         for ((expected, actual) in table) {
             assertEquals(expected, actual(), "1.3.1's member name for $expected")
         }
         assertEquals(
             table.map { it.first }.toSet(),
             OperatorIntrinsics.allMembers.map { it.name }.toSet(),
-            "OperatorIntrinsics.allMembers must be exactly these 23 names, nothing more or fewer",
+            "OperatorIntrinsics.allMembers must be exactly these 24 names, nothing more or fewer",
         )
     }
 
