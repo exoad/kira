@@ -486,6 +486,15 @@ def coverage(rt, cases):
 
 # ---- closure check -------------------------------------------------------------------------------------------------
 
+def empty_iter(it):
+    """True for a literal that holds nothing, so a loop over it never binds its target."""
+    return (
+        (isinstance(it, (ast.Tuple, ast.List, ast.Set)) and not it.elts)
+        or (isinstance(it, ast.Dict) and not it.keys)
+        or (isinstance(it, ast.Constant) and isinstance(it.value, (str, bytes)) and not it.value)
+    )
+
+
 class Binder(ast.NodeVisitor):
     """The names a module's top level really binds: a def or class binds only its own name, a function a `global`
     only by assigning it. A bare annotation, a del, an augmented assign and an empty-literal loop target bind nothing."""
@@ -518,6 +527,8 @@ class Binder(ast.NodeVisitor):
                     stored.update((a.asname or a.name).split(".")[0] for a in x.names)
                 if isinstance(x, ast.AugAssign):
                     todo.append(x.value)
+                elif isinstance(x, (ast.For, ast.AsyncFor)) and empty_iter(x.iter):
+                    todo.extend([x.iter] + x.body + x.orelse)
                 elif isinstance(x, ast.AnnAssign) and x.value is None:
                     pass
                 else:
@@ -554,12 +565,7 @@ class Binder(ast.NodeVisitor):
 
     def visit_For(self, n):
         it = n.iter
-        empty = (
-            (isinstance(it, (ast.Tuple, ast.List, ast.Set)) and not it.elts)
-            or (isinstance(it, ast.Dict) and not it.keys)
-            or (isinstance(it, ast.Constant) and isinstance(it.value, (str, bytes)) and not it.value)
-        )
-        if not empty:
+        if not empty_iter(it):
             self.visit(n.target)
         for x in [it] + n.body + n.orelse:
             self.visit(x)
@@ -587,12 +593,25 @@ def closure(src):
     """The _k_ tokens of src's code (comments and strings are not code) that nothing in it defines."""
     tree = ast.parse(src)
     bound = bound_names(tree)
-    # An `except as` name is bound only inside its handler: the lines of the handler, not the module.
-    handlers = [(h.name, h.lineno, h.end_lineno) for h in ast.walk(tree) if isinstance(h, ast.ExceptHandler) and h.name]
+    # An `except as` name is bound only while its handler runs: not after it, and not in a def or lambda inside it.
+    lines = re.split(r"\r\n|\r|\n", src)
+
+    def at(line, col):
+        return (line, len(lines[line - 1].encode("utf-8")[:col].decode("utf-8", "ignore")))
+
+    handlers = []
+    for h in ast.walk(tree):
+        if isinstance(h, ast.ExceptHandler) and h.name:
+            later = [(at(d.lineno, d.col_offset), at(d.end_lineno, d.end_col_offset)) for d in ast.walk(h)
+                     if isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.GeneratorExp))]
+            handlers.append((h.name, h.lineno, h.end_lineno, later))
     undefined = {}
     prev = None
     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-        in_handler = any(tok.string == h and lo <= tok.start[0] <= hi for h, lo, hi in handlers)
+        in_handler = any(
+            tok.string == h and lo <= tok.start[0] <= hi and not any(a <= tok.start < b for a, b in later)
+            for h, lo, hi, later in handlers
+        )
         if (
             tok.type == tokenize.NAME and tok.string.startswith("_k_") and tok.string not in bound and not in_handler
             and not (prev is not None and prev.string in (".", "def"))

@@ -274,6 +274,7 @@ class PyRuntimeEquivTest {
             "augassign" to "_k_clone += 1\n",
             "global-aug" to "def _k_g():\n    global _k_clone\n    _k_clone += 1\n",
             "global-nested-local" to "def _k_g():\n    global _k_clone\n\n    def inner():\n        _k_clone = 1\n    return inner\n",
+            "global-empty-for" to "def _k_g():\n    global _k_clone\n    for _k_clone in ():\n        pass\n",
         )
         for ((id, text) in looks) {
             val f = File(scratch, "planted-looks-$id.py")
@@ -305,6 +306,23 @@ class PyRuntimeEquivTest {
         val a = harness("closure", "--rt", rt(), "--append", after.absolutePath)
         assertEquals(1, a.code, a.raw)
         assertTrue(a.one("undefined").startsWith("_k_x:"), a.raw)
+        // The name is gone when the handler ends, so a def, lambda or generator inside it that reads it fails when called later.
+        val deferred = mapOf(
+            "def" to "try:\n    pass\nexcept ValueError as _k_x:\n    def f():\n        return _k_x\nf()\n",
+            "lambda" to "try:\n    pass\nexcept ValueError as _k_x:\n    f = lambda: _k_x\nf()\n",
+            "generator" to "try:\n    pass\nexcept ValueError as _k_x:\n    g = (_k_x for _ in (1,))\nlist(g)\n",
+        )
+        for ((id, text) in deferred) {
+            val f = File(scratch, "planted-handler-$id.py")
+            f.writeText(text, Charsets.UTF_8)
+            val r4 = harness("closure", "--rt", rt(), "--append", f.absolutePath)
+            assertEquals(1, r4.code, "a $id in the handler reads a name that is gone by then: ${r4.raw}")
+            assertTrue(r4.one("undefined").startsWith("_k_x:"), "$id: ${r4.raw}")
+        }
+        // What runs at once in the handler still counts: a comprehension, and a use on the line of an unrelated lambda.
+        val now = File(scratch, "planted-handler-now.py")
+        now.writeText("try:\n    pass\nexcept ValueError as _k_x:\n    print([_k_x for _ in (1,)]); f = lambda: 1\n", Charsets.UTF_8)
+        assertEquals(0, harness("closure", "--rt", rt(), "--append", now.absolutePath).code)
     }
 
     @Test
