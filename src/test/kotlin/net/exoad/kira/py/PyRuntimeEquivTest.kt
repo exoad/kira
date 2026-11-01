@@ -163,6 +163,9 @@ class PyRuntimeEquivTest {
         val g = harness("equiv", "--a", rt(), "--b", gone.absolutePath)
         assertEquals(1, g.code)
         assertTrue(g.lines["shape_diff"].orEmpty().any { it.startsWith("only in A: _k_hex") }, g.raw)
+        // _k_hex is no dead name: its cases are skipped, and none of those skips may count as dead.
+        assertTrue(g.int("skipped") > 0, "the cases of the removed function were not skipped: ${g.raw}")
+        assertEquals(0, g.int("skipped_dead"), "a skip was counted as dead for a live function: ${g.raw}")
     }
 
     @Test
