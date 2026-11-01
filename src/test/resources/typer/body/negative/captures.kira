@@ -1,5 +1,5 @@
 // A lambda's capture of a value that is not Mutable is an immutable copy (spec): assigning it is refused,
-// while a Mutable value is shared, so a lambda may change it (stage 4). A type parameter reaches only its bounds' members (a cyclic
+// while a Mutable value is shared, so a lambda may change it. A type parameter reaches only its bounds' members (a cyclic
 // bound reaches none). A magic call whose C++ binding is not constexpr is no constant, and
 // neither is a read of a global whose type C++ builds at run time (an Arr<T> or List<T> is a
 // std::vector, no literal type on the gcc 11.4 floor): `inline constexpr` cannot hold the

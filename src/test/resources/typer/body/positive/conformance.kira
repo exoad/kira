@@ -1,4 +1,4 @@
-// Conformance (stage 3): `value == Identity` and `!=`, decided by the types or tested at run
+// Conformance: `value == Identity` and `!=`, decided by the types or tested at run
 // time, and the narrowing a passing test gives a name that cannot change.
 
 pub Shape: Any {

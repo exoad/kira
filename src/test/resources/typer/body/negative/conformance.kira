@@ -1,4 +1,4 @@
-// Conformance tests that ask nothing (stage 3): never true by the types, or not a question at all.
+// Conformance tests that ask nothing: never true by the types, or not a question at all.
 
 pub Shape: Any {
     pub area: () Int32;
