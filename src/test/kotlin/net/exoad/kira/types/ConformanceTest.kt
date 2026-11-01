@@ -1,4 +1,4 @@
-package net.exoad.kira.suite
+package net.exoad.kira.types
 
 import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.cpp.decls.DeclTestSupport
 import net.exoad.kira.py.PyTestSupport
-import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import net.exoad.kira.types.TyperTestSupport.module

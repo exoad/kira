@@ -1,7 +1,6 @@
-package net.exoad.kira.suite
+package net.exoad.kira.types
 
 import net.exoad.kira.compiler.analysis.types.ModuleGraph
-import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import net.exoad.kira.types.TyperTestSupport.module
 import org.junit.jupiter.api.Test
