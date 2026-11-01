@@ -38,7 +38,7 @@ import kotlin.test.fail
  *   twin pads to the same 8 bytes and only the field's size gate catches it.
  * - a C++ `std::optional<std::uint32_t>` declared `Maybe<Int32>`, a `std::optional<std::uint8_t>`
  *   parameter declared `Maybe<Int32>`, and a `std::function<void(unsigned)>` declared
- *   `Fx<Tuple1<Int32>, Void>`: the converting constructors of optional and function let
+ *   `Fx<T1<Int32>, Void>`: the converting constructors of optional and function let
  *   each through is_convertible, and the same rule one level down refuses them; the right
  *   ones build.
  * - a C++ `const char* name()` declared `Str`: the call the emitter writes compares by
@@ -51,8 +51,8 @@ import kotlin.test.fail
  *   field read the emitter writes are std::int32_t, since the check accepts a same-size
  *   twin (an enum, a C `int` on arm-none-eabi, a `long` on Windows) and Kira's own
  *   operations do not; a field whose C++ type is the declared one stays the member itself.
- * - a `std::function<void(const char*)>` declared `Fx<Tuple1<Str>, Void>` fails with Kira's
- *   message, and a `std::function<void(const std::string&)>` declared `Fx<Tuple1<CStr>, Void>`
+ * - a `std::function<void(const char*)>` declared `Fx<T1<Str>, Void>` fails with Kira's
+ *   message, and a `std::function<void(const std::string&)>` declared `Fx<T1<CStr>, Void>`
  *   builds and is called: a Fn's parameters match in the direction the argument flows.
  */
 class FfiDriftCompileTest {
@@ -244,7 +244,7 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: a C int field declared Int32 builds") { cIntFieldClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: an optional<uint32_t> return declared Maybe<Int32> fails with Kira's message") { maybeReturnDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: an optional<uint8_t> parameter declared Maybe<Int32> is no viable call") { maybeParameterDrift(tc) },
-                DynamicTest.dynamicTest("${tc.id}: a function<void(unsigned)> return declared Fx<Tuple1<Int32>, Void> fails with Kira's message") { fnReturnDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(unsigned)> return declared Fx<T1<Int32>, Void> fails with Kira's message") { fnReturnDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: the right Maybe and Fn declarations build") { maybeAndFnClean(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a const char* result declared Str compares by value at the call") { strResultIsConvertedAtTheCall(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a null const char* result declared Str is the empty Str at the call") { nullStrResultIsEmpty(tc) },
@@ -252,8 +252,8 @@ class FfiDriftCompileTest {
                 DynamicTest.dynamicTest("${tc.id}: an int8_t result declared Char fails with Kira's message") { int8ResultDeclaredCharDrift(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a C enum result declared Int32 is an int32_t at the call") { scalarResultIsTheDeclaredType(tc) },
                 DynamicTest.dynamicTest("${tc.id}: a field read of an extern struct is the declared type, and the member itself where the types agree") { fieldReadIsTheDeclaredType(tc) },
-                DynamicTest.dynamicTest("${tc.id}: a function<void(const char*)> return declared Fx<Tuple1<Str>, Void> fails with Kira's message") { fnParameterDirectionDrift(tc) },
-                DynamicTest.dynamicTest("${tc.id}: a function<void(const string&)> return declared Fx<Tuple1<CStr>, Void> builds and is called") { fnParameterDirectionClean(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(const char*)> return declared Fx<T1<Str>, Void> fails with Kira's message") { fnParameterDirectionDrift(tc) },
+                DynamicTest.dynamicTest("${tc.id}: a function<void(const string&)> return declared Fx<T1<CStr>, Void> builds and is called") { fnParameterDirectionClean(tc) },
             )
         }
     }
@@ -402,27 +402,27 @@ class FfiDriftCompileTest {
     }
 
     /**
-     * `std::function<void(const char*)> on_c()` declared `() Fx<Tuple1<Str>, Void>`: Kira
+     * `std::function<void(const char*)> on_c()` declared `() Fx<T1<Str>, Void>`: Kira
      * would call it with a Str, which reaches no const char*. Matched parameter by parameter
      * in the wrong direction it passed the check, and the conversion the emitter writes then
      * failed inside libstdc++'s std::function constructor instead of with Kira's message
      * (measured, g++ 13.2).
      */
     private fun fnParameterDirectionDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "fn-direction", "pub @_extern(cpp = \"probe::on_c\", header = \"probe.hxx\") onC: () Fx<Tuple1<Str>, Void>")
+        val (header, result) = compileProbe(tc, "fn-direction", "pub @_extern(cpp = \"probe::on_c\", header = \"probe.hxx\") onC: () Fx<T1<Str>, Void>")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_c(), kira::Fn<void(const kira::Str&)>, \"onC\");"), header)
-        assertTrue(!result.success, "${tc.id}: Kira's 'onC: () Fx<Tuple1<Str>, Void>' against C++'s std::function<void(const char*)> compiled:\n${result.describe()}")
+        assertTrue(!result.success, "${tc.id}: Kira's 'onC: () Fx<T1<Str>, Void>' against C++'s std::function<void(const char*)> compiled:\n${result.describe()}")
         assertMessage(tc, result, "Kira's onC ${CppExternEmitter.DRIFT_MESSAGE}")
     }
 
-    /** `std::function<void(const std::string&)> on_s()` declared `() Fx<Tuple1<CStr>, Void>`: the const char* Kira passes reaches the string. The wrong direction refused it. */
+    /** `std::function<void(const std::string&)> on_s()` declared `() Fx<T1<CStr>, Void>`: the const char* Kira passes reaches the string. The wrong direction refused it. */
     private fun fnParameterDirectionClean(tc: CppToolchain) {
         val (text, header) = callText(
             "c:sc",
             """
-            pub @_extern(cpp = "probe::on_s", header = "probe.hxx") onS: () Fx<Tuple1<CStr>, Void>
+            pub @_extern(cpp = "probe::on_s", header = "probe.hxx") onS: () Fx<T1<CStr>, Void>
 
-            run: () Fx<Tuple1<CStr>, Void> {
+            run: () Fx<T1<CStr>, Void> {
                 onS()
             }
             """.trimIndent(),
@@ -439,7 +439,7 @@ class FfiDriftCompileTest {
                 return probe::said == 4 ? 0 : 1;
             }
         """.trimIndent() + "\n"
-        runProbe(tc, "fn-direction-clean", mapOf("sc.kira.hxx" to header, "probe.hxx" to probeHeader, "main.cxx" to main), "a function<void(const string&)> declared Fx<Tuple1<CStr>, Void>")
+        runProbe(tc, "fn-direction-clean", mapOf("sc.kira.hxx" to header, "probe.hxx" to probeHeader, "main.cxx" to main), "a function<void(const string&)> declared Fx<T1<CStr>, Void>")
     }
 
     // ---- Maybe and Fn: the same rule one level down (kira/ffi.hxx's head) ----------------------
@@ -465,11 +465,11 @@ class FfiDriftCompileTest {
         assertTrue(result.diagnostics.contains("Arg<"), "${tc.id}: the build failed, but not at the kira::ffi::Arg proxy:\n${result.describe()}")
     }
 
-    /** `std::function<void(unsigned)> on_u()` declared `() Fx<Tuple1<Int32>, Void>`: std::function converts from any callable of a compatible signature. */
+    /** `std::function<void(unsigned)> on_u()` declared `() Fx<T1<Int32>, Void>`: std::function converts from any callable of a compatible signature. */
     private fun fnReturnDrift(tc: CppToolchain) {
-        val (header, result) = compileProbe(tc, "fn-return", "pub @_extern(cpp = \"probe::on_u\", header = \"probe.hxx\") onU: () Fx<Tuple1<Int32>, Void>")
+        val (header, result) = compileProbe(tc, "fn-return", "pub @_extern(cpp = \"probe::on_u\", header = \"probe.hxx\") onU: () Fx<T1<Int32>, Void>")
         assertTrue(header.contains("KIRA_EXTERN_CHECK(probe::on_u(), kira::Fn<void(std::int32_t)>, \"onU\");"), header)
-        assertTrue(!result.success, "${tc.id}: Kira's 'onU: () Fx<Tuple1<Int32>, Void>' against C++'s std::function<void(unsigned)> compiled (is_convertible would let it):\n${result.describe()}")
+        assertTrue(!result.success, "${tc.id}: Kira's 'onU: () Fx<T1<Int32>, Void>' against C++'s std::function<void(unsigned)> compiled (is_convertible would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's onU ${CppExternEmitter.DRIFT_MESSAGE}")
     }
 
@@ -479,8 +479,8 @@ class FfiDriftCompileTest {
             """
             pub @_extern(cpp = "probe::find_i", header = "probe.hxx") findI: () Maybe<Int32>
             pub @_extern(cpp = "probe::put_i", header = "probe.hxx") putI: (m: Maybe<Int32>) Void
-            pub @_extern(cpp = "probe::on_i", header = "probe.hxx") onI: () Fx<Tuple1<Int32>, Void>
-            pub @_extern(cpp = "probe::set_i", header = "probe.hxx") setI: (f: Fx<Tuple1<Int32>, Void>) Void
+            pub @_extern(cpp = "probe::on_i", header = "probe.hxx") onI: () Fx<T1<Int32>, Void>
+            pub @_extern(cpp = "probe::set_i", header = "probe.hxx") setI: (f: Fx<T1<Int32>, Void>) Void
             """.trimIndent(),
         )
         if (!result.success) {

@@ -9,7 +9,7 @@ pub @_opaque Counter: Mutable<Any> {
     pub total: () Int32
     pub @_extern(raises = "ValueError") label: () Str
     pub wrong: () Str
-    pub absorb: (pair: Tuple2<List<Int32>, Int32>) Int32
+    pub absorb: (pair: T2<List<Int32>, Int32>) Int32
 }
 
 pub @_extern counter: (label: Str) Counter

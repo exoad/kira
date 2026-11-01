@@ -79,7 +79,7 @@ main: () Void {
     got: Mutable<List<Int32>> = b.pages.get("b").unwrap()
     got.add(30)
     trace(show(b.pages.get("b").unwrap()))
-    es: Arr<Tuple2<Str, List<Int32>>> = b.pages.entries()
+    es: Arr<T2<Str, List<Int32>>> = b.pages.entries()
     trace("${es[0].first} ${show(es[0].second)} ${es.size()}")
     vs: Arr<List<Int32>> = b.pages.valuesArr()
     trace(show(vs[1]))

@@ -220,7 +220,7 @@ class CppDeclFixesTest {
     fun aComparedStructWithAFieldThatHasNoEqualityIsAnError() {
         // A required field: `= null` on an Fx is what the semantic pass rejects (types are non-nullable).
         val (emitted, _) = emit(
-            "pub Cb: Struct { pub f: Fx<Tuple0, Void> }",
+            "pub Cb: Struct { pub f: Fx<T0, Void> }",
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Cb"] as ClassSymbol)) },
         )
         val error = emitted.diagnostics.singleOrNull { it.code == CppDeclEmitter.STRUCT_EQUALITY_CODE } ?: fail(emitted.diagnostics.joinToString("\n") { it.render() })

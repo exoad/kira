@@ -89,7 +89,7 @@ object TyperTestSupport {
 
     /**
      * A module whose AST is built by hand: for syntax the parser in this branch does not
-     * produce yet (struct, override, parameter defaults, `Arr<T, 32>`, `Tuple1<mut T>`). The
+     * produce yet (struct, override, parameter defaults, `Arr<T, 32>`, `T1<mut T>`). The
      * nodes carry no source positions.
      */
     fun astModule(unit: CompilationUnit, uri: String, vararg decls: ASTNode): SourceContext {

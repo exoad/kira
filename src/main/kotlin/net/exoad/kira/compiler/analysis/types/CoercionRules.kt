@@ -30,7 +30,7 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     fun arrOf(element: KType): KType = nominal("Arr", element)
 
-    fun tuple2Of(a: KType, b: KType): KType = nominal("Tuple2", a, b)
+    fun tuple2Of(a: KType, b: KType): KType = nominal("T2", a, b)
 
     fun listOf(element: KType): KType = nominal("List", element)
 

@@ -23,7 +23,7 @@ grow: (list: List<Int32>, object: Int32) Void {
     list.add(object)
 }
 
-apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
     f(x)
 }
 

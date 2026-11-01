@@ -1175,4 +1175,19 @@ namespace kira
       I ninth;
       bool operator==(const Tuple9&) const = default;
   };
+  template<class A, class B, class C, class D, class E, class F, class G, class H, class I, class J>
+  struct Tuple10
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      G seventh;
+      H eighth;
+      I ninth;
+      J tenth;
+      bool operator==(const Tuple10&) const = default;
+  };
 }

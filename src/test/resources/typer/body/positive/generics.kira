@@ -160,14 +160,14 @@ pub VD: V2 = VA - VA                       // @type V2
 pub VDX: Int32 = (VA - VA).x               // @type Int32
 @_static_assert((VA - VA).x == 0, "sub")
 
-pub hitter<T: Named>: (n: T) Fx<Tuple0, Void> {
-    () Void {                     // @type Fx<Tuple0, Void>
+pub hitter<T: Named>: (n: T) Fx<T0, Void> {
+    () Void {                     // @type Fx<T0, Void>
         n.hit()                            // @type Void call=METHOD(Named.hit)
     }
 }
 
-pub sharedWrites: (counter: Named) Fx<Tuple0, Void> {
-    () Void {                     // @type Fx<Tuple0, Void>
+pub sharedWrites: (counter: Named) Fx<T0, Void> {
+    () Void {                     // @type Fx<T0, Void>
         counter.hit()                      // @type Void call=METHOD(Named.hit)
         own: Mutable<List<Int32>> = List<Int32> { }
         own.add(1)                         // @type Void call=MAGIC(List.add)
@@ -181,7 +181,7 @@ pub Tally: Mutable<Any> {
         n += 1
     }
 
-    pub bumper: () Fx<Tuple0, Void> {
+    pub bumper: () Fx<T0, Void> {
         () Void {
             bump()                         // @type Void call=METHOD(Tally.bump)
         }

@@ -341,13 +341,13 @@ class CppExprRowsTest {
         row(
             "r10",
             """
-            pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+            pub scaleBy: (k: Int32) Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     x * k
                 }
             }
 
-            pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub applyTo: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                 f(x)
             }
 
@@ -364,7 +364,7 @@ class CppExprRowsTest {
             pub Gain: Struct {
                 pub k: Int32 = 3
 
-                pub scaler: () Fx<Tuple1<Int32>, Int32> {
+                pub scaler: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
                     }
@@ -374,14 +374,14 @@ class CppExprRowsTest {
                     x * k * 2
                 }
 
-                pub twicer: () Fx<Tuple1<Int32>, Int32> {
+                pub twicer: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         twice(x)
                     }
                 }
             }
 
-            pub tally: () Fx<Tuple0, Int32> {
+            pub tally: () Fx<T0, Int32> {
                 counter: Ref<Int32> = Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
@@ -389,7 +389,7 @@ class CppExprRowsTest {
                 }
             }
 
-            pub constant: () Fx<Tuple1<Int32>, Int32> {
+            pub constant: () Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     5
                 }
@@ -1464,7 +1464,7 @@ class CppExprRowsTest {
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) }
+                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(T2<Str, Int32> { first = "k", second = 1 }, T2<Str, Int32> { first = "j", second = 2 }) }
                 (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 

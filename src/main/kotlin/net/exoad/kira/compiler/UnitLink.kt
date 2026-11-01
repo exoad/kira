@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
@@ -264,7 +265,7 @@ object UnitLink {
     /** A field: any variable but a slot. */
     private fun holdsState(s: SourceContext, m: FirstClassDecl): Boolean = m is VariableDecl && !isSlotField(s, m)
 
-    /** `pub f: Fx<Tuple1<Int32>, Int32>` with nothing after it: a slot, spelled as a field. */
+    /** `pub f: Fx<T1<Int32>, Int32>` with nothing after it: a slot, spelled as a field. */
     private fun isSlotField(s: SourceContext, m: FirstClassDecl): Boolean =
         m is VariableDecl && m.value == null && isFx(m.type) && s.astIntrinsicMarked[m].isNullOrEmpty()
 
@@ -286,7 +287,7 @@ object UnitLink {
     }
 
     /**
-     * A slot (`f: (n: Int32) Int32` or `f: Fx<Tuple1<Int32>, Int32>`, nothing after) is one rule:
+     * A slot (`f: (n: Int32) Int32` or `f: Fx<T1<Int32>, Int32>`, nothing after) is one rule:
      * when a subtype overrides it, the subtype supplies it (an abstract function); else the
      * construction does (a field). [t]'s class with each slot so; null when none changes. A
      * value type has no subtype: its body-less function stays the prototype the host defines.
@@ -321,7 +322,7 @@ object UnitLink {
             val pt = p.typeSpecifier
             if (Modifier.MUTABLE in p.modifiers) origin(Type(pt.identifier, pt.constraint, pt.children, true)) else pt
         }
-        val tuple = origin(Type(origin(Identifier("Tuple${args.size}")), null, args))
+        val tuple = origin(Type(origin(Identifier("T${args.size}")), null, args))
         val fx = origin(Type(origin(Identifier("Fx")), null, listOf(tuple, def.returnTypeSpecifier)))
         return origin(VariableDecl(name, fx, null, f.modifiers))
     }
@@ -330,7 +331,7 @@ object UnitLink {
     private fun abstractOf(s: SourceContext, v: VariableDecl): FunctionDecl? {
         val tuple = v.type.children[0]
         val tupleName = (tuple.identifier as? Identifier)?.value ?: return null
-        if (!tupleName.startsWith("Tuple") || tupleName.removePrefix("Tuple").toIntOrNull() != tuple.children.size) return null
+        if (Builtins.tupleArity(tupleName) != tuple.children.size) return null
         val at = s.astOrigins[v]
         fun <T : ASTNode> origin(n: T): T = n.also { at?.let { p -> s.astOrigins[n] = p } }
         val params = tuple.children.mapIndexed { i, pt ->

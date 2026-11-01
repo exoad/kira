@@ -256,10 +256,10 @@ class ViewPassTest {
     fun aBorrowingLambdaMayBePassedToAParameterThatDoesNotEscape() {
         val p = snippet(
             """
-            pub run: (f: Fx<Tuple0, Size>) Size {
+            pub run: (f: Fx<T0, Size>) Size {
                 f()
             }
-            pub eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Size {
+            pub eachPacket: (buf: View<UInt8>, each: Fx<T1<View<UInt8>>, Void>) Size {
                 at: Mutable<Size> = 0
                 while at < buf.size() {
                     each(buf.slice(at, 1))
@@ -284,10 +284,10 @@ class ViewPassTest {
     fun aViewSafeGenericTakesAView() {
         val p = snippet(
             """
-            pub twice<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+            pub twice<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                 f(x) + f(x)
             }
-            pub relay<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+            pub relay<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                 twice<T>(x, f)
             }
             pub useIt: (s: View<Char>) Size {
@@ -432,12 +432,12 @@ class ViewPassTest {
         // Counter.count<T>, whose one implementation only calls f.
         val p = snippet(
             """
-            KEPT: Mutable<List<Fx<Tuple0, Size>>> = List<Fx<Tuple0, Size>> {}
+            KEPT: Mutable<List<Fx<T0, Size>>> = List<Fx<T0, Size>> {}
             pub Keeper: Any {
-                pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size
+                pub keep<T>: (x: T, f: Fx<T1<T>, Size>) Size
             }
             pub K: Keeper {
-                override pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+                override pub keep<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                     KEPT.add(() Size {
                         f(x)
                     })
@@ -445,12 +445,12 @@ class ViewPassTest {
                 }
             }
             pub Base: Any {
-                pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+                pub keep<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                     0
                 }
             }
             pub Sub: Base {
-                override pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+                override pub keep<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                     KEPT.add(() Size {
                         f(x)
                     })
@@ -458,10 +458,10 @@ class ViewPassTest {
                 }
             }
             pub Counter: Any {
-                pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size
+                pub count<T>: (x: T, f: Fx<T1<T>, Size>) Size
             }
             pub C: Counter {
-                override pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
+                override pub count<T>: (x: T, f: Fx<T1<T>, Size>) Size {
                     f(x)
                 }
             }
@@ -520,7 +520,7 @@ class ViewPassTest {
             }
             pub Holder: Mutable<Any> {
                 pub data: Mutable<List<Char>> = List<Char> {}
-                pub cb: Mutable<Maybe<Fx<Tuple0, Size>>> = null
+                pub cb: Mutable<Maybe<Fx<T0, Size>>> = null
                 pub all: () View<Char> {
                     data.view()
                 }
@@ -554,7 +554,7 @@ class ViewPassTest {
                 i.all()
             }
             pub q11: () View<Char> {
-                b: Box<Fx<Tuple0, Int32>> = Box<Fx<Tuple0, Int32>> {}
+                b: Box<Fx<T0, Int32>> = Box<Fx<T0, Int32>> {}
                 b.all()
             }
             """,
@@ -572,8 +572,8 @@ class ViewPassTest {
             pub mk: () List<Int32> {
                 List<Int32> {}
             }
-            pub q7b: () View<Fx<Tuple0, Size>> {
-                fs: Mutable<List<Fx<Tuple0, Size>>> = List<Fx<Tuple0, Size>> {}
+            pub q7b: () View<Fx<T0, Size>> {
+                fs: Mutable<List<Fx<T0, Size>>> = List<Fx<T0, Size>> {}
                 fs.add(() Size { 1 as Size })
                 fs.view()
             }
@@ -601,7 +601,7 @@ class ViewPassTest {
                 (a + b).view()
             }
             pub inLambda: (v: View<Char>) Size {
-                f: Fx<Tuple1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
+                f: Fx<T1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
                     w.from(1)
                 }
                 f(v).size()
@@ -617,11 +617,11 @@ class ViewPassTest {
     fun aLambdaReturnsOnlyItsOwnViewParameters() {
         val p = snippet(
             """
-            pub apply: (f: Fx<Tuple0, Size>) Size {
+            pub apply: (f: Fx<T0, Size>) Size {
                 f()
             }
             pub useIt: (v: View<Char>) Size {
-                g: Fx<Tuple1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
+                g: Fx<T1<View<Char>>, View<Char>> = (w: View<Char>) View<Char> {
                     v
                 }
                 g(v).size()
@@ -688,22 +688,22 @@ class ViewPassTest {
         val p = snippet(
             """
             pub Cb2: Mutable<Any> {
-                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
-                pub keep: (g: Fx<Tuple0, Char>) Void {
+                pub f: Mutable<Maybe<Fx<T0, Char>>> = null
+                pub keep: (g: Fx<T0, Char>) Void {
                     f = g
                 }
             }
             pub GH: Mutable<Maybe<Cb2>> = null
-            pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
+            pub link: (h: Cb2, g: Fx<T0, Char>) Void {
                 h.f = g
             }
             pub inLocal: (v: View<Char>) Char {
-                f: Fx<Tuple0, Char> = () Char {
+                f: Fx<T0, Char> = () Char {
                     v[0]
                 }
                 f()
             }
-            pub returned: (v: View<Char>) Fx<Tuple0, Char> {
+            pub returned: (v: View<Char>) Fx<T0, Char> {
                 () Char {
                     v[0]
                 }
@@ -718,7 +718,7 @@ class ViewPassTest {
                     v[0]
                 })
             }
-            pub listed: (v: View<Char>, fs: List<Fx<Tuple0, Char>>) Void {
+            pub listed: (v: View<Char>, fs: List<Fx<T0, Char>>) Void {
                 fs.add(() Char {
                     v[0]
                 })
@@ -736,8 +736,8 @@ class ViewPassTest {
         val p = snippet(
             """
             pub Cb2: Mutable<Any> {
-                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
-                pub keep: (g: Fx<Tuple0, Char>) Void {
+                pub f: Mutable<Maybe<Fx<T0, Char>>> = null
+                pub keep: (g: Fx<T0, Char>) Void {
                     f = g
                 }
             }
@@ -745,8 +745,8 @@ class ViewPassTest {
                 pub item: Mutable<Maybe<Cb2>> = null
             }
             pub GH: Mutable<Maybe<Cb2>> = null
-            pub GR: Mutable<Maybe<Ref<Maybe<Fx<Tuple0, Char>>>>> = null
-            pub link: (h: Cb2, g: Fx<Tuple0, Char>) Void {
+            pub GR: Mutable<Maybe<Ref<Maybe<Fx<T0, Char>>>>> = null
+            pub link: (h: Cb2, g: Fx<T0, Char>) Void {
                 h.f = g
             }
             pub put: (bx: Box2, x: Cb2) Void {
@@ -755,7 +755,7 @@ class ViewPassTest {
             pub get: () Cb2 {
                 GH.unwrap()
             }
-            pub q4: (r: Ref<Maybe<Fx<Tuple0, Char>>>, a: Str) Void {
+            pub q4: (r: Ref<Maybe<Fx<T0, Char>>>, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 r.value = () Char {
@@ -765,12 +765,12 @@ class ViewPassTest {
             pub q4c: (a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
-                r: Ref<Maybe<Fx<Tuple0, Char>>> = GR.unwrap()
+                r: Ref<Maybe<Fx<T0, Char>>> = GR.unwrap()
                 r.value = () Char {
                     v.get(0 as Size)
                 }
             }
-            pub q4d: (r: Ref<List<Fx<Tuple0, Char>>>, a: Str) Void {
+            pub q4d: (r: Ref<List<Fx<T0, Char>>>, a: Str) Void {
                 s: Str = a + "x"
                 v: View<Char> = s.view()
                 r.value.add(() Char {
@@ -826,11 +826,11 @@ class ViewPassTest {
         val p = snippet(
             """
             pub Cb2: Mutable<Any> {
-                pub f: Mutable<Maybe<Fx<Tuple0, Char>>> = null
+                pub f: Mutable<Maybe<Fx<T0, Char>>> = null
                 initially {
                     GH = this
                 }
-                pub keep: (g: Fx<Tuple0, Char>) Void {
+                pub keep: (g: Fx<T0, Char>) Void {
                     f = g
                 }
             }
@@ -976,7 +976,7 @@ class ViewPassTest {
             pub @_extern(cpp = "ext::text", header = "ext.hxx") text: () View<Char>
             pub @_extern(cpp = "ext::tokens", header = "ext.hxx") tokens: (line: Str) List<CStr>
             pub @_extern(cpp = "ext::slot", header = "ext.hxx") slot: () Unsafe<Int32>
-            pub @_extern(cpp = "ext::tailFn", header = "ext.hxx") tailFn: () Fx<Tuple0, CStr>
+            pub @_extern(cpp = "ext::tailFn", header = "ext.hxx") tailFn: () Fx<T0, CStr>
             pub @_opaque Buf: Any {
                 pub label: () CStr
                 pub bytes: () View<UInt8>
@@ -1037,7 +1037,7 @@ class ViewPassTest {
         // Round 2's w2-3 minor #2 (probe c3): the message read "is passed to '', which keeps it" for an Fx-value callee.
         val p = snippet(
             """
-            pub user: (v: View<Int32>, sink: Fx<Tuple1<Fx<Tuple0, Int32>>, Void>) Void {
+            pub user: (v: View<Int32>, sink: Fx<T1<Fx<T0, Int32>>, Void>) Void {
                 sink(() Int32 { v[0] })
             }
             """,

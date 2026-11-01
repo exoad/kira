@@ -65,7 +65,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
      * made on [t] as written, where a type parameter is never known to be by value, and only
      * then is the parameter's name replaced by its argument, spelled as a template argument.
      * So `v: T` is `const T&` and at `T = Int32` stays `const std::int32_t&`, not the
-     * `std::int32_t` a declaration written at Int32 spells on its own; `Fx<Tuple1<T>, Int32>`
+     * `std::int32_t` a declaration written at Int32 spells on its own; `Fx<T1<T>, Int32>`
      * is `kira::Fn<std::int32_t(const T&)>` and stays `kira::Fn<std::int32_t(const
      * std::int32_t&)>`, where substituting first would have spelled the `kira::Fn<...(std::int32_t)>`
      * gcc calls "marked override, but does not override" (measured; MSVC C3668, and on a

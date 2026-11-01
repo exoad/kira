@@ -83,8 +83,8 @@ class TyperBodyModelTest {
     fun aNestedLambdaCapturesThroughEveryLambdaInBetween() {
         val p = snippet(
             """
-            pub nested: (base: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
-                (a: Int32) Fx<Tuple1<Int32>, Int32> {
+            pub nested: (base: Int32) Fx<T1<Int32>, Fx<T1<Int32>, Int32>> {
+                (a: Int32) Fx<T1<Int32>, Int32> {
                     (b: Int32) Int32 {
                         base + a + b
                     }
@@ -102,7 +102,7 @@ class TyperBodyModelTest {
     fun aLambdaParameterAndLocalAreNotCaptures() {
         val p = snippet(
             """
-            pub f: () Fx<Tuple1<Int32>, Int32> {
+            pub f: () Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     y: Int32 = x + 1
                     y
@@ -121,7 +121,7 @@ class TyperBodyModelTest {
     fun writingThroughARefCaptureIsNotWritingTheCapture() {
         val p = snippet(
             """
-            pub tally: () Fx<Tuple0, Int32> {
+            pub tally: () Fx<T0, Int32> {
                 counter: Ref<Int32> = Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
@@ -144,7 +144,7 @@ class TyperBodyModelTest {
                 for x: Int32 in xs { }
                 for b: UInt8 in arr { }
                 for c: Char in v { }
-                for e: Tuple2<Str, Int32> in m { }
+                for e: T2<Str, Int32> in m { }
                 for k: Int64 in s { }
             }
             """
@@ -155,7 +155,7 @@ class TyperBodyModelTest {
             listOf(LoopKind.RANGE, LoopKind.LIST, LoopKind.ARR, LoopKind.VIEW, LoopKind.MAP, LoopKind.SET),
             plans.map { it.kind },
         )
-        assertEquals(listOf("Size", "Int32", "UInt8", "Char", "Tuple2<Str, Int32>", "Int64"), plans.map { it.element.display() })
+        assertEquals(listOf("Size", "Int32", "UInt8", "Char", "T2<Str, Int32>", "Int64"), plans.map { it.element.display() })
         val vars = plans.map { it.variable as LocalSymbol }
         assertEquals(listOf("i", "x", "b", "c", "e", "k"), vars.map { it.name })
         assertEquals(listOf(false, false, false, false, false, false), vars.map { it.isMut }, "a loop variable is not mut")
@@ -480,7 +480,7 @@ class TyperBodyModelTest {
         val values = snippet(
             """
             pub h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
-                f: Fx<Tuple1<Str>, Json> = Json.parse
+                f: Fx<T1<Str>, Json> = Json.parse
                 xs.contains(j) || m.containsValue(j)
             }
             """

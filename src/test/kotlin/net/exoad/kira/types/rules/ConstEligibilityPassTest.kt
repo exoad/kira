@@ -33,7 +33,7 @@ class ConstEligibilityPassTest {
                     writeU32(p.from(4), kind)
                     readU32(p.slice(4, 4)) != kind ? null : p
                 }
-                pub @_const each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Size {
+                pub @_const each: (buf: View<UInt8>, f: Fx<T1<UInt8>, Void>) Size {
                     for b: UInt8 in buf {
                         f(b)
                     }
@@ -89,8 +89,8 @@ class ConstEligibilityPassTest {
                 pub @_const id<T>: (v: T) T {
                     v
                 }
-                pub @_const pair: (a: Int32) Tuple2<Int32, Bool> {
-                    Tuple2<Int32, Bool> { a, a > 0 }
+                pub @_const pair: (a: Int32) T2<Int32, Bool> {
+                    T2<Int32, Bool> { a, a > 0 }
                 }
                 pub @_const pick: (b: Bool) Int32 {
                     b ? 1 : 2
@@ -232,7 +232,7 @@ class ConstEligibilityPassTest {
                 }
             }
             pub @_const d: (v: Int32) Int32 {
-                f: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 {
+                f: Fx<T1<Int32>, Int32> = (x: Int32) Int32 {
                     x
                 }
                 f(v)

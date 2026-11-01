@@ -38,10 +38,10 @@ pub fieldThroughMaybe: (m: Maybe<Str>) Bool {
 
 pub captures: () Void {
     k: Mutable<Int32> = 0
-    f: Fx<Tuple0, Void> = () Void {
+    f: Fx<T0, Void> = () Void {
         k = 1                              // @error types.lambda.assign-capture
     }
-    g: Fx<Tuple0, Void> = () Void {
+    g: Fx<T0, Void> = () Void {
         k += 1                             // @error types.lambda.assign-capture
     }
 }

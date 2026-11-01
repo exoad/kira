@@ -3,13 +3,13 @@ kira.json as json
 // What Python passes an Fx holding a Json beside a List<UInt8>: the Json a copy Python's later
 // writes never reach, the List<UInt8> still one Kira can change.
 
-@_extern give: (f: Fx<Tuple1<Tuple2<Json, List<UInt8>>>, Void>) Void
+@_extern give: (f: Fx<T1<T2<Json, List<UInt8>>>, Void>) Void
 @_extern scribble: () Void
 
 kept: Mutable<List<Json>> = List<Json> { }
 
 pub main: () Int32 {
-    give((t: Tuple2<Json, List<UInt8>>) Void {
+    give((t: T2<Json, List<UInt8>>) Void {
         kept.add(t.first)
         b: Mutable<List<UInt8>> = t.second
         b.add(9)

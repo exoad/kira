@@ -254,7 +254,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun fxNeedsATupleOfParameters() {
-        val p = snippet("f: Fx<Int32, Void> = 1\ng: Fx<Tuple1<Int32>, Int32> = 1")
+        val p = snippet("f: Fx<Int32, Void> = 1\ng: Fx<T1<Int32>, Int32> = 1")
         assertEquals(1, count(p, "types.fx.shape"), TyperTestSupport.render(p))
         val g = p.workspaceModules.single().members["g"] as GlobalSymbol
         assertTrue(g.type is KType.Fn, g.type.toString())

@@ -43,9 +43,9 @@ proto.kira:35:41  at  Size  place=Local(at)  sym=golden.proto:pilot.proto.wordAt
 proto.kira:36:9  at += 1  Void
 proto.kira:36:9  at  Size  place=Local(at)  sym=golden.proto:pilot.proto.wordAt::at
 proto.kira:36:15  1  Size  const=1:Size
-proto.kira:38:5  Tuple2<Size, Size> { begin, at }  Tuple2<Size, Size>
-proto.kira:38:26  begin  Size  place=Local(begin)  sym=golden.proto:pilot.proto.wordAt::begin
-proto.kira:38:33  at  Size  place=Local(at)  sym=golden.proto:pilot.proto.wordAt::at
+proto.kira:38:5  T2<Size, Size> { begin, at }  T2<Size, Size>
+proto.kira:38:22  begin  Size  place=Local(begin)  sym=golden.proto:pilot.proto.wordAt::begin
+proto.kira:38:29  at  Size  place=Local(at)  sym=golden.proto:pilot.proto.wordAt::at
 proto.kira:42:25  from  Size  place=Param(from)  sym=golden.proto:pilot.proto.tailFrom(from)
 proto.kira:43:11  at < s.length() && isSpace(s[at])  Bool
 proto.kira:43:11  at < s.length()  Bool
@@ -110,14 +110,14 @@ proto.kira:54:20  n  Size  place=Local(n)  sym=golden.proto:pilot.proto.trimEnd:
 proto.kira:59:17  trimEnd(line)  Str  call=FREE(trimEnd)
 proto.kira:59:17  trimEnd  ?  sym=golden.proto:pilot.proto.trimEnd
 proto.kira:59:25  line  Str  place=Param(line)  sym=golden.proto:pilot.proto.read(line)
-proto.kira:60:32  wordAt(kept, 0)  Tuple2<Size, Size>  call=FREE(wordAt)
-proto.kira:60:32  wordAt  ?  sym=golden.proto:pilot.proto.wordAt
-proto.kira:60:39  kept  Str  place=Local(kept)  sym=golden.proto:pilot.proto.read::kept
-proto.kira:60:45  0  Size  const=0:Size
-proto.kira:61:15  word.first  Size  member=Field(Tuple2.first: Size)  place=Field(Local(word).first)
-proto.kira:61:15  word  Tuple2<Size, Size>  place=Local(word)  sym=golden.proto:pilot.proto.read::word
-proto.kira:62:15  word.second  Size  member=Field(Tuple2.second: Size)  place=Field(Local(word).second)
-proto.kira:62:15  word  Tuple2<Size, Size>  place=Local(word)  sym=golden.proto:pilot.proto.read::word
+proto.kira:60:28  wordAt(kept, 0)  T2<Size, Size>  call=FREE(wordAt)
+proto.kira:60:28  wordAt  ?  sym=golden.proto:pilot.proto.wordAt
+proto.kira:60:35  kept  Str  place=Local(kept)  sym=golden.proto:pilot.proto.read::kept
+proto.kira:60:41  0  Size  const=0:Size
+proto.kira:61:15  word.first  Size  member=Field(T2.first: Size)  place=Field(Local(word).first)
+proto.kira:61:15  word  T2<Size, Size>  place=Local(word)  sym=golden.proto:pilot.proto.read::word
+proto.kira:62:15  word.second  Size  member=Field(T2.second: Size)  place=Field(Local(word).second)
+proto.kira:62:15  word  T2<Size, Size>  place=Local(word)  sym=golden.proto:pilot.proto.read::word
 proto.kira:63:8  b >= e  Bool
 proto.kira:63:8  b  Size  place=Local(b)  sym=golden.proto:pilot.proto.read::b
 proto.kira:63:13  e  Size  place=Local(e)  sym=golden.proto:pilot.proto.read::e
@@ -145,14 +145,14 @@ proto.kira:69:27  "OK"  Str  const="OK"
 proto.kira:69:35  head == "INFO"  Bool
 proto.kira:69:35  head  Str  place=Local(head)  sym=golden.proto:pilot.proto.read::head
 proto.kira:69:43  "INFO"  Str  const="INFO"
-proto.kira:70:41  wordAt(kept, e)  Tuple2<Size, Size>  call=FREE(wordAt)
-proto.kira:70:41  wordAt  ?  sym=golden.proto:pilot.proto.wordAt
-proto.kira:70:48  kept  Str  place=Local(kept)  sym=golden.proto:pilot.proto.read::kept
-proto.kira:70:54  e  Size  place=Local(e)  sym=golden.proto:pilot.proto.read::e
-proto.kira:71:24  topic.first  Size  member=Field(Tuple2.first: Size)  place=Field(Local(topic).first)
-proto.kira:71:24  topic  Tuple2<Size, Size>  place=Local(topic)  sym=golden.proto:pilot.proto.read::topic
-proto.kira:72:24  topic.second  Size  member=Field(Tuple2.second: Size)  place=Field(Local(topic).second)
-proto.kira:72:24  topic  Tuple2<Size, Size>  place=Local(topic)  sym=golden.proto:pilot.proto.read::topic
+proto.kira:70:37  wordAt(kept, e)  T2<Size, Size>  call=FREE(wordAt)
+proto.kira:70:37  wordAt  ?  sym=golden.proto:pilot.proto.wordAt
+proto.kira:70:44  kept  Str  place=Local(kept)  sym=golden.proto:pilot.proto.read::kept
+proto.kira:70:50  e  Size  place=Local(e)  sym=golden.proto:pilot.proto.read::e
+proto.kira:71:24  topic.first  Size  member=Field(T2.first: Size)  place=Field(Local(topic).first)
+proto.kira:71:24  topic  T2<Size, Size>  place=Local(topic)  sym=golden.proto:pilot.proto.read::topic
+proto.kira:72:24  topic.second  Size  member=Field(T2.second: Size)  place=Field(Local(topic).second)
+proto.kira:72:24  topic  T2<Size, Size>  place=Local(topic)  sym=golden.proto:pilot.proto.read::topic
 proto.kira:73:27  tb < te  Bool
 proto.kira:73:27  tb  Size  place=Local(tb)  sym=golden.proto:pilot.proto.read::tb
 proto.kira:73:32  te  Size  place=Local(te)  sym=golden.proto:pilot.proto.read::te

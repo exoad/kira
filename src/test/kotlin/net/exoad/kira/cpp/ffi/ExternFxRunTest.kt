@@ -48,19 +48,19 @@ class ExternFxRunTest {
 
         $EXTERNS
 
-        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<Tuple0, Int32>) Int32
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<T0, Int32>) Int32
 
-        pub @_extern(cpp = "f7::fwdKind", header = "f7.hxx") fwdKind: (g: Fx<Tuple0, Int32>) Int32
+        pub @_extern(cpp = "f7::fwdKind", header = "f7.hxx") fwdKind: (g: Fx<T0, Int32>) Int32
 
-        pub @_extern(cpp = "f7::callKind1", header = "f7.hxx") callKind1: (g: Fx<Tuple1<Int32>, Int32>) Int32
+        pub @_extern(cpp = "f7::callKind1", header = "f7.hxx") callKind1: (g: Fx<T1<Int32>, Int32>) Int32
 
-        pub @_extern(cpp = "f7::pick1", header = "f7.hxx") pick1: (g: Fx<Tuple1<Int32>, Int32>) Int32
+        pub @_extern(cpp = "f7::pick1", header = "f7.hxx") pick1: (g: Fx<T1<Int32>, Int32>) Int32
 
-        pub @_extern(cpp = "f7::mkind", header = "f7.hxx") mkind: (m: Maybe<Fx<Tuple0, Int32>>) Int32
+        pub @_extern(cpp = "f7::mkind", header = "f7.hxx") mkind: (m: Maybe<Fx<T0, Int32>>) Int32
 
         pub @_opaque @_extern(cpp = "f7::Box", header = "f7.hxx") Box: Any {
-            pub kind: (g: Fx<Tuple0, Int32>) Int32
-            pub pick: (g: Fx<Tuple0, Int32>) Int32
+            pub kind: (g: Fx<T0, Int32>) Int32
+            pub pick: (g: Fx<T0, Int32>) Int32
             pub get: () Int32
         }
 
@@ -80,11 +80,11 @@ class ExternFxRunTest {
             x + 1
         }
 
-        makeFx: () Fx<Tuple0, Int32> {
+        makeFx: () Fx<T0, Int32> {
             () Int32 { 6 }
         }
 
-        relay: (g: Fx<Tuple0, Int32>) Int32 {
+        relay: (g: Fx<T0, Int32>) Int32 {
             callKind(g)
         }
 
@@ -185,12 +185,12 @@ class ExternFxRunTest {
         }
 
         pub local: () Int32 {
-            g: Fx<Tuple0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> = () Int32 { 8 }
             callKind(g)
         }
 
         pub localPick: () Int32 {
-            g: Fx<Tuple0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> = () Int32 { 8 }
             pick(g)
         }
 
@@ -203,17 +203,17 @@ class ExternFxRunTest {
         }
 
         pub element: () Int32 {
-            fs: List<Fx<Tuple0, Int32>> = @listOf(() Int32 { 9 })
+            fs: List<Fx<T0, Int32>> = @listOf(() Int32 { 9 })
             callKind(fs[0])
         }
 
         pub unwrapped: () Int32 {
-            mf: Maybe<Fx<Tuple0, Int32>> = () Int32 { 4 }
+            mf: Maybe<Fx<T0, Int32>> = () Int32 { 4 }
             callKind(mf.unwrap())
         }
 
         pub valueResult: () Int32 {
-            mk: Fx<Tuple0, Fx<Tuple0, Int32>> = makeFx
+            mk: Fx<T0, Fx<T0, Int32>> = makeFx
             callKind(mk())
         }
 
@@ -222,7 +222,7 @@ class ExternFxRunTest {
         }
 
         pub ifMixed: () Int32 {
-            g: Fx<Tuple0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> = () Int32 { 8 }
             callKind(if gc { g } else { () Int32 { 0 } })
         }
 
@@ -334,7 +334,7 @@ class ExternFxRunTest {
         """
         $EXTERNS
 
-        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<Tuple0, Int32>) Int32
+        pub @_extern(cpp = "f7::ptr", header = "f7.hxx") ptr: (g: Fx<T0, Int32>) Int32
 
         pub ptrLambda: () Int32 {
             ptr(() Int32 { 2 })
@@ -483,9 +483,9 @@ class ExternFxRunTest {
         val TOOLCHAINS = listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC)
 
         /** The two externs every module here declares: a2_fx's template and an overload set. */
-        const val EXTERNS = """pub @_extern(cpp = "f7::callKind", header = "f7.hxx") callKind: (g: Fx<Tuple0, Int32>) Int32
+        const val EXTERNS = """pub @_extern(cpp = "f7::callKind", header = "f7.hxx") callKind: (g: Fx<T0, Int32>) Int32
 
-        pub @_extern(cpp = "f7::pick", header = "f7.hxx") pick: (g: Fx<Tuple0, Int32>) Int32"""
+        pub @_extern(cpp = "f7::pick", header = "f7.hxx") pick: (g: Fx<T0, Int32>) Int32"""
 
         /**
          * Templates and overload sets that tell a std::function (the kira::Fn the check states)

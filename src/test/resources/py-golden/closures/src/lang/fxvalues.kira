@@ -13,13 +13,13 @@ pub Pt: Mutable<Any> {
         x + y
     }
 
-    pub summer: () Fx<Tuple0, Int32> {
+    pub summer: () Fx<T0, Int32> {
         () Int32 {
             sum()
         }
     }
 
-    pub xs: () Fx<Tuple0, Int32> {
+    pub xs: () Fx<T0, Int32> {
         () Int32 {
             x
         }
@@ -27,7 +27,7 @@ pub Pt: Mutable<Any> {
 }
 
 pub Bank: Mutable<Any> {
-    pub onAdd: Fx<Tuple1<Int32>, Int32>
+    pub onAdd: Fx<T1<Int32>, Int32>
     pub items: Mutable<List<Int32>> = List<Int32> { }
 
     pub add: (v: Int32) Void {
@@ -36,15 +36,15 @@ pub Bank: Mutable<Any> {
 }
 
 pub Hooks: Mutable<Any> {
-    pub hooks: Mutable<List<Fx<Tuple1<Int32>, Int32>>> = List<Fx<Tuple1<Int32>, Int32>> { }
+    pub hooks: Mutable<List<Fx<T1<Int32>, Int32>>> = List<Fx<T1<Int32>, Int32>> { }
 
-    pub keep: (f: Fx<Tuple1<Int32>, Int32>) Void {
+    pub keep: (f: Fx<T1<Int32>, Int32>) Void {
         hooks.add(f)
     }
 
     pub run: (v: Int32) Int32 {
         t: Mutable<Int32> = 0
-        for h: Fx<Tuple1<Int32>, Int32> in hooks {
+        for h: Fx<T1<Int32>, Int32> in hooks {
             t += h(v)
         }
         t
@@ -55,18 +55,18 @@ double: (x: Int32) Int32 {
     x * 2
 }
 
-applyTwice: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+applyTwice: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
     f(f(x))
 }
 
-counterOf: (xs: List<Int32>) Fx<Tuple0, Size> {
+counterOf: (xs: List<Int32>) Fx<T0, Size> {
     () Size {
         xs.size()
     }
 }
 
-adder: (k: Int32) Fx<Tuple1<Int32>, Fx<Tuple1<Int32>, Int32>> {
-    (x: Int32) Fx<Tuple1<Int32>, Int32> {
+adder: (k: Int32) Fx<T1<Int32>, Fx<T1<Int32>, Int32>> {
+    (x: Int32) Fx<T1<Int32>, Int32> {
         (y: Int32) Int32 {
             x + y + k
         }
@@ -84,26 +84,26 @@ pub main: () Void {
     println("fxvalues")
     println("named ${applyTwice(double, 3)}")
 
-    fs: Mutable<List<Fx<Tuple0, Int32>>> = List<Fx<Tuple0, Int32>> { }
+    fs: Mutable<List<Fx<T0, Int32>>> = List<Fx<T0, Int32>> { }
     for i: Int32 in 0..3 {
         fs.add(() Int32 {
             i * 10
         })
     }
     seen: Mutable<Str> = ""
-    for f: Fx<Tuple0, Int32> in fs {
+    for f: Fx<T0, Int32> in fs {
         seen = seen + " ${f()}"
     }
     println("loop variable copied:${seen}")
 
     xs: Mutable<List<Int32>> = @listOf(1, 2)
-    size: Fx<Tuple0, Size> = () Size {
+    size: Fx<T0, Size> = () Size {
         xs.size()
     }
     xs.add(3)
     println("captured local after a write: ${size()} of ${xs.size()}")
 
-    give: Fx<Tuple0, List<Int32>> = () List<Int32> {
+    give: Fx<T0, List<Int32>> = () List<Int32> {
         xs
     }
     got: Mutable<List<Int32>> = give()
@@ -111,14 +111,14 @@ pub main: () Void {
     println("a returned capture is the List itself: ${give().size()} then ${got.size()}")
 
     mine: Mutable<List<Int32>> = @listOf(7)
-    counted: Fx<Tuple0, Size> = counterOf(mine)
+    counted: Fx<T0, Size> = counterOf(mine)
     mine.add(8)
     println("a captured parameter: ${counted()} of ${mine.size()}")
 
     p: Mutable<Pt> = Pt { 1, 2 }
-    sumNow: Fx<Tuple0, Int32> = p.summer()
-    xNow: Fx<Tuple0, Int32> = p.xs()
-    holdP: Fx<Tuple0, Int32> = () Int32 {
+    sumNow: Fx<T0, Int32> = p.summer()
+    xNow: Fx<T0, Int32> = p.xs()
+    holdP: Fx<T0, Int32> = () Int32 {
         p.x * 100
     }
     p.shift(10)
@@ -140,12 +140,12 @@ pub main: () Void {
     })
     println("a List of Fx: ${hooks.run(10)}")
 
-    maybe: Mutable<Maybe<Fx<Tuple1<Int32>, Int32>>> = null
+    maybe: Mutable<Maybe<Fx<T1<Int32>, Int32>>> = null
     println("none: ${maybe.isNone()}")
     maybe = double
     println("some: ${maybe.unwrap()(21)}")
 
-    fill: Fx<Tuple1<List<Int32>>, Void> = (out: List<Int32>) Void {
+    fill: Fx<T1<List<Int32>>, Void> = (out: List<Int32>) Void {
         out.add(42)
     }
     filled: Mutable<List<Int32>> = List<Int32> { }
@@ -154,10 +154,10 @@ pub main: () Void {
     println("a mut List parameter: ${filled.size()} ${filled[1]}")
 
     count: Ref<Int32> = Ref<Int32> { value = 0 }
-    bump: Fx<Tuple0, Void> = () Void {
+    bump: Fx<T0, Void> = () Void {
         count.value = count.value + 1
     }
-    read: Fx<Tuple0, Int32> = () Int32 {
+    read: Fx<T0, Int32> = () Int32 {
         count.value
     }
     bump()
@@ -165,14 +165,14 @@ pub main: () Void {
     println("two closures, one Ref: ${read()} ${count.value}")
 
     cells: Ref<List<Int32>> = Ref<List<Int32>> { value = @listOf(1) }
-    grow: Fx<Tuple0, Void> = () Void {
+    grow: Fx<T0, Void> = () Void {
         cells.value.add(cells.value.size() as Int32 + 1)
     }
     grow()
     grow()
     println("a Ref of a List: ${cells.value.size()} ${cells.value[2]}")
 
-    check: Fx<Tuple1<Int32>, Int32> = (n: Int32) Int32 {
+    check: Fx<T1<Int32>, Int32> = (n: Int32) Int32 {
         failing(n) * 10
     }
     try {

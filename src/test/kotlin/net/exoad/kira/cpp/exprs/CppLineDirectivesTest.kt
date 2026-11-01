@@ -18,7 +18,7 @@ class CppLineDirectivesTest {
     private val module = Module(
         "lines:app",
         """
-        pub scale: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+        pub scale: (k: Int32) Fx<T1<Int32>, Int32> {
             base: Int32 = k * 2
             (x: Int32) Int32 {
                 y: Int32 = x + base

@@ -274,7 +274,7 @@ class ParserGrowthTest {
         val fn = parse(
             """
             f: (buf: View<UInt8>) Void {
-                twice: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x * 2 }
+                twice: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x * 2 }
                 each(buf, (p: View<UInt8>) Void { n += 1 })
             }
             """
@@ -316,7 +316,7 @@ class ParserGrowthTest {
             assertTrue(assertNotNull(e.location).lineNumber >= 1)
         }
         // A lambda's parameter list follows the same rule.
-        refusedAs("f: () Void { g: Fx<Tuple2<Int32, Int32>, Void> = (a: Int32 = 1, b: Int32) Void { } }", "KiraParser::parseFunctionDeclParameters", "A required parameter cannot follow")
+        refusedAs("f: () Void { g: Fx<T2<Int32, Int32>, Void> = (a: Int32 = 1, b: Int32) Void { } }", "KiraParser::parseFunctionDeclParameters", "A required parameter cannot follow")
         // Defaults after every required parameter stay fine.
         parse("f: (host: Str, port: Int32 = 8080, ssl: Bool = true) Void { }")
     }
@@ -484,7 +484,7 @@ class ParserGrowthTest {
         refusedAs("Box<4>: Any { }", "KiraParser::expect", "Expected an identifier but got an Integer Literal")
         parse("Box<T>: Any { pub v: T }\nid<T>: (x: T) T { x }")
         // ...and the argument-list forms still parse where they belong.
-        parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<Tuple1<Str>, Void>) Void { }")
+        parse("f: (xs: Arr<UInt8, USER_CMD_BYTES>, each: Fx<T1<Str>, Void>) Void { }")
     }
 
     // --- intrinsic markers and calls ---------------------------------------------
@@ -767,7 +767,7 @@ class ParserGrowthTest {
     private val newConstructs = listOf(
         "struct declaration" to "S: Struct { x: Int32 = 1 }",
         "if-expression" to "f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }",
-        "lambda expression" to "f: () Void { g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x } }",
+        "lambda expression" to "f: () Void { g: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x } }",
         "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: (p: P) Void { p.x = 1 }",
         "'this' expression" to "P: Mutable<Any> { x: Mutable<Int32> = 0\n pub get: () Int32 { this.x } }",
         "char literal" to "f: () Void { c: Char = 'a' }",

@@ -580,13 +580,13 @@ class ParserSuiteTest {
 
     @Test
     fun aFunctionTypeIsFxOfItsParameterTuple() {
-        // `(x: Int32) Int32` is the spelling of Fx<Tuple1<Int32>, Int32>, `() Void` of Fx<Tuple0, Void>.
+        // `(x: Int32) Int32` is the spelling of Fx<T1<Int32>, Int32>, `() Void` of Fx<T0, Void>.
         val ast = parseModule(
             """
             f: (x: Int32) Int32 = (x: Int32) Int32 { x }
-            g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x }
+            g: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x }
             h: () Void = () Void { }
-            k: Fx<Tuple0, Void> = () Void { }
+            k: Fx<T0, Void> = () Void { }
             """
         )
         fun text(t: net.exoad.kira.compiler.frontend.parser.ast.elements.Type): String {
@@ -594,7 +594,7 @@ class ParserSuiteTest {
             return if (t.children.isEmpty()) name else name + "<" + t.children.joinToString(", ") { text(it) } + ">"
         }
         val types = declsOf(ast).filterIsInstance<VariableDecl>().map { text(it.type) }
-        assertEquals(listOf("Fx<Tuple1<Int32>, Int32>", "Fx<Tuple1<Int32>, Int32>", "Fx<Tuple0, Void>", "Fx<Tuple0, Void>"), types)
+        assertEquals(listOf("Fx<T1<Int32>, Int32>", "Fx<T1<Int32>, Int32>", "Fx<T0, Void>", "Fx<T0, Void>"), types)
     }
 
     @Test

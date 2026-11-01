@@ -14,7 +14,7 @@ class MutabilityPassTest {
             """
             pub f: () Void {
                 n: Int32 = 0
-                g: Fx<Tuple0, Void> = () Void {
+                g: Fx<T0, Void> = () Void {
                     n = 1
                 }
             }

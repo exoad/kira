@@ -249,7 +249,7 @@ class AliasSymbol(
     override val module: ModuleSymbol,
     override val decl: TypeAliasDecl?,
     val typeParams: List<TypeParamSymbol>,
-    /** The target over [typeParams]: `Tuple2<A, B>` for `alias Pair<A, B> as Tuple2<A, B>`. */
+    /** The target over [typeParams]: `T2<A, B>` for `alias Pair<A, B> as T2<A, B>`. */
     var target: KType = KType.Error,
 ) : Symbol() {
     var isPub: Boolean = false

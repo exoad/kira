@@ -207,6 +207,6 @@ class CppBindingTableTest {
 
     private companion object {
         /** Measured: only the tuples' `size`, a constant of the type (`static_cast<std::int32_t>(N)`). */
-        val OMITTED: List<String> = (0..9).map { "Tuple$it.size {self}" }
+        val OMITTED: List<String> = (0..10).map { "T$it.size {self}" }.sorted()
     }
 }

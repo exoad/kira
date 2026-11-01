@@ -435,4 +435,20 @@ class KiraTuple9 {
   size() { return 9; }
 }
 
+class KiraTuple10 {
+  constructor(first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth) {
+    this.first = first;
+    this.second = second;
+    this.third = third;
+    this.fourth = fourth;
+    this.fifth = fifth;
+    this.sixth = sixth;
+    this.seventh = seventh;
+    this.eighth = eighth;
+    this.ninth = ninth;
+    this.tenth = tenth;
+  }
+  size() { return 10; }
+}
+
 // __KIRA_JS_PRELUDE_END__

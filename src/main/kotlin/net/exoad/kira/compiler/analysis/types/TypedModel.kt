@@ -44,7 +44,7 @@ enum class LoopKind {
     /** A `View<T>` or `MutView<T>`. */
     VIEW,
 
-    /** A `Map<K, V>`, iterated as `Tuple2<K, V>` in insertion order (D27). */
+    /** A `Map<K, V>`, iterated as `T2<K, V>` in insertion order (D27). */
     MAP,
 }
 

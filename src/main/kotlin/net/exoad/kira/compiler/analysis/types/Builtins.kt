@@ -9,7 +9,7 @@ import java.util.IdentityHashMap
  *
  * - `Int8`..`UInt64`, `Size`, `Float32`/`Float64`, `Bool` and `Char` are [KType.Scalar];
  * - `Str`, `Void`, `Never` and `Null` are their own KTypes;
- * - `List Map Set Deque Stack Queue Arr View MutView Maybe Result Tuple0..9 Fx Weak Ref Unsafe`
+ * - `List Map Set Deque Stack Queue Arr View MutView Maybe Result T0..9 Fx Weak Ref Unsafe`
  *   are [KType.Nominal] of their magic [ClassSymbol]. `Arr` resolves by arity: `Arr<T>` or
  *   `Arr<T, N>`. A fully applied `Fx<TupleN<...>, R>` becomes a [KType.Fn].
  *
@@ -92,9 +92,9 @@ class Builtins(declared: Collection<ClassSymbol>) {
             put("MutView", listOf("T"))
             put("Maybe", listOf("T"))
             put("Result", listOf("T", "E"))
-            val letters = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I")
-            for (n in 0..9) {
-                put("Tuple$n", letters.take(n))
+            val letters = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+            for (n in 0..MAX_TUPLE) {
+                put("T$n", letters.take(n))
             }
             put("Fx", listOf("P", "R"))
             put("Weak", listOf("T"))
@@ -121,13 +121,16 @@ class Builtins(declared: Collection<ClassSymbol>) {
         /** True for every name this object maps: prims, the special types and the nominal builtins. */
         fun isBuiltinName(name: String): Boolean = prim(name) != null || name in SPECIAL || name in NOMINAL_PARAMS
 
-        /** `Tuple0`..`Tuple9`: the arity, else null. */
+        /** The largest tuple arity the stdlib names: `T0`..`T10`. Above it, a tuple is generated on use. */
+        const val MAX_TUPLE = 10
+
+        /** `T0`..`T10`: the arity, else null. */
         fun tupleArity(name: String): Int? {
-            if (!name.startsWith("Tuple")) {
+            if (!name.startsWith("T") || name.length == 1 || !name.substring(1).all { it.isDigit() }) {
                 return null
             }
-            val n = name.removePrefix("Tuple").toIntOrNull() ?: return null
-            return if (n in 0..9 && name == "Tuple$n") n else null
+            val n = name.substring(1).toIntOrNull() ?: return null
+            return if (n in 0..MAX_TUPLE && name == "T$n") n else null
         }
 
         private fun syntheticModule(): ModuleSymbol {

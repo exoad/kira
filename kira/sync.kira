@@ -18,7 +18,7 @@
 // waiting for it. A join() from the body on its own handle is a panic.
 pub @_magic Thread: Mutable<Any> {
     name: Str
-    body: Fx<Tuple0, Void>
+    body: Fx<T0, Void>
 
     // Set by requestStop(), read by whoever has the handle.
     pub stopRequested: () Bool
@@ -32,7 +32,7 @@ pub @_magic Thread: Mutable<Any> {
 // truncated to 15 bytes (the kernel's limit); elsewhere the name is kept for
 // nothing. The body captures what it shares by reference (a Mutex, an
 // Atomic, a BlockingQueue) and copies everything else, as every closure does.
-pub @_magic spawn: (name: Str, body: Fx<Tuple0, Void>) Thread
+pub @_magic spawn: (name: Str, body: Fx<T0, Void>) Thread
 
 // A mutex that owns its data: the only way to the value is `lock`, so a
 // read or write outside the lock cannot be written.
@@ -47,11 +47,11 @@ pub @_magic Mutex<T>: Mutable<Any> {
     // Runs `body` with the lock held and the value, shared when its type is
     // Mutable (a Ref<T> for a value); on return every waiter in waitUntil is
     // woken to re-check its predicate.
-    pub lock: (body: Fx<Tuple1<T>, Void>) Void
+    pub lock: (body: Fx<T1<T>, Void>) Void
     // Waits until `pred(value)` holds, re-checking whenever a `lock` returns.
     // True when it held, false when timeoutMs elapsed first; a negative
     // timeout waits without limit, zero checks once.
-    pub waitUntil: (pred: Fx<Tuple1<T>, Bool>, timeoutMs: Int64) Bool
+    pub waitUntil: (pred: Fx<T1<T>, Bool>, timeoutMs: Int64) Bool
 }
 
 // One lock-free value. T is Bool, an integer or a float, never a Str or a

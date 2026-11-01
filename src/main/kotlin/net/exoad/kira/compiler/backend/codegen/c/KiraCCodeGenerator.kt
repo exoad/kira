@@ -604,7 +604,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /**
      * The type forms of design 2.4 this backend cannot lower: a const type
      * argument (`Arr<UInt8, 32>`, D6) and `mut T` inside a Tuple's arguments
-     * (`Fx<Tuple1<mut T>, Void>`, D24). Both used to lower silently to the
+     * (`Fx<T1<mut T>, Void>`, D24). Both used to lower silently to the
      * erased base type, dropping the size and the mutability.
      */
     private fun guardNewTypeForms(type: Type) {

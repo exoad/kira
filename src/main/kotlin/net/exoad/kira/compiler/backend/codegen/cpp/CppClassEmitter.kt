@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
@@ -564,7 +565,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
      * decided before the arguments go in ([CppTypeSpeller.spellUnder]). A type parameter is
      * never known to be by value, so `Source<T>` spells `v: T` as `const T&`, and at
      * `Source<Int32>` that parameter is `const std::int32_t&`, not the `std::int32_t` a
-     * declaration written at Int32 spells on its own; `f: Fx<Tuple1<T>, Int32>` is
+     * declaration written at Int32 spells on its own; `f: Fx<T1<T>, Int32>` is
      * `const kira::Fn<std::int32_t(const T&)>&` and stays so at Int32.
      */
     private fun cppParam(d: CppClassFacts.Declared, i: Int): String {
@@ -573,7 +574,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
         return ctx.speller.spellUnder(p.type, if (p.byRef) Pos.MUT_PARAM else Pos.PARAM, substitutionOf(r), p.decl ?: r.method.decl)
     }
 
-    /** How C++ spells the return type of [d], as [cppParam] spells a parameter: `Fx<Tuple1<T>, Int32>` at Int32 is `kira::Fn<std::int32_t(const std::int32_t&)>`. */
+    /** How C++ spells the return type of [d], as [cppParam] spells a parameter: `Fx<T1<T>, Int32>` at Int32 is `kira::Fn<std::int32_t(const std::int32_t&)>`. */
     private fun cppReturn(d: CppClassFacts.Declared): String {
         val r = rootOf(d)
         return ctx.speller.spellUnder(r.method.ret, Pos.RETURN, substitutionOf(r), r.method.decl)
@@ -1282,7 +1283,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
                 }
                 ClassKind.MAGIC -> when {
                     ctx.speller.isSystemClass(sym) || sym.name == REF || sym.name == "Result" -> false
-                    sym.name == "Arr" || sym.name.startsWith("Tuple") -> t.typeArgs().all { hasEmptyValue(it, seen) }
+                    sym.name == "Arr" || Builtins.tupleArity(sym.name) != null -> t.typeArgs().all { hasEmptyValue(it, seen) }
                     else -> true
                 }
             }

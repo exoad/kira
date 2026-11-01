@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.py
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
@@ -2433,7 +2434,7 @@ class PyModuleEmitter(
         }
     }
 
-    private fun isTuple(t: KType?): Boolean = magicName(t)?.let { TUPLE.matches(it) } == true
+    private fun isTuple(t: KType?): Boolean = magicName(t)?.let { Builtins.tupleArity(it) != null } == true
 
     /** Thread, Mutex, Atomic or BlockingQueue of kira:sync (D77), each one runtime object shared by reference. */
     private fun syncClass(t: KType?): String? = magicName(t)?.takeIf { (t as KType.Nominal).sym.module.uri == "kira:sync" }
@@ -2604,7 +2605,6 @@ class PyModuleEmitter(
         /** The methods that lend a view of their receiver, a MutView of a mutable List or Arr. */
         private val LENDERS = setOf("from", "slice", "view")
 
-        private val TUPLE = Regex("Tuple[0-9]")
 
         private val SHALLOW = setOf("toArr", "clone", "toList", "valuesArr")
 

@@ -212,7 +212,7 @@ class SysDeclTest {
         val fieldSignature = fields.map { it.name.value to typeText(it.type) }
         val spawnSignature = spawn.def.parameters.map { it.name.value to typeText(it.typeSpecifier) }
         assertEquals(spawnSignature, fieldSignature, "Thread's require fields against spawn's parameters")
-        assertEquals(listOf("name" to "Str", "body" to "Fx<Tuple0, Void>"), fieldSignature, "what kira::sync::Thread's constructor takes")
+        assertEquals(listOf("name" to "Str", "body" to "Fx<T0, Void>"), fieldSignature, "what kira::sync::Thread's constructor takes")
     }
 
     /**

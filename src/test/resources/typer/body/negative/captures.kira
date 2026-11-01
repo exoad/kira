@@ -20,7 +20,7 @@ pub Pt: Struct {
 pub captures: (q: Pt) Int32 {
     n: Mutable<Int32> = 0
     p: Mutable<Pt> = Pt { }
-    g: Fx<Tuple0, Void> = () Void {
+    g: Fx<T0, Void> = () Void {
         n = 1                              // @error types.lambda.assign-capture
         p = p.moved(2)                     // @error types.lambda.assign-capture
         k: Int32 = n + q.x                 // no error: a read

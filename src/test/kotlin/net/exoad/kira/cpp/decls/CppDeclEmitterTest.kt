@@ -230,7 +230,7 @@ class CppDeclEmitterTest {
             """
             pub N: Size = 32
             pub Arr<UInt8, N> as Frame
-            pub Tuple2<A, B> as Pair<A, B>
+            pub T2<A, B> as Pair<A, B>
             pub Str as Name
             """
         )

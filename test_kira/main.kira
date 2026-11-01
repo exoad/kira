@@ -94,8 +94,8 @@ identity<T>: (value: T) T {
     value
 }
 
-swap<A, B>: (first: A, second: B) Tuple2<B, A> {
-    Tuple2<B, A> { second, first }
+swap<A, B>: (first: A, second: B) T2<B, A> {
+    T2<B, A> { second, first }
 }
 
 makeBox<T>: (value: T) Box<T> {

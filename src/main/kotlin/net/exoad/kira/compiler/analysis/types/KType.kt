@@ -73,7 +73,7 @@ enum class Prim(val kiraName: String, val bits: Int, val signed: Boolean, val is
  *   [TypeSymbol] compared by identity.
  * - `Arr` resolves by arity: `Arr<T>` has one [TypeArg.Ty]; `Arr<T, N>` adds a [TypeArg.Const].
  * - `Fx<TupleN<A, B>, R>` resolves to [Fn], never to a Nominal: its parameters are the tuple's
- *   elements, and a `mut` element (`Tuple1<mut T>`, D24) is a by-reference [FnParam].
+ *   elements, and a `mut` element (`T1<mut T>`, D24) is a by-reference [FnParam].
  * - An alias is inlined: `alias Frame as Arr<UInt8, 32>` makes `Frame` the Arr type itself
  *   (TypedModel.aliasRefs remembers which Type nodes were spelled through an alias).
  * - [Error] marks a fact the typer could not establish. A diagnostic always accompanies it,
@@ -147,7 +147,7 @@ sealed interface TypeArg {
     }
 }
 
-/** The type in Kira's own spelling: `Int32`, `Map<Str, List<Int32>>`, `Arr<UInt8, 32>`, `Fx<Tuple1<mut Str>, Void>`. */
+/** The type in Kira's own spelling: `Int32`, `Map<Str, List<Int32>>`, `Arr<UInt8, 32>`, `Fx<T1<mut Str>, Void>`. */
 fun KType.display(): String = when (this) {
     is KType.Scalar -> prim.kiraName
     KType.Str -> "Str"
@@ -157,7 +157,7 @@ fun KType.display(): String = when (this) {
     KType.Error -> "<error>"
     is KType.Param -> sym.name
     is KType.Nominal -> spelled(sym.name).let { n -> if (args.isEmpty()) n else "$n<${args.joinToString(", ")}>" }
-    is KType.Fn -> "Fx<Tuple${params.size}${if (params.isEmpty()) "" else "<${params.joinToString(", ")}>"}, ${ret.display()}>"
+    is KType.Fn -> "Fx<T${params.size}${if (params.isEmpty()) "" else "<${params.joinToString(", ")}>"}, ${ret.display()}>"
 }
 
 /** A type's name as written: a nested type's `Outer_Inner` (the parser's) is `Outer.Inner`. */

@@ -45,7 +45,7 @@ class EffectsPassTest {
                 v * 2
             }
             pub f: (a: Int32) Int32 {
-                g: Fx<Tuple0, Int32> = () Int32 {
+                g: Fx<T0, Int32> = () Int32 {
                     bump()
                 }
                 twice(a) + bump() + a * 2
@@ -181,7 +181,7 @@ class EffectsPassTest {
             pub virtuals: (s: Shape) Int32 {
                 s.area()
             }
-            pub values: (f: Fx<Tuple0, Int32>) Int32 {
+            pub values: (f: Fx<T0, Int32>) Int32 {
                 f()
             }
             """,
@@ -203,7 +203,7 @@ class EffectsPassTest {
             """
             GXSS: Mutable<List<List<Int32>>> = List<List<Int32>> {}
             GD: Mutable<Int32> = 0
-            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32
+            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<T0, Void>>) Int32
             pub proto: () Int32
             pub Maker: Mutable<Any> {
                 pub n: Mutable<Int32> = 0
@@ -314,13 +314,13 @@ class EffectsPassTest {
             kira.sync as sync
             pub G: Mutable<Int32> = 0
             pub Runner: Any {
-                pub f: Fx<Tuple0, Void>
+                pub f: Fx<T0, Void>
                 initially {
                     f()
                 }
             }
             pub Keeper: Any {
-                pub f: Fx<Tuple0, Void>
+                pub f: Fx<T0, Void>
             }
             pub idle: () Int32 {
                 t: Thread = Thread { name = "w", body = () Void { } }

@@ -97,7 +97,7 @@ class MutabilityTest {
         assertContains(refusal("C: Any {\n    pub n: Int32 = 0\n    pub mut bump: () Void {\n    }\n}\n"), "declare the type 'Name: Mutable<Parent>'")
         assertContains(refusal("f: (mut xs: List<Int32>) Void {\n}\n"), "a parameter is never Mutable")
         assertContains(refusal("f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    f(mut ys)\n}\n"), "pass the value itself")
-        assertContains(refusal("f: (each: Fx<Tuple1<mut Int32>, Void>) Void {\n}\n"), "a parameter is never Mutable")
+        assertContains(refusal("f: (each: Fx<T1<mut Int32>, Void>) Void {\n}\n"), "a parameter is never Mutable")
     }
 
     @Test

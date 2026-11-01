@@ -41,7 +41,7 @@
 #   kira::popFront(std::deque<T>&), kira::popBack(std::deque<T>&) -> Maybe<T>
 #   kira::Map<K, V>: size, isEmpty, put, get -> Maybe<V>, remove -> Maybe<V>,
 #     containsKey, containsValue, keys -> List<K>, valuesArr -> List<V>,
-#     entries -> List<Tuple2<K, V>>, clear
+#     entries -> List<T2<K, V>>, clear
 #   kira::Set<T>: size, isEmpty, add -> bool, remove -> bool, contains,
 #     toArr -> List<T>, clear
 #   kira::Stack<T>: size, isEmpty, push, pop -> Maybe<T>, peek -> Maybe<T>, clear

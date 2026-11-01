@@ -46,7 +46,7 @@ main: () Void {
     println("${seen.size()} ${seen.contains("a")} ${seen.contains("c")}")
     ages: Map<Str, Int32> = @mapOf("ada", 36, "bea", 41, "ada", 37)
     println("${ages.size()} ${ages.get("ada").unwrap()} ${ages.get("bea").unwrap()}")
-    for e: Tuple2<Str, Int32> in ages {
+    for e: T2<Str, Int32> in ages {
         println("${e.first}=${e.second}")
     }
     for w: Int32 in @arrOf(7, 8) {

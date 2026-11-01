@@ -50,8 +50,8 @@ giveBytes ints -> panic: kira: externs_ext.giveBytes gave [1, 2] (list) where Li
 giveMap map -> dict {'a': 1}
 giveMap intkey -> panic: kira: externs_ext.giveMap gave 1 (int) where Map<Str, Int64> was declared
 giveTuple pair -> tuple ('a', 1)
-giveTuple tuple -> panic: kira: externs_ext.giveTuple gave ('a',) (tuple) where Tuple2<Str, Int32> was declared
-giveTuple pairlist -> panic: kira: externs_ext.giveTuple gave ['a', 1] (list) where Tuple2<Str, Int32> was declared
+giveTuple tuple -> panic: kira: externs_ext.giveTuple gave ('a',) (tuple) where T2<Str, Int32> was declared
+giveTuple pairlist -> panic: kira: externs_ext.giveTuple gave ['a', 1] (list) where T2<Str, Int32> was declared
 giveJson json -> dict {'a': [1, 2.5, None, True, 's']}
 giveJson none -> NoneType None
 giveJson set -> panic: kira: externs_ext.giveJson gave {1} (set) where Json was declared
