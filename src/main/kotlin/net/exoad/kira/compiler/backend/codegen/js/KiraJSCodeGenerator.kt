@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
@@ -1024,6 +1025,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (nameExpr is MemberAccessExpr) {
             val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
             val recvType = receiverTypeOf(nameExpr.origin)
+            // A tuple's runtime class defines its members, so only the other magic types are refused.
+            if (recvType != null && Builtins.tupleArity(recvType) == null && compilationUnit.isBodiedMagicMember(recvType, methodName)) {
+                throw UnsupportedConstruct(functionCallExpr, "a method written in Kira on the magic type '$recvType' ('$methodName')", TARGET_NAME)
+            }
 
             // Str is a JS primitive: rewrite to kira_str_* helpers.
             if (recvType != null && isStrType(recvType) && methodName in strMethods) {

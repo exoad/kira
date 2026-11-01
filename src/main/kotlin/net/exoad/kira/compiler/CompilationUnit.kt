@@ -84,6 +84,17 @@ class CompilationUnit(bootstrap: Boolean = true) {
         return magicTypeNames.toSet()
     }
 
+    /** Members with a body, per magic class: the runtime has no lowering for them, only the Kira body. */
+    private val bodiedMagicMembers = mutableMapOf<String, MutableSet<String>>()
+
+    fun registerBodiedMagicMember(typeName: String, member: String) {
+        bodiedMagicMembers.getOrPut(typeName) { mutableSetOf() }.add(member)
+    }
+
+    fun isBodiedMagicMember(typeName: String, member: String): Boolean {
+        return bodiedMagicMembers[typeName]?.contains(member) == true
+    }
+
     fun registerOpaqueType(name: String) {
         if (name.isNotBlank()) {
             opaqueTypeNames.add(name)
