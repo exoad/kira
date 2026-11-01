@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-# The py runtime harness (R0). Loads two runtimes into separate namespaces and calls every shared _k_ helper over
-# the corpus in rt_cases.py, comparing the value or the exception (type and message), the arguments the call
-# changed, what it printed, the reasons it left and the files it wrote. Other modes: the closure check, the
-# Python 3.10 parse, the shape check (arity and method sets), the microbench and the mutation run.
-# Every mode prints key=value lines and exits 1 on a failure.
+# Py runtime harness: calls each shared _k_ helper of two runtimes over the rt_cases.py corpus and compares the results.
+# Other modes: closure, parse, coverage, bench, mutants; each prints key=value lines and exits 1 on a failure.
 import argparse
 import ast
 import collections
@@ -29,7 +26,7 @@ sys.path.insert(0, HERE)
 
 import rt_fakes  # noqa: E402
 
-BENCH_COMMENT = "Read by R3 (hot helpers within 1.2x of this base) and by the stdlib S lanes (a body with no fast path within 1.2x of its hand block); recorded by rt_equiv.py bench --record."
+BENCH_COMMENT = "Timings a changed runtime is held to within 1.2x of; recorded by rt_equiv.py bench --record."
 CALL_LIMIT = 1000
 CANON_LIMIT = 100000
 
@@ -355,7 +352,7 @@ def without_dead(shape_map):
 
 
 def shape_diff(a, b):
-    # A name the corpus lists as dead may be in one runtime and not the other (the lane that deletes it).
+    # A name the corpus lists as dead may be in one runtime and not the other (a deletion in progress).
     sa, sb = without_dead(shapes(a)), without_dead(shapes(b))
     out = ["only in A: " + n for n in sorted(set(sa) - set(sb))] + ["only in B: " + n for n in sorted(set(sb) - set(sa))]
     out += ["differs: %s A %r B %r" % (n, sa[n], sb[n]) for n in sorted(set(sa) & set(sb)) if sa[n] != sb[n]]
@@ -364,9 +361,8 @@ def shape_diff(a, b):
 
 # ---- coverage: which executable lines of the runtime's functions the corpus ran ---------------------------------------
 
-# Lines that only one host reaches for real. Each is (label, owner, a fragment of the line): the report says whether
-# the corpus ran it on this host (fakes count), so a host that cannot is listed, never silent. A real Linux run is
-# `python3.10 rt_equiv.py coverage --rt kira/py/runtime.py`.
+# Lines only one host reaches for real: (label, owner, line fragment). The report says whether the corpus ran each.
+# A real Linux run is `python3.10 rt_equiv.py coverage --rt kira/py/runtime.py`.
 PLATFORM_BRANCHES = [
     ("readyin-poll", "_k_readyin", "return bool(p.poll(s * 1000))"),
     ("poller-once-poll", "_k_Poller.once", "for h, re in p.poll("),
@@ -831,8 +827,7 @@ def mode_closure(args):
 
 
 def strip_dead(src):
-    """src without the names the corpus lists as dead (rt_cases.DEAD_FUNCTIONS and DEAD_METHODS), as the lane that
-    deletes them leaves it: the harness must still pass, with their cases skipped."""
+    """src without the names the corpus lists as dead, as their deletion leaves it: the harness must still pass."""
     import rt_cases
     drop = []
     for n in ast.parse(src).body:
@@ -894,7 +889,7 @@ def mode_bench(args):
             t = time.perf_counter()
             sum(i * i for i in range(200000))
             best = min(best, time.perf_counter() - t)
-        # The base numbers a later lane reads its 1.2x against; the calibration loop says how fast the machine was.
+        # The base numbers a change is held to; the calibration loop says how fast the machine was.
         with open(args.record, "w", encoding="utf-8", newline="\n") as f:
             json.dump({"comment": BENCH_COMMENT, "python": sys.version.split()[0], "platform": platform.platform(), "calibration_us": round(best * 1e6, 1),
                        "reps": args.reps, "base_us": {n: round(ua, 1) for n, ua, _ in rows}}, f, indent=2)

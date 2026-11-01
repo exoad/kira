@@ -1,6 +1,5 @@
-# The corpus for rt_equiv.py: boundary values for every kind of input a runtime helper takes, as cases that call
-# the helper by name on a runtime's namespace. A case builds its own arguments (a helper may change them), so two
-# runtimes never share an object. Kinds: int, float, text, slice, bytes, radix, json, collections, os, host, ffi, misc.
+# The corpus for rt_equiv.py: boundary inputs for every kind of helper, as cases that call it by name on a runtime.
+# A case builds its own arguments, so two runtimes never share an object.
 import copy
 import errno
 import importlib.util
@@ -18,8 +17,8 @@ from rt_fakes import MISSING, boom, boom_exc
 
 CASES = []
 
-# What the lane after rm-dialect-kit deletes (INTEGRATION-PLAN, R0): a case that needs one is skipped when either
-# runtime lacks it, and the shape check ignores them, so the deletion passes without touching this file.
+# Names a deletion removes: a case that needs one is skipped when either runtime lacks it, and the shape check
+# ignores them, so the deletion passes without touching this file.
 DEAD_FUNCTIONS = ("_k_mapset", "_k_dqset")
 DEAD_CLASSES = ("_k_Datagram", "_k_Ready", "_k_Ran", "_k_HttpReply", "_k_HttpRequest", "_k_HttpAnswer")
 DEAD_METHODS = ("_k_set",)
