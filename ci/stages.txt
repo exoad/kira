@@ -7,9 +7,7 @@ frontend net.exoad.kira.StdlibParseTest
 frontend net.exoad.kira.SymbolTableTest
 frontend net.exoad.kira.FrontendCompilationPipelineTest
 frontend net.exoad.kira.FrontendServiceTest
-frontend net.exoad.kira.suite.Lexer*
-frontend net.exoad.kira.suite.Parser*
-frontend net.exoad.kira.suite.OperatorMemberParseTest
+frontend net.exoad.kira.suite.parser.*
 frontend net.exoad.kira.suite.AliasImportTest
 frontend net.exoad.kira.suite.DeclShortTest
 types net.exoad.kira.types.*
