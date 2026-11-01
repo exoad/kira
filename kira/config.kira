@@ -10,10 +10,10 @@ pub Cpp: Any {
     pub runtimeDir: Str = ""
     pub lineDirectives: Bool = true
     // a module's dotted name, or a glob of them, to its C++ namespace (`a::b` nests)
-    pub namespaces: Map<Str, Str> = Map<Str, Str> { }
+    pub namespaces: Map<Str, Str> { }
     // module globs that emit a header only, and those compiled freestanding
-    pub headerOnly: List<Str> = List<Str> { }
-    pub freestanding: List<Str> = List<Str> { }
+    pub headerOnly: List<Str> { }
+    pub freestanding: List<Str> { }
     pub headerExt: Str = ".kira.hxx"
     pub sourceExt: Str = ".kira.cxx"
 }
@@ -25,18 +25,18 @@ pub Project: Any {
     pub version: Str = ""
     pub srcDir: Str = "src"
     // path globs under the root whose files are not this project's modules
-    pub srcExclude: List<Str> = List<Str> { }
+    pub srcExclude: List<Str> { }
     // "c", "cpp", "js", "py", "neko" or "none"
     pub target: Str = "c"
     // the C target's extra .c or .o files and the flags after them
-    pub cSources: List<Str> = List<Str> { }
-    pub linkFlags: List<Str> = List<Str> { }
+    pub cSources: List<Str> { }
+    pub linkFlags: List<Str> { }
     pub minify: Bool = true
-    pub cpp: Cpp = Cpp { }
+    pub cpp: Cpp { }
     // the typer for C and JS: "off", "lenient" or "strict"
     pub types: Str = "off"
     // a file for the compiler's symbol dump; "" for none
     pub emitIr: Str = ""
     // each dependency's name and path, the stdlib's among them
-    pub dependencies: Map<Str, Str> = Map<Str, Str> { }
+    pub dependencies: Map<Str, Str> { }
 }

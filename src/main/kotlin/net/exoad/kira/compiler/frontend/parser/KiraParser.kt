@@ -721,7 +721,6 @@ class KiraParser(
         "enum" to "enums are gone: use constants",
         "variant" to "variants are gone",
         "alias" to "an alias is 'Existing<A> as Name<A>'",
-        "require" to "a field with nothing after its type is given at construction: 'pub x: Int64'",
         "module" to "there is no module header: the file is the module, named by its project and its path",
         "use" to "a module is imported by its dotted name: 'kira.math as math'",
         "do" to "do-while is gone: use while",
@@ -736,8 +735,6 @@ class KiraParser(
         val next = peek(1).type
         val old = when (word) {
             "class", "trait", "struct", "enum", "variant", "alias" -> next == Token.Type.IDENTIFIER
-            "require" -> next in Token.Type.modifiers || next == Token.Type.INTRINSIC_IDENTIFIER ||
-                (next == Token.Type.IDENTIFIER && peek(2).type == Token.Type.S_COLON)
             "module", "use" -> next == Token.Type.L_STRING
             "do", "finally" -> next == Token.Type.S_OPEN_BRACE
             else -> false
