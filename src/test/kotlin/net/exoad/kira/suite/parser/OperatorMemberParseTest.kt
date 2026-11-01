@@ -1,4 +1,4 @@
-package net.exoad.kira.suite
+package net.exoad.kira.suite.parser
 
 import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
