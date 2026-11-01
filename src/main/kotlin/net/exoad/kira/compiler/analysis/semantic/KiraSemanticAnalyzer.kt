@@ -196,30 +196,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         statement.expr.accept(this)
     }
 
-    override fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitReturnStatement(returnStatement: ReturnStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitUseStatement(useStatement: UseStatement) {
         // Import public type symbols from the named module into the current module scope.
         // Baseline: only TYPE_SPECIFIER / TYPE_ALIAS that were marked relativelyVisible.
@@ -241,26 +217,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
                 // declare() no-ops on collision, which is fine.
                 compilationUnit.symbolTable.declare(symbol.name, symbol)
             }
-    }
-
-    override fun visitBreakStatement(breakStatement: BreakStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitContinueStatement(continueStatement: ContinueStatement) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {
-        // TODO("Not yet implemented")
     }
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
@@ -455,10 +411,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         }
     }
 
-    override fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {
         val typeName = (functionDeclParameterExpr.typeSpecifier.identifier as? Identifier)?.value ?: return
         declareValueType(functionDeclParameterExpr.name.value, typeName, parameter = true)
@@ -490,14 +442,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         )
     }
 
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitRangeExpr(rangeExpr: RangeExpr) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitThrowExpr(throwExpr: ThrowExpr) {
         throwExpr.value.accept(this)
     }
@@ -518,28 +462,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
         objectInitExpr.positionalArgs.forEach { it.accept(this) }
     }
 
-    override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {
-        // TODO("Not yet implemented")
-    }
-
     override fun visitNoExpr(noExpr: NoExpr) {
         // ignore
-    }
-
-    override fun visitWithExpr(withExpr: WithExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {
-        // TODO("Not yet implemented")
-    }
-
-    override fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr) {
-        // TODO("Not yet implemented")
     }
 
     override fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {
@@ -560,10 +484,6 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
 
     override fun visitBuilderExpr(builderExpr: BuilderExpr) {
         // The typer types a builder.
-    }
-
-    override fun visitNullLiteral(nullLiteral: NullLiteral) {
-        // TODO("Not yet implemented")
     }
 
     override fun visitType(type: Type) {
