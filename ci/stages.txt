@@ -43,6 +43,7 @@ py net.exoad.kira.cpp.JsonCorpusTest
 py net.exoad.kira.StdlibPyBindingsTest
 py net.exoad.kira.TestProjectsRunTest
 py net.exoad.kira.suite.parser.LineStartTest
+runtime net.exoad.kira.pyruntime.*
 tooling net.exoad.kira.lsp.*
 tooling net.exoad.kira.project.*
 cpp net.exoad.kira.cpp.CppGoldenCompileTest
