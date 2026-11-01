@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.ProjectSources
 import net.exoad.kira.compiler.SourceGlob
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -40,6 +41,14 @@ class SrcExcludeTest {
         val sources = ProjectSources.dependencies(project, app)
             .map { root.relativize(java.nio.file.Path.of(it).normalize()).toString().replace('\\', '/') }
         assertEquals(listOf("lib/src/util.kira"), sources)
+    }
+
+    @Test
+    fun aDependencyWhosePathResolvesNowhereIsAnErrorNamingItsKeyAndPath() {
+        val root = PlumbingTestSupport.tempProject("srcexclude-missing-dep")
+        val project = Project("app", dependencies = mapOf("kira_stdlib" to "nowhere/kira"))
+        val e = assertFailsWith<IllegalArgumentException> { ProjectSources.dependencies(project, root) }
+        assertTrue("kira_stdlib" in e.message.orEmpty() && "nowhere/kira" in e.message.orEmpty(), e.message)
     }
 
     @Test

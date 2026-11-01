@@ -287,6 +287,17 @@ class CliSuiteTest {
     }
 
     @Test
+    fun aMisspelledDependencyPathIsRefusedNamingKeyAndPath() {
+        val project = ProjectText.of("badpath", target = "c", stdlib = "nowhere/kira")
+        val dir = tempProject("bad-dependency-path", project, mapOf("src/app/main.kira" to TRACE_MAIN))
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("dependencies['kira_stdlib']") && output.contains("nowhere/kira"), output)
+        assertFalse(File(dir, "out.kira.c").exists(), "a refused project wrote a file")
+    }
+
+    @Test
     fun aProjectNamingNoKiraDependencyIsRefusedEvenWithAKiraFolderBeside() {
         val dir = tempProject("no-dependency", ProjectText.of("nodep", target = "c", stdlib = null), mapOf("src/app/main.kira" to TRACE_MAIN))
         File(kiraStdlib).copyRecursively(File(dir, "kira"), overwrite = true)

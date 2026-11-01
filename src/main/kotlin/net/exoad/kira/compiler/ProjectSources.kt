@@ -70,15 +70,16 @@ object ProjectSources {
             null
         }
 
-    /** Every dependency's .kira files, each dependency read whole; with no project, the root's `kira/`, and a project with none gets none. */
+    /** Every dependency's .kira files, each dependency read whole (one whose path resolves nowhere is an error, never skipped); with no project, the root's `kira/`, and a project with none gets none. */
     fun dependencies(project: Project?, projectRoot: Path): List<String> {
         if (project == null) {
             return scanKiraFiles(projectRoot.resolve("kira").normalize())
         }
 
         val sources = mutableListOf<String>()
-        project.dependencies.values.forEach { path ->
-            val resolved = resolvePath(projectRoot, path) ?: return@forEach
+        project.dependencies.forEach { (name, path) ->
+            val resolved = resolvePath(projectRoot, path)
+                ?: throw IllegalArgumentException("dependency '$name' path does not exist: $path (tried under $projectRoot and its parent)")
             // A dependency's project.kira configures that dependency; it is none of its modules.
             val absolute = resolved.toAbsolutePath().normalize()
             sources.addAll(scanKiraFiles(resolved).filterNot { ProjectFile.isProjectFile(Path.of(it), absolute) })

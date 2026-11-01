@@ -10,6 +10,26 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FrontendServiceTest {
+    /** A dependency path that resolves nowhere is a Project diagnostic naming the key and the path, never a compile against no stdlib. */
+    @Test
+    fun aDependencyPathThatResolvesNowhereIsADiagnosticNotAMissingStdlib() {
+        val dir = Files.createTempDirectory("kira-frontend-")
+        try {
+            dir.resolve("project.kira").writeText(ProjectText.of("tmp", target = "c", stdlib = "nowhere/kira"))
+            Files.createDirectories(dir.resolve("src"))
+            dir.resolve("src/main.kira").writeText("main: () Void {\n    trace(\"ok\")\n}\n")
+            val result = FrontendService.compileProject(dir)
+            assertFalse(result.isOk)
+            assertTrue(result.compilationUnit == null)
+            assertTrue(
+                result.diagnostics.any { it.tag == "Project" && it.message.contains("kira_stdlib") && it.message.contains("nowhere/kira") },
+                result.diagnostics.toString(),
+            )
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
     /** A project.kira with no dependency is an error even with a kira/ folder beside it: there is no default stdlib. */
     @Test
     fun aProjectNamingNoKiraDependencyIsAnErrorNotAFallback() {
