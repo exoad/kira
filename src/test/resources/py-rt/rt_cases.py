@@ -334,6 +334,19 @@ def structs():
 
 
 
+def ranges():
+    # kira:range's Range (both ends in it) and the two helpers of `x in r`: integer, empty and float ranges, a NaN.
+    for lo, hi, v in ((1, 4, 1), (1, 4, 4), (1, 4, 0), (1, 4, 5), (5, 4, 5), (-2, 2, -2), (-2.5, 2.5, 2.5), (0.0, 1.0, math.nan)):
+        add("misc", "_k_Range %r..%r %r" % (lo, hi, v), lambda ctx, lo=lo, hi=hi, v=v: (lambda r: (
+            r.contains(v), r._op_in_(v), list(r._k_steps()) if isinstance(lo, int) else None))(ctx.rt["_k_Range"](lo, hi)))
+    # A struct as the others are, with no _k_set: an immutable Range is never assigned into.
+    add("misc", "_k_Range", lambda ctx: (lambda C: (lambda a, b, k: (a == C(1, 4), a == b, k is not a and k == a, a, b, C.__slots__))(
+        C(1, 4), C(1, 5), C(1, 4)._k_clone()))(ctx.rt["_k_Range"]))
+    add("misc", "_k_Range.eq-other", lambda ctx: ctx.rt["_k_Range"](1, 4) == object())
+    calls("misc", "_k_within", [(5, 1, 9), (0, 1, 9), (1, 1, 9), (9, 1, 9), (10, 1, 9), (1.5, 1.0, 1.5), (math.nan, 0.0, 1.0)])
+    add("misc", "_k_inop", lambda ctx: [ctx.rt["_k_inop"](v, ctx.rt["_k_Range"](1, 3)) for v in (0, 1, 3, 4)])
+
+
 def json_cases(repo):
     path = os.path.join(repo, "kira", "cpp", "tests", "json_corpus.py")
     saved = sys.modules.pop("kira:errors", None)
@@ -1494,6 +1507,7 @@ def build(repo):
     radix()
     collections_()
     structs()
+    ranges()
     json_cases(repo)
     hosts()
     files()

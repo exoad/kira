@@ -2,3 +2,5 @@ toolchains: [gcc, clang, msvc, zig-aarch64]
 profile: hosted
 defines: []
 emit: required
+# It pins x in r's order (x, then each end once), which the expected C++ spills for: RulesCorpusTest's no-spill check skips it.
+pins: spills
