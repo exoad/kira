@@ -19,9 +19,8 @@ import kotlin.test.fail
  *
  * The corpus arrives with the runtime package (W1.3) and uses the design's dialect, which the
  * parser package (W1.1) grows. Until the corpus directory exists the test is skipped, and
- * says so. A case that does not parse is skipped only while the dialect parser is absent
- * ([TyperTestSupport.parsingDialect]); with the parser present it fails, and a typer error
- * always fails.
+ * says so. A case that does not parse fails ([TyperTestSupport.parsingDialect]), and a typer
+ * error always fails.
  */
 class TyperGoldenCorpusTest {
     private val corpus = File("src/test/resources/cpp-golden")
