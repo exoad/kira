@@ -1,4 +1,4 @@
-module dialect:design  profile=HOSTED ns=design imports=[]
+module spec:design  profile=HOSTED ns=design imports=[]
   global LIMIT: Size  pub const value=32:Size
   alias Frame = Arr<UInt8, 32>  pub
   alias Sized = Arr<UInt8, 32>  pub
