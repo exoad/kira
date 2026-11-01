@@ -1,8 +1,8 @@
-package net.exoad.kira.types
+package net.exoad.kira.py
 
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.cpp.decls.DeclTestSupport
-import net.exoad.kira.py.PyTestSupport
+import net.exoad.kira.types.TyperTestSupport
 import net.exoad.kira.types.TyperTestSupport.expectDiagnostic
 import net.exoad.kira.types.TyperTestSupport.expectNoErrors
 import org.junit.jupiter.api.Assumptions.assumeTrue
