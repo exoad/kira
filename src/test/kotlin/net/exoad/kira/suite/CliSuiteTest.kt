@@ -20,6 +20,7 @@ import kotlin.test.assertTrue
 class CliSuiteTest {
 
     companion object {
+        private const val TRACE_MAIN = "main: () Void {\n    trace(\"x\")\n}\n"
         private val repoRoot: File = File(System.getProperty("user.dir"))
         private val kiraStdlib: String = File(repoRoot, "kira").absolutePath.replace('\\', '/')
     }
@@ -43,11 +44,11 @@ class CliSuiteTest {
     }
 
     /** Run the real CLI main in [dir]. */
-    private fun runCli(dir: File): CliResult {
+    private fun runCli(dir: File, vararg args: String): CliResult {
         val java = System.getProperty("java.home") + "/bin/java"
         val classpath = System.getProperty("java.class.path")
         val proc = ProcessBuilder(
-            java, "-cp", classpath, "net.exoad.kira.cli.MainKt"
+            java, "-cp", classpath, "net.exoad.kira.cli.MainKt", *args
         )
             .directory(dir)
             .redirectErrorStream(false)
@@ -228,6 +229,26 @@ class CliSuiteTest {
             result.stderr.contains("srcDir does not exist") || result.stdout.contains("srcDir does not exist"),
             "stdout:\n${result.stdout}\nstderr:\n${result.stderr}"
         )
+    }
+
+    @Test
+    fun refusesTheRemovedNekoTargetWithAMessage() {
+        val dir = tempProject("neko", basicProject(), mapOf("src/app/main.kira" to TRACE_MAIN))
+        val result = runCli(dir, "--target", "neko")
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("Unknown target 'neko' (expected c, cpp, js, py, none)"), output)
+        assertFalse(output.contains("at net.exoad."), output)
+        assertFalse(File(dir, "out.kira.c").exists(), "a refused target wrote a file")
+    }
+
+    @Test
+    fun refusesANekoTargetNamedInTheProjectFile() {
+        val dir = tempProject("neko-project", basicProject(target = "neko"), mapOf("src/app/main.kira" to TRACE_MAIN))
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("unsupported target 'neko'"), output)
     }
 
     // --- helpers ---------------------------------------------------------------

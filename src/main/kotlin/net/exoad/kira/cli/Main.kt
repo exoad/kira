@@ -29,7 +29,7 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.time.measureTimedValue
 
-private const val TARGET_CHOICES = "c, cpp, js, py, neko, none"
+private const val TARGET_CHOICES = "c, cpp, js, py, none"
 
 private fun targetFromName(target: String): GeneratedProvider.OutputTarget? {
     return when (target.lowercase()) {
@@ -37,15 +37,19 @@ private fun targetFromName(target: String): GeneratedProvider.OutputTarget? {
         "cpp", "c++" -> GeneratedProvider.OutputTarget.CPP
         "js", "javascript" -> GeneratedProvider.OutputTarget.JS
         "py", "python" -> GeneratedProvider.OutputTarget.PY
-        "neko" -> GeneratedProvider.OutputTarget.NEKO
         "none" -> GeneratedProvider.OutputTarget.NONE
         else -> null
     }
 }
 
+/** A `--target` this compiler does not know is a usage error: say so and exit 1, with no stack trace. */
+private fun unknownTarget(target: String): Nothing {
+    Diagnostics.Logging.warn("Kira", "Unknown target '$target' (expected $TARGET_CHOICES)")
+    kotlin.system.exitProcess(1)
+}
+
 private fun applyTargetOverride(target: String) {
-    GeneratedProvider.outputMode = targetFromName(target)
-        ?: Diagnostics.panic("Unknown target '$target' (expected $TARGET_CHOICES)")
+    GeneratedProvider.outputMode = targetFromName(target) ?: unknownTarget(target)
 }
 
 fun main(args: Array<String>) {
@@ -57,7 +61,7 @@ fun main(args: Array<String>) {
         }
         return
     }
-    // Minimal CLI: `kira --target js|c|cpp|py|neko|none` overrides project.kira's
+    // Minimal CLI: `kira --target js|c|cpp|py|none` overrides project.kira's
     // target; `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated
     // file under <dir>); `--check` (cpp and py) regenerates in memory and
@@ -75,6 +79,9 @@ fun main(args: Array<String>) {
                     Diagnostics.panic("--target requires a value ($TARGET_CHOICES)")
                 }
                 targetOverride = args[i + 1].lowercase()
+                if (targetFromName(targetOverride!!) == null) {
+                    unknownTarget(targetOverride!!)
+                }
                 i += 2
             }
             "--readable" -> {
@@ -93,7 +100,7 @@ fun main(args: Array<String>) {
                 i += 2
             }
             "--help", "-h" -> {
-                println("Usage: kira [--target c|cpp|js|py|neko|none] [--out <dir>] [--check] [--readable]")
+                println("Usage: kira [--target c|cpp|js|py|none] [--out <dir>] [--check] [--readable]")
                 println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
                 println("               kira.gen.manifest included; py: each x_kira.py at its path under <dir>; c/js: the")
                 println("               directory of out.kira.*)")

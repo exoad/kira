@@ -7,8 +7,6 @@ package net.exoad.kira.compiler.backend.targets
  */
 object GeneratedProvider {
     enum class OutputTarget {
-        /** Not implemented: the CLI accepts it, and a run with it emits nothing. */
-        NEKO,
         C,
         JS,
 

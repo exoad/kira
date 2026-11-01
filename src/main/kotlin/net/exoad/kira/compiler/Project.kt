@@ -22,7 +22,7 @@ data class Project(
      * space) every build directory. Dependency sources are never excluded by this list.
      */
     val srcExclude: List<String> = emptyList(),
-    /** c, cpp, js, py, neko or none; `--target` overrides it. */
+    /** c, cpp, js, py or none; `--target` overrides it. */
     val target: String = "c",
     /** Extra .c/.o files linked with out.kira.c (paths relative to the project root). */
     val cSources: List<String> = emptyList(),
@@ -92,7 +92,7 @@ data class Project(
 
     companion object {
         /** The targets a project may name. */
-        val TARGETS = setOf("c", "native", "cpp", "c++", "js", "javascript", "py", "python", "neko", "none")
+        val TARGETS = setOf("c", "native", "cpp", "c++", "js", "javascript", "py", "python", "none")
 
         /** The extension the source scan reads as a module; no generated file may end with it. */
         const val KIRA_SOURCE_EXT = ".kira"

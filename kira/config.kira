@@ -26,7 +26,7 @@ pub Project: Any {
     pub srcDir: Str = "src"
     // path globs under the root whose files are not this project's modules
     pub srcExclude: List<Str> = List<Str> { }
-    // "c", "cpp", "js", "py", "neko" or "none"
+    // "c", "cpp", "js", "py" or "none"
     pub target: Str = "c"
     // the C target's extra .c or .o files and the flags after them
     pub cSources: List<Str> = List<Str> { }
