@@ -1,4 +1,4 @@
-// Test blocks (stage 3b) refused: a check naming no member (after one that does too), a value by position,
+// Test blocks refused: a check naming no member (after one that does too), a value by position,
 // a parameter that is a member, an effect, an identity with no members, a nested block sharing a name.
 
 pub Pt: Struct {
