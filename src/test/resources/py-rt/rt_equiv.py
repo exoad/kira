@@ -224,10 +224,18 @@ def runnable(rts, case):
     return all(has(rt, n) for rt in rts for n in case.needs)
 
 
+def dead_skip(rts, case):
+    """True when every need a runtime lacks is a dead name (a listed function, or a listed method of a class)."""
+    import rt_cases
+    lacking = {n for rt in rts for n in case.needs if not has(rt, n)}
+    return all(n in rt_cases.DEAD_FUNCTIONS or ("." in n and n.rsplit(".", 1)[1] in rt_cases.DEAD_METHODS) for n in lacking)
+
+
 class Report:
     def __init__(self):
         self.total = 0
         self.skipped = 0
+        self.skipped_dead = 0
         self.per_kind = collections.Counter()
         self.mismatches = []
         self.tally = collections.Counter()
@@ -259,6 +267,7 @@ def compare(a, b, cases, first=False, tmp=None):
     for case in cases:
         if not runnable((a, b), case):
             rep.skipped += 1
+            rep.skipped_dead += dead_skip((a, b), case)
             continue
         rep.total += 1
         if BEFORE_CASE is not None:
@@ -472,30 +481,50 @@ def coverage(rt, cases):
 # ---- closure check -------------------------------------------------------------------------------------------------
 
 class Binder(ast.NodeVisitor):
-    """The names a module's top level really binds. A def or class binds its own name and nothing inside it; a
-    function binds a `global` name only by assigning it. A bare annotation, a del, an `except as` (unbound again when
-    the handler ends) and the target of a loop over an empty literal bind nothing."""
+    """The names a module's top level really binds: a def or class binds only its own name, a function a `global`
+    only by assigning it. A bare annotation, a del, an augmented assign and an empty-literal loop target bind nothing."""
 
     def __init__(self):
         self.names = set()
 
     def visit_FunctionDef(self, n):
         self.names.add(n.name)
-        declared = {g for x in ast.walk(n) if isinstance(x, ast.Global) for g in x.names}
-        stored = set()
-        for x in ast.walk(n):
-            if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store):
-                stored.add(x.id)
+        self.scope(n)
+
+    def scope(self, n):
+        """A scope's own stores, minus augmented targets and bare annotations; a nested def or class is a scope of its
+        own. What the scope declares `global` and also stores is bound at the module."""
+        declared, stored, nested = set(), set(), []
+        todo = list(ast.iter_child_nodes(n))
+        while todo:
+            x = todo.pop()
+            if isinstance(x, ast.Global):
+                declared.update(x.names)
             elif isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 stored.add(x.name)
-            elif isinstance(x, (ast.Import, ast.ImportFrom)):
-                stored.update((a.asname or a.name).split(".")[0] for a in x.names)
+                nested.append(x)
+            elif isinstance(x, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                pass
+            else:
+                if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store):
+                    stored.add(x.id)
+                elif isinstance(x, (ast.Import, ast.ImportFrom)):
+                    stored.update((a.asname or a.name).split(".")[0] for a in x.names)
+                if isinstance(x, ast.AugAssign):
+                    todo.append(x.value)
+                elif isinstance(x, ast.AnnAssign) and x.value is None:
+                    pass
+                else:
+                    todo.extend(ast.iter_child_nodes(x))
         self.names.update(declared & stored)
+        for x in nested:
+            self.scope(x)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_ClassDef(self, n):
         self.names.add(n.name)
+        self.scope(n)
 
     def visit_Lambda(self, n):
         pass
@@ -519,7 +548,11 @@ class Binder(ast.NodeVisitor):
 
     def visit_For(self, n):
         it = n.iter
-        empty = (isinstance(it, (ast.Tuple, ast.List, ast.Set)) and not it.elts) or (isinstance(it, ast.Dict) and not it.keys)             or (isinstance(it, ast.Constant) and isinstance(it.value, (str, bytes)) and not it.value)
+        empty = (
+            (isinstance(it, (ast.Tuple, ast.List, ast.Set)) and not it.elts)
+            or (isinstance(it, ast.Dict) and not it.keys)
+            or (isinstance(it, ast.Constant) and isinstance(it.value, (str, bytes)) and not it.value)
+        )
         if not empty:
             self.visit(n.target)
         for x in [it] + n.body + n.orelse:
@@ -548,10 +581,16 @@ def closure(src):
     """The _k_ tokens of src's code (comments and strings are not code) that nothing in it defines."""
     tree = ast.parse(src)
     bound = bound_names(tree)
+    # An `except as` name is bound only inside its handler: the lines of the handler, not the module.
+    handlers = [(h.name, h.lineno, h.end_lineno) for h in ast.walk(tree) if isinstance(h, ast.ExceptHandler) and h.name]
     undefined = {}
     prev = None
     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-        if tok.type == tokenize.NAME and tok.string.startswith("_k_") and tok.string not in bound and not (prev is not None and prev.string in (".", "def")):
+        in_handler = any(tok.string == h and lo <= tok.start[0] <= hi for h, lo, hi in handlers)
+        if (
+            tok.type == tokenize.NAME and tok.string.startswith("_k_") and tok.string not in bound and not in_handler
+            and not (prev is not None and prev.string in (".", "def"))
+        ):
             undefined.setdefault(tok.string, tok.start[0])
         if tok.type not in (tokenize.NL, tokenize.COMMENT):
             prev = tok
@@ -697,6 +736,7 @@ def mode_equiv(args):
     say("python", sys.version.split()[0])
     say("cases", rep.total)
     say("skipped", rep.skipped)
+    say("skipped_dead", rep.skipped_dead)
     for kind in sorted(rep.per_kind):
         say("kind." + kind, rep.per_kind[kind])
     for k, v in sorted(rep.tally.items()):
