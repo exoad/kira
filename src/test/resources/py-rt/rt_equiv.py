@@ -225,10 +225,16 @@ def runnable(rts, case):
 
 
 def dead_skip(rts, case):
-    """True when every need a runtime lacks is a dead name (a listed function, or a listed method of a class)."""
+    """True when every need a runtime lacks is dead: a listed function, or a listed method of a listed class."""
     import rt_cases
     lacking = {n for rt in rts for n in case.needs if not has(rt, n)}
-    return all(n in rt_cases.DEAD_FUNCTIONS or ("." in n and n.rsplit(".", 1)[1] in rt_cases.DEAD_METHODS) for n in lacking)
+    return all(n in rt_cases.DEAD_FUNCTIONS or is_dead_method(n) for n in lacking)
+
+
+def is_dead_method(name):
+    import rt_cases
+    cls, _, method = name.rpartition(".")
+    return cls in rt_cases.DEAD_CLASSES and method in rt_cases.DEAD_METHODS
 
 
 class Report:

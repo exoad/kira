@@ -218,6 +218,32 @@ class PyRuntimeEquivTest {
     }
 
     @Test
+    fun `a missing _k_set is dead on a listed class only`() {
+        assumeTrue(PyTestSupport.python != null, "no Python on PATH (set KIRA_PYTHON)")
+        val code = """
+            import sys
+            sys.dont_write_bytecode = True
+            sys.path.insert(0, ${"\"" + dir.absolutePath.replace('\\', '/') + "\""})
+            import rt_equiv
+            class Rt:
+                ns = {"_k_Datagram": 1, "_k_Mutex": 1}
+            class Case:
+                def __init__(self, *needs): self.needs = needs
+            rts = [Rt(), Rt()]
+            for need in ("_k_Datagram._k_set", "_k_Mutex._k_set", "_k_mapset", "_k_hex", "_k_Datagram._k_other"):
+                print(need, rt_equiv.dead_skip(rts, Case(need)))
+        """.trimIndent()
+        val run = PyTestSupport.run(listOf(PyTestSupport.python!!, "-c", code), PyTestSupport.repoRoot)
+        assertEquals(0, run.exitCode, run.all)
+        val verdict = run.stdout.lines().filter { ' ' in it }.associate { it.substringBefore(' ') to it.substringAfter(' ') }
+        assertEquals("True", verdict["_k_Datagram._k_set"], "the method of a dead class is dead: ${run.all}")
+        assertEquals("True", verdict["_k_mapset"], run.all)
+        assertEquals("False", verdict["_k_Mutex._k_set"], "_k_set of a live class is not dead: ${run.all}")
+        assertEquals("False", verdict["_k_hex"], run.all)
+        assertEquals("False", verdict["_k_Datagram._k_other"], run.all)
+    }
+
+    @Test
     fun `every _k_ token the runtime uses is defined, comments aside`() {
         val r = harness("closure", "--rt", rt())
         assertEquals(0, r.code, r.raw)
