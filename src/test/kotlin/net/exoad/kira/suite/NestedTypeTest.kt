@@ -99,7 +99,7 @@ class NestedTypeTest {
             """
             pub Zoo: Any {
                 pub Animal: Any {
-                    pub noise: () Str;
+                    pub noise: () Str
                 }
 
                 pub Cat: Animal {

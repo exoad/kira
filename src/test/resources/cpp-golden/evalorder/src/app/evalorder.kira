@@ -371,7 +371,7 @@ twice: (n: Int32) Int32 {
 }
 
 adder: (s: Str, k: Int32) Fx<Tuple1<Int32>, Int32> {
-    n: Int32 = s.length() as Int32;
+    n: Int32 = s.length() as Int32
     (x: Int32) Int32 {
         x + n + k
     }

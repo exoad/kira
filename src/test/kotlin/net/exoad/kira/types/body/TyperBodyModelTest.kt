@@ -122,7 +122,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub tally: () Fx<Tuple0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 };
+                counter: Ref<Int32> = Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
                     counter.value
@@ -662,7 +662,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub B: Any {
-                pub id: () Str;
+                pub id: () Str
             }
             pub S: B {
                 override pub id: () Str {

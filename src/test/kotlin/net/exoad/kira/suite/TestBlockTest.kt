@@ -204,7 +204,7 @@ class TestBlockTest {
     fun onCppATestBlockIsItsTestThenItsChecksAndAHeldValueIsRefused() {
         val shapes = """
             Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
 
             Circle: Shape {

@@ -71,8 +71,8 @@ class IntrinsicSlotTest {
         val p = parse(
             """
             pub @_opaque @_extern(cpp = "ImDrawList", header = "imgui.h") DrawList: Any { }
-            pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T;
-            pub @_extern("c_cos", c = "cos") cosine: (x: Float64) Float64;
+            pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T
+            pub @_extern("c_cos", c = "cos") cosine: (x: Float64) Float64
             """
         )
         assertEquals(listOf("_opaque", "_extern"), p.marks(p.decls[0]))
@@ -94,10 +94,10 @@ class IntrinsicSlotTest {
         val bare = refused("@_extern\nf: () Int32")
         assertEquals("parse.intrinsic.line", bare.tag)
         assertTrue(bare.message.endsWith("Help: write it as '@_extern f: () Int32'."), bare.message)
-        val member = refused("pub Car: Any {\n    @_extern(cpp = \"Drive\")\n    pub mut drive: () Void;\n}")
+        val member = refused("pub Car: Any {\n    @_extern(cpp = \"Drive\")\n    pub mut drive: () Void\n}")
         assertEquals("parse.intrinsic.line", member.tag)
         assertEquals(SourcePosition(2, 5), member.location)
-        assertTrue(member.message.endsWith("Help: write it as 'pub mut @_extern(cpp = \"Drive\") drive: () Void;'."), member.message)
+        assertTrue(member.message.endsWith("Help: write it as 'pub mut @_extern(cpp = \"Drive\") drive: () Void'."), member.message)
     }
 
     @Test

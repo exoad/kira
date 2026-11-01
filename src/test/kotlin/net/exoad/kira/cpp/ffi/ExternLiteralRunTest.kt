@@ -28,52 +28,52 @@ class ExternLiteralRunTest {
 
         gc: Mutable<Bool> = true
 
-        pub @_extern(cpp = "q::w", header = "q.hxx") w: (x: Int64) Int32;
+        pub @_extern(cpp = "q::w", header = "q.hxx") w: (x: Int64) Int32
 
-        pub @_extern(cpp = "q::u", header = "q.hxx") u: (x: UInt64) Int32;
+        pub @_extern(cpp = "q::u", header = "q.hxx") u: (x: UInt64) Int32
 
-        pub @_extern(cpp = "q::b", header = "q.hxx") b: (x: Int8) Int32;
+        pub @_extern(cpp = "q::b", header = "q.hxx") b: (x: Int8) Int32
 
-        pub @_extern(cpp = "q::ub", header = "q.hxx") ub: (x: UInt8) Int32;
+        pub @_extern(cpp = "q::ub", header = "q.hxx") ub: (x: UInt8) Int32
 
-        pub @_extern(cpp = "q::h", header = "q.hxx") h: (x: Int16) Int32;
+        pub @_extern(cpp = "q::h", header = "q.hxx") h: (x: Int16) Int32
 
-        pub @_extern(cpp = "q::sz", header = "q.hxx") sz: (x: Size) Int32;
+        pub @_extern(cpp = "q::sz", header = "q.hxx") sz: (x: Size) Int32
 
-        pub @_extern(cpp = "q::f", header = "q.hxx") f: (x: Float32) Int32;
+        pub @_extern(cpp = "q::f", header = "q.hxx") f: (x: Float32) Int32
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") width64: (x: Int64) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width64: (x: Int64) Int32
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") width8: (x: Int8) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width8: (x: Int8) Int32
 
-        pub @_extern(cpp = "q::width", header = "q.hxx") width16: (x: UInt16) Int32;
+        pub @_extern(cpp = "q::width", header = "q.hxx") width16: (x: UInt16) Int32
 
-        pub @_extern(cpp = "l2::w", header = "l2.hxx") lw: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::w", header = "l2.hxx") lw: (x: Int64) Int32
 
-        pub @_extern(cpp = "l2::width", header = "l2.hxx") lwidth64: (x: Int64) Int32;
+        pub @_extern(cpp = "l2::width", header = "l2.hxx") lwidth64: (x: Int64) Int32
 
-        pub @_extern(cpp = "l2::u32", header = "l2.hxx") u32: (x: UInt32) Int32;
+        pub @_extern(cpp = "l2::u32", header = "l2.hxx") u32: (x: UInt32) Int32
 
-        pub @_extern(cpp = "l2::mwidth", header = "l2.hxx") mwidth: (m: Maybe<Int64>) Int32;
+        pub @_extern(cpp = "l2::mwidth", header = "l2.hxx") mwidth: (m: Maybe<Int64>) Int32
 
-        pub @_extern(cpp = "l3::f", header = "l3.hxx") f64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::f", header = "l3.hxx") f64: (x: Float64) Int32
 
-        pub @_extern(cpp = "l3::isF64", header = "l3.hxx") isF64: (x: Float64) Int32;
+        pub @_extern(cpp = "l3::isF64", header = "l3.hxx") isF64: (x: Float64) Int32
 
-        pub @_extern(cpp = "l3::isBool", header = "l3.hxx") isBool: (x: Bool) Int32;
+        pub @_extern(cpp = "l3::isBool", header = "l3.hxx") isBool: (x: Bool) Int32
 
-        pub @_extern(cpp = "l3::isChar", header = "l3.hxx") isChar: (x: Char) Int32;
+        pub @_extern(cpp = "l3::isChar", header = "l3.hxx") isChar: (x: Char) Int32
 
-        pub @_extern(cpp = "l3::isCStr", header = "l3.hxx") isCStr: (x: CStr) Int32;
+        pub @_extern(cpp = "l3::isCStr", header = "l3.hxx") isCStr: (x: CStr) Int32
 
-        pub @_extern(cpp = "l3::isU8", header = "l3.hxx") isU8: (x: UInt8) Int32;
+        pub @_extern(cpp = "l3::isU8", header = "l3.hxx") isU8: (x: UInt8) Int32
 
         pub @_opaque @_extern(cpp = "l3::Box", header = "l3.hxx") Box: Any {
-            pub w: (x: Int64) Int32;
-            pub width: (x: Int64) Int32;
+            pub w: (x: Int64) Int32
+            pub width: (x: Int64) Int32
         }
 
-        pub @_extern(cpp = "l3::newBox", header = "l3.hxx") newBox: () Box;
+        pub @_extern(cpp = "l3::newBox", header = "l3.hxx") newBox: () Box
 
         pub litW: () Int32 {
             w(5)

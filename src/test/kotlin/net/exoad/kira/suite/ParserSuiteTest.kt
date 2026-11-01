@@ -111,7 +111,7 @@ class ParserSuiteTest {
                 a + b
             }
 
-            stub: (x: Str) Void;
+            stub: (x: Str) Void
             """
         )
         val fns = declsOf(ast).filterIsInstance<FunctionDecl>()
@@ -632,7 +632,7 @@ class ParserSuiteTest {
                     return
                 }
                 trace(n)
-                return;
+                return
             }
             """
         val refused = assertThrows<DiagnosticsException> { parseModule(src) }

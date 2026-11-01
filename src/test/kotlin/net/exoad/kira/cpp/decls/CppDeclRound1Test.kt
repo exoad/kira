@@ -92,13 +92,13 @@ class CppDeclRound1Test {
             pub width: Int32 = 5
             pub OTHER: Int32 = 3
             LIMIT: Int32 = 7
-            pub scale: (x: Int32) Int32;
+            pub scale: (x: Int32) Int32
             pub Box: Struct {
                 pub width: Int32 = width
                 pub LIMIT: Int32 = LIMIT
                 pub other: Int32 = OTHER
-                pub grow: (by: Int32 = OTHER) Int32;
-                pub scale: (x: Int32 = width) Int32;
+                pub grow: (by: Int32 = OTHER) Int32
+                pub scale: (x: Int32 = width) Int32
             }
             pub Plain: Struct {
                 pub w: Int32 = width
@@ -210,7 +210,7 @@ class CppDeclRound1Test {
             "test:other",
             """
             pub LIMIT: Int32 = 2
-            pub Pt: () Int32;
+            pub Pt: () Int32
             hidden: Int32 = 5
             """,
         )
@@ -249,15 +249,15 @@ class CppDeclRound1Test {
     fun aPrivateFunctionWithoutABodyIsAnError() {
         val (emitted, _) = emit(
             """
-            helper: (x: Int32, y: Int32) Int32;
-            pub defined: (x: Int32) Int32;
+            helper: (x: Int32, y: Int32) Int32
+            pub defined: (x: Int32) Int32
             Inner: Struct {
                 pub v: Int32 = 1
-                pub twice: () Int32;
+                pub twice: () Int32
             }
             pub Outer: Struct {
                 pub v: Int32 = 1
-                pub twice: () Int32;
+                pub twice: () Int32
             }
             """,
         )
@@ -267,7 +267,7 @@ class CppDeclRound1Test {
         assertTrue(refused[1].message.contains("method 'twice'") && refused[1].position != null, refused[1].render())
         assertTrue(emitted.diagnostics.none { it.isError && it.code != CppDeclEmitter.NO_BODY_CODE }, render(emitted.diagnostics))
 
-        val headerOnly = emit("helper: (x: Int32) Int32;\npub X: Int32 = 1", uri = "lib:h", options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:h"))).first
+        val headerOnly = emit("helper: (x: Int32) Int32\npub X: Int32 = 1", uri = "lib:h", options = CppOptions(lineDirectives = false, headerOnly = listOf("lib:h"))).first
         assertEquals(1, headerOnly.diagnostics.count { it.code == CppDeclEmitter.NO_BODY_CODE }, render(headerOnly.diagnostics))
     }
 
@@ -291,7 +291,7 @@ class CppDeclRound1Test {
             pub Holder: Struct {
                 pub failure: Maybe<Exception> = null
             }
-            pub describe: (e: Exception) Str;
+            pub describe: (e: Exception) Str
             """,
         )
         val refused = emitted.diagnostics.filter { it.code == CppModuleEmitterFactory.UNSUPPORTED_CODE }

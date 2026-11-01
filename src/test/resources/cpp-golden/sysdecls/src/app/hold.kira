@@ -18,5 +18,5 @@ pub inbox: Mutable<BlockingQueue<Str>> = BlockingQueue<Str> {}
 pub OUTBOX: BlockingQueue<Int32> = BlockingQueue<Int32> {}
 backlog: Mutable<BlockingQueue<Int32>> = BlockingQueue<Int32> {}
 
-pub wait: (t: Thread, m: Mutex<Int32>) Void;
-pub go: () Void;
+pub wait: (t: Thread, m: Mutex<Int32>) Void
+pub go: () Void

@@ -192,7 +192,7 @@ class CppDeclEmitterTest {
 
         val extern = errorsOf(
             """
-            pub @_extern(cpp = "digitalWrite", header = "Arduino.h") digitalWrite: (pin: UInt8, level: UInt8) Void;
+            pub @_extern(cpp = "digitalWrite", header = "Arduino.h") digitalWrite: (pin: UInt8, level: UInt8) Void
 
             pub @_iram onEdge: () Void {
                 digitalWrite(2, 1)
@@ -422,14 +422,14 @@ class CppDeclEmitterTest {
 
     @Test
     fun aKeywordNameGetsATrailingUnderscore() {
-        val h = header("pub Box: Struct { pub new: Int32 = 0 pub delete: () Void; }\npub register: (template: Int32) Void;")
+        val h = header("pub Box: Struct { pub new: Int32 = 0 pub delete: () Void }\npub register: (template: Int32) Void")
         assertContains(h, "      std::int32_t new_ = 0;\n\n      void delete_() const;", "void register_(std::int32_t template_);")
     }
 
     @Test
     fun aPubNameOnTheMacroListIsWarned() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub ERROR: Int32 = 1\npub IN: Int32 = 0\nOUT: () Void { }\npub max: (a: Int32, b: Int32) Int32;"),
+            DeclTestSupport.module("test:main", "pub ERROR: Int32 = 1\npub IN: Int32 = 0\nOUT: () Void { }\npub max: (a: Int32, b: Int32) Int32"),
             uri = "test:main",
         )
         val warnings = emitted.diagnostics.filter { it.code == CppDeclEmitter.MACRO_NAME_CODE }
@@ -450,9 +450,9 @@ class CppDeclEmitterTest {
                 "test:main",
                 """
                 pub Node: Any { pub v: Int32 = 0 }
-                pub Shape: Any { pub area: () Int32; }
+                pub Shape: Any { pub area: () Int32 }
                 pub f: () Void { }
-                pub @_extern(cpp = "bibo::openCar", header = "car.hxx") openCar: () Int32;
+                pub @_extern(cpp = "bibo::openCar", header = "car.hxx") openCar: () Int32
                 """,
             ),
             uri = "test:main",

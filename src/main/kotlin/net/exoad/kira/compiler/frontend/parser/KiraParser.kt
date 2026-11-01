@@ -432,21 +432,9 @@ class KiraParser(
         }
     }
 
-    /**
-     * A `-`, `+`, `(` or `[` at the pointer that would go on with the line before as [what]: refused
-     * when it opens a line at or left of its statement's start, where it reads as a statement of its own.
-     */
-    private fun refuseLineThatGoesOn(what: String) {
-        if (!startsOnNewLine() || peek().canonicalLocation.column > statementColumn) return
-        Diagnostics.panic(
-            "parse.line.continues",
-            "This line opens with `${peek().content}` where its statement starts, yet it goes on with the line before as $what. " +
-                "End that line with `;` if this one stands alone; indent this one if it goes on.",
-            location = here(),
-            selectorLength = 1,
-            context = context
-        )
-    }
+    /** Whether the token at the pointer opens a line at or left of its statement's start: the statement ends before it. */
+    private fun endsStatementHere(): Boolean =
+        startsOnNewLine() && peek().canonicalLocation.column <= statementColumn
 
     private fun parseStatementHere(modifier: Map<Modifier, SourcePosition>?): Statement {
         if (modifier != null && modifier.isNotEmpty()) {
@@ -1400,8 +1388,8 @@ class KiraParser(
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
             }
-            if (binOpTokens.size == 1 && (binOpTokens[0] == Token.Type.OP_SUB || binOpTokens[0] == Token.Type.OP_ADD)) {
-                refuseLineThatGoesOn(if (binOpTokens[0] == Token.Type.OP_SUB) "a subtraction" else "an addition")
+            if (endsStatementHere()) {
+                break
             }
             val opAt = here()
             repeat(binOpTokens.size) {
@@ -1661,10 +1649,10 @@ class KiraParser(
     private fun parsePostfix(baseExpr: Expr): Expr {
         var expr = baseExpr
         while (true) {
+            if (endsStatementHere()) break
             when {
                 at(Token.Type.S_OPEN_BRACKET) -> {
                     // array index
-                    refuseLineThatGoesOn("an index")
                     expectThenAdvance(Token.Type.S_OPEN_BRACKET)
                     val idx = withNoObjectInit(false) { parseExpr() }
                     expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
@@ -1703,7 +1691,6 @@ class KiraParser(
                 // A call's '(' is on the line of what it calls: one that starts a line starts a lambda.
                 at(Token.Type.S_OPEN_PARENTHESIS) && !(startsOnNewLine() && startsLambda()) -> {
                     // function call on arbitrary expression (e.g., p.dist())
-                    refuseLineThatGoesOn("a call")
                     val params = parseFunctionCallParameter()
                     expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
                 }

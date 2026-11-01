@@ -346,21 +346,8 @@ class LexerSuiteTest {
     // --- separators ------------------------------------------------------
 
     @Test
-    fun semicolonsProduceSeparatorTokens() {
-        assertLexes(
-            "a: Int32 = 1; b: Int32 = 2",
-            Token.Type.IDENTIFIER to "a",
-            Token.Type.S_COLON to ":",
-            Token.Type.IDENTIFIER to "Int32",
-            Token.Type.S_EQUAL to "=",
-            Token.Type.L_INTEGER to "1",
-            Token.Type.S_SEMICOLON to ";",
-            Token.Type.IDENTIFIER to "b",
-            Token.Type.S_COLON to ":",
-            Token.Type.IDENTIFIER to "Int32",
-            Token.Type.S_EQUAL to "=",
-            Token.Type.L_INTEGER to "2",
-        )
+    fun semicolonIsRefusedAsARemovedForm() {
+        assertEquals("parse.removed", assertThrows<DiagnosticsException> { lex("a: Int32 = 1; b: Int32 = 2") }.tag)
     }
 
     @Test

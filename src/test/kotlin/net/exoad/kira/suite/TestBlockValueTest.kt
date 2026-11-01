@@ -29,7 +29,7 @@ class TestBlockValueTest {
     // Classes for the typer and C++ (py has no traits yet).
     private val shapes = """
         Shape: Any {
-            pub area: () Int32;
+            pub area: () Int32
         }
 
         Circle: Shape {

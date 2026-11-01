@@ -252,7 +252,7 @@ class OperatorOverloadTest {
             pub V2: Any {
                 pub x: Float32 = 0.0
             }
-            pub @_op_add_: (a: V2, b: V2) V2;
+            pub @_op_add_: (a: V2, b: V2) V2
         """
         val result = TestCompileSupport.compileSnippet(
             source = wrap(badStubModule),

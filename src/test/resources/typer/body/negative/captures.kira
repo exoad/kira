@@ -6,7 +6,7 @@
 // result, and a static assert on one has no C++ spelling at all.
 
 pub Shape: Any {
-    pub area: () Float64;
+    pub area: () Float64
 }
 
 pub Pt: Struct {

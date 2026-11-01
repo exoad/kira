@@ -88,7 +88,7 @@ class EscapePassTest {
                 }
             }
             pub Cb: Any {
-                pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32;
+                pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32
             }
             pub Impl: Cb {
                 override pub run: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
@@ -165,7 +165,7 @@ class EscapePassTest {
     fun anFxHandedToAnExternOrAnFxValueEscapes() {
         val p = snippet(
             """
-            pub @_extern(cpp = "ext::later", header = "ext.hxx") later: (f: Fx<Tuple0, Void>) Void;
+            pub @_extern(cpp = "ext::later", header = "ext.hxx") later: (f: Fx<Tuple0, Void>) Void
             pub viaExtern: (e: Fx<Tuple0, Void>) Void {
                 later(e)
             }
@@ -204,7 +204,7 @@ class EscapePassTest {
                 }
             }
             pub Named: Any {
-                pub name: () Str;
+                pub name: () Str
                 pub me: () Named {
                     this
                 }

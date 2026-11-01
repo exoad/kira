@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class GenericBoundsPassTest {
     private val decls = """
         pub Shape: Any {
-            pub area: () Int32;
+            pub area: () Int32
         }
         pub Sq: Struct, Shape {
             pub s: Int32 = 1

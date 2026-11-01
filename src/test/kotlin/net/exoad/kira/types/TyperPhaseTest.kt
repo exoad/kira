@@ -256,9 +256,9 @@ class TyperPhaseTest {
     fun magicOpaqueAndExternMarkers() {
         val p = snippet(
             """
-            pub @_magic clock: () Int64;
+            pub @_magic clock: () Int64
             pub @_opaque Window: Any
-            pub @_extern cSin: (x: Float64) Float64;
+            pub @_extern cSin: (x: Float64) Float64
             """
         )
         expectNoErrors(p)
@@ -274,7 +274,7 @@ class TyperPhaseTest {
         val p = snippet(
             """
             pub @_extern Car: Mutable<Any> {
-                pub @_mutates arm: () Bool;
+                pub @_mutates arm: () Bool
             }
             pub Plain: Any {
                 pub run: () Void { }
@@ -310,9 +310,9 @@ class TyperPhaseTest {
         val p = snippet(
             """
             pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
-                pub ok: () Bool;
+                pub ok: () Bool
             }
-            pub @_extern("c_cos") cosine: (x: Float64) Float64;
+            pub @_extern("c_cos") cosine: (x: Float64) Float64
             """
         )
         assertEquals(Foreign.Extern(mapOf("cpp" to "bibo::Car", "header" to "car.hxx")), (p.member("test:main", "Car") as ClassSymbol).foreign)
@@ -432,7 +432,7 @@ class TyperPhaseTest {
 
         val declared = TyperTestSupport.phasesAAndB {
             TyperTestSupport.type(
-                module("kira:aaa", "pub @_magic View<T>: Any {\n    pub size: () Size;\n}"),
+                module("kira:aaa", "pub @_magic View<T>: Any {\n    pub size: () Size\n}"),
                 module("test:main", "v: View<UInt8> = 1"),
             )
         }

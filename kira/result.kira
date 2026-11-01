@@ -7,21 +7,21 @@
 pub @_magic Maybe<T>: Any {
     pub value: T
 
-    pub isSome: () Bool;
-    pub isNone: () Bool;
-    pub isNull: () Bool;
-    pub unwrap: () T;
-    pub unwrapOr: (defaultValue: T) T;
+    pub isSome: () Bool
+    pub isNone: () Bool
+    pub isNull: () Bool
+    pub unwrap: () T
+    pub unwrapOr: (defaultValue: T) T
 }
 
 pub @_magic Result<T, E>: Any {
     pub value: T
     pub error: E
 
-    pub isOk: () Bool;
-    pub isErr: () Bool;
-    pub unwrap: () T;
-    pub unwrapErr: () E;
+    pub isOk: () Bool
+    pub isErr: () Bool
+    pub unwrap: () T
+    pub unwrapErr: () E
 }
 
 pub @_magic Exception: Any {
@@ -37,7 +37,7 @@ pub @_magic Ref<T>: Mutable<Any> {
 // A non-owning reference to a class instance. `upgrade` yields the live
 // object, or none once every owning reference is gone.
 pub @_magic Weak<T>: Any {
-    pub upgrade: () Maybe<T>;
+    pub upgrade: () Maybe<T>
 }
 
 // An unchecked pointer for FFI seams: no lifetime, no bounds, no nullability.

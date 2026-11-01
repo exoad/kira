@@ -11,26 +11,26 @@
 // arguments, so `sin(x)` with `x: Float32` is Float32 math, as bibo's C++ is.
 // This is the only type-argument inference Kira has, and only the stdlib uses it.
 
-pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T;
-pub @_magic @_infer pow<T: FloatNum>: (base: T, exponent: T) T;
-pub @_magic @_infer floor<T: FloatNum>: (value: T) T;
-pub @_magic @_infer ceil<T: FloatNum>: (value: T) T;
-pub @_magic @_infer round<T: FloatNum>: (value: T) T;
-pub @_magic @_infer sin<T: FloatNum>: (value: T) T;
-pub @_magic @_infer cos<T: FloatNum>: (value: T) T;
-pub @_magic @_infer tan<T: FloatNum>: (value: T) T;
-pub @_magic @_infer abs<T: FloatNum>: (value: T) T;
-pub @_magic @_infer min<T: FloatNum>: (a: T, b: T) T;
-pub @_magic @_infer max<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer sqrt<T: FloatNum>: (value: T) T
+pub @_magic @_infer pow<T: FloatNum>: (base: T, exponent: T) T
+pub @_magic @_infer floor<T: FloatNum>: (value: T) T
+pub @_magic @_infer ceil<T: FloatNum>: (value: T) T
+pub @_magic @_infer round<T: FloatNum>: (value: T) T
+pub @_magic @_infer sin<T: FloatNum>: (value: T) T
+pub @_magic @_infer cos<T: FloatNum>: (value: T) T
+pub @_magic @_infer tan<T: FloatNum>: (value: T) T
+pub @_magic @_infer abs<T: FloatNum>: (value: T) T
+pub @_magic @_infer min<T: FloatNum>: (a: T, b: T) T
+pub @_magic @_infer max<T: FloatNum>: (a: T, b: T) T
 // C's fmod (D60): a - b * trunc(a / b) exactly, with a's sign; NaN where b is 0 or a infinite.
-pub @_magic @_infer fmod<T: FloatNum>: (a: T, b: T) T;
-// C's hypot, atan2 and exp, and Python's math on py, whose exp past the largest double is inf too where math raises;
+pub @_magic @_infer fmod<T: FloatNum>: (a: T, b: T) T
+// C's hypot, atan2 and exp, and Python's math on py, whose exp past the largest double is inf too where math raises
 // the targets may differ in the last bit (CPython's hypot is its own algorithm, and each libm rounds exp and atan2).
-pub @_magic @_infer hypot<T: FloatNum>: (x: T, y: T) T;
-pub @_magic @_infer atan2<T: FloatNum>: (y: T, x: T) T;
-pub @_magic @_infer exp<T: FloatNum>: (value: T) T;
+pub @_magic @_infer hypot<T: FloatNum>: (x: T, y: T) T
+pub @_magic @_infer atan2<T: FloatNum>: (y: T, x: T) T
+pub @_magic @_infer exp<T: FloatNum>: (value: T) T
 // Python's a % b (CPython's float_rem): fmod, plus b where their signs differ, a zero signed as b; NaN for b 0.
-pub @_magic @_infer floorMod<T: FloatNum>: (a: T, b: T) T;
+pub @_magic @_infer floorMod<T: FloatNum>: (a: T, b: T) T
 
 pub clamp: (value: Float64, lo: Float64, hi: Float64) Float64 {
     max(lo, min(value, hi))

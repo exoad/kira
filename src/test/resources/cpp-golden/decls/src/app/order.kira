@@ -30,7 +30,7 @@ pub Pt: Struct {
     pub y: Int32 = 0
 
     // A parameter named like a field would shadow it in C++.
-    pub withX: (x: Int32) Pt;
+    pub withX: (x: Int32) Pt
 }
 
 // Private declarations the public ones name go in the header's namespace impl_.
@@ -52,7 +52,7 @@ pub S: Struct {
 }
 
 // A parameter named like a module declaration would shadow it in C++.
-pub scaleBy: (LIMIT: Int32) Int32;
+pub scaleBy: (LIMIT: Int32) Int32
 
 // A field or method named like a module declaration hides it inside the struct
 // in C++ (class scope is searched first), so a default that names the declaration
@@ -63,7 +63,7 @@ pub Sized: Struct {
     pub LIMIT: Int32 = LIMIT
     pub Inner: Inner = Inner {}
     pub std: Int32 = 2
-    pub grow: (by: Int32 = width) Int32;
+    pub grow: (by: Int32 = width) Int32
 }
 
 // A Maybe default of null is kira::none.
@@ -71,10 +71,10 @@ pub Cfg: Struct {
     pub limit: Maybe<Int32> = null
 }
 pub last: Mutable<Maybe<Int32>> = null
-pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
+pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>
 
 // Unsafe<T> is const T*.
-pub peek: (p: Unsafe<Int32>) Int32;
+pub peek: (p: Unsafe<Int32>) Int32
 
 // A literal under a Maybe carries the narrow type it converts to: std::optional's
 // converting constructor is a template, and int to unsigned char inside it is
@@ -86,7 +86,7 @@ pub Narrow: Struct {
     pub a: Maybe<UInt8> = 7
     pub b: UInt8 = 7
 }
-pub narrow: (x: Maybe<Int16> = 3) Int32;
+pub narrow: (x: Maybe<Int16> = 3) Int32
 
 // Containers of a struct declared later. A List element needs only the forward
 // declaration, and its empty default is value-initialized in place (libc++

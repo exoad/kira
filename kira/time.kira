@@ -6,15 +6,15 @@
 
 // Nanoseconds and milliseconds on the steady clock, from an unspecified
 // origin: only differences mean anything.
-pub @_magic monoNowNs: () Int64;
-pub @_magic monoNowMs: () Int64;
+pub @_magic monoNowNs: () Int64
+pub @_magic monoNowMs: () Int64
 
 // Nanoseconds since the Unix epoch on the system clock.
-pub @_magic wallNowNs: () Int64;
+pub @_magic wallNowNs: () Int64
 
 // Blocks the calling thread for at least `ms` milliseconds; a value of zero
 // or less returns at once.
-pub @_magic sleepMs: (ms: Int64) Void;
+pub @_magic sleepMs: (ms: Int64) Void
 
 // unixNs as UTC "YYYY-MM-DDTHH:MM:SS.mmmZ", the milliseconds floored, before 1970 too.
-pub @_magic utcStamp: (unixNs: Int64) Str;
+pub @_magic utcStamp: (unixNs: Int64) Str

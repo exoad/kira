@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 class NarrowedValueTest {
     private val types = """
         Shape: Any {
-            pub area: () Int32;
+            pub area: () Int32
         }
 
         Circle: Shape {

@@ -779,11 +779,12 @@ class KiraLexer(
                     startLoc
                 )
 
-                Symbols.STATEMENT_DELIMITER.rep -> Token.Symbol(
-                    Token.Type.S_SEMICOLON,
-                    Symbols.STATEMENT_DELIMITER,
-                    start,
-                    startLoc
+                Symbols.STATEMENT_DELIMITER.rep -> Diagnostics.panic(
+                    "parse.removed",
+                    "';' is gone: a statement ends at its newline. Remove the ';'.",
+                    location = startLoc,
+                    selectorLength = 1,
+                    context = context
                 )
 
                 Symbols.EQUALS.rep ->

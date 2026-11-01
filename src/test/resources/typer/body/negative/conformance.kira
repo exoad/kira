@@ -1,7 +1,7 @@
 // Conformance tests that ask nothing (stage 3): never true by the types, or not a question at all.
 
 pub Shape: Any {
-    pub area: () Int32;
+    pub area: () Int32
 }
 
 pub Circle: Shape {

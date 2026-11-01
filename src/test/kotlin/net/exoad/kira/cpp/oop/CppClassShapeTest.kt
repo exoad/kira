@@ -57,10 +57,10 @@ class CppClassShapeTest {
         val plain = header(
             """
             pub A: Any {
-                pub a: () Int32;
+                pub a: () Int32
             }
             pub B: A {
-                pub b: () Int32;
+                pub b: () Int32
             }
             """
         )
@@ -70,13 +70,13 @@ class CppClassShapeTest {
         val diamond = header(
             """
             pub A: Any {
-                pub a: () Int32;
+                pub a: () Int32
             }
             pub B: A {
-                pub b: () Int32;
+                pub b: () Int32
             }
             pub C: A {
-                pub c: () Int32;
+                pub c: () Int32
             }
             pub D: B, C {
                 override pub a: () Int32 {
@@ -99,10 +99,10 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Named: Any {
-                pub id: (n: Int32) Str;
+                pub id: (n: Int32) Str
             }
             pub Tagged: Named {
-                pub tag: () Str;
+                pub tag: () Str
             }
             pub Animal: Named {
                 override pub id: (n: Int32) Str {
@@ -127,7 +127,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub A: Any {
-                pub m: () Int32;
+                pub m: () Int32
             }
             pub B: A {
                 override pub m: () Int32 {
@@ -151,7 +151,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub A: Any {
-                pub name: () Str;
+                pub name: () Str
             }
             pub B: A {
                 override pub name: () Str {
@@ -169,7 +169,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Visitor: Any {
-                pub each: (f: Fx<Tuple1<Int32>, Void>) Void;
+                pub each: (f: Fx<Tuple1<Int32>, Void>) Void
             }
             """
         )
@@ -419,7 +419,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             Square: Shape {
                 side: Int32
@@ -511,7 +511,7 @@ class CppClassShapeTest {
         val s = both(
             """
             pub Sized: Any {
-                pub size: () Int32;
+                pub size: () Int32
             }
             pub sizeOf<T: Sized>: (v: T) Int32 {
                 v.size()
@@ -528,7 +528,7 @@ class CppClassShapeTest {
         val src = emit(
             """
             pub Sized: Any {
-                pub size: () Int32;
+                pub size: () Int32
             }
             pub sizeOf<T: Sized>: (v: T) Int32 {
                 v.size()
@@ -1077,7 +1077,7 @@ class CppClassShapeTest {
             }
 
             pub Greeter: Any {
-                pub id: () Str;
+                pub id: () Str
                 pub greet: () Str {
                     id()
                 }
@@ -1189,7 +1189,7 @@ class CppClassShapeTest {
             """
             pub Handler: Any {
                 pub tag: Int32 = 0
-                pub process: (data: Str) Void;
+                pub process: (data: Str) Void
             }
             """
         )
@@ -1199,7 +1199,7 @@ class CppClassShapeTest {
         val (h, _) = both(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             pub Square: Shape {
                 override pub area: () Int32 { 4 }
@@ -1217,7 +1217,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             pub Blob: Shape {
                 pub other: () Int32 { 1 }
@@ -1238,7 +1238,7 @@ class CppClassShapeTest {
                 pub id: () Str { "a" }
             }
             pub Named: Any {
-                pub id: () Str;
+                pub id: () Str
             }
             pub B: A, Named {
                 pub other: () Int32 { 1 }
@@ -1256,7 +1256,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Mapper: Any {
-                pub map<U>: (u: U) U;
+                pub map<U>: (u: U) U
             }
             """
         )
@@ -1269,7 +1269,7 @@ class CppClassShapeTest {
         val e = emit(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             pub Sq: Struct, Shape {
                 pub side: Int32 = 2
@@ -1317,10 +1317,10 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub A: Mutable<Any> {
-                pub id: () Int32;
+                pub id: () Int32
             }
             pub B: Mutable<Any> {
-                pub id: () Int32;
+                pub id: () Int32
             }
             pub C: Mutable<A>, B {
                 n: Mutable<Int32> = 0
@@ -1348,7 +1348,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Tagged: Mutable<Any> {
-                pub tag: () Int32;
+                pub tag: () Int32
             }
             pub Animal: Mutable<Any> {
                 pub n: Mutable<Int32> = 0
@@ -1386,7 +1386,7 @@ class CppClassShapeTest {
             }
             pub T: P {
                 override pub a: () Int32 { 10 }
-                override pub b: () Int32;
+                override pub b: () Int32
             }
             pub S: Struct, T {
                 pub x: Int32 = 0
@@ -1404,7 +1404,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
                 pub twice: () Int32 { area() }
             }
             pub Box<T>: Struct, Shape {
@@ -1426,7 +1426,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Source<T>: Any {
-                pub get: () T;
+                pub get: () T
                 pub again: () T { get() }
             }
             pub Five: Struct, Source<Int32> {
@@ -1445,7 +1445,7 @@ class CppClassShapeTest {
                 uri,
                 """
                 pub Shape: Any {
-                    pub area: () Int32;
+                    pub area: () Int32
                     pub twice: () Int32 { area() }
                 }
                 pub Square: Struct, Shape {
@@ -1495,7 +1495,7 @@ class CppClassShapeTest {
 
     private val siblings = """
         pub Abs: Any {
-            pub f: () Int32;
+            pub f: () Int32
         }
         pub Def: Any {
             pub f: () Int32 {
@@ -1575,7 +1575,7 @@ class CppClassShapeTest {
                 pub m: () Int32 { 1 }
             }
             pub B: A {
-                override pub m: () Int32;
+                override pub m: () Int32
             }
             pub C: B {
             }
@@ -1609,7 +1609,7 @@ class CppClassShapeTest {
             }
 
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
                 pub scaled: () Int32 {
                     helper(area())
                 }
@@ -1674,7 +1674,7 @@ class CppClassShapeTest {
             }
 
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
                 pub bumped: () Int32 {
                     pubHelper(area())
                 }
@@ -1707,7 +1707,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Named: Any {
-                pub name: () Str;
+                pub name: () Str
                 pub greet: () Str {
                     hello(this)
                 }
@@ -1735,7 +1735,7 @@ class CppClassShapeTest {
             "test:shapes",
             """
             pub Named: Any {
-                pub name: () Str;
+                pub name: () Str
                 pub greet: () Str {
                     hello(this)
                 }
@@ -1776,8 +1776,8 @@ class CppClassShapeTest {
             """
             pub Int32 as Count
             pub Source<T>: Any {
-                pub take: (v: T, w: T) T;
-                pub name: (s: Str) Str;
+                pub take: (v: T, w: T) T
+                pub name: (s: Str) Str
             }
             pub Five: Source<Count> {
                 override pub take: (v: Count, w: Count) Count {
@@ -1809,7 +1809,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Source<T>: Any {
-                pub take: (v: T) T;
+                pub take: (v: T) T
             }
             pub Mid: Source<Int32> {
                 override pub take: (v: Int32) Int32 {
@@ -1864,7 +1864,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Each<T>: Any {
-                pub each: (f: Fx<Tuple1<T>, Int32>) Int32;
+                pub each: (f: Fx<Tuple1<T>, Int32>) Int32
             }
             pub Nums: Each<Int32> {
                 override pub each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
@@ -1872,7 +1872,7 @@ class CppClassShapeTest {
                 }
             }
             pub Maker<T>: Any {
-                pub make: () Fx<Tuple1<T>, Int32>;
+                pub make: () Fx<Tuple1<T>, Int32>
             }
             pub IntMaker: Maker<Int32> {
                 override pub make: () Fx<Tuple1<Int32>, Int32> {
@@ -1904,13 +1904,13 @@ class CppClassShapeTest {
         // Abs.take written at Int32 (std::int32_t) it is not.
         val program = """
             pub Source<T>: Any {
-                pub take: (v: T) Int32;
+                pub take: (v: T) Int32
             }
             pub Gen<T>: Any {
-                pub take: (v: T) Int32;
+                pub take: (v: T) Int32
             }
             pub Abs: Any {
-                pub take: (v: Int32) Int32;
+                pub take: (v: Int32) Int32
             }
             pub Mid: Source<Int32> {
                 override pub take: (v: Int32) Int32 {
@@ -1949,7 +1949,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
                 pub scaled: (side: Int32) Int32 {
                     side
                 }
@@ -2011,8 +2011,8 @@ class CppClassShapeTest {
                 pub x: Int32 = 1
             }
             pub Sink<T>: Any {
-                pub put: (v: T) Int32;
-                pub maybe: (v: Maybe<T>) Int32;
+                pub put: (v: T) Int32
+                pub maybe: (v: Maybe<T>) Int32
             }
             pub StrSink: Sink<Str> {
                 override pub put: (v: Str) Int32 {
@@ -2039,7 +2039,7 @@ class CppClassShapeTest {
                 }
             }
             pub Plain: Any {
-                pub id: (v: Int32) Int32;
+                pub id: (v: Int32) Int32
             }
             pub Id: Plain {
                 override pub id: (v: Int32) Int32 {
@@ -2064,7 +2064,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Abs: Any {
-                pub id: (v: Int32) Int32;
+                pub id: (v: Int32) Int32
             }
             pub Def<T>: Any {
                 pub id: (v: T) T {
@@ -2092,7 +2092,7 @@ class CppClassShapeTest {
         val a = unsupported(
             """
             pub Abs: Any {
-                pub id: (v: Int32) Int32;
+                pub id: (v: Int32) Int32
             }
             pub Def<T>: Any {
                 pub id: (v: T) T {
@@ -2110,7 +2110,7 @@ class CppClassShapeTest {
         val b = unsupported(
             """
             pub Abs<T>: Any {
-                pub id: (v: T) T;
+                pub id: (v: T) T
             }
             pub Def: Any {
                 pub id: (v: Int32) Int32 {
@@ -2139,7 +2139,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Abs: Any {
-                pub id: (v: Int32) Int32;
+                pub id: (v: Int32) Int32
             }
             pub Def<T>: Any {
                 pub id: (v: T) T {
@@ -2165,10 +2165,10 @@ class CppClassShapeTest {
         // re-abstracted, and Def's body is the one the struct takes and the class forwards to.
         val program = """
             pub Abs0: Any {
-                pub f: () Int32;
+                pub f: () Int32
             }
             pub Abs: Abs0 {
-                override pub f: () Int32;
+                override pub f: () Int32
             }
             pub Def: Any {
                 pub f: () Int32 {
@@ -2206,9 +2206,9 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub @_opaque Handle: Any
-            pub useIt: (h: Handle) Int32;
+            pub useIt: (h: Handle) Int32
             pub Sink<T>: Any {
-                pub put: (v: T) Int32;
+                pub put: (v: T) Int32
             }
             pub HSink: Sink<Handle> {
                 override pub put: (v: Handle) Int32 {
@@ -2236,7 +2236,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub Src<T>: Any {
-                pub take: (t0: T, ex: T) Int32;
+                pub take: (t0: T, ex: T) Int32
             }
             pub C: Src<Int32> {
                 override pub take: (t0: Int32, ex: Int32) Int32 {
@@ -2260,7 +2260,7 @@ class CppClassShapeTest {
         // measured). 14 levels now emit in well under a second; the ceiling is generous.
         val levels = 14
         val program = buildString {
-            append("pub Source<T>: Any {\n    pub f: (a: T, b: T, c: T) T;\n}\n")
+            append("pub Source<T>: Any {\n    pub f: (a: T, b: T, c: T) T\n}\n")
             for (i in 1..levels) {
                 val parent = if (i == 1) "Source<Int32>" else "L${i - 1}"
                 append("pub L$i: $parent {\n    override pub f: (a: Int32, b: Int32, c: Int32) Int32 {\n        a\n    }\n}\n")
@@ -2286,7 +2286,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub @_opaque Handle: Any
-            pub open: () Handle;
+            pub open: () Handle
             pub Holder: Any {
                 pub g: Handle
                 pub h: Handle

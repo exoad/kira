@@ -3,7 +3,7 @@
 // equality (R16).
 
 pub Speaker: Any {
-    pub speak: () Str;
+    pub speak: () Str
     pub loud: () Str {
         speak() + "!"               // @type Str call=TRAIT(Speaker.speak) @ speak()
     }

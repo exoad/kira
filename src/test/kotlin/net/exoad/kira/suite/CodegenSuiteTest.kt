@@ -453,7 +453,7 @@ class CodegenSuiteTest {
             """
             @_opaque FileHandle: Any { }
 
-            @_extern("fopen") openFile: (path: Str) FileHandle;
+            @_extern("fopen") openFile: (path: Str) FileHandle
 
             main: () Int32 {
                 h: FileHandle = openFile("x")

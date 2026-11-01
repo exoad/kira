@@ -24,50 +24,50 @@ pub @_magic Null: Any
 pub @_magic @_global null: Null = Null { }
 
 pub Equatable<T>: Any {
-    pub equals: (other: T) Bool;
+    pub equals: (other: T) Bool
 }
 
 pub Hashable: Any {
-    pub hashCode: () Int64;
+    pub hashCode: () Int64
 }
 
 // Every length and index is a `Size` (D2). `at` reads one code unit as a
 // `Char` (D3); `charAt` keeps the older one-character `Str` form.
 // `<`, `<=`, `>`, `>=` order by code point (D56): UTF-8's byte order on C++.
 pub @_magic Str: Equatable<Str>, Hashable {
-    pub length: () Size;
-    pub size: () Size;
-    pub isEmpty: () Bool;
-    pub substring: (start: Size, end: Size) Str;
-    pub charAt: (index: Size) Str;
-    pub at: (index: Size) Char;
-    pub contains: (value: Str) Bool;
-    pub startsWith: (prefix: Str) Bool;
-    pub endsWith: (suffix: Str) Bool;
-    pub find: (value: Str) Maybe<Size>;
-    pub split: (delimiter: Str) List<Str>;
+    pub length: () Size
+    pub size: () Size
+    pub isEmpty: () Bool
+    pub substring: (start: Size, end: Size) Str
+    pub charAt: (index: Size) Str
+    pub at: (index: Size) Char
+    pub contains: (value: Str) Bool
+    pub startsWith: (prefix: Str) Bool
+    pub endsWith: (suffix: Str) Bool
+    pub find: (value: Str) Maybe<Size>
+    pub split: (delimiter: Str) List<Str>
     // Whitespace is C's six, tab, LF, VT, FF, CR and space, for every trim, splitWhitespace and Char (D62).
-    pub trim: () Str;
-    pub toLower: () Str;
-    pub toUpper: () Str;
-    pub toInt64: () Maybe<Int64>;
-    pub toFloat64: () Maybe<Float64>;
-    pub padStart: (width: Size, fill: Char) Str;
-    pub padEnd: (width: Size, fill: Char) Str;
-    pub trimStart: () Str;
-    pub trimEnd: () Str;
+    pub trim: () Str
+    pub toLower: () Str
+    pub toUpper: () Str
+    pub toInt64: () Maybe<Int64>
+    pub toFloat64: () Maybe<Float64>
+    pub padStart: (width: Size, fill: Char) Str
+    pub padEnd: (width: Size, fill: Char) Str
+    pub trimStart: () Str
+    pub trimEnd: () Str
     // Split on runs of whitespace; no empty pieces (D57).
-    pub splitWhitespace: () List<Str>;
+    pub splitWhitespace: () List<Str>
     // Every occurrence, left to right; an empty oldValue goes between code points and at both ends (D57).
-    pub replace: (oldValue: Str, newValue: Str) Str;
+    pub replace: (oldValue: Str, newValue: Str) Str
     // Kotlin's toLongOrNull(radix) over ASCII digits and letters; a radix outside 2..36 panics (D57).
-    pub toInt64Radix: (radix: Int32) Maybe<Int64>;
-    pub view: () View<Char>;
+    pub toInt64Radix: (radix: Int32) Maybe<Int64>
+    pub view: () View<Char>
     // The text's UTF-8, a new List of its bytes (D54): for text that is valid
     // UTF-8, `s.bytes()` is the same on every target, where `length()` counts what
     // the target's Str holds. A Char above 127 put into text is a raw byte on the
     // C++ target and a Latin-1 code point (two UTF-8 bytes) on py: only ASCII agrees.
-    pub bytes: () List<UInt8>;
+    pub bytes: () List<UInt8>
     // `Str.of(bytes: View<UInt8>) Str` (D55), its inverse, is called on the type:
     // the typer makes it, as it does Result.success, so it has no line here. Each
     // ill-formed part of the UTF-8 reads as one U+FFFD, as bytes.decode("utf-8",
@@ -75,18 +75,18 @@ pub @_magic Str: Equatable<Str>, Hashable {
 }
 
 pub @_magic Num: Equatable<Num>, Hashable {
-    pub abs: () Num;
-    pub toInt32: () Int32;
-    pub toInt64: () Int64;
-    pub toFloat32: () Float32;
-    pub toFloat64: () Float64;
+    pub abs: () Num
+    pub toInt32: () Int32
+    pub toInt64: () Int64
+    pub toFloat32: () Float32
+    pub toFloat64: () Float64
 }
 
 // The integer types' parent (D51), as FloatNum is the floats'.
 pub @_magic IntNum: Num {
     // Lowercase hex digits, no prefix; a negative value is "-" and its magnitude's
     // digits ("-ff"), so `(v as UInt16).toHex()` gives the bits.
-    pub toHex: () Str;
+    pub toHex: () Str
 }
 
 pub @_magic Int8: IntNum
@@ -107,7 +107,7 @@ pub @_magic Size: IntNum
 pub @_magic FloatNum: Num {
     // `places` decimals, clamped to 0..9, rounded correctly as printf's %.*f (D50):
     // 0.25 is "0.2" with 1, 2.675 "2.67" with 2; any NaN is "nan", an infinity "inf".
-    pub fixed: (places: Int32) Str;
+    pub fixed: (places: Int32) Str
 }
 
 pub @_magic Float32: FloatNum
@@ -118,15 +118,15 @@ pub @_magic Float64: FloatNum
 // applies. `c as UInt8` and `n as Char` convert.
 pub @_magic Char: Any {
     // ASCII only (D59): '0'..'9', D62's whitespace, A-Z and a-z; nothing past 127.
-    pub isDigit: () Bool;
-    pub isWhitespace: () Bool;
-    pub isLetter: () Bool;
+    pub isDigit: () Bool
+    pub isWhitespace: () Bool
+    pub isLetter: () Bool
 }
 
 // Reinterprets the bits of `value` as a `T` of the same width. The typer
 // special-cases the call: `T` is always the explicit type argument and the
 // argument must have `T`'s width.
-pub @_magic bitCast<T>: (value: Any) T;
+pub @_magic bitCast<T>: (value: Any) T
 
 // A fixed-capacity text buffer, `StrBuf<N>` (design section 10): N chars and no
 // heap, so a freestanding module builds text in one. The typer takes exactly one
@@ -135,14 +135,14 @@ pub @_magic bitCast<T>: (value: Any) T;
 // never becomes a Str: it is appended piece by piece, `set` clearing first.
 // `addFixed` rounds as FloatNum.fixed does (D50).
 pub @_magic StrBuf: Mutable<Any> {
-    pub size: () Size;
-    pub isEmpty: () Bool;
-    pub view: () View<Char>;
-    pub @_mutates clear: () Void;
-    pub @_mutates add: (text: View<Char>) Void;
-    pub @_mutates addChar: (c: Char) Void;
-    pub @_mutates addInt: (value: Int64) Void;
-    pub @_mutates addUInt: (value: UInt64) Void;
-    pub @_mutates addFixed: (value: Float64, places: Int32) Void;
-    pub @_mutates set: (text: View<Char>) Void;
+    pub size: () Size
+    pub isEmpty: () Bool
+    pub view: () View<Char>
+    pub @_mutates clear: () Void
+    pub @_mutates add: (text: View<Char>) Void
+    pub @_mutates addChar: (c: Char) Void
+    pub @_mutates addInt: (value: Int64) Void
+    pub @_mutates addUInt: (value: UInt64) Void
+    pub @_mutates addFixed: (value: Float64, places: Int32) Void
+    pub @_mutates set: (text: View<Char>) Void
 }

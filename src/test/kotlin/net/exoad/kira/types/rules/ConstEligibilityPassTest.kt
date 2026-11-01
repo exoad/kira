@@ -136,7 +136,7 @@ class ConstEligibilityPassTest {
         val p = snippet(
             """
             kira.math as math
-            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32;
+            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32
             pub slow: (v: Int32) Int32 {
                 v
             }
@@ -154,7 +154,7 @@ class ConstEligibilityPassTest {
                 v
             }
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             pub @_const e<T: Shape>: (s: T) Int32 {
                 s.area()

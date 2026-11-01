@@ -138,7 +138,7 @@ class TyperBodyNegativeTest {
         // Phase B lets `<T: T>` and `<T: U, U: T>` through; the member walk ends at the cycle
         // instead of recursing to a StackOverflowError reported as types.expr.too-deep.
         val p = snippet(
-            "pub Shape: Any {\n    pub area: () Float64;\n}\npub cyclic<T: T>: (s: T) Float64 {\n    s.area()\n}\n" +
+            "pub Shape: Any {\n    pub area: () Float64\n}\npub cyclic<T: T>: (s: T) Float64 {\n    s.area()\n}\n" +
                 "pub mutual<T: U, U: T>: (s: T, u: U) Float64 {\n    s.area() + u.area()\n}",
         )
         assertEquals(List(3) { "types.member.unknown" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
@@ -161,7 +161,7 @@ class TyperBodyNegativeTest {
         TyperTestSupport.expectNoErrors(p)
         // A Mutable trait's bound is satisfied by Mutable types alone, each held by reference: nothing is copied.
         val q = snippet(
-            "pub Counter: Mutable<Any> {\n    pub bump: () Void;\n}\n" +
+            "pub Counter: Mutable<Any> {\n    pub bump: () Void\n}\n" +
                 "pub lam<T: Counter>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.bump()\n    }\n}",
         )
         assertEquals(emptyList<String>(), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
@@ -172,7 +172,7 @@ class TyperBodyNegativeTest {
         // sync.kira: a body captures the Atomic and the BlockingQueue it shares by reference.
         val p = snippet(
             "kira.sync as sync\npub lam: () Fx<Tuple0, Void> {\n    hits: Atomic<Int64> = Atomic<Int64> { value = 0 }\n" +
-                "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { };\n    () Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
+                "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { }\n    () Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
         )
         TyperTestSupport.expectNoErrors(p)
     }

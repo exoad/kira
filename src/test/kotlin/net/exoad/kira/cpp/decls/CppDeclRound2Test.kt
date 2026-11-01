@@ -39,7 +39,7 @@ class CppDeclRound2Test {
             LIMIT: Int32 = 2
             counter: Mutable<Int32> = LIMIT
             hidden: Int32 = 5
-            pub get: (p: Pt) Int32;
+            pub get: (p: Pt) Int32
             """,
         )
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:util" to "shared", "test:other" to "shared"))

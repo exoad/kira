@@ -26,7 +26,7 @@ pub Reply: Mutable<Any> {
 }
 
 pub Measured: Any {
-    pub width: () Int32;
+    pub width: () Int32
 }
 
 pub Band: Struct, Measured {
@@ -39,11 +39,11 @@ pub Band: Struct, Measured {
 }
 
 pub Behaviour: Mutable<Any> {
-    pub id: () Str;
+    pub id: () Str
     pub mayDrive: () Bool {
         false
     }
-    pub step: (r: Reply) Reply;
+    pub step: (r: Reply) Reply
 }
 
 pub Stop: Mutable<Behaviour> {

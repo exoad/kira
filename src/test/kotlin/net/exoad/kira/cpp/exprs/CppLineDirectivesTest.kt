@@ -19,7 +19,7 @@ class CppLineDirectivesTest {
         "lines:app",
         """
         pub scale: (k: Int32) Fx<Tuple1<Int32>, Int32> {
-            base: Int32 = k * 2;
+            base: Int32 = k * 2
             (x: Int32) Int32 {
                 y: Int32 = x + base
                 y

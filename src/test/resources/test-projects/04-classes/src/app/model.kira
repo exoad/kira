@@ -9,7 +9,7 @@ pub Rectangle: Any {
 
     pub perimeter: () Int32 {
         width: Int32 = bottomRight.x - topLeft.x
-        height: Int32 = topLeft.y - bottomRight.y;
+        height: Int32 = topLeft.y - bottomRight.y
         (width + height) * 2
     }
 }

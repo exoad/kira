@@ -52,7 +52,7 @@ class FunctionSyntaxTest {
             }
 
             pub Speaker: Any {
-                pub speak: () Str;
+                pub speak: () Str
             }
             """,
             "test:fxsyntax.forms"

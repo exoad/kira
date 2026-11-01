@@ -77,7 +77,7 @@ class CppDeclFixesTest {
             """
             pub Cfg: Struct { pub limit: Maybe<Int32> = null }
             pub last: Mutable<Maybe<Int32>> = null
-            pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>;
+            pub find: (key: Str, hint: Maybe<Int32> = null) Maybe<Int32>
             """
         )
         assertContains(
@@ -144,7 +144,7 @@ class CppDeclFixesTest {
     fun aStructWhoseDefaultNamesALaterConstantFollowsIt() {
         val h = header(
             """
-            pub S: Struct { pub n: Int32 = LIMIT pub f: (x: Int32 = LIMIT) Int32; }
+            pub S: Struct { pub n: Int32 = LIMIT pub f: (x: Int32 = LIMIT) Int32 }
             pub LIMIT: Int32 = 5
             """
         )
@@ -308,7 +308,7 @@ class CppDeclFixesTest {
     fun theCoreAliasesAreSpelledAsTheirTargetsAndReachNoStdlibHeader() {
         // kira:core's header would hold its traits (unsupported until W2.4) and is hosted, which a
         // freestanding module could not include; `Int32` is `std::int32_t` wherever it is written.
-        val (emitted, _) = emit("pub X: Int32 = 3\npub F: Float32 = 0.5\npub Int32 as Idx\npub S: Struct { pub n: Int32 = 1 }\npub f: (n: Int32, xs: List<Int32>) Int32;")
+        val (emitted, _) = emit("pub X: Int32 = 3\npub F: Float32 = 0.5\npub Int32 as Idx\npub S: Struct { pub n: Int32 = 1 }\npub f: (n: Int32, xs: List<Int32>) Int32")
         val h = CppWriter.normalize(emitted.header)
         assertContains(
             h,
@@ -347,7 +347,7 @@ class CppDeclFixesTest {
             pub MD: Maybe<Float64> = 0.5
             pub MFN: Maybe<Float32> = -0.25
             pub M: Struct { pub a: Maybe<UInt8> = 7 pub b: Maybe<Float32> = 2.5 pub c: UInt8 = 7 }
-            pub g: (x: Maybe<Int16> = 3, y: Int16 = 3) Void;
+            pub g: (x: Maybe<Int16> = 3, y: Int16 = 3) Void
             """
         )
         assertContains(
@@ -485,7 +485,7 @@ class CppDeclFixesTest {
             pub B: Int32 = -2147483648
             pub C: Maybe<Int32> = -2147483647
             pub W: Struct { pub a: Maybe<Int32> = -2147483648 }
-            pub g: (x: Maybe<Int32> = -2147483648) Void;
+            pub g: (x: Maybe<Int32> = -2147483648) Void
             """
         )
         assertContains(

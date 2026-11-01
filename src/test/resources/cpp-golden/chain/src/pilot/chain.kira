@@ -22,8 +22,8 @@ pub Pass: Struct {
 // A trait lowers to an abstract C++ class; a default body is a virtual with a
 // body, so a C++ test double overrides exactly what it needs.
 pub Behaviour: Mutable<Any> {
-    pub id: () Str;
-    pub name: () Str;
+    pub id: () Str
+    pub name: () Str
     pub mayDrive: () Bool {
         false
     }
@@ -31,7 +31,7 @@ pub Behaviour: Mutable<Any> {
     }
     pub onUnload: () Void {
     }
-    pub step: (p: Pass) Reply;
+    pub step: (p: Pass) Reply
 }
 
 Stop: Mutable<Behaviour> {

@@ -5,7 +5,7 @@
 // reference or on a lambda's own local is no write to a capture.
 
 pub Shape: Any {
-    pub area: () Float64;
+    pub area: () Float64
     pub describe: () Str {
         "shape"
     }

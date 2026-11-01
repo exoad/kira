@@ -382,7 +382,7 @@ class CppExprRowsTest {
             }
 
             pub tally: () Fx<Tuple0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 };
+                counter: Ref<Int32> = Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
                     counter.value
@@ -843,7 +843,7 @@ class CppExprRowsTest {
                 o: Mutable<Out> = Out { }
                 o.kind = K2_ERR
                 p: Mutable<Arr<UInt8, 4>> = @arrOf(1, 2, 3, 4)
-                p[3] = TAIL[1];
+                p[3] = TAIL[1]
                 (p[3] as Int32) + o.kind
             }
 
@@ -1464,7 +1464,7 @@ class CppExprRowsTest {
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) };
+                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) }
                 (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 

@@ -1235,7 +1235,7 @@ class PyEmitterTest {
         refused(
             """
             Shape: Any {
-                pub area: () Float64;
+                pub area: () Float64
             }
             """,
             "the trait Shape",
@@ -1582,7 +1582,7 @@ class PyEmitterTest {
                     if r.isOk() && !r.isErr() {
                         (r.unwrap() + r.value) as Int64
                     } else {
-                        trace(r.unwrapErr());
+                        trace(r.unwrapErr())
                         -1
                     }
                 }
@@ -2019,7 +2019,7 @@ class PyEmitterTest {
             "@_extern f: (v: View<Int32>) Void" to "the parameter 'v' of the extern 'f': a View<Int32> (a View or MutView of UInt8 is what is lent)",
             "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
             "@_extern f: () Int32 {\n    1\n}" to "the extern 'f' with a body",
-            "pub f: () Int32;" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
+            "pub f: () Int32" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
             "@_extern f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
             "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",

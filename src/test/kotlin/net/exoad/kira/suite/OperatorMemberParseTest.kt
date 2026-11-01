@@ -65,7 +65,7 @@ class OperatorMemberParseTest {
         val ast = parse(
             """
             pub Ordered<T>: Any {
-                pub @_op_lt_: (other: T) Bool;
+                pub @_op_lt_: (other: T) Bool
             }
             """
         )
@@ -201,7 +201,7 @@ class OperatorMemberParseTest {
     fun everyMemberNameParsesInATrait() {
         assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
         for (name in theOperatorTable1_3_1) {
-            val ast = parse("pub Ops: Any { pub @$name: ${signatureFor(name)} Void; }")
+            val ast = parse("pub Ops: Any { pub @$name: ${signatureFor(name)} Void }")
             val trait = classLike<TraitDecl>(ast)
             val m = trait.members.single()
             assertEquals(name, assertIs<IntrinsicExpr>(m.name).intrinsicKey.name, "trait member: $name")

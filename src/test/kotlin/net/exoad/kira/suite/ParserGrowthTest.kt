@@ -493,8 +493,8 @@ class ParserGrowthTest {
     fun externMarkerCarriesItsParameterAndLeavesNoStrayStatement() {
         val p = parse(
             """
-            @_extern("sym") f: () Void;
-            @_extern(cpp = "ns::g", header = "g.hxx") g: (x: Int32) Int32;
+            @_extern("sym") f: () Void
+            @_extern(cpp = "ns::g", header = "g.hxx") g: (x: Int32) Int32
             pub @_const crc: () UInt32 { 1 }
             """
         )
@@ -520,7 +520,7 @@ class ParserGrowthTest {
 
     @Test
     fun markerArgumentsMustBeLiteralsAndAMarkerMustMarkADeclaration() {
-        refusedAs("@_extern(name) f: () Void;", "KiraParser::parseModifiers", "'@_extern' takes literal arguments")
+        refusedAs("@_extern(name) f: () Void", "KiraParser::parseModifiers", "'@_extern' takes literal arguments")
         // Measured before: this compiled to a stray `"fopen";` statement.
         refusedAs(
             """
@@ -578,7 +578,7 @@ class ParserGrowthTest {
         val rejected = mapOf(
             "@_const(1) k: () Int32 { 1 }" to "@_const takes no arguments",
             "@_const(x = 1) k: () Int32 { 1 }" to "@_const takes no arguments",
-            "@_extern(\"a\", \"b\", \"c\") f: () Void;" to "@_extern accepts at most one",
+            "@_extern(\"a\", \"b\", \"c\") f: () Void" to "@_extern accepts at most one",
             "@_opaque(1) X: Any { }" to "@_opaque does not take parameters",
         )
         for ((program, expected) in rejected) {
@@ -589,7 +589,7 @@ class ParserGrowthTest {
         }
         for (program in listOf(
             "@_const k: () Int32 { 1 }",
-            "@_extern(\"a\") f: () Void;",
+            "@_extern(\"a\") f: () Void",
             "@_opaque X: Any { }",
         )) {
             assertTrue(analyze(program).none { it.message.contains("@_") }, program)
@@ -652,9 +652,9 @@ class ParserGrowthTest {
         val p = parse(
             """
             pub Behaviour: Mutable<Any> {
-                pub id: () Str;
+                pub id: () Str
                 pub onLoad: () Void { }
-                pub step: (p: Pass) Reply;
+                pub step: (p: Pass) Reply
             }
             """
         )
@@ -930,7 +930,7 @@ class ParserGrowthTest {
             "sa-top" to ("@_static_assert(1 == 1, \"a\", \"b\")\nf: () Void { }" to "@_static_assert takes a condition"),
             "sa-fn" to ("f: () Void { @_static_assert() }" to "@_static_assert takes a condition"),
             "const" to ("@_const(1) k: () Int32 { 1 }" to "@_const takes no arguments"),
-            "extern" to ("@_extern(\"a\", \"b\", \"c\") f: () Void;" to "@_extern accepts at most one"),
+            "extern" to ("@_extern(\"a\", \"b\", \"c\") f: () Void" to "@_extern accepts at most one"),
             "opaque" to ("@_opaque(1) X: Any { }" to "@_opaque does not take parameters"),
         )
         for ((name, case) in cases) {
