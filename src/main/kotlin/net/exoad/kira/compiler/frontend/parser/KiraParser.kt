@@ -2045,9 +2045,10 @@ class KiraParser private constructor(
         val origin = here()
         val operatorToken = peek()
         expectAnyOfThenAdvance(UnaryOp.entries.map { it.tokenType }.toTypedArray())
+        val parenthesized = at(Token.Type.S_OPEN_PARENTHESIS)
         // `as` shares this precedence but binds looser: -x as T is (-x) as T.
         val operand = parseExpr(UnaryOp.NEG.precedence + 1)
-        return putOrigin(UnaryExpr(UnaryOp.byTokenTypeMaybe(operatorToken.type) {
+        val op = UnaryOp.byTokenTypeMaybe(operatorToken.type) {
             Diagnostics.panic(
                 "UnaryOperator::byTokenTypeMaybe",
                 "$operatorToken is not an unary operator!",
@@ -2055,7 +2056,12 @@ class KiraParser private constructor(
                 location = operatorToken.canonicalLocation,
                 selectorLength = operatorToken.content.length
             )
-        }!!, operand), origin)
+        }!!
+        // `..` binds looser than a sign too: -5..5 is (-5)..5, never the negation of a range.
+        if (operand is RangeExpr && !parenthesized) {
+            return putOrigin(RangeExpr(putOrigin(UnaryExpr(op, operand.begin), origin), operand.end), origin)
+        }
+        return putOrigin(UnaryExpr(op, operand), origin)
     }
 
 

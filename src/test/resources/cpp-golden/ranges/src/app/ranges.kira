@@ -1,0 +1,68 @@
+kira.test as test
+
+// ranges: `a..b` is a Range<T> with both ends in it, and `x in r` is a Bool anywhere (lane RANGE,
+// owner 2026-11-01). `x in a..b` builds no Range: x runs once, then each end. A Range value
+// iterates both ends; a literal `for i in a..b` keeps its end out, as it always has.
+// py-golden/ranges holds this file without Box: py refuses a user type's operator.
+
+pub Box: Struct {
+    pub lo: Int32
+    pub hi: Int32
+
+    pub @_op_in_: (v: Int32) Bool {
+        v >= lo && v <= hi
+    }
+}
+
+trail: Mutable<Str> = ""
+
+seen: (tag: Str, v: Int32) Int32 {
+    trail = trail + tag
+    v
+}
+
+span: (tag: Str, lo: Int32, hi: Int32) Range<Int32> {
+    trail = trail + tag
+    lo..hi
+}
+
+pub main: () Int32 {
+    t: Suite { title = "ranges - Range<T> and x in r" }
+    t.check(9 in 9..13 && 13 in 9..13 && 10 in 9..13, "both ends are in")
+    t.check(!(8 in 9..13) && !(14 in 9..13), "one past either end is not")
+    b: UInt8 = 255
+    t.check(b in 0..255 && !(b in 0..254) && (0 as UInt8) in 0..10, "a UInt8 at its limits")
+    f: Float64 = 2.5
+    t.check(f in 0..2.5 && !(f in 0.0..2.4) && -0.5 in -1..0, "a float range")
+    t.check(!(seen("x", 5) in seen("a", 1)..seen("b", 4)), "x is outside")
+    t.checkStr(trail, "xab", "x runs first, then each end once")
+    trail = ""
+    t.check(seen("y", 3) in span("r", 1, 3), "a Range from a call holds its end")
+    t.checkStr(trail, "yr", "x runs before the range")
+    r: Range<Int32> = 1..4
+    t.check(r.begin == 1 && r.end == 4 && r.contains(4) && 4 in r && !(5 in r), "a Range value")
+    sum: Mutable<Int32> = 0
+    for i: Int32 in r {
+        sum += i
+    }
+    t.check(sum == 10, "for over a Range includes its end")
+    sum = 0
+    for j: Int32 in 1..4 {
+        sum += j
+    }
+    t.check(sum == 6, "for over a literal range keeps its end out")
+    steps: Mutable<Int32> = 0
+    top: Range<Int8> = 120..127
+    for k: Int8 in top {
+        steps += 1
+    }
+    t.check(steps == 8, "a Range up to Int8's largest stops there")
+    empty: Range<Int32> = 5..4
+    for q: Int32 in empty {
+        steps += 100
+    }
+    t.check(steps == 8 && !(5 in empty), "a Range whose end is below its begin is empty")
+    bx: Box { 2, 6 }
+    t.check(4 in bx && !(7 in bx), "a user type answers in")
+    t.finish()
+}

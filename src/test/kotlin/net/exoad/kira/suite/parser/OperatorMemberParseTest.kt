@@ -172,6 +172,8 @@ class OperatorMemberParseTest {
         "_op_bitand_", "_op_bitor_", "_op_xor_",
         "_op_shl_", "_op_shr_", "_op_ushr_",
         "_op_bitnot_", "_op_not_", "_op_pos_",
+        // Lane RANGE (owner, 2026-11-01): `x in r`.
+        "_op_in_",
     )
 
     // Literal too (not `OperatorIntrinsics.memberName(...)`), for the same reason as the table
@@ -188,7 +190,7 @@ class OperatorMemberParseTest {
 
     @Test
     fun everyMemberNameParsesInAClass() {
-        assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
+        assertEquals(24, theOperatorTable1_3_1.size, "1.3.1's table has 23 names, and `in` makes 24")
         for (name in theOperatorTable1_3_1) {
             val ast = parse("pub V2: Any { pub @$name: ${signatureFor(name)} Void { } }")
             val cls = classLike<ClassDecl>(ast)
@@ -199,7 +201,7 @@ class OperatorMemberParseTest {
 
     @Test
     fun everyMemberNameParsesInATrait() {
-        assertEquals(23, theOperatorTable1_3_1.size, "1.3.1's table has 23 names")
+        assertEquals(24, theOperatorTable1_3_1.size, "1.3.1's table has 23 names, and `in` makes 24")
         for (name in theOperatorTable1_3_1) {
             val ast = parse("pub Ops: Any { pub @$name: ${signatureFor(name)} Void; }")
             val trait = classLike<TraitDecl>(ast)

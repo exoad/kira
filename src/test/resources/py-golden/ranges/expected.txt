@@ -1,0 +1,21 @@
+
+ranges - Range<T> and x in r
+
+  ok    both ends are in
+  ok    one past either end is not
+  ok    a UInt8 at its limits
+  ok    a float range
+  ok    x is outside
+  ok    x runs first, then each end once
+  ok    a Range from a call holds its end
+  ok    x runs before the range
+  ok    a Range value
+  ok    for over a Range includes its end
+  ok    for over a literal range keeps its end out
+  ok    a Range up to Int8's largest stops there
+  ok    a Range whose end is below its begin is empty
+
+13 checks, 0 failed
+
+ranges -> 0
+steps: [-2, -1, 0, 1, 2] ends in: True True past: False

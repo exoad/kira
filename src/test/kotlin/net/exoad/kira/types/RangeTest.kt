@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
-import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.cpp.decls.DeclTestSupport
@@ -24,10 +23,10 @@ import kotlin.test.assertTrue
 class RangeTest {
     private fun typed(body: String): TypedProgram = TyperTestSupport.snippet(body)
 
-    /** Each `x in r` of [p]'s module as `text: type`, in source order. */
+    /** Each `x in r` of [p]'s module as `text: type`, in source order (by name: the probe compiles on main). */
     private fun tests(p: TypedProgram): List<String> {
         val root = p.modules.first { it.uri == "test:main" }.source.ast
-        return TyperTestSupport.nodes(root).filterIsInstance<BinaryExpr>().filter { it.operator == BinaryOp.IN }
+        return TyperTestSupport.nodes(root).filterIsInstance<BinaryExpr>().filter { it.operator.name == "IN" }
             .map { "${KiraUnparser.text(it)}: ${p.model.types[it]?.display()}" }
     }
 
@@ -161,6 +160,25 @@ class RangeTest {
         )
         expectNoErrors(p)
         assertEquals(listOf("x + 1 in 0..n: Bool"), tests(p))
+    }
+
+    @Test
+    fun aSignBindsTighterThanTheRangeAndANegatedRangeStaysAnError() {
+        val p = typed(
+            """
+            pub f: (x: Int32) Int32 {
+                t: Mutable<Int32> = 0
+                for i: Int32 in -2..2 {
+                    t += i
+                }
+                x in -5..5 ? t : 1
+            }
+            """
+        )
+        expectNoErrors(p)
+        assertEquals(LoopKind.RANGE, p.model.loops.values.single().kind)
+        assertTrue("(-5)..5: Range<Int32>" in rangeTypes(p), rangeTypes(p).toString())
+        expectDiagnostic(typed("pub f: (x: Int32) Bool {\n    x in -(1..3)\n}"), "types.op.mismatch")
     }
 
     @Test
