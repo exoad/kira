@@ -338,7 +338,7 @@ class KiraParser(
                         }
 
                         Token.Type.S_SEMICOLON -> {
-                            append("Missing ';' or newline to terminate the statement.")
+                            append("Kira has no ';': a statement ends at its newline.")
                         }
 
                         Token.Type.S_EQUAL -> {

@@ -54,6 +54,22 @@ class JSCodeGeneratorSmokeTest {
     }
 
     @Test
+    fun aNonEmptyListIsAKiraListSoItsMethodsRun() {
+        val generated = emit(
+            """
+            main: () Void {
+                xs: List<Int32> = @listOf(1, 2)
+                xs.add(3)
+                trace(xs.size())
+            }
+            """,
+            "test:js.list"
+        )
+        assertTrue(generated.contains("new KiraList([1, 2])"), generated)
+        assertEquals("3\n", runAndCapture(generated) ?: return)
+    }
+
+    @Test
     fun printFormatsBooleansLikeC() {
         val generated = emit(
             """
