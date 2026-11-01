@@ -24,7 +24,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Stage 3 of the clean dialect, lane A: block values, `if`/`try` as expressions, the ternary, and their lowering. */
+/** Block values, `if`/`try` as expressions, the ternary, and their lowering. */
 class BlockValueTest {
     private fun ast(body: String): RootASTNode {
         val unit = TyperTestSupport.unitOf(module("test:main", body))
