@@ -1,6 +1,5 @@
-# Fake host modules for the runtime harness: a stand-in for a runtime's `_k_os`, `_k_builtins` and the like that
-# forwards to the real module except where a case overrides a name, so a helper meets an errno it could not get
-# from a real disk. The runtime reads these names at call time, so swapping one in its namespace reaches it.
+# Fake host modules for the runtime harness: stand-ins for `_k_os`, `_k_builtins` and the like that forward to
+# the real module except where a case overrides a name, so a helper meets an errno a real disk would not give.
 import errno
 import os
 import subprocess

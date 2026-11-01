@@ -7,9 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The py runtime harness (src/test/resources/py-rt/rt_equiv.py). It loads two runtimes into separate namespaces, calls
- * every `_k_` helper over a boundary corpus and compares values, exceptions, reasons, output and files. Here the two
- * are kira/py/runtime.py against itself, then against planted mutants it must tell apart. Skipped without a Python.
+ * The py runtime harness (src/test/resources/py-rt/rt_equiv.py) run on kira/py/runtime.py against itself and against
+ * planted mutants it must tell apart. Skipped without a Python.
  */
 class PyRuntimeEquivTest {
     private val dir = File(PyTestSupport.repoRoot, "src/test/resources/py-rt")
@@ -92,7 +91,7 @@ class PyRuntimeEquivTest {
         val lines = r.int("lines")
         assertTrue(lines >= 1400, "only $lines executable lines found")
         val pct = r.one("line_coverage").toDouble()
-        // A ratchet: the lines left are error paths of sockets, pipes and imports; a lane that adds code adds cases.
+        // A ratchet: the lines left are error paths of sockets, pipes and imports; new code needs new cases.
         assertTrue(pct >= 93.0, "line coverage fell to $pct% (${r.int("lines_uncovered")} of $lines lines)")
         val unrun = r.one("branches_uncovered")
         println("host ${r.one("platform")}: line coverage $pct%; host-only branches not run here: ${unrun.ifEmpty { "none" }}")
@@ -169,7 +168,7 @@ class PyRuntimeEquivTest {
     }
 
     @Test
-    fun `the names the dead-code lane deletes may go without the harness failing`() {
+    fun `the names the corpus lists as dead may go without the harness failing`() {
         val stripped = File(scratch, "stripped.py")
         val s = harness("strip-dead", "--rt", rt(), "--out", stripped.absolutePath)
         println("dead names: functions ${s.one("dead.functions")}, classes ${s.one("dead.classes")}, methods ${s.one("dead.methods")} (${s.one("dead.state")}); stripped from the copy: ${s.one("stripped")}")
@@ -389,7 +388,7 @@ class PyRuntimeEquivTest {
 
     @Test
     fun `the microbench holds the runtime to itself and catches a slowdown`() {
-        // The 1.2x bound is the gate of the lanes that replace a block; here both sides are the same text, so the
+        // The 1.2x bound is what a replacement block is held to; here both sides are the same text, so the
         // ratios sit near 1 and only noise could cross a looser bound.
         val r = harness("bench", "--a", rt(), "--b", rt(), "--bound", "1.5")
         assertEquals(0, r.code, r.raw)
