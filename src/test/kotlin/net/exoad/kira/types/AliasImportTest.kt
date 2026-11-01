@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Stage 5: an import reaches its module only through its alias or a member alias. */
+/** An import reaches its module only through its alias or a member alias. */
 class AliasImportTest {
     private val units = module(
         "app:units",

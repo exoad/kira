@@ -20,7 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Stage 3's two lanes together: a conformance test narrowing a ternary's arms, a block value's arms and a body's tail. */
+/** Conformance test narrowing a ternary's arms, a block value's arms and a body's tail. */
 class NarrowedValueTest {
     private val types = """
         Shape: Any {

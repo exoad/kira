@@ -11,7 +11,7 @@ import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Lane C: a test block narrowing a block value. */
+/** A test block narrowing a block value. */
 class TestBlockValueTest {
     private val structs = """
         Pt: Struct {

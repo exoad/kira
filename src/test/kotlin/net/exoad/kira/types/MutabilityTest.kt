@@ -25,7 +25,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-/** Stage 4, Mutability: `Mutable<T>` bindings and types, contagion, sharing, `with` in place, `== Mutable<..>`, `mut` gone. */
+/** Mutability: `Mutable<T>` bindings and types, contagion, sharing, `with` in place, `== Mutable<..>`, `mut` gone. */
 class MutabilityTest {
     /** [text] as module test:main, parsed: its context, or the parse error's first line and where. */
     private fun read(text: String): Pair<net.exoad.kira.source.SourceContext?, String?> = try {
