@@ -71,6 +71,7 @@ fun main(args: Array<String>) {
     var readableOverride = false
     var checkMode = false
     var outDir: String? = null
+    val requestedDumps = mutableListOf<DumpFlag>()
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -100,15 +101,22 @@ fun main(args: Array<String>) {
                 i += 2
             }
             "--help", "-h" -> {
-                println("Usage: kira [--target c|cpp|js|py|none] [--out <dir>] [--check] [--readable]")
+                println("Usage: kira [--target c|cpp|js|py|none] [--out <dir>] [--check] [--readable] ${Dumps.all.joinToString(" ") { "[${it.flag}]" }}")
                 println("  --out <dir>  where generated files go (cpp: everything under <dir> in the tree layout, runtime and")
                 println("               kira.gen.manifest included; py: each x_kira.py at its path under <dir>; c/js: the")
                 println("               directory of out.kira.*)")
                 println("  --check      cpp and py: regenerate in memory, name each file on disk that differs, is missing or")
                 println("               (cpp) is stale, exit 1 on drift")
+                Dumps.helpLines().forEach { println(it) }
                 kotlin.system.exitProcess(0)
             }
-            else -> Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
+            else -> {
+                val dump = Dumps.named(args[i]) ?: Diagnostics.panic("Unknown argument '${args[i]}' (try --help)")
+                if (dump !in requestedDumps) {
+                    requestedDumps.add(dump)
+                }
+                i += 1
+            }
         }
     }
     val result = measureTimedValue {
@@ -245,6 +253,12 @@ fun main(args: Array<String>) {
                 dumpFile.appendText(dumpSB.toString())
                 dumpSB.clear()
             }
+        }
+
+        // A dump flag prints its stage for the project's own files and stops: no analysis, no backend.
+        if (requestedDumps.isNotEmpty()) {
+            val workspace = workspaceSources.map { File(it).canonicalPath }
+            return@measureTimedValue Dumps.run(requestedDumps, DumpInput(compilationUnit, workspace, project, projectRoot))
         }
 
         // Semantics before any backend emit so bad programs do not produce half-written C.

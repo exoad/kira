@@ -231,6 +231,61 @@ class CliSuiteTest {
         )
     }
 
+    private val dumpSource = "main: () Void {\n    x: Int32 = 1 + 2\n    trace(\"hi\")\n}\n"
+
+    @Test
+    fun helpListsEveryDumpFlagWithItsText() {
+        val result = runCli(tempProject("dump-help", null, mapOf()), "--help")
+        assertEquals(0, result.exitCode, result.stderr)
+        for (dump in net.exoad.kira.cli.Dumps.all) {
+            assertTrue(result.stdout.contains(dump.flag), "--help omits ${dump.flag}:\n${result.stdout}")
+            dump.help.forEach { assertTrue(result.stdout.contains(it), "--help omits the text of ${dump.flag}:\n${result.stdout}") }
+        }
+    }
+
+    @Test
+    fun dumpAstXmlPrintsEachSourceFileAndWritesNothing() {
+        val dir = tempProject("dump-ast", basicProject(), mapOf("src/app/main.kira" to dumpSource))
+        val result = runCli(dir, "--dump-ast-xml")
+        assertEquals(0, result.exitCode, result.stderr)
+        assertTrue(result.stdout.startsWith("<!-- src/app/main.kira -->\n<?xml"), result.stdout)
+        assertTrue(result.stdout.contains("<BinaryExpr op=\"ADD\">"), result.stdout)
+        assertFalse(result.stdout.contains("Generated at"), "the dump holds a timestamp, so two runs differ")
+        assertEquals(1, Regex("<!-- .* -->\n<[?]xml").findAll(result.stdout).count(), "the stdlib's files are no part of the dump")
+        assertEquals(result.stdout, runCli(dir, "--dump-ast-xml").stdout, "two runs differ")
+        assertFalse(File(dir, "out.kira.c").exists(), "a dump run emitted code")
+    }
+
+    @Test
+    fun dumpTypedPrintsSymbolsAndTheFactsOfEachExpression() {
+        val dir = tempProject("dump-typed", basicProject(), mapOf("src/app/main.kira" to dumpSource))
+        val result = runCli(dir, "--dump-typed")
+        assertEquals(0, result.exitCode, result.stdout + result.stderr)
+        assertTrue(result.stdout.contains("module cli-test:app.main"), result.stdout)
+        assertTrue(result.stdout.contains("bodies cli-test/app/main.kira\n"), result.stdout)
+        assertTrue(result.stdout.contains("main.kira:2:16  1 + 2  Int32  const=3:Int32"), result.stdout)
+        assertFalse(File(dir, "out.kira.c").exists(), "a dump run emitted code")
+    }
+
+    @Test
+    fun dumpTypedExitsOneOnATyperError() {
+        val dir = tempProject("dump-typed-error", basicProject(), mapOf("src/app/main.kira" to "main: () Void {\n    x: Int32 = \"s\"\n}\n"))
+        val result = runCli(dir, "--dump-typed")
+        assertEquals(1, result.exitCode, result.stdout + result.stderr)
+        assertTrue(result.stdout.contains("diag error"), result.stdout)
+    }
+
+    @Test
+    fun severalDumpFlagsEachPrintUnderTheirOwnHeader() {
+        val dir = tempProject("dump-both", basicProject(), mapOf("src/app/main.kira" to dumpSource))
+        val result = runCli(dir, "--dump-typed", "--dump-ast-xml", "--dump-typed")
+        assertEquals(0, result.exitCode, result.stderr)
+        val typed = result.stdout.indexOf("# --dump-typed\n")
+        val xml = result.stdout.indexOf("# --dump-ast-xml\n")
+        assertTrue(typed in 0 until xml, result.stdout)
+        assertEquals(1, Regex("# --dump-typed\n").findAll(result.stdout).count(), "a repeated flag dumps twice")
+    }
+
     @Test
     fun aProjectNamingNoKiraDependencyIsRefusedEvenWithAKiraFolderBeside() {
         val dir = tempProject("no-dependency", ProjectText.of("nodep", target = "c", stdlib = null), mapOf("src/app/main.kira" to TRACE_MAIN))

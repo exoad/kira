@@ -7,7 +7,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import java.text.SimpleDateFormat
 
 /**
  * Builds a cool looking xml of the ast without external dependencies (can only write, not read tho)
@@ -17,7 +16,7 @@ import java.text.SimpleDateFormat
  * usually this is just generated right after the parser phase, but you can always pass in a root ast node
  * or something, and it will traverse and spit something out.
  *
- * it is dumped when project.kira sets emitIr.
+ * it is dumped by `--dump-ast-xml`, and when project.kira sets emitIr. The text has no timestamp, so two runs match.
  *
  * spitting it out makes developing kira much easier than scrolling through a terminal sometimes
  */
@@ -76,7 +75,6 @@ object XMLASTVisitorKira :
 
     fun visitRootASTNode(rootASTNode: RootASTNode) {
         appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-        appendLine("""<!-- Kira AST Generated at ${SimpleDateFormat().format(System.currentTimeMillis())} -->""")
         node("Module") {
             rootASTNode.statements.forEach { it.accept(this) }
         }
