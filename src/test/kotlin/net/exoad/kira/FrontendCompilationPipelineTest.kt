@@ -6,8 +6,8 @@ import kotlin.test.assertTrue
 
 class FrontendCompilationPipelineTest {
     @Test
-    fun compilesInlineSampleThroughLegacyFrontend() {
-        val moduleUri = "test:frontend.legacy"
+    fun compilesInlineSampleThroughFrontend() {
+        val moduleUri = "test:frontend"
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """

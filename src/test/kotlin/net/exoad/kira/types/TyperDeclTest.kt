@@ -53,13 +53,12 @@ class TyperDeclTest {
     }
 
     /**
-     * Fixtures in the design's dialect (typer/decls/dialect). They need the frontend package's
-     * parser: while it is absent a fixture that does not parse is skipped, with the reason;
-     * once it is present a parse failure fails ([TyperTestSupport.parsingDialect]).
+     * Fixtures in the design's dialect (typer/decls/spec). A fixture that does not parse fails
+     * ([TyperTestSupport.parsingDialect]).
      */
     @TestFactory
     fun dialectFixtures(): List<DynamicTest> {
-        val dir = File(fixtures, "dialect")
+        val dir = File(fixtures, "spec")
         val files = dir.listFiles { f -> f.isFile && f.extension == "kira" }!!.sortedBy { it.name }
         assertTrue(files.isNotEmpty(), "no fixtures in $dir")
         return files.map { file ->
