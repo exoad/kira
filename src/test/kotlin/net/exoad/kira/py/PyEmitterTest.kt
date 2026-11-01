@@ -167,7 +167,7 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aRangeValueIsTheRuntimesRangeAndItsLoopIncludesItsEnd() {
+    fun aRangeValueIsTheRuntimesRangeAndBothLoopsIncludeTheirEnd() {
         val py = python(
             """
             pub f: (x: Int32) Int32 {
@@ -185,7 +185,7 @@ class PyEmitterTest {
         )
         assertTrue(py.contains("r = _k_Range(1, 4)"), py)
         assertTrue(py.contains("for i in r._k_steps():"), py)
-        assertTrue(py.contains("for j in range(1, 4):"), "a literal range's loop stays half-open:\n$py")
+        assertTrue(py.contains("for j in range(1, 5):"), "a literal range's loop holds its end too:\n$py")
         assertTrue(py.contains("r._op_in_(x) and r.contains(x)"), py)
         assertTrue(py.contains("class _k_Range:"), py)
     }
@@ -2423,7 +2423,7 @@ class PyEmitterTest {
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
-        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Range", "Ready"), structs.map { it.name }.sorted())
+        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Range", "Ready", "Until"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
             // pyName: a field that is not pub is _name.
