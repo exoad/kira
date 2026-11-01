@@ -35,7 +35,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.Pos
 import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
@@ -272,7 +272,7 @@ object OopTestSupport {
             val bare = unit.addSource(path, processed, emptyList(), s.uri)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = unit.addSource(path, bare.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         return unit
     }
@@ -372,7 +372,7 @@ object OopTestSupport {
             var ctx = unit.addSource(canonical, processed, emptyList(), names[canonical])
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         val semantic = KiraSemanticAnalyzer(unit).validateAST()
         if (semantic.diagnostics.isNotEmpty()) {

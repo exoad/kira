@@ -3,7 +3,7 @@ package net.exoad.kira
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.lexer.Token
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.compiler.CompilationUnit
 import org.junit.jupiter.api.Test
@@ -77,7 +77,7 @@ class StdlibParseTest {
                     "an interpolation, which the stdlib may not use: ${token.content}"
             }
             val withTokens = unit.addSource(path, ctx.content, tokens)
-            KiraSourceParsers.from(withTokens).parse()
+            KiraParser.parse(withTokens)
         } catch (e: DiagnosticsException) {
             val line = e.location?.lineNumber?.toString() ?: "?"
             return "${file.path}:$line: ${e.tag}: ${e.message}"

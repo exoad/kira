@@ -16,7 +16,7 @@ import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.py.KiraPyBackend
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.XMLASTVisitorKira
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
@@ -233,7 +233,7 @@ fun main(args: Array<String>) {
                     dumpFile!!.appendText(dumpSB.toString())
                     dumpSB.clear() // save on memory (so not everything is in dumpSB): problematic for large projects
                 }
-                diagnosedOrExit { KiraSourceParsers.from(srcContext).parse() }
+                diagnosedOrExit { KiraParser.parse(srcContext) }
 
             }
             Diagnostics.Logging.info("Kira", "Parsed ${file.name} in $duration")

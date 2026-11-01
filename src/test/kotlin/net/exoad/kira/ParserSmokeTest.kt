@@ -24,8 +24,7 @@ class ParserSmokeTest {
         out.writeText(tokens.joinToString("\n") { t -> "${t.type} -> '${t.content}'" })
         assertNotNull(tokens)
         val srcWithTokens = cu.addSource(file.canonicalPath, src.content, tokens)
-        val parser = KiraParser(srcWithTokens)
-        parser.parse()
+        KiraParser.parse(srcWithTokens)
         assertNotNull(srcWithTokens.ast)
         // dump AST as XML to repository root for inspection
         val astOut = File("ast.kira.xml")

@@ -6,7 +6,7 @@ import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -52,7 +52,7 @@ object TestCompileSupport {
         val tokens = KiraLexer(src).tokenize()
         val srcWithTokens = cu.addSource(logicalPath, src.content, tokens)
 
-        KiraSourceParsers.from(srcWithTokens).parse()
+        KiraParser.parse(srcWithTokens)
         // Each import's module and each type's role, as every reader of a parsed unit sees them.
         net.exoad.kira.compiler.UnitLink.link(cu)
 

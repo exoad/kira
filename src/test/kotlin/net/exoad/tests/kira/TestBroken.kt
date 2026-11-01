@@ -2,7 +2,7 @@ package net.exoad.tests.kira
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.source.SourceContext
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.Test
@@ -15,7 +15,7 @@ class TestBroken {
     private fun formAST(value: String): SourceContext {
         val tokens = KiraLexer(SourceContext(value, "ImmediateMode", emptyList())).tokenize()
         val source = SourceContext(value, "ImmediateMode", tokens)
-        KiraSourceParsers.from(source).parse()
+        KiraParser.parse(source)
         return source
     }
 

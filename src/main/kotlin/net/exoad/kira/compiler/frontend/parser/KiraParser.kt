@@ -27,9 +27,10 @@ import kotlin.properties.Delegates
  * It will then pass this AST onto the [net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer] to make sure the AST is
  * valid grammar.
  */
-class KiraParser(
+class KiraParser private constructor(
     private val context: SourceContext,
 ) {
+
     /** Every name a nested type is known by here (`Outer_Inner`): its `Outer.Inner` collapsed, or its bare name renamed. */
     private val nestedTypeNames = HashSet<String>()
 
@@ -132,10 +133,8 @@ class KiraParser(
         return peek().canonicalLocation
     }
 
-    /**
-     * Star method to call on [KiraParser] that will turn the passed in [context] into an AST.
-     */
-    fun parse() {
+    /** Turns [context] into its AST (two passes when the file nests types). */
+    private fun parse() {
         parseFile()
         if (foundNested.isEmpty()) return
         // Pass 2: Outer's nested types known, so a bare `Inner` in Outer's body names Outer_Inner.
@@ -1204,22 +1203,25 @@ class KiraParser(
 
     private fun isRoot(t: Type, root: String): Boolean = (t.identifier as? Identifier)?.value == root && t.children.isEmpty()
 
-    private companion object {
+    companion object {
+        /** Parses [context]'s tokens into its AST: the one entry to the parser. */
+        fun parse(context: SourceContext) = KiraParser(context).parse()
+
         /** The root every type has; as a parent it names none. */
-        const val ANY_ROOT = "Any"
+        private const val ANY_ROOT = "Any"
 
         /** The parent that makes a type a value type, a struct: immutable, never Mutable. */
-        const val STRUCT_ROOT = "Struct"
+        private const val STRUCT_ROOT = "Struct"
 
         /** The one wrapper (stage 4): `x: Mutable<T>` a binding that changes, `T: Mutable<P>` a type whose values do. */
-        const val MUTABLE_AXIOM = "Mutable"
+        private const val MUTABLE_AXIOM = "Mutable"
 
-        const val MUT_BINDING = "a binding that changes is 'name: Mutable<T>'"
-        const val MUT_FUNCTION = "any function of a Mutable type may change it: declare the type 'Name: Mutable<Parent>'"
-        const val MUT_PARAM = "a parameter is never Mutable, and a Mutable type's value is shared, so its changes reach the caller"
-        const val MUT_ARG = "pass the value itself: a Mutable type's value is shared with the callee"
-        const val MUT_TYPE = "a type whose values change is 'Name: Mutable<Parent>'"
-        const val MUT_TYPE_ARG = "a type argument is never Mutable, and a Mutable type's value is shared wherever it is held"
+        private const val MUT_BINDING = "a binding that changes is 'name: Mutable<T>'"
+        private const val MUT_FUNCTION = "any function of a Mutable type may change it: declare the type 'Name: Mutable<Parent>'"
+        private const val MUT_PARAM = "a parameter is never Mutable, and a Mutable type's value is shared, so its changes reach the caller"
+        private const val MUT_ARG = "pass the value itself: a Mutable type's value is shared with the callee"
+        private const val MUT_TYPE = "a type whose values change is 'Name: Mutable<Parent>'"
+        private const val MUT_TYPE_ARG = "a type argument is never Mutable, and a Mutable type's value is shared wherever it is held"
     }
 
     /** [holdsTypes]: types nested in it, which count as what it adds. */

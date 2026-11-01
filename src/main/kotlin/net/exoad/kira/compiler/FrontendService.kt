@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import net.exoad.kira.source.SourcePosition
@@ -227,7 +227,7 @@ object FrontendService {
         var ctx = cu.addSource(path, processed, emptyList(), moduleName)
         val tokens = KiraLexer(ctx).tokenize()
         ctx = cu.addSource(path, ctx.content, tokens)
-        KiraSourceParsers.from(ctx).parse()
+        KiraParser.parse(ctx)
     }
 
     fun fromException(e: DiagnosticsException): Diagnostic {

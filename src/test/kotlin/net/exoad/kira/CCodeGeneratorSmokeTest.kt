@@ -3,7 +3,7 @@ package net.exoad.kira
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -36,7 +36,7 @@ class CCodeGeneratorSmokeTest {
             val tokens = KiraLexer(src).tokenize()
             val srcWithTokens = cu.addSource("inline-test.kira", src.content, tokens)
 
-            KiraSourceParsers.from(srcWithTokens).parse()
+            KiraParser.parse(srcWithTokens)
 
             val output = KiraCCodeGenerator(cu).emitToString()
 

@@ -90,7 +90,7 @@ object ProjectFile {
             val processed = KiraPreprocessor(text).process().processedContent
             val bare = unit.addSource(file, processed, emptyList(), URI)
             val ctx = unit.addSource(file, processed, KiraLexer(bare).tokenize())
-            KiraParser(ctx).parse()
+            KiraParser.parse(ctx)
             return ctx
         } catch (e: DiagnosticsException) {
             throw IllegalArgumentException((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + " at ${e.location}")
@@ -244,7 +244,7 @@ object ProjectFile {
             val canonical = runCatching { java.io.File(s).canonicalPath }.getOrDefault(s)
             val processed = KiraPreprocessor(java.io.File(s).readText()).process().processedContent
             val bare = unit.addSource(canonical, processed, emptyList(), ModuleNames.stdlib(s))
-            KiraParser(unit.addSource(canonical, processed, KiraLexer(bare).tokenize())).parse()
+            KiraParser.parse(unit.addSource(canonical, processed, KiraLexer(bare).tokenize()))
         }
         val ctx = try {
             read(unit, Files.readString(path), path.toAbsolutePath().normalize().toString())

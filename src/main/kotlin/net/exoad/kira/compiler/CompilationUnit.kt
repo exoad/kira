@@ -8,8 +8,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
 import net.exoad.kira.compiler.frontend.lexer.Token
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
-import net.exoad.kira.compiler.frontend.parser.LegacyKiraSourceParser
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -37,7 +36,7 @@ class CompilationUnit(bootstrap: Boolean = true) {
                         val lexer = KiraLexer(ctx)
                         val tokens = lexer.tokenize()
                         addSource(sourceFile.canonicalPath, ctx.content, tokens)
-                        LegacyKiraSourceParser(getSource(sourceFile.canonicalPath)!!).parse()
+                        KiraParser.parse(getSource(sourceFile.canonicalPath)!!)
                     }
             }
         } catch (_: Exception) {

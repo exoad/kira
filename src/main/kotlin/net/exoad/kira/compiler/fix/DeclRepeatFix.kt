@@ -1,7 +1,7 @@
 package net.exoad.kira.compiler.fix
 
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.io.File
@@ -16,7 +16,7 @@ object DeclRepeatFix {
         val processed = KiraPreprocessor(source).process().processedContent
         val tokens = KiraLexer(SourceContext(processed, file, emptyList())).tokenize()
         val ctx = SourceContext(processed, file, tokens)
-        KiraSourceParsers.from(ctx).parse()
+        KiraParser.parse(ctx)
         if (ctx.astDeclRepeats.isEmpty()) return source to 0
         val lines = source.split(Regex("(?<=\n)")).toMutableList()
         for (d in ctx.astDeclRepeats.sortedWith(compareByDescending<net.exoad.kira.source.DeclRepeat> { it.line }.thenByDescending { it.startColumn })) {

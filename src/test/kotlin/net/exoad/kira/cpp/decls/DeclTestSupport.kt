@@ -18,7 +18,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.compiler.backend.codegen.cpp.TypedCppModuleEmitter
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
 import java.nio.file.Path
@@ -87,7 +87,7 @@ object DeclTestSupport {
             val bare = unit.addSource(path, processed, emptyList(), s.uri)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = unit.addSource(path, bare.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
             contexts[s.uri] = ctx
         }
         return unit to contexts

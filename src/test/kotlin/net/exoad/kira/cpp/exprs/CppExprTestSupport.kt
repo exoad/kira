@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleEmitterFactory
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.cpp.support.CppCompileSupport
 import net.exoad.kira.cpp.support.CppProfile
@@ -98,7 +98,7 @@ object CppExprTestSupport {
             var ctx = unit.addSource(canonical, processed, emptyList(), m.uri)
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         val project = Project(name, srcDir = "src", target = "cpp", cpp = options)
         val report = mutableListOf<String>()

@@ -44,9 +44,7 @@ class SemanticSuiteTest {
             val ctx = cu.addSource(filePath, processed.processedContent, emptyList())
             val tokens = net.exoad.kira.compiler.frontend.lexer.KiraLexer(ctx).tokenize()
             cu.addSource(filePath, ctx.content, tokens)
-            net.exoad.kira.compiler.frontend.parser.LegacyKiraSourceParser(
-                cu.getSource(filePath)!!
-            ).parse()
+            net.exoad.kira.compiler.frontend.parser.KiraParser.parse(cu.getSource(filePath)!!)
         }
         return net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer(cu).validateAST()
     }

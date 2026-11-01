@@ -10,7 +10,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppModuleLayout
 import net.exoad.kira.compiler.backend.codegen.cpp.CppOptions
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.parser.ast.statements.UseStatement
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.source.SourceContext
@@ -87,7 +87,7 @@ object PlumbingTestSupport {
             var ctx = unit.addSource(canonical, processed.processedContent, emptyList(), names[canonical])
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         return unit
     }

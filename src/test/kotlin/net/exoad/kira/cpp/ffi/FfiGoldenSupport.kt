@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppWriter
 import net.exoad.kira.compiler.backend.codegen.cpp.EmittedModule
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import net.exoad.kira.compiler.ProjectFile
 import net.exoad.kira.compiler.ProjectSources
@@ -63,7 +63,7 @@ object FfiGoldenSupport {
             var ctx = unit.addSource(canonical, processed, emptyList())
             val tokens = KiraLexer(ctx).tokenize()
             ctx = unit.addSource(canonical, ctx.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         val semantic = KiraSemanticAnalyzer(unit).validateAST()
         assertTrue(semantic.diagnostics.isEmpty(), "$caseName: the semantic pass refused the case:\n${semantic.diagnostics.joinToString("\n")}")

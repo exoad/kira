@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.js.KiraJSCodeGenerator
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.preprocessor.KiraPreprocessor
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
@@ -781,7 +781,7 @@ class UserDeclarationShadowsMagicNameTest {
             val bare = unit.addSource(path, processed.processedContent, emptyList())
             val tokens = KiraLexer(bare).tokenize()
             val withTokens = unit.addSource(path, bare.content, tokens)
-            KiraSourceParsers.from(withTokens).parse()
+            KiraParser.parse(withTokens)
         }
         return unit
     }

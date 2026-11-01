@@ -9,7 +9,7 @@ import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.TyperMode
 import net.exoad.kira.compiler.analysis.types.TyperOptions
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
-import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.compiler.frontend.parser.KiraParser
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
@@ -56,7 +56,7 @@ object TyperTestSupport {
             val bare = cu.addSource(s.path, processed, emptyList(), s.module)
             val tokens = KiraLexer(bare).tokenize()
             val ctx = cu.addSource(s.path, bare.content, tokens)
-            KiraSourceParsers.from(ctx).parse()
+            KiraParser.parse(ctx)
         }
         return cu
     }

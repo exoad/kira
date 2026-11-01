@@ -34,7 +34,7 @@ class MutabilityTest {
         val processed = KiraPreprocessor(text).process().processedContent
         val bare = unit.addSource("probe.kira", processed, emptyList(), "test:main")
         val ctx = unit.addSource("probe.kira", processed, KiraLexer(bare).tokenize())
-        KiraParser(ctx).parse()
+        KiraParser.parse(ctx)
         ctx to null
     } catch (e: DiagnosticsException) {
         null to ((e.message.lines().firstOrNull { it.isNotBlank() } ?: e.toString()) + " at ${e.location}")
