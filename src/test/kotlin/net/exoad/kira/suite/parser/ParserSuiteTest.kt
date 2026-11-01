@@ -66,7 +66,7 @@ import kotlin.test.assertTrue
  * is explicit. `this`, lambdas in expression position and initially/finally
  * blocks were once pinned as rejected; design 2.4 (the C++ backend's AST
  * contract) makes them syntax, so they are pinned as accepted here and
- * covered in full by ParserGrowthTest.
+ * covered in full by the tests below.
  */
 class ParserSuiteTest {
 
@@ -596,7 +596,7 @@ class ParserSuiteTest {
 
     @Test
     fun thisKeywordParsesAsAPrimary() {
-        // Was pinned as rejected; design 2.4 adds ThisExpr (see ParserGrowthTest).
+        // Was pinned as rejected; design 2.4 adds ThisExpr (see the tests below).
         parseModule(
             """
             pub Node: Any {
@@ -672,7 +672,7 @@ class ParserSuiteTest {
 
     @Test
     fun initiallyBlockParses() {
-        // Design 2.4 adds ClassDecl.initially (see ParserGrowthTest).
+        // Design 2.4 adds ClassDecl.initially (see the tests below).
         val ast = parseModule(
             """
             pub C: Mutable<Any> {

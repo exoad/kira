@@ -50,7 +50,7 @@ pub checks: (p: Pt, line: Line, m: Maybe<Pt>, s: Shape, k: Int32) Void {
     n: Bool = probe() == Pt { y == 2 }                             // @type Bool
 }
 
-// Inside the block the subject reads as what the identity test proved; after it, as ordinary values do.
+// Inside the block the subject reads as what the identity test proved; after it, as a conformance test narrows.
 pub narrowing: (m: Maybe<Pt>, s: Shape) Int32 {
     inside: Bool = m == Pt { x == m.y }                            // @type Int32 member=Field(Pt.y: Int32) @ m.y
     m == Pt { x > 0 }
