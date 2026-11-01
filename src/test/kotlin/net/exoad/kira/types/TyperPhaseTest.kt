@@ -305,14 +305,16 @@ class TyperPhaseTest {
     fun externArgumentsAreRecordedVerbatimOnceTheParserKeepsThem() {
         // The parser records marker arguments (SourceContext.intrinsicInvocationsOf) and
         // DeclarationCollector.invocationsOf reads them directly.
-        val p = snippet(
-            """
-            pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
-                pub ok: () Bool;
-            }
-            pub @_extern("c_cos") cosine: (x: Float64) Float64;
-            """
-        )
+        val p = TyperTestSupport.parsingDialect("reading @_extern arguments") {
+            snippet(
+                """
+                pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Any {
+                    pub ok: () Bool;
+                }
+                pub @_extern("c_cos") cosine: (x: Float64) Float64;
+                """
+            )
+        }
         assertEquals(Foreign.Extern(mapOf("cpp" to "bibo::Car", "header" to "car.hxx")), (p.member("test:main", "Car") as ClassSymbol).foreign)
         assertEquals(Foreign.Extern(mapOf("symbol" to "c_cos")), (p.member("test:main", "cosine") as FnSymbol).foreign)
     }
