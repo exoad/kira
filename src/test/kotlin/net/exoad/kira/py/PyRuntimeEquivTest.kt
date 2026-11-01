@@ -63,11 +63,10 @@ class PyRuntimeEquivTest {
         assertEquals(0, r.code, r.raw)
         assertEquals(0, r.int("mismatches"))
         assertEquals(0, r.int("shape_diffs"))
-        // After the dead-block deletion the only skips are the cases of the dead names, all counted as such.
+        // The dead blocks are deleted: the only skips are the cases of the dead names, all counted as such.
+        assertEquals("gone", harness("strip-dead", "--rt", rt(), "--out", File(scratch, "stripped0.py").absolutePath).one("dead.state"), "a dead block is back in the runtime")
         assertEquals(0, r.int("skipped") - r.int("skipped_dead"), "a case was skipped that no dead name explains")
-        val dead = harness("strip-dead", "--rt", rt(), "--out", File(scratch, "stripped0.py").absolutePath).one("dead.state")
-        if (dead == "present") assertEquals(0, r.int("skipped"), "a case was skipped on the unchanged runtime")
-        else assertTrue(r.int("skipped_dead") > 0, "the runtime lost the dead names but no case was skipped for them")
+        assertTrue(r.int("skipped_dead") > 0, "the runtime lost the dead names but no case was skipped for them")
         assertTrue(r.int("cases") >= 30000, "only ${r.int("cases")} cases")
         for (kind in listOf("int", "float", "text", "slice", "bytes", "radix", "json", "collections", "os", "host", "ffi", "misc")) {
             assertTrue(r.int("kind.$kind") >= 100, "kind $kind has ${r.lines["kind.$kind"]} cases")
@@ -162,34 +161,54 @@ class PyRuntimeEquivTest {
         val g = harness("equiv", "--a", rt(), "--b", gone.absolutePath)
         assertEquals(1, g.code)
         assertTrue(g.lines["shape_diff"].orEmpty().any { it.startsWith("only in A: _k_hex") }, g.raw)
-        // _k_hex is no dead name: its cases are skipped, and none of those skips may count as dead.
-        assertTrue(g.int("skipped") > 0, "the cases of the removed function were not skipped: ${g.raw}")
-        assertEquals(0, g.int("skipped_dead"), "a skip was counted as dead for a live function: ${g.raw}")
+        // _k_hex is no dead name: its cases are skipped, and only the runtime's own dead-name skips may count as dead.
+        val dead = harness("equiv", "--a", rt(), "--b", rt()).int("skipped_dead")
+        assertTrue(g.int("skipped") > dead, "the cases of the removed function were not skipped: ${g.raw}")
+        assertEquals(dead, g.int("skipped_dead"), "a skip was counted as dead for a live function: ${g.raw}")
+    }
+
+    /** The runtime as it stood before the dead blocks went: [functions] at its end and, if [methods], each dead class's `_k_set`. */
+    private fun withDeadBlocks(name: String, functions: Boolean = true, methods: Boolean = true): File {
+        var text = runtime.readText()
+        val fields = mapOf(
+            "_k_Datagram" to listOf("size", "host", "port"), "_k_Ready" to listOf("handle", "events"), "_k_Ran" to listOf("code", "out", "err"),
+            "_k_HttpReply" to listOf("status", "body"), "_k_HttpRequest" to listOf("method", "path", "host", "body"),
+            "_k_HttpAnswer" to listOf("status", "contentType", "body", "headers"),
+        )
+        if (methods) for ((cls, names) in fields) {
+            val at = text.indexOf("\nclass $cls:\n")
+            val eq = text.indexOf("    def __eq__(self, o):", at)
+            assertTrue(at >= 0 && eq > at, "$cls has no __eq__ to put _k_set before")
+            val method = "    def _k_set(self, o):\n" + names.joinToString("") { "        self.$it = o.$it\n" } + "\n"
+            text = text.substring(0, eq) + method + text.substring(eq)
+        }
+        if (functions) text += "\n\ndef _k_dqset(q, v):\n    if q is not v:\n        q.clear()\n        q.extend(v)\n\n\ndef _k_mapset(m, v):\n    if m is not v:\n        m.clear()\n        m.update(v)\n"
+        return File(scratch, name).also { it.writeText(text, Charsets.UTF_8) }
     }
 
     @Test
     fun `the names the corpus lists as dead may go without the harness failing`() {
+        // The runtime before the deletion, rebuilt: it strips to the runtime as it stands, and the corpus stands on both.
+        val before = withDeadBlocks("before-deletion.py")
         val stripped = File(scratch, "stripped.py")
-        val s = harness("strip-dead", "--rt", rt(), "--out", stripped.absolutePath)
+        val s = harness("strip-dead", "--rt", before.absolutePath, "--out", stripped.absolutePath)
         println("dead names: functions ${s.one("dead.functions")}, classes ${s.one("dead.classes")}, methods ${s.one("dead.methods")} (${s.one("dead.state")}); stripped from the copy: ${s.one("stripped")}")
-        // Every listed name is in the runtime or none is; a part means the lists in rt_cases.py no longer match it.
-        assertTrue(s.one("dead.state") != "DRIFTED", "DEAD_FUNCTIONS, DEAD_CLASSES and DEAD_METHODS match only part of the runtime: ${s.raw}")
-        // The corpus must have stood on the copy too: its other cases all still equal, the dead ones skipped.
-        val r = harness("equiv", "--a", rt(), "--b", stripped.absolutePath)
-        assertEquals(0, r.code, r.raw)
-        assertEquals(0, r.int("mismatches"))
-        if (s.one("dead.state") == "present") {
-            assertEquals(2 + 6, s.int("stripped"), "the stripped count is the two functions and six methods")
-            assertTrue(r.int("skipped") > 0, "the dead cases ran against a runtime without them")
+        assertEquals("present", s.one("dead.state"), s.raw)
+        assertEquals(2 + 6, s.int("stripped"), "the stripped count is the two functions and six methods")
+        // Its other cases all still equal, the dead ones (3 dqset, 3 mapset and 6 method cases) skipped and counted as dead.
+        for (b in listOf(stripped.absolutePath, rt())) {
+            val r = harness("equiv", "--a", before.absolutePath, "--b", b)
+            assertEquals(0, r.code, r.raw)
+            assertEquals(0, r.int("mismatches"))
+            assertEquals(12, r.int("skipped"), "the dead cases were not the ones skipped")
             assertEquals(r.int("skipped"), r.int("skipped_dead"), "a skipped case is not a dead name's")
         }
-        // The stripped copy against itself, as the runtime stands after the deletion: the 3 dqset, 3 mapset and 6 method cases.
-        val both = harness("equiv", "--a", stripped.absolutePath, "--b", stripped.absolutePath)
+        // The runtime as it stands against itself: the same 12 skips; and what is left reads as gone, no function and no method.
+        val both = harness("equiv", "--a", rt(), "--b", rt())
         assertEquals(0, both.code, both.raw)
-        assertEquals(12, both.int("skipped"), "the stripped copy against itself skips the dead cases")
+        assertEquals(12, both.int("skipped"), "the runtime against itself skips the dead cases")
         assertEquals(both.int("skipped"), both.int("skipped_dead"), both.raw)
-        // Stripping what is stripped changes nothing, and what is left reads as gone: no function, no method, classes stay.
-        val again = harness("strip-dead", "--rt", stripped.absolutePath, "--out", File(scratch, "stripped2.py").absolutePath)
+        val again = harness("strip-dead", "--rt", rt(), "--out", File(scratch, "stripped2.py").absolutePath)
         assertEquals("gone", again.one("dead.state"), again.raw)
         assertEquals("0/2", again.one("dead.functions"))
         assertEquals("0", again.one("stripped"))
@@ -198,19 +217,12 @@ class PyRuntimeEquivTest {
         drifted.writeText(runtime.readText() + "\n\ndef _k_mapset(m, v):\n    return m\n", Charsets.UTF_8)
         val d = harness("strip-dead", "--rt", drifted.absolutePath, "--out", File(scratch, "stripped3.py").absolutePath)
         assertEquals("DRIFTED", d.one("dead.state"), d.raw)
-        // Half a deletion is a part too: only the functions gone, only the methods gone, the stripped copy with one back.
-        val text = runtime.readText()
-        val noFunctions = text.replace(Regex("\\n(?:# [^\\n]*\\n)*def _k_(?:dqset|mapset)\\([^\\n]*\\n(?:    [^\\n]*\\n)+"), "\n")
-        val noMethods = text.replace(Regex("\\n    def _k_set\\(self, o\\):\\n(?:        [^\\n]*\\n)+"), "\n")
-        assertTrue(noFunctions.length < text.length && noMethods.length < text.length, "the half deletions removed nothing")
+        // Half a deletion is a part too: only the functions back, only the methods back.
         val halves = mapOf(
-            "functions-only" to noFunctions,
-            "methods-only" to noMethods,
-            "stripped-plus-one-back" to stripped.readText() + "\n\ndef _k_mapset(m, v):\n    return m\n",
+            "functions-only" to withDeadBlocks("dead-half-functions-only.py", methods = false),
+            "methods-only" to withDeadBlocks("dead-half-methods-only.py", functions = false),
         )
-        for ((id, body) in halves) {
-            val f = File(scratch, "dead-half-$id.py")
-            f.writeText(body, Charsets.UTF_8)
+        for ((id, f) in halves) {
             val h = harness("strip-dead", "--rt", f.absolutePath, "--out", File(scratch, "stripped-$id.py").absolutePath)
             assertEquals("DRIFTED", h.one("dead.state"), "$id: ${h.raw}")
         }
