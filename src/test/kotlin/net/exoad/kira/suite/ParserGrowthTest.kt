@@ -92,6 +92,12 @@ class ParserGrowthTest {
         runSemantic = false,
     )
 
+    private fun emitCTyped(body: String): String = TestCompileSupport.transpileSnippetToC(
+        source = TestCompileSupport.wrapModule("test:growth.c", body),
+        logicalPath = TestCompileSupport.logicalPathForModule("test:growth.c"),
+        runSemantic = true,
+    )
+
     private fun emitJS(body: String): String = TestCompileSupport.transpileSnippetToJS(
         source = TestCompileSupport.wrapModule("test:growth.js", body),
         logicalPath = TestCompileSupport.logicalPathForModule("test:growth.js"),
@@ -754,9 +760,12 @@ class ParserGrowthTest {
     // --- C and JS fail loudly on every new construct ---------------------------------
 
     /** (a fragment of the construct's diagnostic name) to (a program using it). */
+    private val cLowered = listOf("c ? 1 : 2", "x > 0 ? 1 : 2", "p.x = 1", "this.x", "'a'", "@_static_assert")
+
+    private fun refusedOnC(program: String) = cLowered.none { program.contains(it) }
+
     private val newConstructs = listOf(
         "struct declaration" to "S: Struct { x: Int32 = 1 }",
-        // A returned ternary is the if/else of returns on C and JS; one held in a local is not lowered.
         "if-expression" to "f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }",
         "lambda expression" to "f: () Void { g: Fx<Tuple1<Int32>, Int32> = (x: Int32) Int32 { x } }",
         "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: (p: P) Void { p.x = 1 }",
@@ -775,12 +784,23 @@ class ParserGrowthTest {
 
     @Test
     fun eachNewConstructFailsLoudlyOnTheCTarget() {
-        for ((construct, program) in newConstructs) {
+        for ((construct, program) in newConstructs.filter { refusedOnC(it.second) }) {
             val e = assertThrows<UnsupportedConstruct>("the C backend should refuse:\n$program") { emitC(program) }
             val message = assertNotNull(e.message)
             assertTrue(message.contains(construct), "'$message' should name $construct")
             assertTrue(message.contains("C backend"), "'$message' should name the C target")
         }
+    }
+
+    @Test
+    fun theNowLoweredConstructsEmitTheirCForm() {
+        val assignOut = emitCTyped("P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: (p: P) Void { p.x = 1 }")
+        assertTrue(assignOut.contains("p->x = 1;"), assignOut)
+        val thisOut = emitCTyped("P: Mutable<Any> {\n    x: Mutable<Int32> = 0\n    pub get: () Int32 {\n        this.x\n    }\n}")
+        assertTrue(thisOut.contains("return this->x;"), thisOut)
+        assertTrue(emitC("f: () Void { c: Char = 'a' }").contains("((UInt8)97)"))
+        val staticOut = emitCTyped("@_static_assert(1 == 1, \"ok\")\npub main: () Int32 {\n    0\n}")
+        assertTrue(staticOut.contains("_Static_assert((1 == 1), \"ok\");"), staticOut)
     }
 
     @Test
@@ -791,7 +811,7 @@ class ParserGrowthTest {
         assertTrue(c.contains("if((a < 0))") && c.contains("else if((a > 0))") && c.contains("return 0;"), c)
         val js = emitJS(src)
         assertTrue(js.contains("a < 0") && js.contains("a > 0") && js.contains("return -1;") && js.contains("return 0;"), js)
-        assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
+        assertTrue(emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }").contains("(c ? 1 : 2)"))
     }
 
     @Test
@@ -880,6 +900,7 @@ class ParserGrowthTest {
     private fun assertRefusedByTheBackend(target: String, backend: String) {
         for ((index, entry) in cliConstructs.withIndex()) {
             val (construct, program) = entry
+            if (target == "c" && !refusedOnC(program)) continue
             val run = runCli("construct-$index", target, program)
             val all = run.output
             assertEquals(1, run.exitCode, "exit 1 for:\n$program\n$all")

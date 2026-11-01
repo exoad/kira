@@ -14,6 +14,7 @@ object CMagicTypeLowering {
         "Int8" to CMagicTypeBinding("Int8"),
         "Int16" to CMagicTypeBinding("Int16"),
         "Int32" to CMagicTypeBinding("Int32"),
+        "Char" to CMagicTypeBinding("UInt8"),
         "Int64" to CMagicTypeBinding("Int64"),
         "Int" to CMagicTypeBinding("Int32"),
         "Float32" to CMagicTypeBinding("Float32"),

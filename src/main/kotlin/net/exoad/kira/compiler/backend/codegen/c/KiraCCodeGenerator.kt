@@ -182,6 +182,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val userClassNames = mutableSetOf<String>()
     /** User class name -> ordered list of (fieldName, fieldType) for init lowering. */
     private val userClassFields = mutableMapOf<String, List<Pair<String, String>>>()
+    private val userClassDefaults = mutableMapOf<String, List<Expr?>>()
     /**
      * Stack of ARC scopes, innermost last. Each holds the class-typed locals
      * declared directly in that block, so a release lands inside the C block
@@ -199,6 +200,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 field.name.value to typeNameOf(field.type)
             }
             userClassFields[base] = fields
+            userClassDefaults[base] = decl.members.filterIsInstance<VariableDecl>().map { it.value }
         }
         classSpecializations.keys.forEach { userClassNames.add(it) }
     }
@@ -2467,6 +2469,38 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append(")))")
     }
 
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        val thenValue = ifExpr.thenBranch.singleOrNull()?.expr
+        val elseValue = ifExpr.elseBranch.singleOrNull()?.expr
+        if (thenValue == null || elseValue == null) {
+            throw UnsupportedConstruct(ifExpr, "an if-expression with statement branches", TARGET_NAME)
+        }
+        buffer.append("(")
+        ifExpr.condition.accept(this)
+        buffer.append(" ? ")
+        thenValue.accept(this)
+        buffer.append(" : ")
+        elseValue.accept(this)
+        buffer.append(")")
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        buffer.append("this")
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        buffer.append("((UInt8)${charLiteral.value})")
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        if (placeAssignmentExpr.operator != null) {
+            throw UnsupportedConstruct(placeAssignmentExpr, "a compound assignment to a member or index place", TARGET_NAME)
+        }
+        storeInto(placeAssignmentExpr.target, owned = !isBorrowedRef(placeAssignmentExpr.value)) {
+            placeAssignmentExpr.value.accept(this)
+        }
+    }
+
     override fun visitUnaryExpr(unaryExpr: UnaryExpr) {
         val opName = OperatorIntrinsics.unaryName(unaryExpr.operator)
         if (opName != null && isKnownNonPrimitive(unaryExpr.operand)) {
@@ -2811,7 +2845,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val rawName = intrinsicExpr.intrinsicKey.name
         val args = intrinsicExpr.parameters ?: emptyList()
         if (rawName == "_static_assert") {
-            throw UnsupportedConstruct(intrinsicExpr, "@_static_assert", TARGET_NAME)
+            buffer.append("_Static_assert(")
+            args[0].accept(this)
+            buffer.append(", ")
+            if (args.size > 1) args[1].accept(this) else buffer.append("\"static assertion failed\"")
+            buffer.append(")")
+            return
         }
         if (isPrintLike(rawName)) {
             emitPrintCall(rawName, args)
@@ -2867,7 +2906,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         // ARC user classes are heap pointers: member access uses "->".
         // Magic collections / value types stay on ".".
         val originType = receiverTypeOf(origin)
-        buffer.append(if (originType != null && userClassNames.contains(originType)) "->" else ".")
+        buffer.append(if (origin is ThisExpr || (originType != null && userClassNames.contains(originType))) "->" else ".")
         val prev = suppressThisRewrite
         suppressThisRewrite = true
         member.accept(this)
@@ -2985,6 +3024,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 } else {
                     arg.accept(this)
                 }
+            }
+            fieldTypes.indices.drop(objectInitExpr.positionalArgs.size).forEach { i ->
+                val value = userClassDefaults[typeName].orEmpty().getOrNull(i)
+                    ?: throw UnsupportedConstruct(objectInitExpr, "a construction without field '${fieldTypes[i].first}'", TARGET_NAME)
+                if (i > 0) buffer.append(", ")
+                value.accept(this)
             }
             buffer.append(")")
             return
