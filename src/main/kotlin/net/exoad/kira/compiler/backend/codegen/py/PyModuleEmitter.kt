@@ -190,7 +190,7 @@ class PyModuleEmitter(
         val stdlib = mutableListOf<List<String>>()
         while (shared.pending.isNotEmpty()) {
             val fn = shared.pending.removeFirst()
-            stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null)
+            stdlib += PyModuleEmitter(program, fn.module, bindings, runtime, null, shared).function(fn, null, magicReceiver = fn.owner != null)
         }
         val sidecar = if (sidecarNames.isNotEmpty() || raised.isNotEmpty()) sidecarPath() else null
         // The constants come before the loads: in a use cycle the other module reads them while this one is half loaded.
@@ -315,7 +315,8 @@ class PyModuleEmitter(
         return false to "${pyName(g)} = ${asValue(init, Frame(null, null), if (g.isMut) Use.STORE else Use.CONSTANT).text}"
     }
 
-    private fun function(fn: FnSymbol, cls: ClassSymbol?): List<String> {
+    /** A function's def. [magicReceiver]: a member with a body of a magic type, a def of its own whose first parameter is the receiver. */
+    private fun function(fn: FnSymbol, cls: ClassSymbol?, magicReceiver: Boolean = false): List<String> {
         if (cls == null && fn.foreign is Foreign.Extern) {
             return externFunction(fn)
         }
@@ -323,7 +324,7 @@ class PyModuleEmitter(
         checkName(fn.name, at)
         when {
             fn.isOperator -> refuse(at, "an operator overload")
-            fn.foreign != null -> refuse(at, "the foreign function '${fn.name}'")
+            fn.foreign != null && !magicReceiver -> refuse(at, "the foreign function '${fn.name}'")
             fn.typeParams.isNotEmpty() -> refuse(at, "the generic function '${fn.name}'")
             !fn.hasBody || fn.body == null -> refuse(at, if (cls == null) "the body-less function '${fn.name}' (a sidecar's function is an @_extern fx)" else "the body-less method '${fn.name}'")
         }
@@ -342,7 +343,8 @@ class PyModuleEmitter(
             frame.scopes.first().add(p.name)
             pyDefault(p)?.let { "${pyParam(p.name)}=$it" } ?: pyParam(p.name)
         }
-        val head = "def ${pyName(fn)}(${(listOfNotNull(if (cls != null) "self" else null) + params).joinToString(", ")}):"
+        val name = if (magicReceiver) magicHelperName(fn) else pyName(fn)
+        val head = "def $name(${(listOfNotNull(if (cls != null || magicReceiver) "self" else null) + params).joinToString(", ")}):"
         val body = mutableListOf<String>()
         assignedGlobals(fn.body.orEmpty()).takeIf { it.isNotEmpty() }?.let { body += "global ${it.joinToString(", ")}" }
         body += block(fn.body.orEmpty(), frame)
@@ -1568,8 +1570,7 @@ class PyModuleEmitter(
         if ((fn.name == "contains" || fn.name == "containsValue") && compared != null && holdsHandle(compared)) {
             return refusePy(c, "'${fn.name}' on ${article(model.typeOrNull(receiver)!!.display())}, which compares an opaque handle")
         }
-        val (bindingKey, found) = bindingOf(fn, receiver)
-            ?: return refusePy(c, "'${CppBindingTable.keysFor(fn, receiver?.let { model.typeOrNull(it) }, program).firstOrNull() ?: fn.name}' (it has no py binding)")
+        val (bindingKey, found) = bindingOf(fn, receiver) ?: return bodiedMagicCall(c, rc, f)
         found.unsupported?.let { return refusedFor(c, "'$bindingKey'", it) }
         val binding = found.float?.takeIf { receiver?.let { model.typeOrNull(it) }?.prim?.isFloat == true }?.let { PyBinding(it) } ?: found
         // Python evaluates a binding's arguments in parameter order: named ones are taken only
@@ -1582,7 +1583,7 @@ class PyModuleEmitter(
                 val t = model.typeOrNull(r)
                 if (t != null && isValue(t)) listPlace(r, f) ?: "None" else wrap(expr(r, f), prec)
             }
-        }
+        } ?: implicitSelf(rc)
         val args = rc.args.map { (it as ArgBinding.Given).expr }
         // In any order these run the same: nothing writes, and at most one may stop the program.
         val plain = receiver != null && isPlace(receiver) && args.none { model.effect(it) == Effect.IMPURE } &&
@@ -1604,6 +1605,35 @@ class PyModuleEmitter(
     }
 
     /** A variable, `this` or a field of one: reading it runs nothing and stops nothing. */
+    /** A bare call of a magic type's member inside its body: the receiver is `self`, the def's first parameter. */
+    private fun implicitSelf(rc: ResolvedCall): ((Int) -> String)? =
+        if (rc.receiver == null && rc.implicitThis) { _: Int -> "self" } else null
+
+    /**
+     * A call of a member with a body on a magic type that has no binding: the body is a def of its
+     * own, `_k_<module>_<Owner>_<member>(receiver, args)`. Only a stdlib magic type has a runtime
+     * behind it; a type the program declares has none, on any target.
+     */
+    private fun bodiedMagicCall(c: FunctionCallExpr, rc: ResolvedCall, f: Frame): Py {
+        val fn = rc.fn ?: return refusePy(c, "this call")
+        val owner = fn.owner as? ClassSymbol
+        if (fn.body == null || owner == null || owner.kind != ClassKind.MAGIC) {
+            return refusePy(c, "'${CppBindingTable.keysFor(fn, rc.receiver?.let { model.typeOrNull(it) }, program).firstOrNull() ?: fn.name}' (it has no py binding)")
+        }
+        if (!fn.module.isStdlib) {
+            return refusePy(c, "a method written in Kira on the magic type '${owner.name}' ('${fn.name}'), a type the program declares, which no runtime backs")
+        }
+        if (shared.bundled.add(fn)) {
+            shared.pending.addLast(fn)
+        }
+        val receiver = rc.receiver?.let { wrap(asValue(it, f, Use.ARG), PyPrec.TERNARY) }
+            ?: if (rc.implicitThis) "self" else return refusePy(c, "a call of '${fn.name}' with no receiver")
+        val args = userArgs(c, rc, f)
+        return Py("${magicHelperName(fn)}($receiver${if (args.isEmpty()) "" else ", $args"})", PyPrec.POSTFIX)
+    }
+
+    private fun magicHelperName(fn: FnSymbol): String = "_k_${sanitized(fn.module.uri)}_${fn.owner!!.name}_${fn.name}"
+
     private fun isPlace(e: Expr): Boolean = when (e) {
         is ThisExpr -> true
         is Identifier -> model.symbolOf(e).let { it is LocalSymbol || it is ParamSymbol || it is FieldSymbol || (it is GlobalSymbol && it.module === module) }

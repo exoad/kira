@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
+import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.KType
@@ -82,7 +83,8 @@ class CppStmtEmitter : CppStmtPart {
 
     /** Whether the definition of [fn] (a member of [owner], or a class block when [fn] is null) is written in the header. */
     private fun headerPlaced(ctx: CppEmitContextImpl, fn: FnSymbol?, owner: TypeSymbol?): Boolean {
-        if (ctx.isHeaderOnly) {
+        // A magic type's helper (CppDeclEmitter.magicHelpers) is written in the header, where every caller sees it.
+        if (ctx.isHeaderOnly || (fn != null && (fn.owner as? ClassSymbol)?.kind == ClassKind.MAGIC)) {
             return true
         }
         val placement = ctx.placement

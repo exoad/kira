@@ -141,6 +141,11 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private var emittingClassMembers = false
     /** True while emitting a method body: bare field names become this.field. */
     private var currentMethodClass: String? = null
+    /** The magic type whose body is being emitted as a helper, or null: a bare name of its member there is a call on `self`. */
+    private var magicSelfType: String? = null
+    /** Helpers called so far whose definition is not written yet, and the names of all of them. */
+    private val pendingMagicHelpers = ArrayDeque<CompilationUnit.BodiedMagicMember>()
+    private val requestedMagicHelpers = mutableSetOf<String>()
     /** True on the `.member` side of MemberAccess: no this-> rewrite. */
     private var suppressThisRewrite = false
     private var hasMain = false
@@ -400,6 +405,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             visitRootASTNode(source.ast)
         }
         callerModuleUri = null
+        emitPendingMagicHelpers()
 
         // The C backend gets `main` from the host C runtime; Node has no entry
         // convention, so a Kira `main` is invoked explicitly at the end.
@@ -594,6 +600,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 }
                 null
             }
+            is StringLiteral -> "Str"
             is ObjectInitExpr -> typeNameOf(expr.typeName)
             // `xs[i]` has the container's declared element type.
             is ArrayIndexExpr -> elementTypeOf(expr.originExpr)
@@ -777,6 +784,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         indentLevel = 0
         emittingClassMembers = false
         currentMethodClass = null
+        magicSelfType = null
+        pendingMagicHelpers.clear()
+        requestedMagicHelpers.clear()
         suppressThisRewrite = false
         hasMain = false
         callerModuleUri = null
@@ -1016,109 +1026,183 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         }
     }
 
+    /** A method call `receiver.method(args)`: a builtin's rewrite, a helper for a magic type's body, or a plain method call. */
+    private fun emitMethodCall(call: FunctionCallExpr, nameExpr: MemberAccessExpr, args: List<Expr>) {
+        val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+        val recvType = receiverTypeOf(nameExpr.origin)
+
+        // Str is a JS primitive: rewrite to kira_str_* helpers.
+        if (recvType != null && isStrType(recvType) && methodName in strMethods) {
+            buffer.append("kira_str_")
+            buffer.append(methodName)
+            buffer.append("(")
+            nameExpr.origin.accept(this)
+            args.forEach { arg ->
+                buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+
+        // Num scalars are JS numbers: conversions are identity, abs is Math.abs.
+        if (recvType != null && isNumScalar(recvType) && methodName in numMethods) {
+            val helper = when (methodName) {
+                "toInt32" -> "kira_num_toInt32"
+                "toInt64" -> "kira_num_toInt64"
+                "toFloat32" -> "kira_num_toFloat32"
+                "toFloat64" -> "kira_num_toFloat64"
+                "abs" -> "Math.abs"
+                else -> null
+            }
+            if (helper != null) {
+                buffer.append(helper)
+                buffer.append("(")
+                nameExpr.origin.accept(this)
+                buffer.append(")")
+                return
+            }
+        }
+
+        // Arr is a JS Array: size/get/set/contains/clone rewrite to array ops.
+        if (recvType == "Arr") {
+            when (methodName) {
+                "get" -> {
+                    nameExpr.origin.accept(this)
+                    buffer.append("[")
+                    args.getOrNull(0)?.accept(this)
+                    buffer.append("]")
+                    return
+                }
+                "size" -> {
+                    nameExpr.origin.accept(this)
+                    buffer.append(".length")
+                    return
+                }
+                "isEmpty" -> {
+                    nameExpr.origin.accept(this)
+                    buffer.append(".length === 0")
+                    return
+                }
+                "contains" -> {
+                    nameExpr.origin.accept(this)
+                    buffer.append(".includes(")
+                    args.getOrNull(0)?.accept(this)
+                    buffer.append(")")
+                    return
+                }
+                "clone" -> {
+                    nameExpr.origin.accept(this)
+                    buffer.append(".slice()")
+                    return
+                }
+                "set" -> {
+                    buffer.append("(")
+                    nameExpr.origin.accept(this)
+                    buffer.append("[")
+                    args.getOrNull(0)?.accept(this)
+                    buffer.append("] = ")
+                    args.getOrNull(1)?.accept(this)
+                    buffer.append(")")
+                    return
+                }
+            }
+        }
+
+        // A magic type's body comes after the builtin lowerings above. A tuple is not one: its runtime class has the member.
+        val bodied = recvType?.let { compilationUnit.bodiedMagicMember(it, methodName) }
+        if (bodied != null && Builtins.tupleArity(bodied.owner) == null) {
+            emitMagicHelperCall(call = call, member = bodied, receiver = nameExpr.origin, args = args)
+            return
+        }
+
+        // Natural dispatch: user classes, runtime container classes, tuples,
+        // and erased trait receivers all lower to a plain method call.
+        nameExpr.origin.accept(this)
+        buffer.append(".")
+        buffer.append(methodName)
+        buffer.append("(")
+        args.forEachIndexed { i, arg ->
+            if (i > 0) buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(")")
+        return
+    }
+
+    /**
+     * A call of a member with a body on a magic type with no builtin lowering: the body is emitted
+     * once as `Owner_member(self, args)`. Only a stdlib magic type has a runtime behind it.
+     */
+    private fun emitMagicHelperCall(call: FunctionCallExpr, member: CompilationUnit.BodiedMagicMember, receiver: Expr, args: List<Expr>) {
+        if (!member.stdlib) {
+            throw UnsupportedConstruct(call, "a method written in Kira on the magic type '${member.owner}' ('${member.name}'), a type the program declares, which no runtime backs", TARGET_NAME)
+        }
+        requestMagicHelper(member)
+        buffer.append(magicHelperName(member))
+        buffer.append("(")
+        receiver.accept(this)
+        args.forEach { arg ->
+            buffer.append(", ")
+            arg.accept(this)
+        }
+        buffer.append(")")
+    }
+
+    private fun magicHelperName(member: CompilationUnit.BodiedMagicMember): String = "${member.owner}_${member.name}"
+
+    private fun requestMagicHelper(member: CompilationUnit.BodiedMagicMember) {
+        if (requestedMagicHelpers.add(magicHelperName(member))) {
+            pendingMagicHelpers.addLast(member)
+        }
+    }
+
+    private fun emitPendingMagicHelpers() {
+        while (pendingMagicHelpers.isNotEmpty()) {
+            emitMagicHelper(pendingMagicHelpers.removeFirst())
+        }
+    }
+
+    /** One helper: the body of a magic type's member, `self` its receiver, the members of that type called on it. */
+    private fun emitMagicHelper(member: CompilationUnit.BodiedMagicMember) {
+        val decl = member.decl
+        buffer.append("function ")
+        buffer.append(magicHelperName(member))
+        buffer.append("(self")
+        decl.def.parameters.forEach { param ->
+            buffer.append(", ")
+            buffer.append(param.name.value)
+        }
+        buffer.appendLine(") {")
+        val savedSelf = magicSelfType
+        magicSelfType = member.owner
+        knownValueTypes["self"] = member.owner
+        decl.def.parameters.forEach { param ->
+            knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+        }
+        indentLevel++
+        decl.def.body!!.forEach { it.accept(this) }
+        indentLevel--
+        decl.def.parameters.forEach { param -> knownValueTypes.remove(param.name.value) }
+        knownValueTypes.remove("self")
+        magicSelfType = savedSelf
+        appendIndentedLine("}")
+        buffer.appendLine()
+    }
+
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
         val args = boundArguments(functionCallExpr)
 
-        // Method call: receiver.method(args)
         if (nameExpr is MemberAccessExpr) {
-            val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
-            val recvType = receiverTypeOf(nameExpr.origin)
-            // A tuple's runtime class defines its members, so only the other magic types are refused.
-            if (recvType != null && Builtins.tupleArity(recvType) == null && compilationUnit.isBodiedMagicMember(recvType, methodName)) {
-                throw UnsupportedConstruct(functionCallExpr, "a method written in Kira on the magic type '$recvType' ('$methodName')", TARGET_NAME)
-            }
-
-            // Str is a JS primitive: rewrite to kira_str_* helpers.
-            if (recvType != null && isStrType(recvType) && methodName in strMethods) {
-                buffer.append("kira_str_")
-                buffer.append(methodName)
-                buffer.append("(")
-                nameExpr.origin.accept(this)
-                args.forEach { arg ->
-                    buffer.append(", ")
-                    arg.accept(this)
-                }
-                buffer.append(")")
-                return
-            }
-
-            // Num scalars are JS numbers: conversions are identity, abs is Math.abs.
-            if (recvType != null && isNumScalar(recvType) && methodName in numMethods) {
-                val helper = when (methodName) {
-                    "toInt32" -> "kira_num_toInt32"
-                    "toInt64" -> "kira_num_toInt64"
-                    "toFloat32" -> "kira_num_toFloat32"
-                    "toFloat64" -> "kira_num_toFloat64"
-                    "abs" -> "Math.abs"
-                    else -> null
-                }
-                if (helper != null) {
-                    buffer.append(helper)
-                    buffer.append("(")
-                    nameExpr.origin.accept(this)
-                    buffer.append(")")
-                    return
-                }
-            }
-
-            // Arr is a JS Array: size/get/set/contains/clone rewrite to array ops.
-            if (recvType == "Arr") {
-                when (methodName) {
-                    "get" -> {
-                        nameExpr.origin.accept(this)
-                        buffer.append("[")
-                        args.getOrNull(0)?.accept(this)
-                        buffer.append("]")
-                        return
-                    }
-                    "size" -> {
-                        nameExpr.origin.accept(this)
-                        buffer.append(".length")
-                        return
-                    }
-                    "isEmpty" -> {
-                        nameExpr.origin.accept(this)
-                        buffer.append(".length === 0")
-                        return
-                    }
-                    "contains" -> {
-                        nameExpr.origin.accept(this)
-                        buffer.append(".includes(")
-                        args.getOrNull(0)?.accept(this)
-                        buffer.append(")")
-                        return
-                    }
-                    "clone" -> {
-                        nameExpr.origin.accept(this)
-                        buffer.append(".slice()")
-                        return
-                    }
-                    "set" -> {
-                        buffer.append("(")
-                        nameExpr.origin.accept(this)
-                        buffer.append("[")
-                        args.getOrNull(0)?.accept(this)
-                        buffer.append("] = ")
-                        args.getOrNull(1)?.accept(this)
-                        buffer.append(")")
-                        return
-                    }
-                }
-            }
-
-            // Natural dispatch: user classes, runtime container classes, tuples,
-            // and erased trait receivers all lower to a plain method call.
-            nameExpr.origin.accept(this)
-            buffer.append(".")
-            buffer.append(methodName)
-            buffer.append("(")
-            args.forEachIndexed { i, arg ->
-                if (i > 0) buffer.append(", ")
-                arg.accept(this)
-            }
-            buffer.append(")")
+            emitMethodCall(functionCallExpr, nameExpr, args)
+            return
+        }
+        // In a magic type's body, a bare name of one of its members is a call on `self`.
+        val self = magicSelfType
+        if (self != null && nameExpr is Identifier && compilationUnit.isMagicMemberName(self, nameExpr.value)) {
+            emitMethodCall(functionCallExpr, MemberAccessExpr(Identifier("self"), nameExpr), args)
             return
         }
 

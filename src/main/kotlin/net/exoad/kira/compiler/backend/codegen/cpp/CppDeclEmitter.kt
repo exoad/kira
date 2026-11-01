@@ -101,10 +101,11 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         externs.forEach { parts.externs.check(ctx, it, externChecks) }
         val headerBody = headerBody()
         val sourceBody = if (ctx.isHeaderOnly) "" else sourceBody()
+        val helpers = magicHelpers()
 
         // The bodies are rendered, so every module this one names is known (ctx.referencedModules).
         val includes = moduleIncludes()
-        val header = assembleHeader(externChecks.toString(), headerBody, includes.values)
+        val header = assembleHeader(externChecks.toString(), helpers + headerBody, includes.values)
         val source = when {
             ctx.isHeaderOnly -> null
             sourceBody.isEmpty() && main == null -> null
@@ -322,6 +323,47 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             w.lines(s)
         }
         return w.toString()
+    }
+
+    /**
+     * The magic helpers the bodies called (CppExprEmitter.bodiedMagicCall): each a `static`-free
+     * inline function `Owner_member(const Owner& self, params)` whose body is the member's, written
+     * after its callers' prototypes so a helper may call another. Rendered after the bodies, which
+     * is what requests them; a helper's body may request more, so this runs until none is new.
+     */
+    private fun magicHelpers(): String {
+        val state = CppBodyState.of(ctx)
+        val written = LinkedHashMap<String, Pair<String, String>>()
+        while (true) {
+            val next = state.magicHelpers.entries.firstOrNull { it.key !in written } ?: break
+            written[next.key] = magicHelper(next.key, next.value.first, next.value.second)
+        }
+        if (written.isEmpty()) {
+            return ""
+        }
+        val w = CppWriter()
+        written.values.forEach { w.line(it.first) }
+        w.blank()
+        written.values.forEach { w.lines(it.second) }
+        w.blank()
+        return w.toString()
+    }
+
+    /** One helper: its prototype, then its definition, the member's body with `self` as the receiver. */
+    private fun magicHelper(name: String, fn: FnSymbol, recv: KType): Pair<String, String> {
+        val receiver = "${ctx.spell(recv, if (fn.isMutMethod) Pos.MUT_PARAM else Pos.PARAM, fn.decl)} self"
+        val params = (listOf(receiver) + fn.params.map { paramText(it, withDefault = false, markUnused = false, fn = fn) }).joinToString(", ")
+        val head = "inline ${returnText(fn)} $name($params)"
+        val state = CppBodyState.of(ctx)
+        val before = state.helperSelf
+        state.helperSelf = recv
+        val w = CppWriter()
+        try {
+            w.block(head) { ctx.body(fn, fn.body ?: emptyList(), this) }
+        } finally {
+            state.helperSelf = before
+        }
+        return "$head;" to w.toString()
     }
 
     // ---- the source's namespace body -----------------------------------------------------------

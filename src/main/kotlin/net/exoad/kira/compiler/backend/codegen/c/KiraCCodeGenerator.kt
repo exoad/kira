@@ -136,6 +136,12 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
     /** Simple name -> Kira type name for print-format heuristics in the current unit. */
     private val knownValueTypes = mutableMapOf<String, String>()
+    /** The magic type whose body is being emitted as a helper, or null: a bare name of its member there is a call on `self`. */
+    private var magicSelfType: String? = null
+    /** Helpers called so far whose definition is not written yet, and the names of all of them. */
+    private val pendingMagicHelpers = ArrayDeque<CompilationUnit.BodiedMagicMember>()
+    private val requestedMagicHelpers = mutableSetOf<String>()
+    private val magicHelperPrototypes = mutableListOf<String>()
     /**
      * Simple name -> Kira type arguments of a container-typed value
      * (`entries: Map<Str, Int32>` records `[Str, Int32]`).
@@ -708,6 +714,16 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             visitRootASTNodeSkippingTypes(source.ast)
         }
         callerModuleUri = null
+
+        // The helpers of magic types' bodies are written after the walk, then placed ahead of the
+        // user's code with their prototypes, so a call anywhere reaches a declared function.
+        val helpersStart = buffer.length
+        emitPendingMagicHelpers()
+        val helpers = buffer.substring(helpersStart)
+        buffer.delete(helpersStart, buffer.length)
+        if (helpers.isNotEmpty()) {
+            buffer.insert(bodyStart, magicHelperPrototypes.joinToString("\n", postfix = "\n\n") + helpers)
+        }
 
         if (requiredIncludes.isNotEmpty()) {
             val body = buffer.substring(bodyStart)
@@ -2055,6 +2071,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         userSymbols.clear()
         requiredIncludes.clear()
         knownValueTypes.clear()
+        magicSelfType = null
+        pendingMagicHelpers.clear()
+        requestedMagicHelpers.clear()
+        magicHelperPrototypes.clear()
         methodReturnTypes.clear()
         methodsBySimpleName.clear()
         fieldTypes.clear()
@@ -2138,6 +2158,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                     knownValueTypes[name] ?: methodReturnTypes[name]
                 }
             }
+            is StringLiteral -> "Str"
             is ObjectInitExpr -> typeNameOf(expr.typeName)
             // `xs[i]` has the container's declared element type.
             is ArrayIndexExpr -> receiverTypeArgs(expr.originExpr).firstOrNull()
@@ -2485,7 +2506,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitThisExpr(thisExpr: ThisExpr) {
-        buffer.append("this")
+        buffer.append(if (magicSelfType != null) "self" else "this")
     }
 
     override fun visitCharLiteral(charLiteral: CharLiteral) {
@@ -2714,65 +2735,144 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append(")")
     }
 
+    /** A method call `receiver.method(args)`: a builtin's helper, a helper for a magic type's body, or `Class_method(&receiver, args)`. */
+    private fun emitMethodCall(functionCallExpr: FunctionCallExpr, nameExpr: MemberAccessExpr) {
+        val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
+        val recvType = receiverTypeOf(nameExpr.origin)
+        val traitSig = if (recvType != null && recvType in traitNames) {
+            traitMethodSigs[recvType]?.firstOrNull { it.name == methodName }
+        } else {
+            null
+        }
+        val mangled = resolveMethodMangled(methodName, recvType)
+        // Named arguments bind to the resolved callee's parameter names;
+        // a stdlib collection method has none, so names are refused there.
+        val args = boundArguments(
+            functionCallExpr,
+            methodName,
+            traitSig?.paramNames ?: mangled?.let { methodParamNames[it] }
+        )
+        if (tryEmitCollectionMethod(methodName, nameExpr.origin, args)) {
+            return
+        }
+        // A magic type's own body comes after its builtin lowering, which binds first.
+        val bodied = recvType?.let { compilationUnit.bodiedMagicMember(it, methodName) }
+        if (bodied != null) {
+            emitMagicHelperCall(functionCallExpr, bodied, nameExpr.origin, args)
+            return
+        }
+        // Trait dispatch: recv.vtable->method(recv.data, args)
+        if (traitSig != null) {
+            nameExpr.origin.accept(this)
+            buffer.append(".vtable->")
+            buffer.append(methodName)
+            buffer.append("(")
+            nameExpr.origin.accept(this)
+            buffer.append(".data")
+            args.forEach { arg ->
+                buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+        val target = mangled ?: methodName
+        buffer.append(target)
+        buffer.append("(")
+        if (recvType != null && userClassNames.contains(recvType)) {
+            // ARC class receiver is already a heap pointer.
+            nameExpr.origin.accept(this)
+        } else {
+            // Value/struct receiver: pass by address for mutable field access.
+            buffer.append("&")
+            nameExpr.origin.accept(this)
+        }
+        val paramTypes = methodParamTypes[target]
+        args.forEachIndexed { i, arg ->
+            buffer.append(", ")
+            emitCoercedTraitValue(arg, paramTypes?.getOrNull(i) ?: "Any")
+        }
+        buffer.append(")")
+        return
+    }
+
+    /**
+     * A call of a member with a body on a magic type that has no builtin lowering: the body is
+     * emitted once as `Owner_member(self, args)`. A magic type is spelled by value here (Str is
+     * already a pointer, and an Int32 is a scalar), so the receiver is passed as is.
+     */
+    private fun emitMagicHelperCall(call: FunctionCallExpr, member: CompilationUnit.BodiedMagicMember, receiver: Expr, args: List<Expr>) {
+        if (CMagicTypeLowering.resolve(member.owner) == null) {
+            throw UnsupportedConstruct(call, "a method written in Kira on the magic type '${member.owner}' ('${member.name}') (the type has no C representation)", TARGET_NAME)
+        }
+        requestMagicHelper(member)
+        val paramTypes = member.decl.def.parameters.map { typeNameOf(it.typeSpecifier) }
+        buffer.append(magicHelperName(member))
+        buffer.append("(")
+        receiver.accept(this)
+        args.forEachIndexed { i, arg ->
+            buffer.append(", ")
+            emitCoercedTraitValue(arg, paramTypes.getOrNull(i) ?: "Any")
+        }
+        buffer.append(")")
+    }
+
+    private fun magicHelperName(member: CompilationUnit.BodiedMagicMember): String = "${cName(member.owner)}_${cName(member.name)}"
+
+    private fun requestMagicHelper(member: CompilationUnit.BodiedMagicMember) {
+        if (requestedMagicHelpers.add(magicHelperName(member))) {
+            pendingMagicHelpers.addLast(member)
+        }
+    }
+
+    private fun emitPendingMagicHelpers() {
+        while (pendingMagicHelpers.isNotEmpty()) {
+            emitMagicHelper(pendingMagicHelpers.removeFirst())
+        }
+    }
+
+    /** One helper: the body of a magic type's member, with `self` the receiver and the members of that type called on it. */
+    private fun emitMagicHelper(member: CompilationUnit.BodiedMagicMember) {
+        val decl = member.decl
+        val returnTypeName = typeNameOf(decl.def.returnTypeSpecifier)
+        val params = listOf("${mapTypeName(member.owner)} self") + decl.def.parameters.map { param ->
+            "${mapTypeName(typeNameOf(param.typeSpecifier))} ${param.name.value}"
+        }
+        val signature = "static ${mapTypeName(returnTypeName)} ${magicHelperName(member)}(${params.joinToString(", ")})"
+        magicHelperPrototypes += "$signature;"
+        val savedSelf = magicSelfType
+        val savedReturnType = currentReturnType
+        magicSelfType = member.owner
+        knownValueTypes["self"] = member.owner
+        decl.def.parameters.forEach { param ->
+            knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+        }
+        buffer.appendLine(signature)
+        appendIndentedLine("{")
+        indentLevel++
+        pushArcScope()
+        currentReturnType = returnTypeName
+        decl.def.body!!.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(decl.def.body))
+        currentReturnType = savedReturnType
+        magicSelfType = savedSelf
+        indentLevel--
+        appendIndentedLine("}")
+        buffer.appendLine()
+    }
+
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
-        // Method call: receiver.method(args) -> Class_method(&receiver, args)
-        // or Arr/Map runtime helpers for magic collection types.
         if (nameExpr is MemberAccessExpr) {
-            val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
-            val recvType = receiverTypeOf(nameExpr.origin)
-            if (recvType != null && compilationUnit.isBodiedMagicMember(recvType, methodName)) {
-                throw UnsupportedConstruct(functionCallExpr, "a method written in Kira on the magic type '$recvType' ('$methodName')", TARGET_NAME)
-            }
-            val traitSig = if (recvType != null && recvType in traitNames) {
-                traitMethodSigs[recvType]?.firstOrNull { it.name == methodName }
-            } else {
-                null
-            }
-            val mangled = resolveMethodMangled(methodName, recvType)
-            // Named arguments bind to the resolved callee's parameter names;
-            // a stdlib collection method has none, so names are refused there.
-            val args = boundArguments(
-                functionCallExpr,
-                methodName,
-                traitSig?.paramNames ?: mangled?.let { methodParamNames[it] }
-            )
-            if (tryEmitCollectionMethod(methodName, nameExpr.origin, args)) {
-                return
-            }
-            // Trait dispatch: recv.vtable->method(recv.data, args)
-            if (traitSig != null) {
-                nameExpr.origin.accept(this)
-                buffer.append(".vtable->")
-                buffer.append(methodName)
-                buffer.append("(")
-                nameExpr.origin.accept(this)
-                buffer.append(".data")
-                args.forEach { arg ->
-                    buffer.append(", ")
-                    arg.accept(this)
-                }
-                buffer.append(")")
-                return
-            }
-            val target = mangled ?: methodName
-            buffer.append(target)
-            buffer.append("(")
-            if (recvType != null && userClassNames.contains(recvType)) {
-                // ARC class receiver is already a heap pointer.
-                nameExpr.origin.accept(this)
-            } else {
-                // Value/struct receiver: pass by address for mutable field access.
-                buffer.append("&")
-                nameExpr.origin.accept(this)
-            }
-            val paramTypes = methodParamTypes[target]
-            args.forEachIndexed { i, arg ->
-                buffer.append(", ")
-                emitCoercedTraitValue(arg, paramTypes?.getOrNull(i) ?: "Any")
-            }
-            buffer.append(")")
+            // `this` in a magic type's body is its receiver, `self`.
+            val onSelf = nameExpr.origin is ThisExpr && magicSelfType != null
+            emitMethodCall(functionCallExpr, if (onSelf) MemberAccessExpr(Identifier("self"), nameExpr.member) else nameExpr)
+            return
+        }
+        val self = magicSelfType
+        if (self != null && nameExpr is Identifier && compilationUnit.isMagicMemberName(self, nameExpr.value)) {
+            emitMethodCall(functionCallExpr, MemberAccessExpr(Identifier("self"), nameExpr))
             return
         }
 
