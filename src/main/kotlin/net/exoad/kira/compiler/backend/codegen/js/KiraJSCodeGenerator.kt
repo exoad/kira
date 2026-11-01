@@ -691,7 +691,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private fun emitEmptyContainerFactory(baseName: String) {
         when (baseName) {
             "Map" -> buffer.append("kira_map_new()")
-            "Arr" -> buffer.append("[]")
+            "Arr" -> buffer.append("KIRA_EMPTY_ARR")
             "List" -> buffer.append("kira_list_new()")
             "Set" -> buffer.append("kira_set_new()")
             "Stack" -> buffer.append("kira_stack_new()")
@@ -1458,9 +1458,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
             throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
         }
-        // Arr is a native array; an empty one is just [].
+        // Arr is a native array; an empty one is the prelude's shared frozen KIRA_EMPTY_ARR.
         if (builderExpr.elements.isEmpty()) {
-            buffer.append("[]")
+            buffer.append(if (builderExpr.kind == Builder.ARR) "KIRA_EMPTY_ARR" else "[]")
             return
         }
         buffer.append("[")

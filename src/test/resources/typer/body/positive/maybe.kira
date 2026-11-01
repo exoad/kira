@@ -34,7 +34,7 @@ pub maybes: (m: Maybe<Int32>, w: Weak<Pet>) Void {
     c: Bool = m.isNull()                   // @type Bool call=MAGIC(Maybe.isNull)
     d: Int32 = m.unwrap()                  // @type Int32 call=MAGIC(Maybe.unwrap)
     e: Int32 = m.unwrapOr(0)               // @type Int32 const=0:Int32 @ 0
-    f: Int32 = m.value                     // @type Int32 member=Field(Maybe.value: Int32)
+    f: Int32 = m.value                     // @type Int32 member=Field(Maybe.value: Int32); @warn types.maybe.unchecked-value
     p: Maybe<Pet> = w.upgrade()            // @type Maybe<Pet> call=MAGIC(Weak.upgrade)
     name: Str = p.unwrap().name            // @type Str member=Field(Pet.name: Str)
     mp: Maybe<Pet> = Pet { "Mochi" }       // @type Pet coerce=WrapSome(Pet)

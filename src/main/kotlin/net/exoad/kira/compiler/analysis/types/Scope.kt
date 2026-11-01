@@ -44,6 +44,9 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
     /** The locals and parameters a passing conformance test narrowed here, by symbol identity. */
     private val narrowed = java.util.IdentityHashMap<Symbol, KType>()
 
+    /** The Maybe locals and parameters a passing test showed hold a value, by symbol identity. */
+    private val checked = java.util.IdentityHashMap<Symbol, Boolean>()
+
     /** A name found by [find]: the symbol, and the lambda whose body declared it (null: none). */
     data class Found(val symbol: Symbol, val declaredIn: LambdaFrame?)
 
@@ -62,6 +65,22 @@ internal class Scope private constructor(val parent: Scope?, val lambda: LambdaF
     /** [sym] reads as [type] from here on in this scope (a conformance test passed). */
     fun narrow(sym: Symbol, type: KType) {
         narrowed[sym] = type
+    }
+
+    /** A test passed here shows the Maybe [sym] holds a value (`isSome`, or `isNull` false). */
+    fun markChecked(sym: Symbol) {
+        checked[sym] = true
+    }
+
+    /** True when an enclosing test showed [sym], a stable Maybe, holds a value. */
+    fun isChecked(sym: Symbol?): Boolean {
+        if (sym == null) return false
+        var s: Scope? = this
+        while (s != null) {
+            if (s.checked[sym] == true) return true
+            s = s.parent
+        }
+        return false
     }
 
     /** The type the innermost narrowing gives [sym], or null. */

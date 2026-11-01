@@ -72,12 +72,12 @@ class GenericBoundsPassTest {
         expectClean(
             snippet(
                 """
-                pub Any<T>: Any {
+                pub Holder<T>: Any {
                     pub v: T
                 }
                 pub f: () Int32 {
-                    a: Any<Str> = Any<Str> { v = "x" }
-                    b: Any<List<Int32>> = Any<List<Int32>> { v = List<Int32> {} }
+                    a: Holder<Str> = Holder<Str> { v = "x" }
+                    b: Holder<List<Int32>> = Holder<List<Int32>> { v = List<Int32> {} }
                     1
                 }
                 """,

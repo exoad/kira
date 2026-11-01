@@ -451,4 +451,7 @@ class KiraTuple10 {
   size() { return 10; }
 }
 
+// An empty Arr is this one frozen array: no Arr can grow, and a write to it throws.
+const KIRA_EMPTY_ARR = Object.freeze([]);
+
 // __KIRA_JS_PRELUDE_END__

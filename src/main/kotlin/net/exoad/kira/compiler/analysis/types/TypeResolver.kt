@@ -294,6 +294,12 @@ class TypeResolver(private val program: TypedProgram) {
             Builtins.ARR -> arr(cls, t, scope)
             Builtins.FX -> fx(t, scope)
             Builtins.STRBUF -> strBuf(cls, t, scope)
+            "T0" -> if (t.children.isNotEmpty()) {
+                program.report("types.type.arity", "'T0' takes no type arguments.", t)
+                KType.Error
+            } else {
+                KType.Void
+            }
             else -> {
                 val tuple = Builtins.tupleArity(name)
                 nominal(cls, tuple ?: cls.typeParams.size, t, scope)
@@ -365,6 +371,9 @@ class TypeResolver(private val program: TypedProgram) {
         val tuple = (paramsType as? TypeArg.Ty)?.t
         if (tuple == KType.Error || ret.t == KType.Error) {
             return KType.Error
+        }
+        if (tuple == KType.Void) {
+            return KType.Fn(emptyList(), ret.t)
         }
         val nominal = tuple as? KType.Nominal
         val arity = nominal?.let { Builtins.tupleArity(it.sym.name) }?.takeIf { (nominal.sym as? ClassSymbol)?.kind == ClassKind.MAGIC }

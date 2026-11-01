@@ -202,6 +202,14 @@ internal class MemberResolver(private val c: PhaseC) {
         if (receiver.containsError()) {
             return KType.Error
         }
+        if (name == "value" && facts.isMaybe(receiver) && !scope.isChecked((origin as? Identifier)?.let { c.model.refs[it] })) {
+            c.report(
+                "types.maybe.unchecked-value",
+                "'value' of a Maybe panics when it is none: test it first, with isSome() or !isNull(), or use unwrapOr.",
+                e,
+                Severity.WARNING,
+            )
+        }
         return fieldAccess(e, receiver, member as Identifier)
     }
 

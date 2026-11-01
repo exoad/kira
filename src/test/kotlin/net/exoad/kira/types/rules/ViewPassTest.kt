@@ -1125,7 +1125,7 @@ class ViewPassTest {
             }
             """,
         )
-        assertEquals(List(14) { "rules.view.write" }, p.diagnostics.map { it.code }, TyperTestSupport.render(p))
+        assertEquals(List(14) { "rules.view.write" }, p.diagnostics.filter { it.isError }.map { it.code }, TyperTestSupport.render(p))
         // O2 as LentPlaces records it: the call spelling is the index spelling's place, rooted at pick(h).items.
         val lent = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items.get(0)"))
         val indexed = p.model.readPlace(BodyTestSupport.node<Expr>(p, "pick(h).items[0]"))

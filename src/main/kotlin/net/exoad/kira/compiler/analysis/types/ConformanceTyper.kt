@@ -5,6 +5,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.UnaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
@@ -231,7 +232,29 @@ internal class ConformanceTyper(private val c: PhaseC) {
     /** [scope] (the caller's fresh one) with what [cond] proves when it is [outcome]. */
     fun into(scope: Scope, cond: Expr, outcome: Boolean): Scope {
         proved(cond, outcome).forEach { (sym, t) -> scope.narrow(sym, t) }
+        holdsValue(cond, outcome).forEach { scope.markChecked(it) }
         return scope
+    }
+
+    /** Each unchanging Maybe local or parameter [cond] shows holds a value when it is [outcome]: `isSome`, `isNone` or `isNull` tests. */
+    private fun holdsValue(cond: Expr, outcome: Boolean): List<Symbol> = when (cond) {
+        is FunctionCallExpr -> {
+            val access = cond.name as? MemberAccessExpr
+            val present = when ((access?.member as? Identifier)?.value) {
+                "isSome" -> outcome
+                "isNull", "isNone" -> !outcome
+                else -> false
+            }
+            val sym = (access?.origin as? Identifier)?.let { c.model.refs[it] }
+            if (present && sym != null && stable(sym)) listOf(sym) else emptyList()
+        }
+        is BinaryExpr -> when {
+            cond.operator == BinaryOp.AND && outcome -> holdsValue(cond.leftExpr, true) + holdsValue(cond.rightExpr, true)
+            cond.operator == BinaryOp.OR && !outcome -> holdsValue(cond.leftExpr, false) + holdsValue(cond.rightExpr, false)
+            else -> emptyList()
+        }
+        is UnaryExpr -> if (cond.operator == UnaryOp.NOT) holdsValue(cond.operand, !outcome) else emptyList()
+        else -> emptyList()
     }
 
     /** Each unchanging local or parameter [cond] tests, with its type when [cond] is [outcome]. */

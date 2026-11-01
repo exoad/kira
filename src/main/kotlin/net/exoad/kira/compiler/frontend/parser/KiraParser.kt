@@ -1152,6 +1152,26 @@ class KiraParser(
             openTypes.removeLast()
         }
         val isStruct = parents.any { isRoot(it, STRUCT_ROOT) }
+        val namesItself = parents.any { isRoot(it, name.value) }
+        val rooted = typeIntrinsics.orEmpty().any { it.intrinsicKey.name == ROOT_MARK }
+        if (namesItself && !rooted) {
+            Diagnostics.panic(
+                "parse.type.self-parent",
+                "'${name.value}' names itself as its parent. Only the root does, and it says so with @_root.",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
+        }
+        if (rooted && !(namesItself && name.value == ANY_ROOT)) {
+            Diagnostics.panic(
+                "parse.type.root",
+                "@_root marks the root, which names itself as its parent; '${name.value}' names no parent of its own.",
+                location = origin,
+                selectorLength = name.value.length,
+                context = context
+            )
+        }
         val named = parents.filterNot { isRoot(it, ANY_ROOT) || isRoot(it, STRUCT_ROOT) }
         if (named.isEmpty() && body.members.isEmpty() && body.initially == null && !body.holdsTypes && typeIntrinsics.isNullOrEmpty()) {
             // A type adds at least one member, so a dropped `=` never declares one; the host's is marked.
@@ -1180,6 +1200,7 @@ class KiraParser(
     private companion object {
         /** The root every type has; as a parent it names none. */
         const val ANY_ROOT = "Any"
+        const val ROOT_MARK = "_root"
 
         /** The parent that makes a type a value type, a struct: immutable, never Mutable. */
         const val STRUCT_ROOT = "Struct"

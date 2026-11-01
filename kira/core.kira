@@ -4,7 +4,7 @@
 // definition: the C backend from the prelude (`kira/c/c_generator.c`), the
 // C++ backend from the runtime named in `core.bind.yaml`.
 
-pub @_magic Any: Any
+pub @_magic @_root Any: Any
 pub @_magic Void: Any
 pub @_magic Never: Any
 
