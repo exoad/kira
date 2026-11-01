@@ -1,7 +1,9 @@
 package net.exoad.tests.kira
 
-import net.exoad.kira.compiler.KiraImmediateCompiler
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.frontend.lexer.KiraLexer
+import net.exoad.kira.compiler.frontend.parser.KiraSourceParsers
+import net.exoad.kira.source.SourceContext
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,9 +11,17 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class TestBroken {
+    /** [value] lexed and parsed as one anonymous source; the parse's own refusals escape. */
+    private fun formAST(value: String): SourceContext {
+        val tokens = KiraLexer(SourceContext(value, "ImmediateMode", emptyList())).tokenize()
+        val source = SourceContext(value, "ImmediateMode", tokens)
+        KiraSourceParsers.from(source).parse()
+        return source
+    }
+
     /** [source] refused with [tag], its message holding [words]. */
     private fun refusedAs(source: String, tag: String, words: String) {
-        val e = assertThrows<DiagnosticsException>(source) { KiraImmediateCompiler.formAST(source.trimIndent()) }
+        val e = assertThrows<DiagnosticsException>(source) { formAST(source.trimIndent()) }
         assertEquals(tag, e.tag, e.message)
         assertTrue(e.message.contains(words), e.message)
     }
@@ -33,7 +43,7 @@ class TestBroken {
 
     @Test
     fun testUnderscoresAllowedInIntrinsincs() {
-        val ast = KiraImmediateCompiler.formAST(
+        val ast = formAST(
             """
             @op_add(1, 2)
             """.trimIndent()
