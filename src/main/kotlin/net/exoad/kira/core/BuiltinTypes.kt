@@ -59,7 +59,6 @@ object BuiltinTypes {
      */
     val sequenceTypes = mapOf(
         "Str" to arrayOf(Token.Type.L_STRING),
-        "String" to arrayOf(Token.Type.L_STRING),
         "Arr" to arrayOf(Token.Type.X_ANY),
         "Array" to arrayOf(Token.Type.X_ANY),
         "Map" to arrayOf(Token.Type.X_ANY),

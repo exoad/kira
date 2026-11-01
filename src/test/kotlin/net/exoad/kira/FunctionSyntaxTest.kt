@@ -76,10 +76,5 @@ class FunctionSyntaxTest {
             )
         }
 
-        // The diagnostic should teach the new shape, not just report a bad token.
-        assertTrue(
-            failure.message.contains("a function is 'name: (a: Int32) Int32 { }'"),
-            "expected a migration hint, got: ${failure.message}"
-        )
     }
 }

@@ -102,6 +102,5 @@ pub Later: Struct {
     pub v: Int32 = 0
 }
 
-// Int and Float are kira:core's aliases of Int32 and Float32, spelled as such.
-pub COUNT: Int = 3
-pub RATIO: Float = 0.5
+pub COUNT: Int32 = 3
+pub RATIO: Float32 = 0.5

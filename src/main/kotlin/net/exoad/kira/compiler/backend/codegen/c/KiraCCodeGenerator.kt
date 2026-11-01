@@ -1518,7 +1518,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         return when (typeName) {
             "Int8", "Int16", "Int32", "Int64",
             "Float32", "Float64", "Bool", "Void", "Never",
-            "Str", "String", "Any", "Int", "Float",
+            "Str", "Any",
             "Arr", "List", "Map", "Set" ->
                 CMagicTypeLowering.resolve(typeName)?.cType ?: typeName
             else -> typeName
@@ -1564,7 +1564,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private var forInSerial = 0
 
     private fun isStrType(kiraType: String?): Boolean {
-        return kiraType == "Str" || kiraType == "String"
+        return kiraType == "Str"
     }
 
     /** True when [expr] already produces a `Maybe` (so it needs no wrapping). */
@@ -1591,7 +1591,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     /** Kira types whose C representation is a pointer, so they slot via intptr_t. */
     private fun isPointerSlotType(kiraType: String?): Boolean {
         if (kiraType == null) return false
-        return kiraType == "Str" || kiraType == "String" || kiraType == "Any" ||
+        return kiraType == "Str" || kiraType == "Any" ||
             userClassNames.contains(kiraType) || opaqueTypes.contains(kiraType)
     }
 
@@ -1656,9 +1656,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val recvType = receiverTypeOf(receiver) ?: return false
         val targs = receiverTypeArgs(receiver)
         return when (recvType) {
-            "Str", "String" -> emitStrMethod(methodName, receiver, args)
-            "Num", "Int", "Int8", "Int16", "Int32", "Int64",
-            "Float", "Float32", "Float64" -> emitNumMethod(methodName, recvType, receiver, args)
+            "Str" -> emitStrMethod(methodName, receiver, args)
+            "Num", "Int8", "Int16", "Int32", "Int64",
+            "Float32", "Float64" -> emitNumMethod(methodName, recvType, receiver, args)
             "Arr" -> emitArrMethod(methodName, receiver, args, targs.getOrNull(0))
             "List" -> emitListMethod(methodName, receiver, args, targs.getOrNull(0))
             "Map" -> emitMapMethod(methodName, receiver, args, targs.getOrNull(0), targs.getOrNull(1))
@@ -1714,7 +1714,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             buffer.append("))")
             return true
         }
-        val isFloat = recvType == "Float" || recvType == "Float32" || recvType == "Float64"
+        val isFloat = recvType == "Float32" || recvType == "Float64"
         if (isFloat) {
             requiredIncludes.add("math.h")
             buffer.append("fabs(")
@@ -2153,7 +2153,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private val primitiveTypeNames = setOf(
         "Int8", "Int16", "Int32", "Int64",
         "Float32", "Float64", "Bool", "Char",
-        "Str", "String", "Num", "Int", "Float", "Any"
+        "Str", "Num", "Any"
     )
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
@@ -2459,7 +2459,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         val (unsigned, signed) = when (scalarTypeOf(left)) {
             "Int8" -> "UInt8" to "Int8"
             "Int16" -> "UInt16" to "Int16"
-            "Int32", "Int" -> "UInt32" to "Int32"
+            "Int32" -> "UInt32" to "Int32"
             else -> "UInt64" to "Int64"
         }
         buffer.append("(($signed)(($unsigned)(")
@@ -2599,8 +2599,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private fun formatForTypeName(typeName: String?): String {
         return when (typeName) {
             null -> "%d"
-            "Str", "String" -> "%s"
-            "Float32", "Float64", "Float" -> "%g"
+            "Str" -> "%s"
+            "Float32", "Float64" -> "%g"
             "Bool" -> "%d"
             // int64_t is `long` on LP64 and `long long` on LLP64; the print site
             // casts to long long so %lld is right on both.
@@ -2621,7 +2621,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     ): String? {
         if (recvType == null || methodName == null) return null
         return when (recvType) {
-            "Str", "String" -> when (methodName) {
+            "Str" -> when (methodName) {
                 "length" -> "Int32"
                 "isEmpty", "contains", "startsWith", "endsWith", "equals" -> "Bool"
                 "substring", "charAt", "trim", "toLower", "toUpper" -> "Str"
@@ -2629,8 +2629,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 "split" -> "List"
                 else -> null
             }
-            "Num", "Int", "Int8", "Int16", "Int32", "Int64",
-            "Float", "Float32", "Float64" -> when (methodName) {
+            "Num", "Int8", "Int16", "Int32", "Int64",
+            "Float32", "Float64" -> when (methodName) {
                 "toInt32" -> "Int32"
                 "toInt64" -> "Int64"
                 "toFloat32" -> "Float32"

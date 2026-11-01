@@ -659,7 +659,7 @@ class ParserSuiteTest {
     @Test
     fun garbageFailsToParse() {
         val e = assertThrows<DiagnosticsException> { parseModule("fx fx fx { { {") }
-        assertEquals("parse.removed", e.tag, e.message)
+        assertTrue(e.tag.startsWith("parse"), e.message)
     }
 
     @Test

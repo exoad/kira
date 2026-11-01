@@ -123,9 +123,6 @@ pub @_magic Char: Any {
     pub isLetter: () Bool;
 }
 
-pub Int32 as Int
-pub Float32 as Float
-
 // Reinterprets the bits of `value` as a `T` of the same width. The typer
 // special-cases the call: `T` is always the explicit type argument and the
 // argument must have `T`'s width.

@@ -718,7 +718,6 @@ class KiraParser(
         "class" to "a type is 'Name: Parent { }', and 'Name: Any { }' with no parent",
         "trait" to "a type is 'Name: Parent { }'; a stateless type that a type lists as a parent is a trait",
         "struct" to "a value type is 'Name: Struct { }'",
-        "fx" to "a function is 'name: (a: Int32) Int32 { }', a lambda '(a: Int32) Int32 { }'",
         "enum" to "enums are gone: use constants",
         "variant" to "variants are gone",
         "alias" to "an alias is 'Existing<A> as Name<A>'",
@@ -737,7 +736,6 @@ class KiraParser(
         val next = peek(1).type
         val old = when (word) {
             "class", "trait", "struct", "enum", "variant", "alias" -> next == Token.Type.IDENTIFIER
-            "fx" -> next == Token.Type.IDENTIFIER || next == Token.Type.INTRINSIC_IDENTIFIER || startsOldLambda()
             "require" -> next in Token.Type.modifiers || next == Token.Type.INTRINSIC_IDENTIFIER ||
                 (next == Token.Type.IDENTIFIER && peek(2).type == Token.Type.S_COLON)
             "module", "use" -> next == Token.Type.L_STRING
@@ -803,17 +801,6 @@ class KiraParser(
             selectorLength = MUTABLE_AXIOM.length,
             context = context
         )
-    }
-
-    /** `fx(x: T) R { }` or `fx() R { }` at the pointer: the old lambda. */
-    private fun startsOldLambda(): Boolean {
-        if (peek(1).type != Token.Type.S_OPEN_PARENTHESIS) return false
-        return when (peek(2).type) {
-            Token.Type.S_CLOSE_PARENTHESIS -> peek(3).type == Token.Type.IDENTIFIER
-            Token.Type.IDENTIFIER -> peek(3).type == Token.Type.S_COLON
-            Token.Type.K_MODIFIER_MUTABLE -> true
-            else -> false
-        }
     }
 
     /** `name: ...`, `name<T>: ...` or an operator's `@_op_add_: ...` at the pointer. */
