@@ -8,7 +8,7 @@ dirOf: (path: Str) Str {
     parts: List<Str> = path.replace("\\", "/").split("/")
     last: Size = parts.size() - 1
     kept: Mutable<List<Str>> = @listOf()
-    for i: Size in 0..last {
+    for i: Size in 0.until(last) {
         kept.add(parts[i])
     }
     kept.isEmpty() ? "." : kept.joinToString("/")

@@ -11,11 +11,15 @@ ranges - Range<T> and x in r
   ok    x runs before the range
   ok    a Range value
   ok    for over a Range includes its end
-  ok    for over a literal range keeps its end out
+  ok    for over a literal range holds its end too
+  ok    until leaves its end out
+  ok    indices counts a List's indexes, and an empty one none
+  ok    an Until value leaves its end out
+  ok    a loop up to UInt8's largest holds it and stops
   ok    a Range up to Int8's largest stops there
   ok    a Range whose end is below its begin is empty
 
-13 checks, 0 failed
+17 checks, 0 failed
 
 ranges -> 0
 steps: [-2, -1, 0, 1, 2] ends in: True True past: False

@@ -10,7 +10,7 @@ pub seeded: (seed: Int64) Random {
 
 pub floats: (r: Random, n: Int32) List<Float64> {
     out: Mutable<List<Float64>> = @listOf()
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         out.add(r.nextFloat())
     }
     out
@@ -18,7 +18,7 @@ pub floats: (r: Random, n: Int32) List<Float64> {
 
 pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
     out: Mutable<List<Float64>> = @listOf()
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         out.add(r.uniform(lo, hi))
     }
     out
@@ -26,7 +26,7 @@ pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
 
 pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
     out: Mutable<List<Int64>> = @listOf()
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         out.add(r.below(stop))
     }
     out
@@ -34,7 +34,7 @@ pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
 
 pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
     out: Mutable<List<Int64>> = @listOf()
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         out.add(r.between(lo, hi))
     }
     out
@@ -42,7 +42,7 @@ pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
 
 pub bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
     out: Mutable<List<Int64>> = @listOf()
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         out.add(r.bits(k))
     }
     out

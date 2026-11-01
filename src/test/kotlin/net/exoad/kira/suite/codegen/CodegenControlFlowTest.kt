@@ -49,7 +49,7 @@ class CodegenControlFlowTest {
         val output = emit(
             """
             main: () Void {
-                for i: Int32 in 0..4 {
+                for i: Int32 in 0.until(4) {
                     trace(i)
                 }
             }

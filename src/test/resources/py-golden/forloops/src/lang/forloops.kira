@@ -77,7 +77,7 @@ made: () List<Int32> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> = "["
-    for i: Size in 0..xs.size() {
+    for i: Size in xs.indices() {
         if i > 0 {
             s = s + " "
         }
@@ -88,35 +88,35 @@ show: (xs: List<Int32>) Str {
 
 main: () Void {
     // ranges: the start, then the end, each once; empty and backwards ranges
-    for i: Int32 in startAt(1)..endAt(4) {
+    for i: Int32 in startAt(1).until(endAt(4)) {
         trace(i)
     }
-    for i: Int32 in 5..5 {
+    for i: Int32 in 5.until(5) {
         trace(i)
     }
-    for i: Int32 in 5..2 {
+    for i: Int32 in 5.until(2) {
         trace(i)
     }
     n: Mutable<Int32> = 3
-    for i: Int32 in 0..n {
+    for i: Int32 in 0.until(n) {
         n += 10
         trace(i)
     }
     trace(n)
-    for u: UInt8 in 250..255 {
+    for u: UInt8 in 250.until(255) {
         trace(u)
     }
     lo: Int64 = -2
-    for i: Int64 in lo..1 {
+    for i: Int64 in lo.until(1) {
         trace(i)
     }
 
     // break and continue, nested
-    for i: Int32 in 0..4 {
+    for i: Int32 in 0.until(4) {
         if i == 1 {
             continue
         }
-        for j: Int32 in 0..10 {
+        for j: Int32 in 0.until(10) {
             if j == 2 {
                 break
             }

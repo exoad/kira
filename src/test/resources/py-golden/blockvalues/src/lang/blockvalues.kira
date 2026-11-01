@@ -105,7 +105,7 @@ grade: (n: Int32) Str {
 total: (upTo: Int32, enabled: Bool) Int32 {
     v: Int32 = if enabled {
         s: Mutable<Int32> = 0
-        for i: Int32 in 0..upTo {
+        for i: Int32 in 0.until(upTo) {
             s += i
         }
         s > 5 ? s * 100 : s

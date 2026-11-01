@@ -785,7 +785,7 @@ class CppExprRowsTest {
 
             pub sumTo: (n: Size) Size {
                 t: Mutable<Size> = 0
-                for i: Size in 0..n {
+                for i: Size in 0.until(n) {
                     t += i
                 }
                 t
@@ -793,10 +793,10 @@ class CppExprRowsTest {
 
             pub constBound: () Int32 {
                 t: Mutable<Int32> = 0
-                for i: Int32 in 0..LIMIT {
+                for i: Int32 in 0.until(LIMIT) {
                     t += i
                 }
-                for j: Int32 in 0..3 {
+                for j: Int32 in 0.until(3) {
                     t += j
                 }
                 t

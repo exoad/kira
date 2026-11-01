@@ -67,11 +67,45 @@ namespace ranges
       }
       t->check(sum == 10, "for over a Range includes its end");
       sum = 0;
+      for(std::int32_t j = 1; j <= 4; ++j)
+      {
+          sum += j;
+      }
+      t->check(sum == 10, "for over a literal range holds its end too");
+      sum = 0;
       for(std::int32_t j = 1; j < 4; ++j)
       {
           sum += j;
       }
-      t->check(sum == 6, "for over a literal range keeps its end out");
+      t->check(sum == 6, "until leaves its end out");
+      const kira::List<std::int32_t> xs = {5, 6, 7};
+      sum = 0;
+      for(kira::Size i = 0, i_end = xs.size(); i < i_end; ++i)
+      {
+          sum += kira::at(xs, i);
+      }
+      const kira::Str word = "";
+      const kira::Size none{0};
+      for(kira::Size i = 0, i_end = kira::str::length(word); i < i_end; ++i)
+      {
+          sum += 100;
+      }
+      for(kira::Size i = none, i_end = none; i < i_end; ++i)
+      {
+          sum += 100;
+      }
+      t->check(sum == 18, "indices counts a List's indexes, and an empty one none");
+      const ::kira::range::Until<std::int32_t> u = ::kira::range::Until<std::int32_t>{.begin = 2, .end = 5};
+      t->check(u.begin == 2 && u.end == 5 && u._op_in_(4) && !u._op_in_(5) && u.contains(2), "an Until value leaves its end out");
+      std::int32_t lasts{0};
+      {
+          bool q_more = true;
+          for(std::uint8_t q = 250, q_last = 255; q_more && q <= q_last; q_more = q != q_last && (++q, true))
+          {
+              lasts += 1;
+          }
+      }
+      t->check(lasts == 6, "a loop up to UInt8's largest holds it and stops");
       std::int32_t steps{0};
       const ::kira::range::Range<std::int8_t> top = ::kira::range::Range<std::int8_t>{.begin = 120, .end = 127};
       {

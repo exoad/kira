@@ -2,7 +2,7 @@
 
 show: (xs: Arr<Int32>) Str {
     s: Mutable<Str> = "["
-    for i: Size in 0..xs.size() {
+    for i: Size in xs.indices() {
         if i > 0 {
             s = s + " "
         }

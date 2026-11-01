@@ -6,9 +6,21 @@ namespace kira::range
 {
   template<typename T>
   struct Range;
+  template<typename T>
+  struct Until;
 
   template<typename T>
   struct Range
+  {
+      T begin{};
+      T end{};
+
+      [[nodiscard]] bool contains(const T& value) const;
+      [[nodiscard]] bool _op_in_(const T& value) const;
+  };
+
+  template<typename T>
+  struct Until
   {
       T begin{};
       T end{};
@@ -25,6 +37,18 @@ namespace kira::range
 
   template<typename T>
   bool Range<T>::_op_in_(const T& value) const
+  {
+      return contains(value);
+  }
+
+  template<typename T>
+  bool Until<T>::contains(const T& value) const
+  {
+      return value >= begin && value < end;
+  }
+
+  template<typename T>
+  bool Until<T>::_op_in_(const T& value) const
   {
       return contains(value);
   }

@@ -17,7 +17,7 @@ Book: Mutable<Any> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> = "["
-    for i: Size in 0..xs.size() {
+    for i: Size in xs.indices() {
         if i > 0 {
             s = s + " "
         }
@@ -28,9 +28,9 @@ show: (xs: List<Int32>) Str {
 
 grid: (rows: Size, cols: Size) List<List<Int32>> {
     out: Mutable<List<List<Int32>>> = List<List<Int32>> { }
-    for r: Size in 0..rows {
+    for r: Size in 0.until(rows) {
         row: Mutable<List<Int32>> = List<Int32> { }
-        for c: Size in 0..cols {
+        for c: Size in 0.until(cols) {
             row.add((r * 10 + c) as Int32)
         }
         out.add(row)

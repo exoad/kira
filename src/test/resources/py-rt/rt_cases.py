@@ -343,6 +343,13 @@ def ranges():
     add("misc", "_k_Range", lambda ctx: (lambda C: (lambda a, b, k: (a == C(1, 4), a == b, k is not a and k == a, a, b, C.__slots__))(
         C(1, 4), C(1, 5), C(1, 4)._k_clone()))(ctx.rt["_k_Range"]))
     add("misc", "_k_Range.eq-other", lambda ctx: ctx.rt["_k_Range"](1, 4) == object())
+    # kira:range's Until, the end left out: empty when end <= begin.
+    for lo, hi, v in ((0, 3, 0), (0, 3, 3), (0, 3, 2), (5, 5, 5), (5, 2, 4), (-2, 0, -1)):
+        add("misc", "_k_Until %r..%r %r" % (lo, hi, v), lambda ctx, lo=lo, hi=hi, v=v: (lambda u: (
+            u.contains(v), u._op_in_(v), list(u._k_steps())))(ctx.rt["_k_Until"](lo, hi)))
+    add("misc", "_k_Until", lambda ctx: (lambda C: (lambda a, b, k: (a == C(0, 3), a == b, k is not a and k == a, a, b, C.__slots__))(
+        C(0, 3), C(0, 4), C(0, 3)._k_clone()))(ctx.rt["_k_Until"]))
+    add("misc", "_k_Until.eq-other", lambda ctx: ctx.rt["_k_Until"](0, 3) == object())
     calls("misc", "_k_within", [(5, 1, 9), (0, 1, 9), (1, 1, 9), (9, 1, 9), (10, 1, 9), (1.5, 1.0, 1.5), (math.nan, 0.0, 1.0)])
     add("misc", "_k_inop", lambda ctx: [ctx.rt["_k_inop"](v, ctx.rt["_k_Range"](1, 3)) for v in (0, 1, 3, 4)])
 

@@ -28,7 +28,7 @@ class CppLineDirectivesTest {
 
         pub count: (n: Int32) Int32 {
             t: Mutable<Int32> = 0
-            for i: Int32 in 0..n {
+            for i: Int32 in 0.until(n) {
                 t += i
             }
             t

@@ -27,7 +27,7 @@ class ConstEligibilityPassTest {
                 }
                 pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
                     p: Mutable<Arr<UInt8, 8>> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
-                    for i: Size in 0..MAGIC.size() {
+                    for i: Size in MAGIC.indices() {
                         p[i] = MAGIC[i]
                     }
                     writeU32(p.from(4), kind)

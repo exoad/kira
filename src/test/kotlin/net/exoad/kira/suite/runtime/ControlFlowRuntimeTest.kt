@@ -41,7 +41,7 @@ class ControlFlowRuntimeTest {
         assertStdout("0\n1\n2\n3\n") {
             """
             main: () Void {
-                for i: Int32 in 0..4 {
+                for i: Int32 in 0.until(4) {
                     trace(i)
                 }
             }
@@ -54,7 +54,7 @@ class ControlFlowRuntimeTest {
         assertStdout("1\n2\n3\n") {
             """
             main: () Void {
-                for i: Int32 in 0..11 {
+                for i: Int32 in 0.until(11) {
                     if i == 0 {
                         continue
                     }

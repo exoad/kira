@@ -85,7 +85,7 @@ pub main: () Void {
     println("named ${applyTwice(double, 3)}")
 
     fs: Mutable<List<Fx<Tuple0, Int32>>> = List<Fx<Tuple0, Int32>> { }
-    for i: Int32 in 0..3 {
+    for i: Int32 in 0.until(3) {
         fs.add(() Int32 {
             i * 10
         })

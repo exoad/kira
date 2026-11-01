@@ -319,7 +319,7 @@ class RangeTest {
             refused.forEach { assertTrue(it.message.orEmpty().contains(what), it.message) }
         }
         val loop = "f: () Int32 {\n    t: Mutable<Int32> = 0\n    for i: Int32 in 0..3 {\n        t += i\n    }\n    t\n}\n"
-        assertTrue(TestCompileSupport.transpileSnippetToC(loop, "test/main.kira").contains(" < 3; ++i"))
+        assertTrue(TestCompileSupport.transpileSnippetToC(loop, "test/main.kira").contains("i_more && i <= i_last"))
         assertNull(runCatching { TestCompileSupport.transpileSnippetToJS(loop, "test/main.kira") }.exceptionOrNull())
     }
 }

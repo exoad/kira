@@ -16,7 +16,7 @@ pub main: () Int32 {
     t: Suite = Suite { title = "sys - spawn, Mutex.lock and kira:test" }
     total: Mutex<Count> = Mutex<Count> { value = Count { } }
     worker: Thread = spawn("adder", () Void {
-        for i: Int32 in 0..N {
+        for i: Int32 in 0.until(N) {
             total.lock((c: Count) Void {
                 c.n += 1
             })

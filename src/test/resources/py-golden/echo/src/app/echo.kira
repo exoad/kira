@@ -27,7 +27,7 @@ pub main: () Void {
     }
     replies: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
     clients: Mutable<List<Thread>> = List<Thread> { }
-    for c: Int32 in 0..3 {
+    for c: Int32 in 0.until(3) {
         clients.add(spawn("client ${c}", () Void {
             got: List<Str> = talk(port, @listOf("c${c} one", "c${c} two"))
             replies.lock((all: List<Str>) Void {

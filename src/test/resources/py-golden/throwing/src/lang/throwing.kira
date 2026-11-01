@@ -44,7 +44,7 @@ guarded: (s: Str) Int64 {
 
 loop: () Int32 {
     n: Mutable<Int32> = 0
-    for i: Int32 in 0..5 {
+    for i: Int32 in 0.until(5) {
         try {
             if i % 2 == 1 {
                 throw "odd ${i}"

@@ -24,7 +24,7 @@ main: () Void {
     trace(total(root))
     trace(total(copy))
     chain: Mutable<Node> = Node { 0 }
-    for i: Int32 in 0..600 {
+    for i: Int32 in 0.until(600) {
         up: Mutable<Node> = Node { i }
         up.kids.add(chain)
         chain = up

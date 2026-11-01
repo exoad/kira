@@ -1490,7 +1490,7 @@ class ParserSuiteTest {
             g: (a: Int32, b: Int32 = 2) Int32 { a + b }
             f: () Int32 {
                 n: Mutable<Int32> = 0
-                for i: Int32 in 0..3 { n += i }
+                for i: Int32 in 0.until(3) { n += i }
                 n = g(n, b = 5)
                 g(n, 1)
             }

@@ -1,8 +1,8 @@
 kira.test as test
 
 // ranges: `a..b` is a Range<T> with both ends in it, and `x in r` is a Bool anywhere (lane RANGE,
-// owner 2026-11-01). `x in a..b` builds no Range: x runs once, then each end. A Range value
-// iterates both ends; a literal `for i in a..b` keeps its end out, as it always has.
+// owner 2026-11-01). `x in a..b` builds no Range: x runs once, then each end. A loop over a..b holds b,
+// written or held in a Range; `a.until(b)` and `xs.indices()` leave the end out.
 // cpp-golden/ranges holds this file with a Box, a user type answering in, which py refuses.
 
 trail: Mutable<Str> = ""
@@ -41,7 +41,33 @@ pub main: () Int32 {
     for j: Int32 in 1..4 {
         sum += j
     }
-    t.check(sum == 6, "for over a literal range keeps its end out")
+    t.check(sum == 10, "for over a literal range holds its end too")
+    sum = 0
+    for j: Int32 in 1.until(4) {
+        sum += j
+    }
+    t.check(sum == 6, "until leaves its end out")
+    xs: List<Int32> = @listOf(5, 6, 7)
+    sum = 0
+    for i: Size in xs.indices() {
+        sum += xs[i]
+    }
+    word: Str = ""
+    none: Size = 0
+    for i: Size in word.indices() {
+        sum += 100
+    }
+    for i: Size in none.until(none) {
+        sum += 100
+    }
+    t.check(sum == 18, "indices counts a List's indexes, and an empty one none")
+    u: Until<Int32> = 2.until(5)
+    t.check(u.begin == 2 && u.end == 5 && 4 in u && !(5 in u) && u.contains(2), "an Until value leaves its end out")
+    lasts: Mutable<Int32> = 0
+    for q: UInt8 in 250..255 {
+        lasts += 1
+    }
+    t.check(lasts == 6, "a loop up to UInt8's largest holds it and stops")
     steps: Mutable<Int32> = 0
     top: Range<Int8> = 120..127
     for k: Int8 in top {

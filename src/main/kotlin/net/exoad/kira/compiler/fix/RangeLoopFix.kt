@@ -62,7 +62,7 @@ object RangeLoopFix {
                 skipped += "$where: no `..` outside parentheses in `$head`"
                 continue
             }
-            val b = head.substring(0, dots).trim()
+            val b = unwrap(head.substring(0, dots).trim())
             val e = unwrap(head.substring(dots + 2).trim())
             val declared = loop.forIterationExpr.declaredType?.let { KiraUnparser.type(it) }
             val receiver = Regex("(.+)\\.(size|length)\\(\\)").matchEntire(e)?.groupValues?.get(1)

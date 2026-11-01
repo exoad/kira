@@ -32,7 +32,7 @@ pub @_const crc32: (buf: View<UInt8>) UInt32 {
     crc: Mutable<UInt32> = 0xFFFFFFFF
     for b: UInt8 in buf {
         crc ^= b as UInt32
-        for bit: Int32 in 0..8 {
+        for bit: Int32 in 0.until(8) {
             crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
         }
     }
@@ -53,7 +53,7 @@ pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
 // A 32-byte command of either family, little-endian, byte by byte.
 pub @_const command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
     p: Mutable<Frame> = Frame {}
-    for i: Size in 0..MAGIC.size() {
+    for i: Size in MAGIC.indices() {
         p[i] = MAGIC[i]
     }
     writeU32(p.from(4), kind)
@@ -98,7 +98,7 @@ pub @_const readHeader: (buf: View<UInt8>) Maybe<Header> {
         null
     } else {
         found: Mutable<Bool> = false
-        for i: Size in 0..MAGIC.size() {
+        for i: Size in MAGIC.indices() {
             if buf[i] != MAGIC[i] {
                 found = true
                 break
@@ -121,7 +121,7 @@ pub @_const packetAt: (buf: View<UInt8>) Size {
     } else {
         result: Mutable<Size> = 0
         found: Mutable<Bool> = false
-        for i: Size in 0..MAGIC.size() {
+        for i: Size in MAGIC.indices() {
             if buf[i] != MAGIC[i] {
                 result = 0
                 found = true
