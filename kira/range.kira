@@ -1,0 +1,10 @@
+// An inclusive range of numbers: begin..end holds both ends.
+
+pub Range<T: Num>: Struct {
+    pub begin: T
+    pub end: T
+
+    pub contains: (value: T) Bool {
+        value >= begin && value <= end
+    }
+}

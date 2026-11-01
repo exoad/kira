@@ -191,6 +191,12 @@ internal class TypeFacts(private val builtins: Builtins) {
 
     fun isNumeric(t: KType): Boolean = isInteger(t) || isFloat(t)
 
+    /** A type parameter bounded by Num (`T: Num`, `T: IntNum`): its values are ordered like a number's. */
+    fun isNumParam(t: KType): Boolean {
+        val num = builtins.classFor("Num")?.let { KType.Nominal(it, emptyList()) } ?: return false
+        return t is KType.Param && boundNominals(t).any { isSubtype(it, num) }
+    }
+
     /**
      * A type that `"${e}"`, `e as Str` and the print family can format (D42): every scalar,
      * `Char`, `Bool` and `Str`.

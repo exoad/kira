@@ -43,6 +43,7 @@ enum class Symbols(val rep: Char) {
     // lmao this is just hilarious, but yea i just dont want to ruin the structuring of the language, so these tables are necessary
     LOWERCASE_A('\u0061'),
     LOWERCASE_I('\u0069'),
+    LOWERCASE_N('n'),
     LOWERCASE_S('\u0073'),
     CLOSE_ANGLE('\u003e'),
     EXCLAMATION('\u0021'),

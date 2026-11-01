@@ -38,6 +38,9 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
     RANGE(arrayOf(Symbols.PERIOD, Symbols.PERIOD), 14),
 
     TYPE_CHECK(arrayOf(Symbols.LOWERCASE_I, Symbols.LOWERCASE_S), 9),
+
+    // `x in r`: the right side's member operator `@_op_in_`, at the comparisons' level.
+    IN(arrayOf(Symbols.LOWERCASE_I, Symbols.LOWERCASE_N), 9),
     TYPE_CAST(arrayOf(Symbols.LOWERCASE_A, Symbols.LOWERCASE_S), 13)
     ;
 
@@ -79,6 +82,7 @@ enum class BinaryOp(val symbol: Array<Symbols>, val precedence: Int) {
                     Token.Type.S_DOT -> CONJUNCTIVE_DOT
                     Token.Type.OP_RANGE -> RANGE
                     Token.Type.K_IS -> TYPE_CHECK
+                    Token.Type.K_IN -> IN
                     Token.Type.K_AS -> TYPE_CAST
                     Token.Type.OP_ASSIGN_MUL -> MUL
                     Token.Type.OP_ASSIGN_DIV -> DIV

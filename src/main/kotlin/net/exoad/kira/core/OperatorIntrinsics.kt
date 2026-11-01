@@ -68,6 +68,9 @@ object OperatorIntrinsics {
     /** `a[i] = v` (1.3.1: `@_op_set_`, arity 2, `Void`). No free form ever existed for indexing. */
     const val SET = "_op_set_"
 
+    /** `x in r` (arity 1, `Bool`), declared by the right side's type; no free form. */
+    const val IN = "_op_in_"
+
     /** Binary operator -> the pre-W2.9 free `@op_*` intrinsic name, or null when not overloadable. */
     fun binaryName(op: BinaryOp): String? {
         return when (op) {
@@ -94,6 +97,7 @@ object OperatorIntrinsics {
             // Syntax, not overloadable operators.
             BinaryOp.CONJUNCTIVE_DOT,
             BinaryOp.RANGE,
+            BinaryOp.IN,
             BinaryOp.TYPE_CHECK,
             BinaryOp.TYPE_CAST -> null
         }
@@ -132,6 +136,8 @@ object OperatorIntrinsics {
             BinaryOp.SHL -> "_op_shl_"
             BinaryOp.SHR -> "_op_shr_"
             BinaryOp.USHR -> "_op_ushr_"
+            // `x in r` is a method of its RIGHT side: `r.@_op_in_(x)`.
+            BinaryOp.IN -> IN
             // `&&` / `||` short-circuit (1.3.1: no method call can), so they take Bool operands
             // only and are never overloadable. `#` has no member form (free-only, legacy).
             BinaryOp.AND,

@@ -423,6 +423,7 @@ object KiraUnparser {
 
     private fun op(o: BinaryOp): String = when (o) {
         BinaryOp.TYPE_CHECK -> "is"
+        BinaryOp.IN -> "in"
         BinaryOp.TYPE_CAST -> "as"
         else -> o.symbol.joinToString("") { it.rep.toString() }
     }
