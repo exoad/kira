@@ -5,12 +5,12 @@ alwaysApply: true
 
 # Kira stack conventions
 
-Kira is a Kotlin/JVM compiler (Gradle, ANTLR) that lowers a small OOP language
+Kira is a Kotlin/JVM compiler (Gradle) that lowers a small OOP language
 to ISO C17 source (C-as-IR). Native toolchain finishes the job.
 
 ## Build and test
 
-- Gradle wrapper: `gradle-9.5.1`, Kotlin 2.3.20, ANTLR 4.13.2.
+- Gradle wrapper: `gradle-9.5.1`, Kotlin 2.3.20.
 - Java toolchain: `jvmToolchain(17)`. CI pins Temurin 17; a newer local JDK is
   fine because Gradle resolves the 17 toolchain.
 - Verify gate for any compiler change: `./gradlew test`.
@@ -19,12 +19,10 @@ to ISO C17 source (C-as-IR). Native toolchain finishes the job.
 - `./gradlew run` compiles the `test_kira/` smoke project (workingDir is set
   to `test_kira` in build.gradle.kts).
 
-## Parser backends
+## Parser
 
-- Default parser is LEGACY (`KiraSourceParsers`). Select ANTLR with
-  `-Dkira.parser=antlr` or `KIRA_PARSER=antlr`.
-- ANTLR backend is syntax validation only; the LEGACY backend builds the AST
-  that semantic analysis and codegen consume. Do not assume the two agree.
+- `KiraSourceParsers.from` returns the one parser, `LegacyKiraSourceParser`,
+  written in Kotlin over `KiraLexer`. There is no grammar backend and no switch.
 
 ## Commit conventions
 
