@@ -30,7 +30,11 @@ val stagePatterns: Map<String, List<String>> = file("ci/stages.txt").readLines()
     .groupBy({ it[0] }, { it[1] })
 
 tasks.test {
-    useJUnitPlatform()
+    // The py runtime harness (tag "runtime") takes minutes: it runs in its own stage, -Pstage=runtime, and not in the rest.
+    val runtimeStage = project.findProperty("stage") == "runtime"
+    useJUnitPlatform {
+        if (runtimeStage) includeTags("runtime") else excludeTags("runtime")
+    }
 
     // Skipped tests (an assumeTrue with no Python, say) are listed, never silent.
     testLogging {
@@ -56,7 +60,7 @@ tasks.test {
     }
     for (key in listOf(
         "KIRA_TOOLCHAINS", "KIRA_REQUIRE_TOOLCHAINS", "KIRA_CPP_GOLDEN_DIR",
-        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX", "KIRA_PYTHON", "KIRA_REQUIRE_PYTHON",
+        "KIRA_CXX_GCC", "KIRA_CXX_CLANG", "KIRA_ZIG", "KIRA_MSVC_VCVARS", "KIRA_ARM_GXX", "KIRA_PYTHON", "KIRA_REQUIRE_PYTHON", "PY310",
     )) {
         inputs.property("env.$key", System.getenv(key) ?: "")
     }

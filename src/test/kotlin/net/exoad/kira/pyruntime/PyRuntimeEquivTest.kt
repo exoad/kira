@@ -1,6 +1,8 @@
-package net.exoad.kira.py
+package net.exoad.kira.pyruntime
 
+import net.exoad.kira.py.PyTestSupport
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -8,8 +10,9 @@ import kotlin.test.assertTrue
 
 /**
  * The py runtime harness (src/test/resources/py-rt/rt_equiv.py) run on kira/py/runtime.py against itself and against
- * planted mutants it must tell apart. Skipped without a Python.
+ * planted mutants it must tell apart. Tagged runtime: its own stage and gate, left out of the rest. Skipped without a Python.
  */
+@Tag("runtime")
 class PyRuntimeEquivTest {
     private val dir = File(PyTestSupport.repoRoot, "src/test/resources/py-rt")
     private val runtime = File(PyTestSupport.repoRoot, "kira/py/runtime.py")
