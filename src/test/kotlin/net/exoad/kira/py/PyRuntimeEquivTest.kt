@@ -64,7 +64,11 @@ class PyRuntimeEquivTest {
         assertEquals(0, r.code, r.raw)
         assertEquals(0, r.int("mismatches"))
         assertEquals(0, r.int("shape_diffs"))
-        assertEquals(0, r.int("skipped"), "a case was skipped on the unchanged runtime")
+        // After the dead-block deletion the only skips are the cases of the dead names, all counted as such.
+        assertEquals(0, r.int("skipped") - r.int("skipped_dead"), "a case was skipped that no dead name explains")
+        val dead = harness("strip-dead", "--rt", rt(), "--out", File(scratch, "stripped0.py").absolutePath).one("dead.state")
+        if (dead == "present") assertEquals(0, r.int("skipped"), "a case was skipped on the unchanged runtime")
+        else assertTrue(r.int("skipped_dead") > 0, "the runtime lost the dead names but no case was skipped for them")
         assertTrue(r.int("cases") >= 30000, "only ${r.int("cases")} cases")
         for (kind in listOf("int", "float", "text", "slice", "bytes", "radix", "json", "collections", "os", "host", "ffi", "misc")) {
             assertTrue(r.int("kind.$kind") >= 100, "kind $kind has ${r.lines["kind.$kind"]} cases")
@@ -175,7 +179,13 @@ class PyRuntimeEquivTest {
         if (s.one("dead.state") == "present") {
             assertEquals(2 + 6, s.int("stripped"), "the stripped count is the two functions and six methods")
             assertTrue(r.int("skipped") > 0, "the dead cases ran against a runtime without them")
+            assertEquals(r.int("skipped"), r.int("skipped_dead"), "a skipped case is not a dead name's")
         }
+        // The stripped copy against itself, as the runtime stands after the deletion: the 3 dqset, 3 mapset and 6 method cases.
+        val both = harness("equiv", "--a", stripped.absolutePath, "--b", stripped.absolutePath)
+        assertEquals(0, both.code, both.raw)
+        assertEquals(12, both.int("skipped"), "the stripped copy against itself skips the dead cases")
+        assertEquals(both.int("skipped"), both.int("skipped_dead"), both.raw)
         // Stripping what is stripped changes nothing, and what is left reads as gone: no function, no method, classes stay.
         val again = harness("strip-dead", "--rt", stripped.absolutePath, "--out", File(scratch, "stripped2.py").absolutePath)
         assertEquals("gone", again.one("dead.state"), again.raw)
@@ -186,6 +196,22 @@ class PyRuntimeEquivTest {
         drifted.writeText(runtime.readText() + "\n\ndef _k_mapset(m, v):\n    return m\n", Charsets.UTF_8)
         val d = harness("strip-dead", "--rt", drifted.absolutePath, "--out", File(scratch, "stripped3.py").absolutePath)
         assertEquals("DRIFTED", d.one("dead.state"), d.raw)
+        // Half a deletion is a part too: only the functions gone, only the methods gone, the stripped copy with one back.
+        val text = runtime.readText()
+        val noFunctions = text.replace(Regex("\\n(?:# [^\\n]*\\n)*def _k_(?:dqset|mapset)\\([^\\n]*\\n(?:    [^\\n]*\\n)+"), "\n")
+        val noMethods = text.replace(Regex("\\n    def _k_set\\(self, o\\):\\n(?:        [^\\n]*\\n)+"), "\n")
+        assertTrue(noFunctions.length < text.length && noMethods.length < text.length, "the half deletions removed nothing")
+        val halves = mapOf(
+            "functions-only" to noFunctions,
+            "methods-only" to noMethods,
+            "stripped-plus-one-back" to stripped.readText() + "\n\ndef _k_mapset(m, v):\n    return m\n",
+        )
+        for ((id, body) in halves) {
+            val f = File(scratch, "dead-half-$id.py")
+            f.writeText(body, Charsets.UTF_8)
+            val h = harness("strip-dead", "--rt", f.absolutePath, "--out", File(scratch, "stripped-$id.py").absolutePath)
+            assertEquals("DRIFTED", h.one("dead.state"), "$id: ${h.raw}")
+        }
     }
 
     @Test
@@ -216,6 +242,9 @@ class PyRuntimeEquivTest {
             "del" to "del _k_clone\n",
             "except-as" to "try:\n    pass\nexcept ValueError as _k_clone:\n    pass\n",
             "empty-for" to "for _k_clone in ():\n    pass\n",
+            "augassign" to "_k_clone += 1\n",
+            "global-aug" to "def _k_g():\n    global _k_clone\n    _k_clone += 1\n",
+            "global-nested-local" to "def _k_g():\n    global _k_clone\n\n    def inner():\n        _k_clone = 1\n    return inner\n",
         )
         for ((id, text) in looks) {
             val f = File(scratch, "planted-looks-$id.py")
@@ -230,6 +259,7 @@ class PyRuntimeEquivTest {
             "annotated" to "_k_clone: object = print\n",
             "global" to "def _k_g():\n    global _k_clone\n    _k_clone = print\n",
             "for" to "for _k_clone in (print,):\n    pass\n",
+            "global-nested-global" to "def _k_g():\n    def inner():\n        global _k_clone\n        _k_clone = print\n    return inner\n",
         )
         for ((id, text) in real) {
             val f = File(scratch, "planted-real-$id.py")
@@ -237,6 +267,15 @@ class PyRuntimeEquivTest {
             val r3 = harness("closure", "--rt", rt(), "--append", f.absolutePath)
             assertEquals(0, r3.code, "$id binds _k_clone: ${r3.raw}")
         }
+        // An except-as name is bound inside its handler: a use there is defined, a use after it is not.
+        val inside = File(scratch, "planted-handler-inside.py")
+        inside.writeText("try:\n    pass\nexcept ValueError as _k_x:\n    print(_k_x)\n", Charsets.UTF_8)
+        assertEquals(0, harness("closure", "--rt", rt(), "--append", inside.absolutePath).code)
+        val after = File(scratch, "planted-handler-after.py")
+        after.writeText("try:\n    pass\nexcept ValueError as _k_x:\n    print(_k_x)\nprint(_k_x)\n", Charsets.UTF_8)
+        val a = harness("closure", "--rt", rt(), "--append", after.absolutePath)
+        assertEquals(1, a.code, a.raw)
+        assertTrue(a.one("undefined").startsWith("_k_x:"), a.raw)
     }
 
     @Test
@@ -277,9 +316,8 @@ class PyRuntimeEquivTest {
             println("python 3.10 host ${cov.one("platform")}: line coverage ${cov.one("line_coverage")}%")
             assertEquals("", cov.one("branches_uncovered"))
         }
-        // What the name list and the feature_version parse let through, each in the body of a helper the corpus calls. Each
-        // raises only for the feature (a probe that spawns or imports nothing else), so on a Python that has it the plant
-        // must pass, and on 3.10 the mismatch must name the feature.
+        // Each plant raises only for its feature, in a helper the corpus calls: it passes where the feature exists, and
+        // on 3.10 the mismatch names it.
         class Plant(val expr: String, val since: Int, val names: String)
         val plants = mapOf(
             "math-sumprod" to Plant("__import__(\"math\").sumprod([1], [1])", 12, "sumprod"),
