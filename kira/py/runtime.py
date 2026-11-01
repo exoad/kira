@@ -610,12 +610,6 @@ def _k_peekleft(q):
     return q[0] if q else None
 
 
-def _k_dqset(q, v):
-    if q is not v:
-        q.clear()
-        q.extend(v)
-
-
 # List.joinToString (D58): Kira evaluates the List before the separator.
 def _k_join(xs, sep):
     return sep.join(xs)
@@ -678,13 +672,6 @@ def _k_sum(xs, t):
         total = sums[-1]
         at += 4096
     return total
-
-
-# Keeps the dict, as `xs[:] = v` keeps a list: a mut parameter may be bound to it.
-def _k_mapset(m, v):
-    if m is not v:
-        m.clear()
-        m.update(v)
 
 
 # View.from and View.slice (a List's, an Arr's, a MutView's) are checked as kira::View's are: a
@@ -1009,11 +996,6 @@ class _k_Datagram:
     def _k_clone(self):
         return _k_Datagram(self.size, self.host, self.port)
 
-    def _k_set(self, o):
-        self.size = o.size
-        self.host = o.host
-        self.port = o.port
-
     def __eq__(self, o):
         return self.size == o.size and self.host == o.host and self.port == o.port
 
@@ -1027,10 +1009,6 @@ class _k_Ready:
 
     def _k_clone(self):
         return _k_Ready(self.handle, self.events)
-
-    def _k_set(self, o):
-        self.handle = o.handle
-        self.events = o.events
 
     def __eq__(self, o):
         return self.handle == o.handle and self.events == o.events
@@ -1046,11 +1024,6 @@ class _k_Ran:
 
     def _k_clone(self):
         return _k_Ran(self.code, self.out, self.err)
-
-    def _k_set(self, o):
-        self.code = o.code
-        self.out = o.out
-        self.err = o.err
 
     def __eq__(self, o):
         return self.code == o.code and self.out == o.out and self.err == o.err
@@ -2130,10 +2103,6 @@ class _k_HttpReply:
     def _k_clone(self):
         return _k_HttpReply(self.status, bytearray(self.body))
 
-    def _k_set(self, o):
-        self.status = o.status
-        self.body = o.body
-
     def __eq__(self, o):
         return self.status == o.status and self.body == o.body
 
@@ -2150,12 +2119,6 @@ class _k_HttpRequest:
     def _k_clone(self):
         return _k_HttpRequest(self.method, self.path, self.host, bytearray(self.body))
 
-    def _k_set(self, o):
-        self.method = o.method
-        self.path = o.path
-        self.host = o.host
-        self.body = o.body
-
     def __eq__(self, o):
         return self.method == o.method and self.path == o.path and self.host == o.host and self.body == o.body
 
@@ -2171,12 +2134,6 @@ class _k_HttpAnswer:
 
     def _k_clone(self):
         return _k_HttpAnswer(self.status, self.contentType, bytearray(self.body), dict(self.headers))
-
-    def _k_set(self, o):
-        self.status = o.status
-        self.contentType = o.contentType
-        self.body = o.body
-        self.headers = o.headers
 
     def __eq__(self, o):
         return self.status == o.status and self.contentType == o.contentType and self.body == o.body and self.headers == o.headers
