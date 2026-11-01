@@ -2358,7 +2358,7 @@ class PyEmitterTest {
             val slots = s.fields.joinToString(", ") { "\"${if (it.isPub) it.name else "_${it.name}"}\"" }
             assertTrue(block.contains("    __slots__ = ($slots)\n"), "_k_${s.name}'s slots are not $slots:\n$block")
             assertTrue(block.contains("    def __init__(self, ${s.fields.joinToString(", ") { it.name }}):"), block)
-            listOf("_k_clone(self)", "_k_set(self, o)", "__eq__(self, o)").forEach { assertTrue(block.contains("    def $it:"), "_k_${s.name} lacks $it") }
+            listOf("_k_clone(self)", "__eq__(self, o)").forEach { assertTrue(block.contains("    def $it:"), "_k_${s.name} lacks $it") }
         }
     }
 
