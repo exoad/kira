@@ -20,7 +20,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Test blocks (stage 3b of the clean dialect): `value == T { check, ... }`, named checks ANDed. */
+/** Test blocks: `value == T { check, ... }`, named checks ANDed. */
 class TestBlockTest {
     private val types = """
         Pt: Struct {

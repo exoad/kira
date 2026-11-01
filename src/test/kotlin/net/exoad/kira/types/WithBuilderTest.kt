@@ -18,7 +18,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** The builder operator `value with { ... }` (stage 2a of the clean dialect), and `copy(...)` retired. */
+/** The builder operator `value with { ... }` and `copy(...)` retired. */
 class WithBuilderTest {
     private val types = """
         P: Struct {

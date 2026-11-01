@@ -15,7 +15,7 @@ import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** `[...]` gone, @listOf/@arrOf/@setOf/@mapOf in its place, and no brace type inference (stage 2b of the clean dialect). */
+/** `[...]` gone, @listOf/@arrOf/@setOf/@mapOf in its place, and no brace type inference. */
 class BuilderTest {
     private fun snippet(body: String) = TyperTestSupport.snippet(body)
 

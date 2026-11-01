@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Stage 5: types inside type bodies, named bare inside their type and `Outer.Inner` from outside. */
+/** Types inside type bodies, named bare inside their type and `Outer.Inner` from outside. */
 class NestedTypeTest {
     private val shapes = """
         pub Shape: Any {

@@ -23,7 +23,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** `value == Identity` (stage 3 of the clean dialect): conformance tests, the narrowing they give, `is` removed. */
+/** `value == Identity`: conformance tests, the narrowing they give, `is` removed. */
 class ConformanceTest {
     private val types = """
         Shape: Any {
