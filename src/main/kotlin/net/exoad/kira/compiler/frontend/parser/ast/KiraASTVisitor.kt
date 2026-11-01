@@ -9,60 +9,59 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.*
 
 
 abstract class KiraASTVisitor {
-    // Every visit defaults to doing nothing; a visitor overrides the nodes it handles.
     // STATEMENTS
-    open fun visitStatement(statement: Statement) {}
-    open fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement) {}
-    open fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement) {}
-    open fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {}
-    open fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {}
-    open fun visitReturnStatement(returnStatement: ReturnStatement) {}
-    open fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {}
-    open fun visitUseStatement(useStatement: UseStatement) {}
-    open fun visitBreakStatement(breakStatement: BreakStatement) {}
-    open fun visitContinueStatement(continueStatement: ContinueStatement) {}
+    abstract fun visitStatement(statement: Statement)
+    abstract fun visitIfSelectionStatement(ifSelectionStatement: IfSelectionStatement)
+    abstract fun visitIfElseIfBranchStatement(ifElseIfBranchNode: ElseIfBranchStatement)
+    abstract fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement)
+    abstract fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement)
+    abstract fun visitReturnStatement(returnStatement: ReturnStatement)
+    abstract fun visitForIterationStatement(forIterationStatement: ForIterationStatement)
+    abstract fun visitUseStatement(useStatement: UseStatement)
+    abstract fun visitBreakStatement(breakStatement: BreakStatement)
+    abstract fun visitContinueStatement(continueStatement: ContinueStatement)
 
     // Expressions
-    open fun visitBinaryExpr(binaryExpr: BinaryExpr) {}
-    open fun visitUnaryExpr(unaryExpr: UnaryExpr) {}
-    open fun visitAssignmentExpr(assignmentExpr: AssignmentExpr) {}
-    open fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {}
-    open fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr) {}
-    open fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr) {}
-    open fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr) {}
-    open fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr) {}
-    open fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {}
-    open fun visitThrowExpr(throwExpr: ThrowExpr) {}
-    open fun visitTryExpr(tryExpr: TryExpr) {}
-    open fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {}
-    open fun visitRangeExpr(rangeExpr: RangeExpr) {}
-    open fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {}
-    open fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {}
-    open fun visitTypeCastExpr(typeCastExpr: TypeCastExpr) {}
-    open fun visitNoExpr(noExpr: NoExpr) {}
-    open fun visitWithExpr(withExpr: WithExpr) {}
-    open fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr) {}
-    open fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr) {}
-    open fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr) {}
+    abstract fun visitBinaryExpr(binaryExpr: BinaryExpr)
+    abstract fun visitUnaryExpr(unaryExpr: UnaryExpr)
+    abstract fun visitAssignmentExpr(assignmentExpr: AssignmentExpr)
+    abstract fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr)
+    abstract fun visitIntrinsicExpr(intrinsicExpr: IntrinsicExpr)
+    abstract fun visitCompoundAssignmentExpr(compoundAssignmentExpr: CompoundAssignmentExpr)
+    abstract fun visitFunctionParameterExpr(functionDeclParameterExpr: FunctionDeclParameterExpr)
+    abstract fun visitMemberAccessExpr(memberAccessExpr: MemberAccessExpr)
+    abstract fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr)
+    abstract fun visitThrowExpr(throwExpr: ThrowExpr)
+    abstract fun visitTryExpr(tryExpr: TryExpr)
+    abstract fun visitForIterationExpr(forIterationExpr: ForIterationExpr)
+    abstract fun visitRangeExpr(rangeExpr: RangeExpr)
+    abstract fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr)
+    abstract fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr)
+    abstract fun visitTypeCastExpr(typeCastExpr: TypeCastExpr)
+    abstract fun visitNoExpr(noExpr: NoExpr)
+    abstract fun visitWithExpr(withExpr: WithExpr)
+    abstract fun visitFunctionCallNamedParameterExpr(functionCallNamedParameterExpr: FunctionCallNamedParameterExpr)
+    abstract fun visitFunctionCallPositionalParameterExpr(functionCallPositionalParameterExpr: FunctionCallPositionalParameterExpr)
+    abstract fun visitFunctionDefExpr(functionDefExpr: FunctionDefExpr)
 
     // LITERALS
-    open fun visitIntegerLiteral(integerLiteral: IntegerLiteral) {}
-    open fun visitStringLiteral(stringLiteral: StringLiteral) {}
-    open fun visitFloatLiteral(floatLiteral: FloatLiteral) {}
-    open fun visitBuilderExpr(builderExpr: BuilderExpr) {}
-    open fun visitNullLiteral(nullLiteral: NullLiteral) {} // this will always be the same instance of null (null isnt a true value)
+    abstract fun visitIntegerLiteral(integerLiteral: IntegerLiteral)
+    abstract fun visitStringLiteral(stringLiteral: StringLiteral)
+    abstract fun visitFloatLiteral(floatLiteral: FloatLiteral)
+    abstract fun visitBuilderExpr(builderExpr: BuilderExpr)
+    abstract fun visitNullLiteral(nullLiteral: NullLiteral) // this will always be the same instance of null (null isnt a true value)
 
     // ELEMENTS
-    open fun visitType(type: Type) {}
-    open fun visitIdentifier(identifier: Identifier) {}
+    abstract fun visitType(type: Type)
+    abstract fun visitIdentifier(identifier: Identifier)
 
     // DECLARATIONS
-    open fun visitVariableDecl(variableDecl: VariableDecl) {}
-    open fun visitFunctionDecl(functionDecl: FunctionDecl) {}
-    open fun visitClassDecl(classDecl: ClassDecl) {}
-    open fun visitModuleDecl(moduleDecl: ModuleDecl) {}
-    open fun visitTraitDecl(traitDecl: TraitDecl) {}
-    open fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl) {}
+    abstract fun visitVariableDecl(variableDecl: VariableDecl)
+    abstract fun visitFunctionDecl(functionDecl: FunctionDecl)
+    abstract fun visitClassDecl(classDecl: ClassDecl)
+    abstract fun visitModuleDecl(moduleDecl: ModuleDecl)
+    abstract fun visitTraitDecl(traitDecl: TraitDecl)
+    abstract fun visitTypeAliasDecl(typeAliasDecl: TypeAliasDecl)
 
     // THE AST CONTRACT (design 2.4). Each new syntax form is a new node, and
     // its visit defaults to a throw: a backend that does not lower the form

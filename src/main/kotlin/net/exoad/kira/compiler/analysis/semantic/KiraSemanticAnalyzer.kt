@@ -7,7 +7,7 @@ import net.exoad.kira.compiler.analysis.types.MemberResolver
 import net.exoad.kira.compiler.frontend.IntrinsicTreeWalker
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
-import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitorWithDefaults
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier
@@ -28,7 +28,7 @@ import java.util.IdentityHashMap
  * The 4th phase after the parsing process that traverses the generated AST by the [net.exoad.kira.compiler.frontend.parser.KiraParser]
  * to make sure everything follows the rules of the language and everything makes sense.
  */
-class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraASTVisitor(), IntrinsicTreeWalker {
+class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraASTVisitorWithDefaults(), IntrinsicTreeWalker {
     private val diagnosticsPump = mutableListOf<DiagnosticsException>()
     lateinit var context: SourceContext
 
