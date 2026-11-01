@@ -62,6 +62,18 @@ MUTANTS = [
     m("regroup-msg", "which its pattern lacks", "which it lacks"),
     m("recompile-reason", "        _k_reasons.regex = str(e)\n        return None", "        _k_reasons.regex = \"re: \" + str(e)\n        return None"),
     m("httppieces-expected", "IncompleteRead(bytes(data), n - len(data))", "IncompleteRead(bytes(data), n)"),
+    # The edits an earlier review planted that the corpus could not see.
+    m("jdeep-no-decrement", "        elif c == \"]\" or c == \"}\":\n            depth -= 1\n    return -1", "        elif c == \"]\" or c == \"}\":\n            depth -= 0\n    return -1"),
+    m("jdeep-edge-511", "            if depth > 512:\n                return m.start()", "            if depth > 511:\n                return m.start()"),
+    m("roundto-overflow-sign", "    except OverflowError:\n        return _k_math.copysign(_k_math.inf, v)\n\n\ndef _k_roundeven", "    except OverflowError:\n        return _k_math.inf\n\n\ndef _k_roundeven"),
+    m("isstale-no-exists", "return self.f is None or self.f.closed or not _k_os.path.exists(self.path)", "return self.f is None or self.f.closed"),
+    m("udp-nothing-waiting", "            except _k_builtins.BlockingIOError:\n                return None\n            except _k_builtins.ConnectionResetError", "            except _k_builtins.BlockingIOError:\n                return _k_Datagram(0, \"\", 0)\n            except _k_builtins.ConnectionResetError"),
+    m("poller-no-hup", "got[h] = (1 if re & _k_select.POLLIN or hup else 0)", "got[h] = (1 if re & _k_select.POLLIN else 0)"),
+    m("poller-hup-error", "| (4 if re & (_k_select.POLLERR | _k_select.POLLNVAL) or hup else 0)", "| (4 if re & (_k_select.POLLERR | _k_select.POLLNVAL) else 0)"),
+    m("readyin-poll-ms", "return bool(p.poll(s * 1000))", "return bool(p.poll(s))"),
+    m("syncdir-no-fsync", "            _k_os.fsync(fd)\n        finally:", "            pass\n        finally:"),
+    m("kill-posix-term", "        else:\n            self.p.kill()", "        else:\n            self.p.terminate()"),
+    m("recvfrom-reset-ignored", "                if _k_os.name != \"nt\":\n                    _k_osfail(e)\n                    return None", "                if _k_os.name == \"nt\":\n                    _k_osfail(e)\n                    return None"),
     Mutant("control-no-change", "def _k_btext(b):", "def _k_btext(b):", True),
     Mutant("control-comment-only", "# floor, ceil and round return a Float64", "# floor, ceil and round give a Float64", True),
 ]

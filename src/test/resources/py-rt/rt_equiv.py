@@ -8,7 +8,9 @@ import argparse
 import ast
 import collections
 import faulthandler
+import inspect
 import io
+import json
 import os
 import re
 import shutil
@@ -18,6 +20,7 @@ import tempfile
 import threading
 import time
 import tokenize
+import types
 
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -26,6 +29,7 @@ sys.path.insert(0, HERE)
 
 import rt_fakes  # noqa: E402
 
+BENCH_COMMENT = "Read by R3 (hot helpers within 1.2x of this base) and by the stdlib S lanes (a body with no fast path within 1.2x of its hand block); recorded by rt_equiv.py bench --record."
 CALL_LIMIT = 1000
 CANON_LIMIT = 100000
 
@@ -237,6 +241,15 @@ class Report:
 BEFORE_CASE = None  # coverage mode re-arms its profiler here: a RecursionError near the limit switches one off
 
 
+def differs(ra, rb):
+    # Before 3.12 a nested tuple compares on the Python recursion limit, so the deep canon values need the high one.
+    sys.setrecursionlimit(CANON_LIMIT)
+    try:
+        return ra != rb
+    finally:
+        sys.setrecursionlimit(CALL_LIMIT)
+
+
 def compare(a, b, cases, first=False, tmp=None):
     """Run each case on both runtimes and collect the cases that differ."""
     tmp = tmp or tmp_root()
@@ -253,7 +266,7 @@ def compare(a, b, cases, first=False, tmp=None):
         rep.per_kind[case.kind] += 1
         ra, rb = execute(a, case, tmp), execute(b, case, tmp)
         rep.tally[ra[0][0] if ra[0][0] == "ok" else "exc " + ra[0][2]] += 1
-        if ra != rb:
+        if differs(ra, rb):
             rep.mismatches.append((case, ra, rb))
             if first:
                 break
@@ -289,7 +302,22 @@ def shape_of(name, obj):
                 tuple(sorted(methods.items())), tuple(slots) if slots is not None else None)
     if hasattr(obj, "__code__") and getattr(obj, "__module__", None) in (None, "rt") and callable(obj):
         return ("function", sig(obj))
+    if name == "_k_unset":
+        # A sentinel is compared by identity, so its shape is that it is a bare object and nothing else.
+        return ("sentinel", type(obj).__module__, type(obj).__qualname__)
+    if isinstance(obj, threading.local):
+        # The per-thread reasons: the type, and that it holds nothing before a case runs (a case clears it).
+        return ("thread-local", type(obj).__module__, type(obj).__qualname__, tuple(sorted(obj.__dict__)))
+    if isinstance(obj, json.JSONDecoder):
+        # The shared decoder: its hooks and flags by what they are (a hook is a function, so by qualified name).
+        return ("decoder", tuple(sorted((k, hook_name(v)) for k, v in vars(obj).items() if k != "scan_once")), type(obj.scan_once).__qualname__)
     return ("value", canon(obj))
+
+
+def hook_name(v):
+    if callable(v):
+        return ("callable", getattr(v, "__module__", None), getattr(v, "__qualname__", type(v).__qualname__))
+    return canon(v)
 
 
 def shapes(rt):
@@ -316,7 +344,21 @@ def shape_diff(a, b):
     return out, len(sa)
 
 
-# ---- coverage: which top-level definitions the corpus ran ----------------------------------------------------------
+# ---- coverage: which executable lines of the runtime's functions the corpus ran ---------------------------------------
+
+# Lines that only one host reaches for real. Each is (label, owner, a fragment of the line): the report says whether
+# the corpus ran it on this host (fakes count), so a host that cannot is listed, never silent. A real Linux run is
+# `python3.10 rt_equiv.py coverage --rt kira/py/runtime.py`.
+PLATFORM_BRANCHES = [
+    ("readyin-poll", "_k_readyin", "return bool(p.poll(s * 1000))"),
+    ("poller-once-poll", "_k_Poller.once", "for h, re in p.poll("),
+    ("poller-pollhup", "_k_Poller.once", "hup = re & _k_select.POLLHUP"),
+    ("recvfrom-into", "_k_UdpSocket.recvFrom", "n, src = self.s.recvfrom_into(into)"),
+    ("process-kill", "_k_Process.kill", "self.p.kill()"),
+    ("syncdir-fsync", "_k_syncdir", "_k_os.fsync(fd)"),
+    ("fileout-stale", "_k_FileOut.isStale", "not _k_os.path.exists(self.path)"),
+]
+
 
 def definitions(src):
     kinds = {"function": [], "class": [], "constant": []}
@@ -330,43 +372,67 @@ def definitions(src):
     return kinds
 
 
+def function_codes(code):
+    """Every function code object under code (class bodies and the module itself run at import and are not counted)."""
+    out = []
+    for c in code.co_consts:
+        if isinstance(c, types.CodeType):
+            if c.co_flags & inspect.CO_OPTIMIZED:
+                out.append(c)
+            out += function_codes(c)
+    return out
+
+
+def owners(src):
+    """Line number -> 'func' or 'Class.method' for each line inside a top-level def or class."""
+    out = {}
+    for n in ast.parse(src).body:
+        if isinstance(n, ast.FunctionDef):
+            for ln in range(n.lineno, n.end_lineno + 1):
+                out[ln] = n.name
+        elif isinstance(n, ast.ClassDef):
+            for m in n.body:
+                if isinstance(m, ast.FunctionDef):
+                    for ln in range(m.lineno, m.end_lineno + 1):
+                        out[ln] = n.name + "." + m.name
+    return out
+
+
+def executable_lines(rt):
+    """The lines in function bodies that hold code (a def line itself is run at import, not by a call)."""
+    tree = ast.parse(rt.src)
+    def_only = set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = n.body[0].lineno
+            for ln in range(min([d.lineno for d in n.decorator_list] + [n.lineno]), first):
+                def_only.add(ln)
+    lines = set()
+    for c in function_codes(rt.code):
+        for _s, _e, ln in c.co_lines():
+            if ln is not None:
+                lines.add(ln)
+    return lines - def_only
+
+
 def coverage(rt, cases):
-    codes = {}
+    """Run the corpus on rt (against a twin, as equiv does) and collect the runtime-file lines that ran."""
     hit = set()
-    ns = rt.ns
-    for name, obj in list(ns.items()):
-        if not name.startswith("_k_"):
-            continue
-        if hasattr(obj, "__code__") and obj.__module__ in (None, "rt"):
-            codes[obj.__code__] = name
-        elif isinstance(obj, type) and obj.__module__ == "rt":
-            methods = [v for v in vars(obj).values() if hasattr(v, "__code__")]
-            for v in methods:
-                codes[v.__code__] = name
-            if not methods:
-                orig = obj.__init__
-
-                def mark(self, *a, _n=name, _o=orig, **k):
-                    hit.add(_n)
-                    _o(self, *a, **k)
-
-                obj.__init__ = mark
-
-    twin = Runtime(src=rt.src, tag="twin")
+    filename = rt.code.co_filename
+    twin = Runtime(src=rt.src, path=rt.path, tag="twin")
     mon = getattr(sys, "monitoring", None)
     if mon is not None:
-        # 3.12+: a start event per code object, switched off after its first, so the run costs next to nothing.
-        tool = mon.PROFILER_ID
+        # 3.12+: a line event per line, each switched off after its first, so a line costs one callback once.
+        tool = mon.COVERAGE_ID
         mon.use_tool_id(tool, "rt_equiv")
 
-        def start(code, offset):
-            n = codes.get(code)
-            if n is not None:
-                hit.add(n)
+        def on_line(code, line):
+            if code.co_filename == filename:
+                hit.add(line)
             return mon.DISABLE
 
-        mon.register_callback(tool, mon.events.PY_START, start)
-        mon.set_events(tool, mon.events.PY_START)
+        mon.register_callback(tool, mon.events.LINE, on_line)
+        mon.set_events(tool, mon.events.LINE)
         try:
             rep = compare(rt, twin, cases)
         finally:
@@ -374,44 +440,80 @@ def coverage(rt, cases):
             mon.free_tool_id(tool)
         return hit, rep
 
-    # Before 3.12: a profiler, re-armed each case because a RecursionError near the limit switches one off.
+    # Before 3.12: a trace function that follows only frames of the runtime's file, re-armed each case because a
+    # RecursionError near the limit switches a trace off.
     global BEFORE_CASE
 
-    def prof(frame, event, arg):
-        if event == "call":
-            n = codes.get(frame.f_code)
-            if n is not None:
-                hit.add(n)
+    def local(frame, event, arg):
+        if event == "line":
+            hit.add(frame.f_lineno)
+        return local
 
-    threading.setprofile(prof)
-    BEFORE_CASE = lambda: sys.setprofile(prof)
+    def tracer(frame, event, arg):
+        if frame.f_code.co_filename == filename:
+            hit.add(frame.f_lineno)
+            return local
+        return None
+
+    threading.settrace(tracer)
+    BEFORE_CASE = lambda: sys.settrace(tracer)
     try:
         rep = compare(rt, twin, cases)
     finally:
         BEFORE_CASE = None
-        sys.setprofile(None)
-        threading.setprofile(None)
+        sys.settrace(None)
+        threading.settrace(None)
     return hit, rep
 
 
 # ---- closure check -------------------------------------------------------------------------------------------------
 
+class Binder(ast.NodeVisitor):
+    """The names a module's top level binds. A def or class binds its own name and nothing inside it (a method name,
+    a parameter or a local is not a definition a call elsewhere can reach); a `global` makes a function bind its name."""
+
+    def __init__(self):
+        self.names = set()
+
+    def visit_FunctionDef(self, n):
+        self.names.add(n.name)
+        for g in ast.walk(n):
+            if isinstance(g, ast.Global):
+                self.names.update(g.names)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_ClassDef(self, n):
+        self.names.add(n.name)
+
+    def visit_Lambda(self, n):
+        pass
+
+    def visit_ListComp(self, n):
+        pass
+
+    visit_SetComp = visit_DictComp = visit_GeneratorExp = visit_ListComp
+
+    def visit_Name(self, n):
+        if isinstance(n.ctx, (ast.Store, ast.Del)):
+            self.names.add(n.id)
+
+    def visit_Import(self, n):
+        self.names.update((a.asname or a.name).split(".")[0] for a in n.names)
+
+    visit_ImportFrom = visit_Import
+
+    def visit_ExceptHandler(self, n):
+        if n.name:
+            self.names.add(n.name)
+        self.generic_visit(n)
+
+
 def bound_names(tree):
-    out = set()
-    for n in ast.walk(tree):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            out.add(n.name)
-        elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
-            out.add(n.id)
-        elif isinstance(n, ast.arg):
-            out.add(n.arg)
-        elif isinstance(n, (ast.Import, ast.ImportFrom)):
-            out.update((a.asname or a.name).split(".")[0] for a in n.names)
-        elif isinstance(n, ast.ExceptHandler) and n.name:
-            out.add(n.name)
-        elif isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store):
-            out.add(n.attr)
-    return out
+    b = Binder()
+    for stmt in tree.body:
+        b.visit(stmt)
+    return b.names
 
 
 def closure(src):
@@ -419,9 +521,12 @@ def closure(src):
     tree = ast.parse(src)
     bound = bound_names(tree)
     undefined = {}
+    prev = None
     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-        if tok.type == tokenize.NAME and tok.string.startswith("_k_") and tok.string not in bound:
+        if tok.type == tokenize.NAME and tok.string.startswith("_k_") and tok.string not in bound and not (prev is not None and prev.string in (".", "def")):
             undefined.setdefault(tok.string, tok.start[0])
+        if tok.type not in (tokenize.NL, tokenize.COMMENT):
+            prev = tok
     twice = collections.Counter()
     for n in tree.body:
         if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
@@ -585,14 +690,33 @@ def mode_coverage(args):
     cases = load_cases(args.repo)
     hit, rep = coverage(rt, cases)
     defs = definitions(rt.src)
-    miss = {k: [n for n in v if n not in hit] for k, v in defs.items() if k != "constant"}
+    lines = executable_lines(rt)
+    own = owners(rt.src)
+    text = rt.src.split("\n")
+    miss = sorted(lines - hit)
+    say("platform", os.name)
+    say("python", sys.version.split()[0])
     say("cases", rep.total)
     say("skipped", rep.skipped)
     for kind in sorted(rep.per_kind):
         say("kind." + kind, rep.per_kind[kind])
-    for k in ("function", "class"):
-        say("covered." + k, "%d/%d" % (len(defs[k]) - len(miss[k]), len(defs[k])))
-        say("uncovered." + k, ",".join(miss[k]))
+    say("lines", len(lines))
+    say("lines_hit", len(lines & hit))
+    say("lines_uncovered", len(miss))
+    say("line_coverage", "%.2f" % (100.0 * len(lines & hit) / len(lines)))
+    for ln in miss:
+        say("uncovered", "%d %s | %s" % (ln, own.get(ln, "?"), text[ln - 1].strip()[:100]))
+    entered = {own[ln] for ln in lines & hit if ln in own}
+    say("never_entered", ",".join(sorted({own[ln] for ln in lines if ln in own} - entered)))
+    # The branches only one host runs for real: each is said to be run or not on this one, never left out.
+    unrun = []
+    for label, owner, frag in PLATFORM_BRANCHES:
+        found = [ln for ln in lines if own.get(ln) == owner and frag in text[ln - 1]]
+        state = "absent" if not found else "hit" if all(ln in hit for ln in found) else "uncovered"
+        say("branch." + label, state)
+        if state == "uncovered":
+            unrun.append(label)
+    say("branches_uncovered", ",".join(unrun))
     shape = shapes(rt)
     say("constants_compared", "%d/%d" % (sum(1 for n in defs["constant"] if n in shape), len(defs["constant"])))
     return 0
@@ -626,11 +750,27 @@ def strip_dead(src):
     return "\n".join(lines), len(drop)
 
 
+def dead_match(src):
+    """How many of the corpus's dead names the runtime has: (functions, classes, methods) found, against listed."""
+    import rt_cases
+    body = ast.parse(src).body
+    funcs = [n.name for n in body if isinstance(n, ast.FunctionDef) and n.name in rt_cases.DEAD_FUNCTIONS]
+    classes = [n for n in body if isinstance(n, ast.ClassDef) and n.name in rt_cases.DEAD_CLASSES]
+    methods = [m for c in classes for m in c.body if isinstance(m, ast.FunctionDef) and m.name in rt_cases.DEAD_METHODS]
+    return (len(funcs), len(rt_cases.DEAD_FUNCTIONS)), (len(classes), len(rt_cases.DEAD_CLASSES)), (len(methods), len(classes))
+
+
 def mode_strip(args):
     out, n = strip_dead(open(args.rt, encoding="utf-8").read())
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
         f.write(out)
     say("stripped", n)
+    (f, fl), (c, cl), (m, ml) = dead_match(open(args.rt, encoding="utf-8").read())
+    say("dead.functions", "%d/%d" % (f, fl))
+    say("dead.classes", "%d/%d" % (c, cl))
+    say("dead.methods", "%d/%d" % (m, ml))
+    # All the listed names are there (before the deletion) or none is (after it); a part means the lists have drifted.
+    say("dead.state", "present" if (f, c, m) == (fl, cl, ml) else "gone" if (f, c, m) == (0, 0, 0) else "DRIFTED")
     return 0
 
 
@@ -660,7 +800,7 @@ def mode_bench(args):
             best = min(best, time.perf_counter() - t)
         # The base numbers a later lane reads its 1.2x against; the calibration loop says how fast the machine was.
         with open(args.record, "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"python": sys.version.split()[0], "platform": platform.platform(), "calibration_us": round(best * 1e6, 1),
+            json.dump({"comment": BENCH_COMMENT, "python": sys.version.split()[0], "platform": platform.platform(), "calibration_us": round(best * 1e6, 1),
                        "reps": args.reps, "base_us": {n: round(ua, 1) for n, ua, _ in rows}}, f, indent=2)
             f.write("\n")
     for name, ua, ub in rows:
@@ -674,24 +814,42 @@ def mode_bench(args):
     return 0 if not bad else 1
 
 
+def catch(text, mutant_text, cases, tries=3):
+    """The first case that tells the mutant from the original and does so again on a fresh pair of runtimes, as
+    (case, flakes): a difference that does not repeat is a flake (a timing race in a case) and is never a catch."""
+    flakes = 0
+    rest = cases
+    while True:
+        # A fresh original per run: a run that stops at its first difference leaves counters (the atomic writer's)
+        # advanced in the runtime it ran on, and the next run would differ from it for that alone.
+        rep = compare(Runtime(src=text, tag="a"), Runtime(src=mutant_text, tag="m"), rest, first=True)
+        if not rep.mismatches:
+            return None, flakes
+        case = rep.mismatches[0][0]
+        again = [compare(Runtime(src=text, tag="a"), Runtime(src=mutant_text, tag="m"), [case], first=True) for _ in range(tries)]
+        if all(r.mismatches for r in again):
+            return case, flakes
+        flakes += 1
+        rest = rest[[c is case for c in rest].index(True) + 1:]
+
+
 def mode_mutants(args):
     import rt_mutants
     text = open(args.rt, encoding="utf-8").read()
     cases = load_cases(args.repo)
     missed = 0
+    flaky = 0
     for m in rt_mutants.MUTANTS:
-        # A fresh original per mutant: a run that stops at its first difference leaves counters (the atomic writer's)
-        # advanced in the runtime it ran on, and the next mutant would differ from it for that alone.
-        base = Runtime(src=text, tag="a")
-        mutant = Runtime(src=rt_mutants.apply(text, m), tag="m")
-        rep = compare(base, mutant, cases, first=True)
-        caught = bool(rep.mismatches)
-        where = "%s %s" % (rep.mismatches[0][0].kind, rep.mismatches[0][0].tag) if caught else "-"
+        case, flakes = catch(text, rt_mutants.apply(text, m), cases)
+        flaky += flakes
+        caught = case is not None
+        where = "%s %s" % (case.kind, case.tag) if caught else "-"
         say("mutant." + m.id, ("caught by " + where) if caught else "MISSED")
         if caught == m.control:
             missed += 1
     say("mutants", len(rt_mutants.MUTANTS))
     say("missed", missed)
+    say("flakes", flaky)
     pycache = [d for d, ds, fs in os.walk(HERE) if "__pycache__" in ds]
     say("pycache_dirs", len(pycache))
     return 0 if not missed and not pycache else 1
