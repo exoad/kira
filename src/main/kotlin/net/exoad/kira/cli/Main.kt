@@ -9,6 +9,7 @@ import net.exoad.kira.compiler.ProjectSources
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.analysis.semantic.SemanticScope
 import net.exoad.kira.compiler.backend.codegen.c.KiraCCodeGenerator
 import net.exoad.kira.compiler.backend.codegen.cpp.KiraCppBackend
@@ -242,6 +243,9 @@ fun main(args: Array<String>) {
         // Semantics before any backend emit so bad programs do not produce half-written C.
         val semanticAnalyzer = KiraSemanticAnalyzer(compilationUnit)
         val semanticAnalyzerResults = semanticAnalyzer.validateAST()
+        GeneratedTuples.warnings(compilationUnit).forEach { w ->
+            Diagnostics.Logging.warn("Kira", "\n-- Diagnostic Report: [${w.code}] ${w.message} (${w.file}:${w.line}:${w.column})")
+        }
         val diagnosticCount = semanticAnalyzerResults.diagnostics.size
         if (diagnosticCount > 0) {
             repeat(diagnosticCount) {

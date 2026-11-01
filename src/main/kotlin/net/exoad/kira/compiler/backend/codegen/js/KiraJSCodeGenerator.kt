@@ -11,6 +11,7 @@ import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.analysis.types.Builtins
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.*
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
@@ -52,6 +53,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         /** Layer 1: Kira stdlib surface as plain JS (see js_generator.js). */
         const val TEMPLATE_FILE = "js_generator.js"
         const val DEFAULT_OUTPUT = "out.kira.js"
+        /** The last line of the template: what the generated tuple classes go before, and what minify keeps. */
+        const val PRELUDE_END = "// __KIRA_JS_PRELUDE_END__"
         /**
          * JS keywords + globals/builtins the codegen or runtime may reference
          * literally (Math.*, Object.freeze, process, ...): never renamed.
@@ -360,7 +363,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /** Minify + obfuscate the user layer, keeping the prelude untouched. */
     private fun minifyWritten(source: String): String {
-        val marker = "// __KIRA_JS_PRELUDE_END__"
+        val marker = PRELUDE_END
         val idx = source.lastIndexOf(marker)
         require(idx >= 0) { "JS prelude end marker not found in emitted source" }
         val cut = idx + marker.length
@@ -391,8 +394,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     private fun buildTranslationUnit(): String {
-        // Layer 1 is the stdlib runtime, then Layer 2 is the user program.
-        buffer.append(fetchTemplateFileContents().trimEnd())
+        // Layer 1 is the stdlib runtime, then Layer 2 is the user program. The tuple classes a program
+        // names above the hand-written arities sit at the end of Layer 1, before the marker minify keeps.
+        val prelude = fetchTemplateFileContents().trimEnd()
+        val marker = prelude.lastIndexOf(PRELUDE_END)
+        val generated = GeneratedTuples.jsClasses(GeneratedTuples.arities(compilationUnit))
+        buffer.append(if (marker < 0 || generated.isEmpty()) prelude else prelude.substring(0, marker) + generated + prelude.substring(marker))
         buffer.appendLine()
         buffer.appendLine()
 
@@ -1451,19 +1458,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             }
         }
         val ctorName = when (baseName) {
-            "T0" -> "KiraTuple0"
-            "T1" -> "KiraTuple1"
-            "T2", "Pair" -> "KiraTuple2"
-            "T3" -> "KiraTuple3"
-            "T4" -> "KiraTuple4"
-            "T5" -> "KiraTuple5"
-            "T6" -> "KiraTuple6"
-            "T7" -> "KiraTuple7"
-            "T8" -> "KiraTuple8"
-            "T9" -> "KiraTuple9"
-            "T10" -> "KiraTuple10"
+            "Pair" -> "KiraTuple2"
             "Exception" -> "KiraException"
-            else -> baseName
+            else -> Builtins.tupleArity(baseName)?.let { "KiraTuple$it" } ?: baseName
         }
         buffer.append("new ")
         buffer.append(ctorName)

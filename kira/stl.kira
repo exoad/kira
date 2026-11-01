@@ -6,7 +6,7 @@
 // `kira.*` module is loaded as a dependency and its magic types are ambient.
 //
 //   kira.core         Any / Void / Never / Bool / Str / Char / Num + fixed-width scalars, Size, bitCast
-//   kira.tuples       T0..T9, Pair, Fx
+//   kira.tuples       T0..T6, Pair, Fx (T7 and up generated on use)
 //   kira.collections  Iterable, View, MutView, Arr, List, Map, Set, Stack, Queue, Deque
 //   kira.result       Maybe, Result, Exception, Ref, Weak, Unsafe
 //   kira.io           print / println / eprint / assert

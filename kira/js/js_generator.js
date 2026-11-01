@@ -12,7 +12,7 @@
  *   Arr<T>                                 -> JS Array
  *   List / Map / Set / Stack / Queue / Deque -> Kira* classes below
  *   Maybe / Result / Exception             -> Kira* classes below
- *   Tuple0..Tuple9 / Pair                  -> KiraTuple* classes below
+ *   Tuple0..Tuple6 / Pair                  -> KiraTuple* classes below (T7 and up: generated)
  *   User classes                           -> JS classes emitted by codegen
  *   Traits                                 -> erased (duck typing)
  *
@@ -391,64 +391,6 @@ class KiraTuple6 {
     this.sixth = sixth;
   }
   size() { return 6; }
-}
-
-class KiraTuple7 {
-  constructor(first, second, third, fourth, fifth, sixth, seventh) {
-    this.first = first;
-    this.second = second;
-    this.third = third;
-    this.fourth = fourth;
-    this.fifth = fifth;
-    this.sixth = sixth;
-    this.seventh = seventh;
-  }
-  size() { return 7; }
-}
-
-class KiraTuple8 {
-  constructor(first, second, third, fourth, fifth, sixth, seventh, eighth) {
-    this.first = first;
-    this.second = second;
-    this.third = third;
-    this.fourth = fourth;
-    this.fifth = fifth;
-    this.sixth = sixth;
-    this.seventh = seventh;
-    this.eighth = eighth;
-  }
-  size() { return 8; }
-}
-
-class KiraTuple9 {
-  constructor(first, second, third, fourth, fifth, sixth, seventh, eighth, ninth) {
-    this.first = first;
-    this.second = second;
-    this.third = third;
-    this.fourth = fourth;
-    this.fifth = fifth;
-    this.sixth = sixth;
-    this.seventh = seventh;
-    this.eighth = eighth;
-    this.ninth = ninth;
-  }
-  size() { return 9; }
-}
-
-class KiraTuple10 {
-  constructor(first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth) {
-    this.first = first;
-    this.second = second;
-    this.third = third;
-    this.fourth = fourth;
-    this.fifth = fifth;
-    this.sixth = sixth;
-    this.seventh = seventh;
-    this.eighth = eighth;
-    this.ninth = ninth;
-    this.tenth = tenth;
-  }
-  size() { return 10; }
 }
 
 // An empty Arr is this one frozen array: no Arr can grow, and a write to it throws.

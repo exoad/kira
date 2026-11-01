@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.analysis.types.ConstValue
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
 import net.exoad.kira.compiler.analysis.types.Foreign
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.ModuleGraph
@@ -185,6 +186,10 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
      */
     private fun moduleIncludes(): LinkedHashMap<String, String> {
         val out = LinkedHashMap<String, String>()
+        // The generated tuples' structs (GeneratedTuples.cppHeader) come before any helper that names them.
+        if (m.uri != GeneratedTuples.MODULE_URI && GeneratedTuples.arities(ctx.program.unit).isNotEmpty()) {
+            out[GeneratedTuples.MODULE_URI] = "kira/${GeneratedTuples.CPP_HEADER}"
+        }
         m.uses.forEach { use ->
             val target = ctx.program.module(use.moduleUri) ?: return@forEach
             includeFor(target)?.let { out[target.uri] = it }
@@ -351,7 +356,8 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
 
     /** One helper: its prototype, then its definition, the member's body with `self` as the receiver. */
     private fun magicHelper(name: String, fn: FnSymbol, recv: KType): Pair<String, String> {
-        val receiver = "${ctx.spell(recv, if (fn.isMutMethod) Pos.MUT_PARAM else Pos.PARAM, fn.decl)} self"
+        // Unused when the body only computes from its arguments (a size): the helper is built under -Werror.
+        val receiver = "[[maybe_unused]] ${ctx.spell(recv, if (fn.isMutMethod) Pos.MUT_PARAM else Pos.PARAM, fn.decl)} self"
         val params = (listOf(receiver) + fn.params.map { paramText(it, withDefault = false, markUnused = false, fn = fn) }).joinToString(", ")
         val head = "inline ${returnText(fn)} $name($params)"
         val state = CppBodyState.of(ctx)

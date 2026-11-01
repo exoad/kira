@@ -62,7 +62,7 @@ class StdlibMagicTypeTest {
             "core.kira" to listOf("Bool", "Str", "Num", "Int32", "Int64", "Float32", "Float64"),
             "collections.kira" to listOf("Arr", "List", "Map", "Set", "Stack", "Queue", "Deque"),
             "result.kira" to listOf("Maybe", "Result", "Exception"),
-            "tuples.kira" to listOf("T0", "T2", "T9")
+            "tuples.kira" to listOf("T0", "T2", "T6")
         )
 
         expected.forEach { (fileName, typeNames) ->

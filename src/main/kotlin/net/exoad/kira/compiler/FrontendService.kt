@@ -2,6 +2,7 @@ package net.exoad.kira.compiler
 
 import net.exoad.kira.Public
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.analysis.semantic.KiraSemanticAnalyzer
 import net.exoad.kira.compiler.analysis.semantic.SemanticAnalyzerResults
 import net.exoad.kira.compiler.frontend.lexer.KiraLexer
@@ -223,6 +224,16 @@ object FrontendService {
         }
 
         semantic?.diagnostics?.forEach { diagnostics += fromException(it) }
+        GeneratedTuples.warnings(compilationUnit).forEach { w ->
+            diagnostics += Diagnostic(
+                file = w.file,
+                message = w.message,
+                tag = w.code,
+                start = SourcePosition(w.line.coerceAtLeast(1), w.column.coerceAtLeast(1)),
+                end = SourcePosition(w.line.coerceAtLeast(1), w.column.coerceAtLeast(1) + 1),
+                severity = Diagnostic.Severity.WARNING,
+            )
+        }
 
         return FrontendResult(compilationUnit, diagnostics.toList(), projectRoot, project)
     }

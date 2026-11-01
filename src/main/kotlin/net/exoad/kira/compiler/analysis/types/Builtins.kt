@@ -9,7 +9,7 @@ import java.util.IdentityHashMap
  *
  * - `Int8`..`UInt64`, `Size`, `Float32`/`Float64`, `Bool` and `Char` are [KType.Scalar];
  * - `Str`, `Void`, `Never` and `Null` are their own KTypes;
- * - `List Map Set Deque Stack Queue Arr View MutView Maybe Result T0..9 Fx Weak Ref Unsafe`
+ * - `List Map Set Deque Stack Queue Arr View MutView Maybe Result T0..T6 Fx Weak Ref Unsafe`
  *   are [KType.Nominal] of their magic [ClassSymbol]. `Arr` resolves by arity: `Arr<T>` or
  *   `Arr<T, N>`. A fully applied `Fx<TupleN<...>, R>` becomes a [KType.Fn].
  *
@@ -93,7 +93,7 @@ class Builtins(declared: Collection<ClassSymbol>) {
             put("Maybe", listOf("T"))
             put("Result", listOf("T", "E"))
             val letters = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
-            for (n in 0..MAX_TUPLE) {
+            for (n in 0..GeneratedTuples.HAND_WRITTEN_MAX) {
                 put("T$n", letters.take(n))
             }
             put("Fx", listOf("P", "R"))
@@ -121,16 +121,13 @@ class Builtins(declared: Collection<ClassSymbol>) {
         /** True for every name this object maps: prims, the special types and the nominal builtins. */
         fun isBuiltinName(name: String): Boolean = prim(name) != null || name in SPECIAL || name in NOMINAL_PARAMS
 
-        /** The largest tuple arity the stdlib names: `T0`..`T10`. Above it, a tuple is generated on use. */
-        const val MAX_TUPLE = 10
-
-        /** `T0`..`T10`: the arity, else null. */
+        /** `T<n>` for any arity n (no upper bound; an arity above [GeneratedTuples.HAND_WRITTEN_MAX] is generated on use): the arity, else null. */
         fun tupleArity(name: String): Int? {
             if (!name.startsWith("T") || name.length == 1 || !name.substring(1).all { it.isDigit() }) {
                 return null
             }
             val n = name.substring(1).toIntOrNull() ?: return null
-            return if (n in 0..MAX_TUPLE && name == "T$n") n else null
+            return if (name == "T$n") n else null
         }
 
         private fun syntheticModule(): ModuleSymbol {

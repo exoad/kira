@@ -206,7 +206,10 @@ class CppBindingTableTest {
     }
 
     private companion object {
-        /** Measured: only the tuples' `size`, a constant of the type (`static_cast<std::int32_t>(N)`). */
-        val OMITTED: List<String> = (0..10).map { "T$it.size {self}" }.sorted()
+        /**
+         * Measured: only the tuples' `size`, a constant of the type (`static_cast<std::int32_t>(N)`).
+         * T7 and up are generated (GeneratedTuples) and have no binding: their size is a helper.
+         */
+        val OMITTED: List<String> = (0..6).map { "T$it.size {self}" }.sorted()
     }
 }

@@ -2,6 +2,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.Project
 import net.exoad.kira.compiler.ProjectSources
@@ -295,6 +296,14 @@ object KiraCppBackend {
         val install = CppRuntimeInstaller(stdlibCppDir, layout.runtimeDir, version).plan()
         diagnostics += install.diagnostics
         planned += install.files
+        val generatedTuples = GeneratedTuples.arities(unit)
+        if (generatedTuples.isNotEmpty()) {
+            planned += CppPlannedFile.ofText(
+                layout.runtimeKiraDir.resolve(GeneratedTuples.CPP_HEADER),
+                CppWriter.normalize(GeneratedTuples.cppHeader(generatedTuples)),
+                "the generated tuples",
+            )
+        }
         val stdlibHash = CppGenManifest.stdlibHash(
             install.files
                 .filter { it.path.fileName.toString() != CppRuntimeInstaller.VERSION_FILE }

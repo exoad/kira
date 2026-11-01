@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.analysis.semantic
 import net.exoad.kira.compiler.CompilationUnit
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.analysis.types.MemberResolver
 import net.exoad.kira.compiler.frontend.IntrinsicTreeWalker
 import net.exoad.kira.compiler.frontend.lexer.Token
@@ -76,6 +77,8 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     }
 
     fun validateAST(): SemanticAnalyzerResults {
+        // Before the scan below: the generated tuple modules must be declared when the names are checked.
+        GeneratedTuples.ensure(compilationUnit)
         net.exoad.kira.compiler.UnitLink.link(compilationUnit)
         try {
             // Callable signatures first, so a named-argument call can bind

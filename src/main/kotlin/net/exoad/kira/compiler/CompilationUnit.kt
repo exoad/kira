@@ -1,6 +1,7 @@
 package net.exoad.kira.compiler
 
 import net.exoad.kira.compiler.analysis.semantic.KiraSymbolTable
+import net.exoad.kira.compiler.analysis.types.GeneratedTuples
 import net.exoad.kira.compiler.analysis.semantic.SemanticSymbol
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
@@ -25,6 +26,9 @@ class CompilationUnit(bootstrap: Boolean = true) {
     /** Kira function name → C symbol for @_extern stubs. */
     private val externFunctions = linkedMapOf<String, String>()
     val symbolTable = KiraSymbolTable()
+
+    /** The tuples of arity above the hand-written ones this unit names, set once by [GeneratedTuples.ensure]. */
+    var generatedTuples: GeneratedTuples.Generated? = null
 
     init {
         try {
