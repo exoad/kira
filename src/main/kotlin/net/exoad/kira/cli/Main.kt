@@ -156,10 +156,11 @@ fun main(args: Array<String>) {
             GeneratedProvider.minifyOutput = false
         }
 
-        val stdlibEntries = ProjectSources.dependencies(project, projectRoot).toMutableList()
-        if (stdlibEntries.isEmpty()) {
-            stdlibEntries.addAll(Public.Builtin.discoverLegacyKiraFolder())
+        ProjectSources.missingDependency(project)?.let {
+            Diagnostics.Logging.warn("Kira", it)
+            kotlin.system.exitProcess(1)
         }
+        val stdlibEntries = ProjectSources.dependencies(project, projectRoot)
         Public.Builtin.intrinsicalStandardLibrarySources = stdlibEntries.distinct().sorted().toTypedArray()
         // project.kira is typed as any code is, against the stdlib it names.
         if (project != null && projectFile != null) {

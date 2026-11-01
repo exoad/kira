@@ -232,6 +232,18 @@ class CliSuiteTest {
     }
 
     @Test
+    fun aProjectNamingNoKiraDependencyIsRefusedEvenWithAKiraFolderBeside() {
+        val dir = tempProject("no-dependency", ProjectText.of("nodep", target = "c", stdlib = null), mapOf("src/app/main.kira" to TRACE_MAIN))
+        File(kiraStdlib).copyRecursively(File(dir, "kira"), overwrite = true)
+        val result = runCli(dir)
+        val output = result.stdout + result.stderr
+        assertEquals(1, result.exitCode, output)
+        assertTrue(output.contains("project.kira names no kira dependency"), output)
+        assertFalse(output.contains("at net.exoad."), output)
+        assertFalse(File(dir, "out.kira.c").exists(), "a refused project wrote a file")
+    }
+
+    @Test
     fun refusesTheRemovedNekoTargetWithAMessage() {
         val dir = tempProject("neko", basicProject(), mapOf("src/app/main.kira" to TRACE_MAIN))
         val result = runCli(dir, "--target", "neko")

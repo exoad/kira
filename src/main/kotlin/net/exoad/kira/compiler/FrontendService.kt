@@ -87,16 +87,11 @@ object FrontendService {
             null
         }
 
-        val stdlib = ProjectSources.dependencies(project, root).toMutableList()
-        if (stdlib.isEmpty()) {
-            // Fall back relative to project, then process cwd.
-            val local = root.resolve("kira")
-            if (Files.isDirectory(local)) {
-                stdlib.addAll(scanKira(local))
-            } else {
-                stdlib.addAll(Public.Builtin.discoverLegacyKiraFolder().toList())
-            }
+        ProjectSources.missingDependency(project)?.let { message ->
+            diagnostics += Diagnostic(file = projectFile.toString(), message = message, tag = "Project", start = SourcePosition(1, 1), end = SourcePosition(1, 1))
+            return FrontendResult(null, diagnostics, root, project)
         }
+        val stdlib = ProjectSources.dependencies(project, root)
         Public.Builtin.intrinsicalStandardLibrarySources =
             stdlib.distinct().sorted().toTypedArray()
         if (project != null && projectFile != null) {
@@ -282,15 +277,5 @@ object FrontendService {
         } catch (_: Exception) {
             null
         }
-    }
-
-    private fun scanKira(dir: Path): List<String> {
-        if (!Files.isDirectory(dir)) return emptyList()
-        val out = mutableListOf<String>()
-        Files.walk(dir).use { stream ->
-            stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".kira") }
-                .forEach { out.add(it.toAbsolutePath().normalize().toString()) }
-        }
-        return out.sorted()
     }
 }

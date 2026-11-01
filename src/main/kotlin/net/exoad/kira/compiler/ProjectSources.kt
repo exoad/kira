@@ -62,9 +62,17 @@ object ProjectSources {
         return excludes.any { SourceGlob.matchesPath(it, relative, belowSegments) }
     }
 
-    /** Every dependency's .kira files, each dependency read whole; with none named, the root's `kira/`. */
+    /** The error for a project.kira that names no dependency (so no kira stdlib), else null. There is no default stdlib folder. */
+    fun missingDependency(project: Project?): String? =
+        if (project != null && project.dependencies.isEmpty()) {
+            "${ProjectFile.FILE} names no kira dependency: add dependencies = @mapOf(\"kira_stdlib\", \"<path to the kira stdlib>\")"
+        } else {
+            null
+        }
+
+    /** Every dependency's .kira files, each dependency read whole; with no project, the root's `kira/`, and a project with none gets none. */
     fun dependencies(project: Project?, projectRoot: Path): List<String> {
-        if (project == null || project.dependencies.isEmpty()) {
+        if (project == null) {
             return scanKiraFiles(projectRoot.resolve("kira").normalize())
         }
 

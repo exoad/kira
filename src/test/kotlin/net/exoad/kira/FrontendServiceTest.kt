@@ -10,6 +10,28 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FrontendServiceTest {
+    /** A project.kira with no dependency is an error even with a kira/ folder beside it: there is no default stdlib. */
+    @Test
+    fun aProjectNamingNoKiraDependencyIsAnErrorNotAFallback() {
+        val dir = Files.createTempDirectory("kira-frontend-")
+        try {
+            dir.resolve("project.kira").writeText(ProjectText.of("tmp", target = "c", stdlib = null))
+            Files.createDirectories(dir.resolve("src"))
+            dir.resolve("src/main.kira").writeText("main: () Void {\n    trace(\"ok\")\n}\n")
+            Files.createDirectories(dir.resolve("kira"))
+            java.io.File("kira").copyRecursively(dir.resolve("kira").toFile(), overwrite = true)
+            val result = FrontendService.compileProject(dir)
+            assertFalse(result.isOk)
+            assertTrue(result.compilationUnit == null, "nothing may compile against a guessed stdlib")
+            assertTrue(
+                result.diagnostics.any { it.tag == "Project" && it.message.contains("names no kira dependency") },
+                result.diagnostics.toString(),
+            )
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun compilesHelloExampleCleanly() {
         val root = Path.of("src/test/resources/test-projects/01-hello").toAbsolutePath().normalize()
