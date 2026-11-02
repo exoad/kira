@@ -1472,17 +1472,18 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
             throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
         }
-        // Arr is a native array; an empty one is just [].
+        // Arr is a native array; an empty one is just []. A List is a KiraList.
         if (builderExpr.elements.isEmpty()) {
-            buffer.append("[]")
+            buffer.append(if (builderExpr.kind == Builder.LIST) "kira_list_new()" else "[]")
             return
         }
-        buffer.append("[")
+        val list = builderExpr.kind == Builder.LIST
+        buffer.append(if (list) "new KiraList([" else "[")
         builderExpr.elements.forEachIndexed { i, expr ->
             if (i > 0) buffer.append(", ")
             expr.accept(this)
         }
-        buffer.append("]")
+        buffer.append(if (list) "])" else "]")
     }
 
     override fun visitNullLiteral(nullLiteral: NullLiteral) {
