@@ -1,4 +1,4 @@
-// Kira's numbers in C++. Arithmetic on a sub-int type wraps in that type (R1);
+// Kira's numbers in C++. Arithmetic on a sub-int type wraps in that type (R1)
 // a literal takes the type it meets (R2, R3); `as` from float to int saturates
 // and takes NaN to 0 (R13); / and % by a value that is not a constant are
 // checked (R11). Only the paths that do not fail can be golden.

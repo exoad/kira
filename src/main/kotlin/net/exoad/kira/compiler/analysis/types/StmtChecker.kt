@@ -577,8 +577,39 @@ internal class StmtChecker(private val c: PhaseC) {
             )
             is Decl -> c.report("types.decl.nested", "A type is declared at module level, not inside a body.", e)
             NoExpr -> {}
-            else -> c.exprs.synth(e, ctx, scope)
+            else -> {
+                c.exprs.synth(e, ctx, scope)
+                if (onlyComputes(e)) {
+                    c.report(
+                        "types.stmt.unused",
+                        "This statement computes a value and drops it. A line that starts where its statement starts is a statement of its own: " +
+                            "indent it if it goes on with the line before, or use or remove the value.",
+                        e,
+                    )
+                }
+            }
         }
+    }
+
+    /** A value, operators and reads only, with no call, assignment, construction or block anywhere in it: as a statement, nothing it does is kept. */
+    private fun onlyComputes(e: Expr): Boolean {
+        val shape = when (e) {
+            is Identifier, is net.exoad.kira.compiler.frontend.parser.ast.literals.Literal, is ThisExpr, is UnaryExpr, is BinaryExpr,
+            is TypeCastExpr, is net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr, is ArrayIndexExpr, is RangeExpr,
+            is net.exoad.kira.compiler.frontend.parser.ast.expressions.TernaryExpr, is MemberAccessExpr -> true
+            else -> false
+        }
+        if (!shape) return false
+        var acts = false
+        AstTree.walk(e) { n ->
+            if (n is FunctionCallExpr || n is AssignmentExpr || n is CompoundAssignmentExpr || n is PlaceAssignmentExpr ||
+                n is ObjectInitExpr || n is IntrinsicExpr || n is IfExpr || n is TryExpr || n is ThrowExpr || n is BuilderExpr ||
+                n is net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr || n is net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
+            ) {
+                acts = true
+            }
+        }
+        return !acts
     }
 
     private fun local(decl: VariableDecl, ctx: BodyContext, scope: Scope) {

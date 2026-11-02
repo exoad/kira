@@ -22,7 +22,7 @@ class NamingPassTest {
                 pub counter: Mutable<Int32> = 0
                 pub BUF: Mutable<Arr<UInt8, 2>> = @arrOf(0, 0)
                 pub Comparable<T>: Any {
-                    pub compareTo: (other: T) Int32;
+                    pub compareTo: (other: T) Int32
                 }
                 pub HttpClient: Mutable<Any> {
                     pub retryCount: Mutable<Int32> = 0
@@ -44,7 +44,7 @@ class NamingPassTest {
         expectClean(
             snippet(
                 """
-                pub @_extern(cpp = "ext::ReadBytes", header = "ext.hxx") ReadBytes: () Int32;
+                pub @_extern(cpp = "ext::ReadBytes", header = "ext.hxx") ReadBytes: () Int32
                 pub V2: Struct {
                     pub x: Int32 = 0
                 }
@@ -73,7 +73,7 @@ class NamingPassTest {
                 pub Xpos: Int32 = 0
             }
             pub Comparable<t>: Any {
-                pub CompareTo: (Other: t) Int32;
+                pub CompareTo: (Other: t) Int32
             }
             pub DoThing: (Value: Int32) Int32 {
                 MyVar: Int32 = Value

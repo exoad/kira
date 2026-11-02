@@ -168,9 +168,9 @@ class EffectsPassTest {
     fun printsExternsVirtualsAndFxValuesAreImpure() {
         val p = snippet(
             """
-            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32;
+            pub @_extern(cpp = "ext::read", header = "ext.hxx") read: () Int32
             pub Shape: Any {
-                pub area: () Int32;
+                pub area: () Int32
             }
             pub prints: (v: Int32) Void {
                 trace(v)
@@ -203,8 +203,8 @@ class EffectsPassTest {
             """
             GXSS: Mutable<List<List<Int32>>> = List<List<Int32>> {}
             GD: Mutable<Int32> = 0
-            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32;
-            pub proto: () Int32;
+            pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<Tuple0, Void>>) Int32
+            pub proto: () Int32
             pub Maker: Mutable<Any> {
                 pub n: Mutable<Int32> = 0
                 initially {

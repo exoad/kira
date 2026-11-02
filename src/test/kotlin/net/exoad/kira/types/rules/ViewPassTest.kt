@@ -434,7 +434,7 @@ class ViewPassTest {
             """
             KEPT: Mutable<List<Fx<Tuple0, Size>>> = List<Fx<Tuple0, Size>> {}
             pub Keeper: Any {
-                pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size;
+                pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size
             }
             pub K: Keeper {
                 override pub keep<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
@@ -458,7 +458,7 @@ class ViewPassTest {
                 }
             }
             pub Counter: Any {
-                pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size;
+                pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size
             }
             pub C: Counter {
                 override pub count<T>: (x: T, f: Fx<Tuple1<T>, Size>) Size {
@@ -510,7 +510,7 @@ class ViewPassTest {
                 }
             }
             pub Viewer: Any {
-                pub all: () View<Char>;
+                pub all: () View<Char>
             }
             pub Impl: Mutable<Viewer> {
                 pub data: Mutable<List<Char>> = List<Char> {}
@@ -972,14 +972,14 @@ class ViewPassTest {
         // returning a CStr).
         val p = snippet(
             """
-            pub @_extern(cpp = "ext::name", header = "ext.hxx") name: () CStr;
-            pub @_extern(cpp = "ext::text", header = "ext.hxx") text: () View<Char>;
-            pub @_extern(cpp = "ext::tokens", header = "ext.hxx") tokens: (line: Str) List<CStr>;
-            pub @_extern(cpp = "ext::slot", header = "ext.hxx") slot: () Unsafe<Int32>;
-            pub @_extern(cpp = "ext::tailFn", header = "ext.hxx") tailFn: () Fx<Tuple0, CStr>;
+            pub @_extern(cpp = "ext::name", header = "ext.hxx") name: () CStr
+            pub @_extern(cpp = "ext::text", header = "ext.hxx") text: () View<Char>
+            pub @_extern(cpp = "ext::tokens", header = "ext.hxx") tokens: (line: Str) List<CStr>
+            pub @_extern(cpp = "ext::slot", header = "ext.hxx") slot: () Unsafe<Int32>
+            pub @_extern(cpp = "ext::tailFn", header = "ext.hxx") tailFn: () Fx<Tuple0, CStr>
             pub @_opaque Buf: Any {
-                pub label: () CStr;
-                pub bytes: () View<UInt8>;
+                pub label: () CStr
+                pub bytes: () View<UInt8>
             }
             """,
         )

@@ -2,17 +2,17 @@
 // against the real headers, never a second copy of their declarations.
 
 pub @_extern(cpp = "bibo::Scan", header = "car.hxx") Scan: Struct {
-    pub ahead: () Float32;
+    pub ahead: () Float32
 }
 
 pub @_extern(cpp = "bibo::Car", header = "car.hxx") Car: Mutable<Any> {
-    pub @_mutates arm: () Bool;
-    pub ok: () Bool;
-    pub drivable: () Bool;
-    pub @_mutates scan: () Scan;
-    pub @_mutates drive: (throttle: Float32, steer: Float32) Void;
-    pub @_mutates finish: () Int32;
+    pub @_mutates arm: () Bool
+    pub ok: () Bool
+    pub drivable: () Bool
+    pub @_mutates scan: () Scan
+    pub @_mutates drive: (throttle: Float32, steer: Float32) Void
+    pub @_mutates finish: () Int32
 }
 
 // A 5-line hand-written factory over kira::rt::argc/argv.
-pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") openCar: () Car;
+pub @_extern(cpp = "bibo::openCar", header = "car.seam.hxx") openCar: () Car

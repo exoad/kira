@@ -52,7 +52,7 @@ class VisibilityPassTest {
                     }
                 }
                 pub Shape: Any {
-                    pub area: () Int32;
+                    pub area: () Int32
                     scale: () Int32 {
                         2
                     }

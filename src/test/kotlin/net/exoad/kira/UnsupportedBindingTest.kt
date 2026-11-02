@@ -14,7 +14,7 @@ class UnsupportedBindingTest {
         val dir = File(PyTestSupport.repoRoot, "build/tmp/unsupported-binding").apply { deleteRecursively(); mkdirs() }
         val stdlib = File(dir, "stdlib/kira")
         File(PyTestSupport.repoRoot, "kira").copyRecursively(stdlib)
-        File(stdlib, "extra.kira").writeText("pub @_magic onlyPy: () Int32;\npub @_magic onlyCpp: () Int32;\n")
+        File(stdlib, "extra.kira").writeText("pub @_magic onlyPy: () Int32\npub @_magic onlyCpp: () Int32\n")
         File(stdlib, "extra.bind.yaml").writeText(
             "onlyPy: { cpp: { unsupported: \"a rule of Python's\" }, py: { expr: \"7\" } }\n" +
                 "onlyCpp: { cpp: { expr: \"7\" }, py: { unsupported: \"a rule of C++'s\" } }\n"

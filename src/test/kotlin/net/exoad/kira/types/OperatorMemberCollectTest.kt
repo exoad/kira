@@ -114,8 +114,8 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Ordered<T>: Any {
-                    pub @_op_lt_: (other: T) Bool;
-                    pub @_op_lt_: (other: T) Bool;
+                    pub @_op_lt_: (other: T) Bool
+                    pub @_op_lt_: (other: T) Bool
                 }
                 """
             )
@@ -317,10 +317,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub EqA: Any {
-                    pub @_op_eq_: (other: Int32) Bool;
+                    pub @_op_eq_: (other: Int32) Bool
                 }
                 pub EqB: Any {
-                    pub @_op_eq_: (other: Str) Bool;
+                    pub @_op_eq_: (other: Str) Bool
                 }
                 pub Leaf3: EqA, EqB {
                     override pub @_op_eq_: (other: Int32) Bool { true }
@@ -341,7 +341,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub EqB: Any {
-                    pub @_op_eq_: (other: Str) Bool;
+                    pub @_op_eq_: (other: Str) Bool
                 }
                 pub Only: EqB {
                     override pub @_op_eq_: (other: Int32) Bool { true }
@@ -449,10 +449,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub EqA: Any {
-                    pub @_op_eq_: (other: Int32) Bool;
+                    pub @_op_eq_: (other: Int32) Bool
                 }
                 pub EqB: Any {
-                    pub @_op_eq_: (other: Str) Bool;
+                    pub @_op_eq_: (other: Str) Bool
                 }
                 pub EqBoth: EqA, EqB {
                 }
@@ -564,10 +564,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub EqA: Any {
-                    pub @_op_eq_: (other: Int32) Bool;
+                    pub @_op_eq_: (other: Int32) Bool
                 }
                 pub EqB: Any {
-                    pub @_op_eq_: (other: Str) Bool;
+                    pub @_op_eq_: (other: Str) Bool
                 }
                 pub EqBoth: EqA, EqB {
                     override pub @_op_eq_: (other: Int32) Bool { true }
@@ -591,10 +591,10 @@ class OperatorMemberCollectTest {
                 pub tag: () Int32 { 0 }
             }
             pub A: Any {
-                pub m<U: X>: (u: U) U;
+                pub m<U: X>: (u: U) U
             }
             pub B: Any {
-                pub m<U>: (u: U) U;
+                pub m<U>: (u: U) U
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
@@ -614,10 +614,10 @@ class OperatorMemberCollectTest {
         // conflict.
         val bodies = """
             pub A: Any {
-                pub m: () Int32;
+                pub m: () Int32
             }
             pub B: Any {
-                pub m: () Str;
+                pub m: () Str
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
@@ -641,10 +641,10 @@ class OperatorMemberCollectTest {
                 pub tag: () Int32 { 0 }
             }
             pub A: Any {
-                pub m<U: X>: (u: U) U;
+                pub m<U: X>: (u: U) U
             }
             pub B: Any {
-                pub m<U: Y>: (u: U) U;
+                pub m<U: Y>: (u: U) U
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
@@ -667,10 +667,10 @@ class OperatorMemberCollectTest {
                 pub tag: () Int32 { 0 }
             }
             pub A<T>: Any {
-                pub m<U: Marker<T>>: (u: U) U;
+                pub m<U: Marker<T>>: (u: U) U
             }
             pub B: Any {
-                pub m<U: Marker<Int32>>: (u: U) U;
+                pub m<U: Marker<Int32>>: (u: U) U
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bounds\npub C: A<Int32>, B {\n}") }
@@ -691,10 +691,10 @@ class OperatorMemberCollectTest {
                 pub tag: () Int32 { 0 }
             }
             pub F: Any {
-                pub m<U: Marker<U>>: (u: U) U;
+                pub m<U: Marker<U>>: (u: U) U
             }
             pub G: Any {
-                pub m<V: Marker<V>>: (v: V) V;
+                pub m<V: Marker<V>>: (v: V) V
             }
         """.trimIndent()
         val fg = phasesAAndB { snippet("$bounds\npub C: F, G {\n}") }
@@ -722,7 +722,7 @@ class OperatorMemberCollectTest {
                 }
                 pub Q: P {
                     override pub @_op_eq_: (o: Int32) Bool { true }
-                    pub tag: () Int32;
+                    pub tag: () Int32
                 }
                 """
             )
@@ -756,10 +756,10 @@ class OperatorMemberCollectTest {
         // on its own). Both orders must report the conflict, and neither may throw.
         val bodies = """
             pub A: Any {
-                pub m: (x: Int32) Int32;
+                pub m: (x: Int32) Int32
             }
             pub B: Any {
-                pub m<U>: (x: Int32) Int32;
+                pub m<U>: (x: Int32) Int32
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub C1: A, B {\n}") }
@@ -779,10 +779,10 @@ class OperatorMemberCollectTest {
         // (`aSub` applies to `a`), so both orders are asserted.
         val bodies = """
             pub G<T>: Any {
-                pub m: (t: T) Int32;
+                pub m: (t: T) Int32
             }
             pub H: Any {
-                pub m: (t: Int32) Int32;
+                pub m: (t: Int32) Int32
             }
         """.trimIndent()
         val gh = phasesAAndB { snippet("$bodies\npub Gh: G<Int32>, H {\n}") }
@@ -801,10 +801,10 @@ class OperatorMemberCollectTest {
         // `G`'s type argument (`Int32`) is substituted in, in either order.
         val bodies = """
             pub G<T>: Any {
-                pub m: () T;
+                pub m: () T
             }
             pub H: Any {
-                pub m: () Int32;
+                pub m: () Int32
             }
         """.trimIndent()
         val gh = phasesAAndB { snippet("$bodies\npub Gh: G<Int32>, H {\n}") }
@@ -824,13 +824,13 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub X<T>: Any {
-                    pub m: (t: T) Int32;
+                    pub m: (t: T) Int32
                 }
                 pub Base<T>: X<T> {
                     override pub m: (t: T) Int32 { 0 }
                 }
                 pub Y: Any {
-                    pub m: (t: Int32) Int32;
+                    pub m: (t: Int32) Int32
                 }
                 pub C1: Base<Str>, Y {
                 }
@@ -851,7 +851,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub P: Any {
-                    pub m: (x: Int32) Int32;
+                    pub m: (x: Int32) Int32
                 }
                 pub TBad: P {
                     override pub m: (x: Str) Int32 { 1 }
@@ -877,7 +877,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub X<T>: Any {
-                    pub k: (t: T) Int32;
+                    pub k: (t: T) Int32
                 }
                 pub A: X<Int32> {
                 }
@@ -984,10 +984,10 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub A: Any {
-                    pub m: () Int32;
+                    pub m: () Int32
                 }
                 pub B: Any {
-                    pub m: (x: Int32) Int32;
+                    pub m: (x: Int32) Int32
                 }
                 pub T: A, B {
                     override pub m: () Int32 { 1 }
@@ -1079,7 +1079,7 @@ class OperatorMemberCollectTest {
         // the class-level result no longer depends on `W`'s own internal parent order.
         val bodies = """
             pub X<T>: Any {
-                pub k: (t: T) Int32;
+                pub k: (t: T) Int32
             }
             pub A: X<Int32> {
             }
@@ -1104,7 +1104,7 @@ class OperatorMemberCollectTest {
         // measured this shape behaves the same way as the superclass one above.
         val bodies = """
             pub X<T>: Any {
-                pub k: (t: T) Int32;
+                pub k: (t: T) Int32
             }
             pub A: X<Int32> {
             }
@@ -1131,7 +1131,7 @@ class OperatorMemberCollectTest {
         // the parent-order-last branch".
         val bodies = """
             pub X<T>: Any {
-                pub k: (t: T) Int32;
+                pub k: (t: T) Int32
             }
             pub A: X<Int32> {
             }
@@ -1161,7 +1161,7 @@ class OperatorMemberCollectTest {
         // diagnostic, either way.
         val bodies = """
             pub X<T>: Any {
-                pub k: (t: T) Int32;
+                pub k: (t: T) Int32
             }
             pub A: X<Int32> {
             }
@@ -1188,10 +1188,10 @@ class OperatorMemberCollectTest {
         // second, so a comparison that only ever looks at index 0 would see them as the same.
         val bodies = """
             pub A: Any {
-                pub m: (a: Int32, b: Int32) Int32;
+                pub m: (a: Int32, b: Int32) Int32
             }
             pub B: Any {
-                pub m: (a: Int32, b: Str) Int32;
+                pub m: (a: Int32, b: Str) Int32
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
@@ -1207,10 +1207,10 @@ class OperatorMemberCollectTest {
         // only ever looks at the last index would also see them as the same.
         val bodies = """
             pub A: Any {
-                pub m: (a: Int32, b: Int32) Int32;
+                pub m: (a: Int32, b: Int32) Int32
             }
             pub B: Any {
-                pub m: (a: Str, b: Int32) Int32;
+                pub m: (a: Str, b: Int32) Int32
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bodies\npub C: A, B {\n}") }
@@ -1230,10 +1230,10 @@ class OperatorMemberCollectTest {
                 pub tag: () Int32 { 0 }
             }
             pub A: Any {
-                pub m<U, V: X>: (u: U, v: V) V;
+                pub m<U, V: X>: (u: U, v: V) V
             }
             pub B: Any {
-                pub m<U, V>: (u: U, v: V) V;
+                pub m<U, V>: (u: U, v: V) V
             }
         """.trimIndent()
         val ab = phasesAAndB { snippet("$bounds\npub C: A, B {\n}") }
@@ -1287,7 +1287,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub P<T>: Any {
-                    pub m: (t: T) Int32;
+                    pub m: (t: T) Int32
                 }
                 pub A: P<Int32> {
                     override pub m: (t: Int32) Int32 { 0 }

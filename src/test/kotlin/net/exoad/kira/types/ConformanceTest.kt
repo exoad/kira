@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 class ConformanceTest {
     private val types = """
         Shape: Any {
-            pub area: () Int32;
+            pub area: () Int32
         }
 
         Circle: Shape {

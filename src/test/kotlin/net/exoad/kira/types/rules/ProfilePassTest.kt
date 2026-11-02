@@ -36,7 +36,7 @@ class ProfilePassTest {
                 }
                 pub STATE: Mutable<Int32> = 0
                 pub Show: Any {
-                    pub code: () Int32;
+                    pub code: () Int32
                 }
                 pub @_const twice: (v: Int32) Int32 {
                     v * 2
@@ -95,7 +95,7 @@ class ProfilePassTest {
                 pub n: Int32 = 0
             }
             pub Show: Any {
-                pub code: () Int32;
+                pub code: () Int32
             }
             pub f: (s: Str, xs: List<Int32>, m: Maybe<Str>, a: Arr<Int32>, r: Ref<Int32>, sh: Show, node: Node) Void {
             }

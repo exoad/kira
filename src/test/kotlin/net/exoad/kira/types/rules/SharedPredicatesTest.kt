@@ -45,7 +45,7 @@ class SharedPredicatesTest {
                 pub a: Int32 = 0
             }
             pub T: Any {
-                pub m: () Int32;
+                pub m: () Int32
             }
             pub table<X>: (a: Int32, b: Str, c: Bool, d: Int32, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: Tuple2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<Tuple0, Void>, o: List<Fx<Tuple0, Void>>, q: Maybe<Fx<Tuple0, Void>>, r: Tuple2<Int32, Fx<Tuple0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<Tuple0, Void>>, z: Gen<Int32>, zz: Gen<Fx<Tuple0, Void>>) Int32 {
                 0
@@ -72,13 +72,13 @@ class SharedPredicatesTest {
     }
 
     private val callees = """
-        pub @_extern(cpp = "ext::ext", header = "ext.hxx") ext: (p: Unsafe<Int32>) Int32;
-        pub proto: (p: Unsafe<Int32>) Int32;
+        pub @_extern(cpp = "ext::ext", header = "ext.hxx") ext: (p: Unsafe<Int32>) Int32
+        pub proto: (p: Unsafe<Int32>) Int32
         pub @_opaque Handle: Any {
-            pub op: (p: Unsafe<Int32>) Int32;
+            pub op: (p: Unsafe<Int32>) Int32
         }
         pub Slot: Any {
-            pub slot: (p: Unsafe<Int32>) Int32;
+            pub slot: (p: Unsafe<Int32>) Int32
         }
         pub kira: (p: Unsafe<Int32>) Int32 {
             0
@@ -132,10 +132,10 @@ class SharedPredicatesTest {
             pub Box: Any {
                 pub f: Maybe<Fx<Tuple0, Void>> = null
             }
-            pub @_extern(cpp = "ext::a", header = "ext.hxx") a: (n: Int32, s: Str) Int32;
-            pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<Tuple0, Void>>) Int32;
-            pub @_extern(cpp = "ext::c", header = "ext.hxx") c: (x: Box) Int32;
-            pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<Tuple0, Void>) Int32;
+            pub @_extern(cpp = "ext::a", header = "ext.hxx") a: (n: Int32, s: Str) Int32
+            pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<Tuple0, Void>>) Int32
+            pub @_extern(cpp = "ext::c", header = "ext.hxx") c: (x: Box) Int32
+            pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<Tuple0, Void>) Int32
             pub k: (x: Box) Int32 {
                 0
             }

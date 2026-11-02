@@ -359,8 +359,8 @@ class TyperDeclDiagnosticsTest {
         val p = snippet(
             """
             pub Mapper: Any {
-                pub map<U>: (u: U) U;
-                pub bounded<U: Mapper>: (u: U) Void;
+                pub map<U>: (u: U) U
+                pub bounded<U: Mapper>: (u: U) Void
             }
             pub Base: Any {
                 pub map<U>: (u: U) U {

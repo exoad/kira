@@ -779,6 +779,7 @@ class KiraLexer(
                     startLoc
                 )
 
+                // Lexed so that the parser refuses it with the removed-word hints (KiraParser.refuseSemicolon).
                 Symbols.STATEMENT_DELIMITER.rep -> Token.Symbol(
                     Token.Type.S_SEMICOLON,
                     Symbols.STATEMENT_DELIMITER,

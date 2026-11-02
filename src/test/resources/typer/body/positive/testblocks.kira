@@ -21,7 +21,7 @@ pub Line: Struct {
 }
 
 pub Shape: Any {
-    pub area: () Int32;
+    pub area: () Int32
 }
 
 pub Circle: Shape {

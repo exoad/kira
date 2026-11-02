@@ -186,7 +186,7 @@ class MutabilityTest {
 
     @Test
     fun everyFunctionOfAMutableTraitMayChangeIt() {
-        val p = TyperTestSupport.snippet("Grows: Mutable<Any> {\n    pub grow: () Void;\n    pub size: () Int32 {\n        1\n    }\n}\n\nNamed: Any {\n    pub id: () Int32;\n}\n")
+        val p = TyperTestSupport.snippet("Grows: Mutable<Any> {\n    pub grow: () Void\n    pub size: () Int32 {\n        1\n    }\n}\n\nNamed: Any {\n    pub id: () Int32\n}\n")
         expectNoErrors(p)
         val traits = p.modules.flatMap { it.declarations }.filterIsInstance<net.exoad.kira.compiler.analysis.types.TraitSymbol>().associateBy { it.name }
         assertTrue(traits.getValue("Grows").methods.all { it.isMutMethod }, "an implementer may change itself in any of them (C++ non-const)")
@@ -301,7 +301,7 @@ class MutabilityTest {
     fun aRunTimeTestOfMutableAsksTheObjectsType() {
         // A trait with a Mutable implementer is tested at run time, against that implementer (py lowers it isinstance).
         val p = TyperTestSupport.snippet(
-            "Shape: Any {\n    pub area: () Int32;\n}\n\nFixed: Shape {\n    pub side: Int32 = 2\n\n    override pub area: () Int32 {\n        side * side\n    }\n}\n\n" +
+            "Shape: Any {\n    pub area: () Int32\n}\n\nFixed: Shape {\n    pub side: Int32 = 2\n\n    override pub area: () Int32 {\n        side * side\n    }\n}\n\n" +
                 "Grow: Mutable<Shape> {\n    pub side: Mutable<Int32> = 1\n\n    override pub area: () Int32 {\n        side\n    }\n}\n\nchanges: (s: Shape) Bool {\n    s == Mutable<Shape>\n}\n",
         )
         expectNoErrors(p)

@@ -2,11 +2,11 @@
 // passing one narrows the name for the rest of the `&&`, the body, and after an `if` that leaves.
 
 pub Shape: Any {
-    pub area: () Int32;
+    pub area: () Int32
 }
 
 pub Named: Any {
-    pub label: () Str;
+    pub label: () Str
 }
 
 pub Circle: Shape, Named {

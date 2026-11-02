@@ -16,8 +16,8 @@ pub Owner: Any {
 }
 
 pub Scaler: Any {
-    pub scale: (v: Int32) Int32;
-    pub factor: () Int32;
+    pub scale: (v: Int32) Int32
+    pub factor: () Int32
     pub describe: () Str {
         "scales by ${factor()}"
     }

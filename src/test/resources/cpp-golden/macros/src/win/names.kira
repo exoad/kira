@@ -11,9 +11,9 @@ pub Range: Struct {
     pub lo: Int32 = 0
     pub hi: Int32 = INTERVAL
 
-    pub min: () Int32;
-    pub max: () Int32;
+    pub min: () Int32
+    pub max: () Int32
 }
 
-pub min: (a: Int32, b: Int32) Int32;
-pub max: (a: Int32, b: Int32) Int32;
+pub min: (a: Int32, b: Int32) Int32
+pub max: (a: Int32, b: Int32) Int32

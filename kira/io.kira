@@ -2,12 +2,12 @@
 // compiler intrinsic rather than a declaration here. It lowers straight to
 // the prelude `print` macro.
 
-pub @_magic print: (value: Any) Void;
-pub @_magic println: (value: Any) Void;
-pub @_magic eprint: (value: Any) Void;
+pub @_magic print: (value: Any) Void
+pub @_magic println: (value: Any) Void
+pub @_magic eprint: (value: Any) Void
 
-pub @_magic assert: (condition: Bool, message: Str) Void;
+pub @_magic assert: (condition: Bool, message: Str) Void
 
 // From here on, a character stdout's encoding lacks is written as a backslash escape instead of
 // stopping the program: for text a person reads. Only py can fail there; C++ writes the UTF-8 as it is.
-pub @_magic escapeStdout: () Void;
+pub @_magic escapeStdout: () Void

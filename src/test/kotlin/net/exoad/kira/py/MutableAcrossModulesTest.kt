@@ -34,7 +34,7 @@ class MutableAcrossModulesTest {
         }
     """.trimIndent()
 
-    private val tools = "pub Tool: Any {\n    pub cost: () Int32;\n}\n"
+    private val tools = "pub Tool: Any {\n    pub cost: () Int32\n}\n"
 
     private val changesMain = "app.shapes.Shape as Shape\napp.tools.Tool as Tool\n\npub changes: (t: Tool) Bool {\n    t == Mutable<Tool>\n}\n"
 

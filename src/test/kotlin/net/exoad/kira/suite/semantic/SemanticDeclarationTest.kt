@@ -76,7 +76,7 @@ class SemanticDeclarationTest {
         assertHealthy(
             """
             pub Speaker: Any {
-                pub speak: () Str;
+                pub speak: () Str
             }
 
             pub Int32 as MyInt
@@ -119,8 +119,8 @@ class SemanticDeclarationTest {
         // A trait's visitor checks the module scope unconditionally.
         val msgs = assertUnhealthy(
             """
-            pub First: Any { pub a: () Int32; }
-            pub First: Any { pub b: () Int32; }
+            pub First: Any { pub a: () Int32 }
+            pub First: Any { pub b: () Int32 }
             pub Impl: First { }
             """
         )
@@ -145,7 +145,7 @@ class SemanticDeclarationTest {
         val msgs = assertUnhealthy(
             """
             pub Shared: Any { pub n: Int32 = 0 }
-            pub Shared: Any { pub a: () Int32; }
+            pub Shared: Any { pub a: () Int32 }
             pub Impl: Shared { }
             """
         )

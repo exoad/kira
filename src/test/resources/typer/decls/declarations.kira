@@ -95,7 +95,7 @@ pub lookup: (names: Map<Str, List<Id>>, key: Str) Maybe<List<Id>> {
     names.get(key)
 }
 
-pub @_magic intrinsicClock: () Int64;
+pub @_magic intrinsicClock: () Int64
 
 pub @_opaque Handle: Any
 

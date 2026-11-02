@@ -128,7 +128,7 @@ class CppCliTest {
                 pub limit: Int32 = LIMIT
                 pub hint: Maybe<Int32> = null
             }
-            pub apply: (c: Cfg, by: Int32 = LIMIT) Int32;
+            pub apply: (c: Cfg, by: Int32 = LIMIT) Int32
             """.trimIndent()
         )
         val first = runCli(dir, "--target", "cpp")

@@ -18,7 +18,7 @@
 pub @_magic Suite: Mutable<Any> {
     title: Str
 
-    pub @_mutates check: (ok: Bool, what: Str) Void;
-    pub @_mutates checkStr: (got: Str, want: Str, what: Str) Void;
-    pub finish: () Int32;
+    pub @_mutates check: (ok: Bool, what: Str) Void
+    pub @_mutates checkStr: (got: Str, want: Str, what: Str) Void
+    pub finish: () Int32
 }

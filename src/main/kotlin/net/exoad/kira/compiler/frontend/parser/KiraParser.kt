@@ -135,6 +135,7 @@ class KiraParser private constructor(
 
     /** Turns [context] into its AST (two passes when the file nests types). */
     private fun parse() {
+        refuseSemicolon()
         parseFile()
         if (foundNested.isEmpty()) return
         // Pass 2: Outer's nested types known, so a bare `Inner` in Outer's body names Outer_Inner.
@@ -336,7 +337,7 @@ class KiraParser private constructor(
                         }
 
                         Token.Type.S_SEMICOLON -> {
-                            append("Missing ';' or newline to terminate the statement.")
+                            append("End the statement with a newline: Kira has no ';', ${removedWords.getValue(";")}.")
                         }
 
                         Token.Type.S_EQUAL -> {
@@ -431,21 +432,14 @@ class KiraParser private constructor(
         }
     }
 
-    /**
-     * A `-`, `+`, `(` or `[` at the pointer that would go on with the line before as [what]: refused
-     * when it opens a line at or left of its statement's start, where it reads as a statement of its own.
-     */
-    private fun refuseLineThatGoesOn(what: String) {
-        if (!startsOnNewLine() || peek().canonicalLocation.column > statementColumn) return
-        Diagnostics.panic(
-            "parse.line.continues",
-            "This line opens with `${peek().content}` where its statement starts, yet it goes on with the line before as $what. " +
-                "End that line with `;` if this one stands alone; indent this one if it goes on.",
-            location = here(),
-            selectorLength = 1,
-            context = context
-        )
-    }
+    /** Whether the token at the pointer opens a line at or left of its statement's start: the statement ends before it. */
+    private fun endsStatementHere(): Boolean =
+        startsOnNewLine() && peek().canonicalLocation.column <= statementColumn
+
+    /** [endsStatementHere] for the token [ahead] places past the pointer, against the token before it. */
+    private fun endsStatementAt(ahead: Int): Boolean =
+        peek(ahead).canonicalLocation.lineNumber > peek(ahead - 1).canonicalLocation.lineNumber &&
+            peek(ahead).canonicalLocation.column <= statementColumn
 
     private fun parseStatementHere(modifier: Map<Modifier, SourcePosition>?): Statement {
         if (modifier != null && modifier.isNotEmpty()) {
@@ -726,7 +720,20 @@ class KiraParser private constructor(
         "use" to "a module is imported by its dotted name: 'kira.math as math'",
         "do" to "do-while is gone: use while",
         "finally" to "finally blocks are gone",
+        ";" to "a statement ends at its newline",
     )
+
+    /** A written `;` anywhere in the file: refused before parsing, with its line in [removedWords]. */
+    private fun refuseSemicolon() {
+        val semi = tokens.firstOrNull { it.type == Token.Type.S_SEMICOLON && it.content == Symbols.STATEMENT_DELIMITER.rep.toString() } ?: return
+        Diagnostics.panic(
+            "parse.removed",
+            "';' is not part of Kira any more: ${removedWords.getValue(";")}. Remove it.",
+            location = semi.canonicalLocation,
+            selectorLength = 1,
+            context = context
+        )
+    }
 
     /** A form of the old dialect at the pointer: refused, naming the form that replaces it. */
     private fun refuseRemovedForm() {
@@ -1418,8 +1425,8 @@ class KiraParser private constructor(
             if (binaryOpType == null || binaryOpType.precedence < minPrecedence) {
                 break
             }
-            if (binOpTokens.size == 1 && (binOpTokens[0] == Token.Type.OP_SUB || binOpTokens[0] == Token.Type.OP_ADD)) {
-                refuseLineThatGoesOn(if (binOpTokens[0] == Token.Type.OP_SUB) "a subtraction" else "an addition")
+            if (endsStatementHere()) {
+                break
             }
             val opAt = here()
             repeat(binOpTokens.size) {
@@ -1679,10 +1686,10 @@ class KiraParser private constructor(
     private fun parsePostfix(baseExpr: Expr): Expr {
         var expr = baseExpr
         while (true) {
+            if (endsStatementHere()) break
             when {
                 at(Token.Type.S_OPEN_BRACKET) -> {
                     // array index
-                    refuseLineThatGoesOn("an index")
                     expectThenAdvance(Token.Type.S_OPEN_BRACKET)
                     val idx = withNoObjectInit(false) { parseExpr() }
                     expectThenAdvance(Token.Type.S_CLOSE_BRACKET)
@@ -1721,7 +1728,6 @@ class KiraParser private constructor(
                 // A call's '(' is on the line of what it calls: one that starts a line starts a lambda.
                 at(Token.Type.S_OPEN_PARENTHESIS) && !(startsOnNewLine() && startsLambda()) -> {
                     // function call on arbitrary expression (e.g., p.dist())
-                    refuseLineThatGoesOn("a call")
                     val params = parseFunctionCallParameter()
                     expr = putOrigin(FunctionCallExpr(expr, params.second, params.first), here())
                 }
@@ -1867,7 +1873,8 @@ class KiraParser private constructor(
                     return parseObjectInit()
                 }
                 when (peek(1).type) {
-                    Token.Type.S_OPEN_PARENTHESIS -> {
+                    // A '(' that opens a line where the statement starts begins the next statement, never a call of this name.
+                    Token.Type.S_OPEN_PARENTHESIS -> if (endsStatementAt(1)) parseIdentifierExpr(modifier) else {
                         if (modifier?.isNotEmpty() ?: false) {
                             Diagnostics.panic(
                                 "KiraParser::parseFunctionCallExpr",

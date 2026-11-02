@@ -19,7 +19,7 @@ class SemanticSymbolTableTest {
             pub Pet: Any { pub name: Str = "" }
 
             pub Speaker: Any {
-                pub speak: () Str;
+                pub speak: () Str
             }
 
             pub Int32 as Age

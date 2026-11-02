@@ -5,7 +5,7 @@ pub Point: Struct {
 }
 
 pub Shape: Any {
-    pub area: () Int32;
+    pub area: () Int32
 }
 
 pub Square: Struct, Shape {

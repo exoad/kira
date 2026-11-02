@@ -44,13 +44,13 @@ class DeclScopeAndNamesTest {
             pub width: Int32 = 5
             pub OTHER: Int32 = 3
             LIMIT: Int32 = 7
-            pub scale: (x: Int32) Int32;
+            pub scale: (x: Int32) Int32
             pub Box: Struct {
                 pub width: Int32 = width
                 pub LIMIT: Int32 = LIMIT
                 pub other: Int32 = OTHER
-                pub grow: (by: Int32 = OTHER) Int32;
-                pub scale: (x: Int32 = width) Int32;
+                pub grow: (by: Int32 = OTHER) Int32
+                pub scale: (x: Int32 = width) Int32
             }
             pub Plain: Struct {
                 pub w: Int32 = width

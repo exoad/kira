@@ -2,11 +2,11 @@
 // time, and the narrowing a passing test gives a name that cannot change.
 
 pub Shape: Any {
-    pub area: () Int32;
+    pub area: () Int32
 }
 
 pub Named: Any {
-    pub label: () Str;
+    pub label: () Str
 }
 
 pub Circle: Shape, Named {
