@@ -91,11 +91,14 @@ class ReturnPathPassTest {
     fun anIfWithoutElseDoesNotEndEveryPath() {
         val p = snippet(
             """
+            pub one: (v: Int32) Int32 {
+                v
+            }
             pub sign: (v: Int32) Int32 {
                 if v < 0 {
-                    -1
+                    one(-1)
                 } else if v > 0 {
-                    1
+                    one(1)
                 }
             }
             pub empty: () Int32 {
@@ -137,7 +140,7 @@ class ReturnPathPassTest {
             pub f: (b: Bool) Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     if b {
-                        x
+                        x.abs()
                     }
                 }
             }

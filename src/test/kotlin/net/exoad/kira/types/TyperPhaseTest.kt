@@ -79,7 +79,7 @@ class TyperPhaseTest {
                 fn("widen", listOf(param("by", ty("Int32"))), ty("Void"), listOf(), listOf(Modifier.PUBLIC, Modifier.MUTABLE)),
             ),
             listOf(ty("Sized")),
-            listOf(Statement(IntegerLiteral(0))),
+            listOf(Statement(net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr)),
         )
         astModule(unit, "test:band", Statement(net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr(Identifier("use"), emptyList(), emptyList())), struct)
         unit.getSource("test/band.kira")!!.ast.let { root ->
@@ -126,7 +126,7 @@ class TyperPhaseTest {
             ty("Governor"), listOf(Modifier.PUBLIC),
             listOf(field("seconds", ty("Int32"), null, Modifier.PUBLIC, Modifier.REQUIRE)),
             emptyList(),
-            initially = listOf(Statement(IntegerLiteral(1))),
+            initially = listOf(Statement(net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr)),
         )
         astModule(unit, "test:gov", cls)
         val p = typed(unit)
