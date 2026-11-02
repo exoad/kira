@@ -32,6 +32,8 @@ codegen net.exoad.kira.MinifiedCodegenTest
 codegen net.exoad.kira.OutputMinifierTest
 codegen net.exoad.kira.TraitCodegenTest
 codegen net.exoad.kira.ForeignEdgePipelineTest
+codegen net.exoad.kira.BodiedMagicMemberIndexTest
+codegen net.exoad.kira.BodiedMagicMemberRefusalTest
 codegen net.exoad.kira.suite.codegen.*
 codegen net.exoad.kira.suite.parser.IntrinsicSlotTest
 corpus net.exoad.kira.suite.parity.*

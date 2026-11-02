@@ -56,6 +56,11 @@ object MagicIntrinsic : CompilerIntrinsic(
         if (typeName != null) {
             compilationUnit.registerMagicType(typeName)
         }
+        if (target is ClassDecl && typeName != null) {
+            target.members.filterIsInstance<FunctionDecl>().filter { it.def.body != null }.forEach { member ->
+                (member.name as? Identifier)?.value?.let { compilationUnit.registerBodiedMagicMember(typeName, it) }
+            }
+        }
         return NoExpr
     }
 }

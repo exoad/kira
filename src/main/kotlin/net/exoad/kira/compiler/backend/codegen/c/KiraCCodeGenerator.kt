@@ -2712,6 +2712,9 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         if (nameExpr is MemberAccessExpr) {
             val methodName = (nameExpr.member as? Identifier)?.value ?: "_anon"
             val recvType = receiverTypeOf(nameExpr.origin)
+            if (recvType != null && compilationUnit.isBodiedMagicMember(recvType, methodName)) {
+                throw UnsupportedConstruct(functionCallExpr, "a method written in Kira on the magic type '$recvType' ('$methodName')", TARGET_NAME)
+            }
             val traitSig = if (recvType != null && recvType in traitNames) {
                 traitMethodSigs[recvType]?.firstOrNull { it.name == methodName }
             } else {
