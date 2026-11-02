@@ -36,7 +36,7 @@ pub HttpAnswer: Struct {
     pub status: Int32 = 200
     pub contentType: Str = "application/json"
     pub body: List<UInt8> = @listOf()
-    pub headers: Map<Str, Str> = Map<Str, Str> { }
+    pub headers: Map<Str, Str> { }
 }
 
 // A ThreadingHTTPServer, bound and listening: each request a thread of its own, the handler a Kira Fx (D76).
