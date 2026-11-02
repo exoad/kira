@@ -29,6 +29,7 @@ import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.ViewOrigin
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.MemberRef
+import net.exoad.kira.compiler.analysis.types.isStaticPointer
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
@@ -260,8 +261,21 @@ internal class ViewPass : RulePass {
         }
 
         private fun field(f: FieldSymbol) {
+            if (externPointerField(f)) {
+                misplaced(facts.elementOf(f.type), false, emptySet())?.let { held ->
+                    report(f.decl, TYPE, typeMessage("Field '${f.name}' of ${f.owner.name}", f.type, held, "keep the owner and form the view where it is passed"))
+                    refused.add(f)
+                }
+                return
+            }
             storage(f, f.type, f.decl, "Field '${f.name}' of ${f.owner.name}")
         }
+
+        /**
+         * A C `const T*` member of an `@_extern` struct, `x: Unsafe<T>`: ExternPointerPass lets
+         * only a module-level constant `Arr` reach it, whose storage is static, so it holds no view.
+         */
+        private fun externPointerField(f: FieldSymbol): Boolean = f.isStaticPointer
 
         /** A global or a field: never second-class, never holding one (1.2). */
         private fun storage(sym: Symbol, t: KType, node: ASTNode?, what: String) {

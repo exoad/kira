@@ -27,5 +27,6 @@ object RulePasses {
         NamingPass(),
         DeclRepeatPass(),
         ExternObjectPass(),
+        ExternPointerPass(),
     )
 }

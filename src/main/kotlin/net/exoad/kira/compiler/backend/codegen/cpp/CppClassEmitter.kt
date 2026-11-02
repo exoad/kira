@@ -34,6 +34,7 @@ import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.analysis.types.isStaticPointer
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
@@ -1349,7 +1350,7 @@ internal class ClassLowering(private val ctx: CppEmitContextImpl, private val fa
             val sym = n.sym as? ClassSymbol ?: return false
             return when (sym.kind) {
                 ClassKind.MAGIC -> sym.name in SECOND_CLASS || (sym.name != "Fx" && n.typeArgs().any { holdsSecondClass(it, seen) })
-                ClassKind.STRUCT -> seen.add(sym) && sym.typeParams.zip(n.typeArgs()).toMap().let { sub -> sym.fields.any { holdsSecondClass(it.type.substitute(sub), seen) } }
+                ClassKind.STRUCT -> seen.add(sym) && sym.typeParams.zip(n.typeArgs()).toMap().let { sub -> sym.fields.any { !it.isStaticPointer && holdsSecondClass(it.type.substitute(sub), seen) } }
                 ClassKind.CLASS -> n.typeArgs().any { holdsSecondClass(it, seen) }
                 else -> false
             }

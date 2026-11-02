@@ -151,7 +151,7 @@
 // fread-style buffer or ImGui's InputText(char* buf, ...) is reached. A pointer
 // converts as C++ converts it (a uint8_t* reaches a void* parameter).
 //
-// Freestanding: Out, arg, declared, field and the macros only. There is no Str
+// Freestanding: Out, ptr, arg, declared, field and the macros only. There is no Str
 // on the Pico, so a freestanding extern module passes CStr, scalars and Unsafe<T>.
 #pragma once
 
@@ -507,6 +507,20 @@ namespace kira::ffi
   [[nodiscard]] constexpr Out<T> out(T& r) noexcept
   {
       return Out<T>{r};
+  }
+
+  // An @_extern struct at an Unsafe<T> parameter, or the receiver of a method that
+  // names a C function: its address, for the one call. A Mutable binding gives T*,
+  // anything else const T*; a temporary lives to the end of the call's full-expression.
+  template<class T>
+  [[nodiscard]] constexpr T* ptr(T& r) noexcept
+  {
+      return &r;
+  }
+  template<class T>
+  [[nodiscard]] constexpr const T* ptr(const T&& r) noexcept
+  {
+      return &r;
   }
 
 #if KIRA_PROFILE_HOSTED

@@ -30,3 +30,35 @@ val FnSymbol.suppliedByCpp: Boolean
  */
 val ClassSymbol.isConstructibleExtern: Boolean
     get() = foreign is Foreign.Extern && markers.any { it.name == DeclarationCollector.CONSTRUCTIBLE }
+
+/** An `@_extern` struct: a C++ value Kira holds, whose address an extern may take for its call. */
+val ClassSymbol.isExternStruct: Boolean
+    get() = isStruct && foreign is Foreign.Extern
+
+/**
+ * Whether `T { field = v }` builds this `@_extern` struct from the fields Kira declares (a C
+ * aggregate, laid out as the layout check proves).
+ */
+val ClassSymbol.isAggregateExtern: Boolean
+    get() = isExternStruct && fields.isNotEmpty()
+
+/**
+ * Whether this method of an `@_extern` struct names a C function (`@_extern(c = "f")` and no
+ * C++ name): C has no members, so the call is `f(&receiver, args)`, the receiver a `T*` when
+ * the method is `@_mutates` and a `const T*` otherwise.
+ */
+val FnSymbol.takesReceiverByPointer: Boolean
+    get() {
+        val params = (foreign as? Foreign.Extern)?.params ?: return false
+        val owner = owner as? ClassSymbol ?: return false
+        return owner.isExternStruct && "c" in params && "cpp" !in params && "symbol" !in params
+    }
+
+/**
+ * A C `const T*` member of an aggregate `@_extern` struct (`x: Unsafe<T>`): it points only at
+ * a module-level constant `Arr` (ExternPointerPass), static storage, so the struct holds no
+ * view. A struct has no Mutable field (types.mutable.field).
+ */
+val FieldSymbol.isStaticPointer: Boolean
+    get() = (owner as? ClassSymbol)?.isAggregateExtern == true &&
+        ((type as? KType.Nominal)?.sym as? ClassSymbol)?.let { it.kind == ClassKind.MAGIC && it.name == "Unsafe" } == true

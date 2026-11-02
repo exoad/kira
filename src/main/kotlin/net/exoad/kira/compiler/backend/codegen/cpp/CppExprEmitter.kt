@@ -31,6 +31,7 @@ import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.analysis.types.isStaticPointer
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -1336,7 +1337,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         refuseViewFields(e, ri)
         val given = ri.sourceOrder.map { ri.fields[it] as FieldInit.Given }
-        val ops = given.map { g -> operandOf(g.expr) { coerced(g.expr) } }
+        val ops = given.map { g -> operandOf(g.expr) { if (g.field.isStaticPointer) CppEx("${wrap(coerced(g.expr), CppPrec.POSTFIX)}.data()", CppPrec.POSTFIX) else coerced(g.expr) } }
         val byField = IdentityHashMap<FieldSymbol, Int>()
         given.forEachIndexed { i, g -> byField[g.field] = i }
         val typeText = if (model.typeOf(e.typeName) != null) ctx.spell(e.typeName, Pos.VALUE) else ctx.spell(t, Pos.VALUE, e)
@@ -1368,7 +1369,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /** `cpp.internal` at the construction [e] of a type that holds a view (design 30, 1.2: no field, box or container holds one). */
     private fun refuseViewFields(e: ObjectInitExpr, ri: net.exoad.kira.compiler.analysis.types.ResolvedInit) {
-        val held = ri.fields.firstOrNull { f -> f.field.type.substitute(ri.substitution).let { CppHoister.isSecondClass(it) || CppHoister.holdsSecondClass(it) } }
+        val held = ri.fields.firstOrNull { f ->
+            !f.field.isStaticPointer &&
+                f.field.type.substitute(ri.substitution).let { CppHoister.isSecondClass(it) || CppHoister.holdsSecondClass(it) }
+        }
         if (held != null || CppHoister.holdsSecondClass(ri.type)) {
             hoister.internalView(e, "this construction of ${ri.type.display()} holds a view${held?.let { " in '${it.field.name}'" } ?: ""}", "type")
         }

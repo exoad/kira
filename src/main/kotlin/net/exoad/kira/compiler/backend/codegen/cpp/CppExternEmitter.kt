@@ -17,6 +17,8 @@ import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.isConstructibleExtern
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
+import net.exoad.kira.compiler.analysis.types.takesReceiverByPointer
+import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
@@ -80,6 +82,13 @@ import net.exoad.kira.core.intrinsics.ExternIntrinsic
  * `kira::cat`. Converted, `wide() / d` divides two `std::int32_t`. What each conversion
  * does with a null `const char*` and with a field whose C++ type is the declared one is
  * kira/ffi.hxx's (the empty Str; the member itself, an lvalue).
+ *
+ * An `@_extern` struct reaches C by pointer for one call (ExternPointerPass): given to an
+ * `Unsafe<T>` parameter it is `kira::ffi::ptr(x)`, checked as `const T*`; as the receiver of a
+ * method whose marker names a C function (`@_extern(c = "f")`, C has no members) the call is
+ * `f(kira::ffi::ptr(x), ...)`, checked as `T*` when the method is `@_mutates` and `const T*`
+ * otherwise. A struct's `Unsafe<T>` field is a `const T*` member, given a constant `Arr`'s
+ * `.data()` at the construction.
  *
  * An extern parameter takes no Kira default: the C++ header's own default fills a parameter
  * Kira leaves undeclared, and a Kira default would be a second, unchecked declaration of it
@@ -298,11 +307,16 @@ object CppExternEmitter : CppExternsPart {
         }
         val what = if (owner != null) "${owner.name}.${fn.name}" else fn.name
         val receiver = when {
-            owner == null -> ""
+            owner == null || fn.takesReceiverByPointer -> ""
             fn.isMutMethod -> "std::declval<${cppName(owner)}&>()."
             else -> "std::declval<const ${cppName(owner)}&>()."
         }
-        val args = fn.params.joinToString(", ") { checkArg(ctx, it, takesCallbacks(fn)) }
+        val self = if (owner != null && fn.takesReceiverByPointer) {
+            listOf("std::declval<${if (fn.isMutMethod) "" else "const "}${cppName(owner)}*>()")
+        } else {
+            emptyList()
+        }
+        val args = (self + fn.params.map { checkArg(ctx, it, takesCallbacks(fn)) }).joinToString(", ")
         val invoke = "$receiver${cppName(fn)}($args)"
         if (fn.ret == KType.Void) {
             w.line("$CHECK(($invoke, 0), int, \"$what\");")
@@ -374,7 +388,7 @@ object CppExternEmitter : CppExternsPart {
         val marked = externOf(fn) != null
         val proxy = proxied(fn)
         val callee = when {
-            owner == null || receiver == null -> if (marked) globalName(fn) else ctx.qualified(fn)
+            owner == null || receiver == null || fn.takesReceiverByPointer -> if (marked) globalName(fn) else ctx.qualified(fn)
             else -> receiver + accessor(owner) + cppName(fn)
         }
         // An extern parameter has no Kira default (functionCheck refuses one), so every binding
@@ -410,7 +424,8 @@ object CppExternEmitter : CppExternsPart {
         // registry is reached through such a handle, never through a free function taking none.
         val callbacks = takesCallbacks(fn)
         val texts = args.mapIndexed { i, text -> argument(ctx, fn.params.getOrNull(i), call.args.getOrNull(i), text, i in copied, proxy, callbacks) }
-        val text = "$callee(${texts.joinToString(", ")})"
+        val self = if (fn.takesReceiverByPointer && receiver != null) listOf("kira::ffi::ptr($receiver)") else emptyList()
+        val text = "$callee(${(self + texts).joinToString(", ")})"
         return if (marked) declared(ctx, fn.ret, text) else text
     }
 
@@ -576,6 +591,10 @@ object CppExternEmitter : CppExternsPart {
         }
         if (isUnsafe(p.type)) {
             val given = expr?.let { ctx.model.types[it] }
+            if (given != null && given == (p.type as KType.Nominal).typeArgs().firstOrNull()) {
+                // An @_extern struct given as itself (CallResolver.typeGiven): its address, for this call only.
+                return "kira::ffi::ptr($text)"
+            }
             val viewLike = given != null && (isMagic(given, VIEW) || isMagic(given, MUT_VIEW))
             // Design 1.4: an Arr/List place or a Str literal reaches Unsafe<T> through
             // Coercion.ToView (CallResolver.typeGiven), the same conversion an ordinary

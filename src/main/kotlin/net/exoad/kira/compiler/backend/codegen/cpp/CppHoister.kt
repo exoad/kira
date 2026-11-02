@@ -26,6 +26,7 @@ import net.exoad.kira.compiler.analysis.types.rules.Rules
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.analysis.types.typeArgs
+import net.exoad.kira.compiler.analysis.types.isStaticPointer
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -540,7 +541,8 @@ class CppHoister(private val lower: CppLowering) {
         }
         val name = lower.state.fresh("t")
         val init = emit()
-        lines += "${if (mutable) "" else "const "}${lower.ctx.spell(t, Pos.VALUE, e)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
+        val spelled = lower.ctx.spell(t, Pos.VALUE, e)
+        lines += "${if (mutable) spelled else ClassLowering.constLocal(spelled)} $name = ${lower.wrap(init, CppPrec.ASSIGN)};"
         return CppEx(name, CppPrec.PRIMARY).also { temporaries += it }
     }
 
@@ -1074,7 +1076,7 @@ class CppHoister(private val lower: CppLowering) {
                 return inArgs
             }
             val substitution = sym.typeParams.zip(n.typeArgs()).toMap()
-            val inFields = sym.fields.any { f -> f.type.substitute(substitution).let { isSecondClass(it) || holds(it, seen) } } ||
+            val inFields = sym.fields.any { f -> !f.isStaticPointer && f.type.substitute(substitution).let { isSecondClass(it) || holds(it, seen) } } ||
                 sym.superclass?.let { holds(it.substitute(substitution), seen) } == true
             seen.remove(sym)
             return inFields

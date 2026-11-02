@@ -746,6 +746,10 @@ internal class CallResolver(private val c: PhaseC) {
             if (externCallee && facts.isMagic(expected, UNSAFE)) {
                 val t = known ?: c.exprs.synth(arg, ctx, scope)
                 val element = facts.elementOf(expected)
+                if (element != null && t == element && ((t as? KType.Nominal)?.sym as? ClassSymbol)?.isExternStruct == true) {
+                    // An @_extern struct's own value: the extern emitter passes its address for this call only.
+                    return@forEachIndexed
+                }
                 if (t != expected && element != null && (facts.isView(t) || facts.isMutView(t)) && facts.elementOf(t) == element) {
                     // Given as itself (table 5.1: a `View<T>`/`MutView<T>` converts to the `const
                     // T*`/`T*` the extern emitter lowers it to, `.data()`); anything else falls
@@ -1152,7 +1156,7 @@ internal class CallResolver(private val c: PhaseC) {
                 model.inits[e] = ResolvedInit(t, cls, emptyList(), emptyList())
                 return t
             }
-            cls.kind == ClassKind.OPAQUE || cls.foreign is Foreign.Extern -> "${t.display()} is made by the C/C++ side; call the function that returns one"
+            cls.kind == ClassKind.OPAQUE || (cls.foreign is Foreign.Extern && !cls.isAggregateExtern) -> "${t.display()} is made by the C/C++ side; call the function that returns one"
             cls.kind == ClassKind.MAGIC && cls.name == "Json" && cls.module.uri == JSON_URI ->
                 "Json is not constructed with { }; make one with Json.obj(), Json.arr(), Json.null(), Json.of(value) or Json.parse(text)"
             else -> null
@@ -1187,7 +1191,7 @@ internal class CallResolver(private val c: PhaseC) {
                 c.exprs.synth(v, ctx, scope)
                 return@forEachIndexed
             }
-            c.exprs.check(v, fieldTypes[i], ctx, scope, "field '${fields[i].name}'")
+            fieldValue(cls, v, fieldTypes[i], ctx, scope, "field '${fields[i].name}'")
             slots[i] = FieldInit.Given(fields[i], v, named = false)
             order.add(i)
         }
@@ -1209,7 +1213,7 @@ internal class CallResolver(private val c: PhaseC) {
                 c.report("types.init.duplicate", "Field '${n.name.value}' of ${t.display()} is given more than once.", n)
                 continue
             }
-            c.exprs.check(n.value, fieldTypes[i], ctx, scope, "field '${n.name.value}'")
+            fieldValue(cls, n.value, fieldTypes[i], ctx, scope, "field '${n.name.value}'")
             slots[i] = FieldInit.Given(fields[i], n.value, named = true)
             order.add(i)
         }
@@ -1233,6 +1237,24 @@ internal class CallResolver(private val c: PhaseC) {
         }
         model.inits[e] = ResolvedInit(t, cls, inits, order, sub)
         return t
+    }
+
+    /**
+     * A construction's value [v] for a field of type [expected]. An `Unsafe<T>` field of an
+     * `@_extern` struct (a C `const T*` member) takes an `Arr<T, N>` as itself, which the C++
+     * emitter lowers `.data()`; ExternPointerPass admits only a module-level constant there,
+     * whose storage is static.
+     */
+    private fun fieldValue(cls: ClassSymbol, v: Expr, expected: KType, ctx: BodyContext, scope: Scope, what: String) {
+        if (cls.isAggregateExtern && facts.isMagic(expected, UNSAFE)) {
+            val t = c.exprs.synth(v, ctx, scope)
+            if (facts.isArr(t) && facts.elementOf(t) == facts.elementOf(expected)) {
+                return
+            }
+            c.coercions.assign(v, t, expected, what)
+            return
+        }
+        c.exprs.check(v, expected, ctx, scope, what)
     }
 
     companion object {

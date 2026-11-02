@@ -39,11 +39,19 @@ diagnostic. ERROR means a type or rule error, which is the intended result for t
 - An extern class with a default constructor is built with `T { }` only when it is declared
   `@_constructible @_extern(...) T: Struct`, on cpp only. Kira never copies such an object, so
   it cannot be passed to a function, returned or captured.
-- `mut` out-parameters on externs are not usable from the binding side.
+- An `@_extern` struct passes by pointer on cpp only, and only for the call. An extern
+  parameter `p: Unsafe<T>` takes a `T` value as `const T*`. A method marked
+  `@_extern(c = "f")` calls the C function `f` with the receiver's address first: `T*` when the
+  method is `@_mutates` (the binding must be Mutable), else `const T*`.
+- An `@_extern` struct that declares fields is built with `T { field = v }`. Its
+  `Unsafe<T>` field takes only a module-level constant `Arr`. A C field whose name has an
+  underscore cannot be declared, so leave it out when the struct's size still matches; it
+  starts at zero.
+- `mut` out-parameters of scalars on externs are not usable from the binding side.
 - `on` is a reserved word. A py field named `bytes` is refused.
 - `Maybe.value` on a null value stops the program at run time. Nothing warns at compile time.
 
 ## Tests
 
-- `./gradlew test` runs 1841 tests. One fails on Windows and also fails on main:
+- `./gradlew test` runs 1942 tests. One fails on Windows and also fails on main:
   `WithBuilderTest.theWithsPyGoldenIsConvertedText`.

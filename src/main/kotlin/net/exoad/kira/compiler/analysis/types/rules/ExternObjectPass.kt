@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.analysis.types.rules
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.Capture
 import net.exoad.kira.compiler.analysis.types.ClassKind
@@ -10,13 +11,16 @@ import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.RulePass
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.isConstructibleExtern
+import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
+import java.util.IdentityHashMap
 
 /**
  * `rules.extern.copy`: a value of an `@_constructible` extern struct is one C++ object, which
@@ -24,14 +28,18 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
  * the pin it drives, and the assignment would detach nothing. So such a value appears only
  * as the receiver of a member access (`s.attach(...)`), and `T { }` only as the initializer of
  * a declaration (a local, a global or a field's default), where C++17's guaranteed elision
- * builds it in place. A lambda's capture is a copy, and so is a field of a struct: both are
+ * builds it in place, and as an argument at an extern's `Unsafe<T>` parameter, which takes its
+ * address for the call. A lambda's capture is a copy, and so is a field of a struct: both are
  * refused, and a class (held by reference) is where such an object is kept.
  */
 internal class ExternObjectPass : RulePass {
     override val name: String = "extern-object"
 
+    private val lent = IdentityHashMap<Expr, Boolean>()
+
     override fun run(program: TypedProgram) {
         val r = Rules(program)
+        lent.clear()
         for (m in program.modules) {
             for (cls in m.declarations.filterIsInstance<ClassSymbol>().filter { it.kind != ClassKind.CLASS }) {
                 for (f in cls.fields) {
@@ -56,6 +64,9 @@ internal class ExternObjectPass : RulePass {
     private fun constructible(t: KType?): ClassSymbol? = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.takeIf { it.isConstructibleExtern }
 
     private fun visit(r: Rules, n: ASTNode, parent: ASTNode?, rootInitOk: Boolean) {
+        if (n is FunctionCallExpr) {
+            byPointer(r, n).forEach { lent[it] = true }
+        }
         if (n is LambdaExpr) {
             r.model.captures[n].orEmpty().forEach { c ->
                 val sym = (c as? Capture.Value)?.symbol
@@ -70,7 +81,7 @@ internal class ExternObjectPass : RulePass {
         }
         if (n is Expr && n !is Type) {
             val cls = constructible(r.model.types[n])
-            if (cls != null && !allowed(n, parent, rootInitOk)) {
+            if (cls != null && !allowed(n, parent, rootInitOk) && !lent.containsKey(n)) {
                 r.report(
                     "rules.extern.copy",
                     if (n is ObjectInitExpr) {
@@ -97,5 +108,14 @@ internal class ExternObjectPass : RulePass {
         parent is MemberAccessExpr -> true
         e is ObjectInitExpr -> if (parent == null) rootInitOk else parent is VariableDecl && parent.value === e
         else -> false
+    }
+
+    /** The arguments of the extern call [call] at an `Unsafe<T>` parameter: their address is passed, not a copy (ExternPointerPass). */
+    private fun byPointer(r: Rules, call: FunctionCallExpr): List<Expr> {
+        val rc = r.model.calls[call] ?: return emptyList()
+        val fn = rc.fn?.takeIf { it.suppliedByCpp } ?: return emptyList()
+        return rc.args.withIndex().mapNotNull { (i, a) ->
+            (a as? ArgBinding.Given)?.expr?.takeIf { fn.params.getOrNull(i)?.type?.let { t -> r.facts.isMagic(t, "Unsafe") } == true }
+        }
     }
 }
