@@ -27,6 +27,7 @@ import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
+import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.substitute
@@ -253,6 +254,15 @@ class CppBodyState private constructor() {
             headerPlaced = before
         }
     }
+
+    /**
+     * The magic helpers the bodies called, by name, with the first receiver's type: a member with a body on a
+     * stdlib magic type that has no binding (CppExprEmitter.bodiedMagicCall); a generic owner's is one template.
+     */
+    val magicHelpers = LinkedHashMap<String, Pair<FnSymbol, KType>>()
+
+    /** The receiver type of the magic helper being written, or null outside one: `this` and a bare call there name `self`. */
+    var helperSelf: KType? = null
 
     /** The lowering of this module's emission (one per state). */
     internal var lowering: CppLowering? = null
@@ -599,6 +609,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /** A field of the implicit receiver: bare in a method, its copy (`c_k`) or `self->k` in a lambda. */
     fun implicitField(f: FieldSymbol): String {
+        // A field named bare in a magic type's body is the receiver's: the helper's `self`.
+        if (state.helperSelf != null) {
+            return "self.${ctx.names.escape(f.name)}"
+        }
         val frame = state.frame
         frame?.fieldName(f)?.let { return it }
         val name = ctx.names.escape(f.name)
@@ -607,6 +621,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
 
     /** `this` as a value (design 5.5): `*this` in a struct method, the class's own `kira::Rc` in a class method ([classThis]). */
     private fun thisValue(e: ThisExpr): CppEx {
+        if (state.helperSelf != null) {
+            return CppEx("self", CppPrec.PRIMARY)
+        }
         val owner = state.frame?.owner ?: ctx.scope ?: return internal(e, "`this` outside a method")
         if ((owner as? ClassSymbol)?.isStruct == true) {
             return CppEx("*this", CppPrec.UNARY)
@@ -1564,6 +1581,9 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      */
     private fun receiverOperand(receiver: Expr, rc: ResolvedCall?, fn: FnSymbol?, memberStyle: Boolean, lending: Boolean, emit: () -> CppEx): CppHoister.Operand? {
         val writes = fn?.isMutMethod == true || lending
+        if (receiver is ThisExpr && state.helperSelf != null) {
+            return null
+        }
         if (receiver is ThisExpr) {
             val t = typeOf(receiver)
             if (rc == null || rc.kind == CallKind.EXTERN || !heldByReference(t)) {
@@ -1837,6 +1857,13 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 val result = ctx.spell(rc.returnType, Pos.VALUE, e)
                 return hoister.lower(ops, rc.returnType, node = e) { texts -> CppEx("$result::${fn.name}(${argList(slots, texts)})", CppPrec.POSTFIX) }
             }
+            if (isBodiedStdlibMagic(fn)) {
+                return bodiedMagicCall(e, rc, fn)
+            }
+            val owner = fn.owner as? ClassSymbol
+            if (fn.body != null && owner?.kind == ClassKind.MAGIC) {
+                return unsupported(e, "a method written in Kira on the magic type '${owner.name}' ('${fn.name}'), a type the program declares, which no runtime backs")
+            }
             return unsupported(e, "the magic call '${fn.qualifiedName}' (no cpp binding under ${CppBindingTable.keysFor(fn, recvType, program)})")
         }
         found.second.unsupported?.let { why ->
@@ -1881,6 +1908,10 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 ?: CppHoister.Operand.Value(null) { receiverEx(receiver, memberStyle) }
             ops += op
             0
+        } else if (rc.implicitThis) {
+            // A bare call of a member inside a magic type's body: its receiver is `self`.
+            ops += CppHoister.Operand.Value(null) { CppEx("self", CppPrec.PRIMARY) }
+            0
         } else {
             -1
         }
@@ -1918,6 +1949,46 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 return@lower CppEx("($evaluated, ${wrap(bindingEx(text), CppPrec.ASSIGN)})", CppPrec.PRIMARY)
             }
             bindingEx(text)
+        }
+    }
+
+    /** A member with a body on a stdlib magic type (the runtime has no lowering for it): its body is a helper of its own. */
+    private fun isBodiedStdlibMagic(fn: FnSymbol): Boolean =
+        fn.body != null && fn.module.isStdlib && (fn.owner as? ClassSymbol)?.kind == ClassKind.MAGIC
+
+    /**
+     * A call of a bodied magic member with no binding: `Owner_member(receiver, args)`, the helper
+     * written once in the header (CppDeclEmitter.magicHelpers). The receiver is `self` inside a
+     * helper's own body, a bare call there being on it.
+     */
+    private fun bodiedMagicCall(e: FunctionCallExpr, rc: ResolvedCall, fn: FnSymbol): CppEx {
+        val receiver = rc.receiver
+        val recvType = receiver?.let { typeOf(it) } ?: state.helperSelf
+            ?: return internal(e, "a call of '${fn.name}' on no receiver outside a magic helper")
+        val name = "${fn.owner!!.name}_${fn.name}"
+        state.magicHelpers.getOrPut(name) { fn to recvType }
+        // A generic owner's helper is a template; the call names the receiver's own type arguments, so each instantiation gets its own.
+        val owner = fn.owner as ClassSymbol
+        val templateArgs = if (owner.typeParams.isEmpty()) "" else {
+            val args = (recvType as? KType.Nominal)?.args.orEmpty().map { a ->
+                (a as? TypeArg.Ty)?.let { ctx.spell(it.t, Pos.VALUE, e) } ?: return unsupported(e, "a call of '${fn.name}' on ${recvType.display()}, whose type arguments are not all types")
+            }
+            if (args.size != owner.typeParams.size) {
+                return internal(e, "a call of '${fn.name}' on ${recvType.display()} with ${args.size} type arguments for ${owner.typeParams.size}")
+            }
+            "<${args.joinToString(", ")}>"
+        }
+        val (argOps, slots) = arguments(rc)
+        val ops = mutableListOf<CppHoister.Operand>()
+        ops += if (receiver != null) {
+            CppHoister.Operand.Value(receiver) { receiverEx(receiver, false) }
+        } else {
+            CppHoister.Operand.Value(null) { CppEx("self", CppPrec.PRIMARY) }
+        }
+        ops += argOps
+        return hoister.lower(ops, rc.returnType, node = e) { texts ->
+            val args = argList(slots, texts.drop(1))
+            CppEx("$name$templateArgs(${wrap(texts[0], CppPrec.ASSIGN)}${if (args.isEmpty()) "" else ", $args"})", CppPrec.POSTFIX)
         }
     }
 

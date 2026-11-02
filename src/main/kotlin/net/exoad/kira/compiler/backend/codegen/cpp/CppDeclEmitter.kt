@@ -17,6 +17,7 @@ import net.exoad.kira.compiler.analysis.types.Prim
 import net.exoad.kira.compiler.analysis.types.Profile
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
+import net.exoad.kira.compiler.analysis.types.TypeArg
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
 import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.typeArgs
@@ -101,10 +102,11 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         externs.forEach { parts.externs.check(ctx, it, externChecks) }
         val headerBody = headerBody()
         val sourceBody = if (ctx.isHeaderOnly) "" else sourceBody()
+        val helpers = magicHelpers()
 
         // The bodies are rendered, so every module this one names is known (ctx.referencedModules).
         val includes = moduleIncludes()
-        val header = assembleHeader(externChecks.toString(), headerBody, includes.values)
+        val header = assembleHeader(externChecks.toString(), helpers + headerBody, includes.values)
         val source = when {
             ctx.isHeaderOnly -> null
             sourceBody.isEmpty() && main == null -> null
@@ -322,6 +324,52 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
             w.lines(s)
         }
         return w.toString()
+    }
+
+    /**
+     * The magic helpers the bodies called (CppExprEmitter.bodiedMagicCall): each a `static`-free
+     * inline function `Owner_member(const Owner& self, params)` whose body is the member's, a template
+     * over the owner's type parameters when it has any (the call names them), written
+     * after its callers' prototypes so a helper may call another. Rendered after the bodies, which
+     * is what requests them; a helper's body may request more, so this runs until none is new.
+     */
+    private fun magicHelpers(): String {
+        val state = CppBodyState.of(ctx)
+        val written = LinkedHashMap<String, Pair<String, String>>()
+        while (true) {
+            val next = state.magicHelpers.entries.firstOrNull { it.key !in written } ?: break
+            written[next.key] = magicHelper(next.key, next.value.first, next.value.second)
+        }
+        if (written.isEmpty()) {
+            return ""
+        }
+        val w = CppWriter()
+        written.values.forEach { w.line(it.first) }
+        w.blank()
+        written.values.forEach { w.lines(it.second) }
+        w.blank()
+        return w.toString()
+    }
+
+    /** One helper: its prototype, then its definition, the member's body with `self` as the receiver. */
+    private fun magicHelper(name: String, fn: FnSymbol, called: KType): Pair<String, String> {
+        val owner = fn.owner as ClassSymbol
+        // A generic owner over its own parameters (`const kira::T2<A, B>&` in `template<class A, class B>`); any other as called.
+        val recv = if (owner.typeParams.isEmpty()) called else KType.Nominal(owner, owner.typeParams.map { TypeArg.Ty(KType.Param(it)) })
+        val receiver = "[[maybe_unused]] ${ctx.spell(recv, if (fn.isMutMethod) Pos.MUT_PARAM else Pos.PARAM, fn.decl)} self"
+        val params = (listOf(receiver) + fn.params.map { paramText(it, withDefault = false, markUnused = true, fn = fn) }).joinToString(", ")
+        val template = if (owner.typeParams.isEmpty()) "" else "template<${owner.typeParams.joinToString(", ") { "class ${ctx.spell(KType.Param(it), Pos.VALUE)}" }}> "
+        val head = "${template}inline ${returnText(fn)} $name($params)"
+        val state = CppBodyState.of(ctx)
+        val before = state.helperSelf
+        state.helperSelf = recv
+        val w = CppWriter()
+        try {
+            w.block(head) { ctx.body(fn, fn.body ?: emptyList(), this) }
+        } finally {
+            state.helperSelf = before
+        }
+        return "$head;" to w.toString()
     }
 
     // ---- the source's namespace body -----------------------------------------------------------

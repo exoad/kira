@@ -3,6 +3,7 @@ package net.exoad.kira.compiler
 import net.exoad.kira.compiler.analysis.semantic.KiraSymbolTable
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.ClassDecl
+import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TraitDecl
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.TypeAliasDecl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
@@ -74,15 +75,37 @@ class CompilationUnit(bootstrap: Boolean = true) {
         return magicTypeNames.toSet()
     }
 
-    /** Members with a body, per magic class: the runtime has no lowering for them, only the Kira body. */
-    private val bodiedMagicMembers = mutableMapOf<String, MutableSet<String>>()
+    /**
+     * A member with a body of a magic class. The runtime has no lowering for it, so a backend
+     * that has no binding for a call to it emits [decl]'s body as a function of its own.
+     * [stdlib] says the owner is a stdlib magic type, which a runtime backs; a program's own
+     * magic type has no runtime behind it on any backend.
+     */
+    class BodiedMagicMember(val owner: String, val name: String, val decl: FunctionDecl, val stdlib: Boolean)
 
-    fun registerBodiedMagicMember(typeName: String, member: String) {
-        bodiedMagicMembers.getOrPut(typeName) { mutableSetOf() }.add(member)
+    private val bodiedMagicMembers = mutableMapOf<String, MutableMap<String, BodiedMagicMember>>()
+
+    fun registerBodiedMagicMember(member: BodiedMagicMember) {
+        bodiedMagicMembers.getOrPut(member.owner) { mutableMapOf() }[member.name] = member
+    }
+
+    fun bodiedMagicMember(typeName: String, member: String): BodiedMagicMember? {
+        return bodiedMagicMembers[typeName]?.get(member)
     }
 
     fun isBodiedMagicMember(typeName: String, member: String): Boolean {
-        return bodiedMagicMembers[typeName]?.contains(member) == true
+        return bodiedMagicMember(typeName, member) != null
+    }
+
+    /** Every member of a magic class, bodied or not: a bare call of one in a magic type's body is a call on `self`. */
+    private val magicMemberNames = mutableMapOf<String, MutableSet<String>>()
+
+    fun registerMagicMemberName(typeName: String, member: String) {
+        magicMemberNames.getOrPut(typeName) { mutableSetOf() }.add(member)
+    }
+
+    fun isMagicMemberName(typeName: String, member: String): Boolean {
+        return magicMemberNames[typeName]?.contains(member) == true
     }
 
     fun registerOpaqueType(name: String) {

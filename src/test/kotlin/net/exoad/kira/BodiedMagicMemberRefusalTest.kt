@@ -7,8 +7,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The C and JS backends refuse a call to a member written in Kira on a magic class (they have no lowering for it).
- * The refusal exits the process, so each run is a child JVM on this test's classpath.
+ * A call to a member written in Kira on a magic class the program declares is refused on every target: no runtime
+ * backs such a type, so there is no representation to lower the body over. The refusal exits the process, so each
+ * run is a child JVM on this test's classpath.
  */
 class BodiedMagicMemberRefusalTest {
 
@@ -55,16 +56,30 @@ class BodiedMagicMemberRefusalTest {
     }
 
     @Test
-    fun cRefusesACallToABodiedMagicMember() {
+    fun cRefusesACallToABodiedMemberOfAProgramsMagicType() {
         val (code, output) = run(project(), "c")
         assertEquals(1, code, output)
         assertTrue(output.contains("a method written in Kira on the magic type 'Probe' ('twice') is not supported by the C backend"), output)
     }
 
     @Test
-    fun jsRefusesACallToABodiedMagicMember() {
+    fun jsRefusesACallToABodiedMemberOfAProgramsMagicType() {
         val (code, output) = run(project(), "js")
         assertEquals(1, code, output)
-        assertTrue(output.contains("a method written in Kira on the magic type 'Probe' ('twice') is not supported by the JS backend"), output)
+        assertTrue(output.contains("a method written in Kira on the magic type 'Probe' ('twice'), a type the program declares, which no runtime backs"), output)
+    }
+
+    @Test
+    fun pyRefusesACallToABodiedMemberOfAProgramsMagicType() {
+        val (code, output) = run(project(), "py")
+        assertEquals(1, code, output)
+        assertTrue(output.contains("a method written in Kira on the magic type 'Probe' ('twice'), a type the program declares, which no runtime backs"), output)
+    }
+
+    @Test
+    fun cppRefusesACallToABodiedMemberOfAProgramsMagicType() {
+        val (code, output) = run(project(), "cpp")
+        assertEquals(1, code, output)
+        assertTrue(output.contains("a method written in Kira on the magic type 'Probe' ('twice'), a type the program declares, which no runtime backs"), output)
     }
 }

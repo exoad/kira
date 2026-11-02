@@ -57,8 +57,14 @@ object MagicIntrinsic : CompilerIntrinsic(
             compilationUnit.registerMagicType(typeName)
         }
         if (target is ClassDecl && typeName != null) {
+            val stdlib = runCatching { context.getModuleUri() }.getOrNull()?.startsWith("kira:") == true
+            target.members.filterIsInstance<FunctionDecl>().forEach { member ->
+                (member.name as? Identifier)?.value?.let { compilationUnit.registerMagicMemberName(typeName, it) }
+            }
             target.members.filterIsInstance<FunctionDecl>().filter { it.def.body != null }.forEach { member ->
-                (member.name as? Identifier)?.value?.let { compilationUnit.registerBodiedMagicMember(typeName, it) }
+                (member.name as? Identifier)?.value?.let {
+                    compilationUnit.registerBodiedMagicMember(CompilationUnit.BodiedMagicMember(typeName, it, member, stdlib))
+                }
             }
         }
         return NoExpr
