@@ -753,16 +753,17 @@ simple Bool Map_keyEquals(Map* m, KiraSlot a, KiraSlot b)
     return a == b;
 }
 
+/* A new map owns no storage: the first put allocates the first table, so an
+   empty map costs nothing (every reader checks keys == null first). */
 simple Map Map_new_kind(Int32 kind)
 {
     Map m;
-    m.capacity = 8;
+    m.capacity = 0;
     m.length   = 0;
     m.kind     = kind;
-    m.keys     = (KiraSlot*)calloc((size_t)m.capacity, sizeof(KiraSlot));
-    m.values   = (KiraSlot*)calloc((size_t)m.capacity, sizeof(KiraSlot));
-    m.occupied = (Bool*)calloc((size_t)m.capacity, sizeof(Bool));
-    if (m.keys == null || m.values == null || m.occupied == null) abort();
+    m.keys     = null;
+    m.values   = null;
+    m.occupied = null;
     return m;
 }
 
@@ -802,8 +803,7 @@ simple Void Map_put(Map* m, KiraSlot key, KiraSlot value)
 {
     if (m->keys == null)
     {
-        Map fresh = Map_new_kind(m->kind);
-        *m = fresh;
+        Map_resize(m, 8);
     }
 
     /* Grow if load factor > 0.75 */
