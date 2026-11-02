@@ -33,7 +33,7 @@ class StdlibTypesTest {
             d: Char = x
             e: Float32 = 1.0
             f: Bool = true
-            g: Int = 4
+            g: Int32 = 4
             """
         )
         val types = program.workspaceModules.single().declarations.associate { it.name to (it as net.exoad.kira.compiler.analysis.types.GlobalSymbol).type }

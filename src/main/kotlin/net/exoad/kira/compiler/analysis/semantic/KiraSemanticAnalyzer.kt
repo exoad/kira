@@ -528,7 +528,7 @@ class KiraSemanticAnalyzer(private val compilationUnit: CompilationUnit) : KiraA
     )
 
     private val variableBuiltinPrimitives = mapOf(
-        StringLiteral::class to { type: String -> type == "String" || type == "Str" },
+        StringLiteral::class to { type: String -> type == "Str" },
         IntegerLiteral::class to { type: String -> type in integerLiteralTypes },
         FloatLiteral::class to { type: String -> type == "Float32" || type == "Float64" },
     )

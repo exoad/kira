@@ -152,8 +152,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     )
     private val numMethods = setOf("toInt32", "toInt64", "toFloat32", "toFloat64", "abs")
     private val numScalarTypes = setOf(
-        "Int8", "Int16", "Int32", "Int64", "Int", "UInt8", "UInt16", "UInt32", "UInt64",
-        "Float32", "Float64", "Float", "Num",
+        "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
+        "Float32", "Float64", "Num",
     )
     private val collectionTypes = setOf(
         "Arr", "List", "Map", "Set", "Stack", "Queue", "Deque", "Maybe", "Result",
@@ -562,7 +562,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         }
     }
 
-    private fun isStrType(typeName: String): Boolean = typeName == "Str" || typeName == "String"
+    private fun isStrType(typeName: String): Boolean = typeName == "Str"
 
     private fun isNumScalar(typeName: String): Boolean = typeName in numScalarTypes
 
@@ -632,7 +632,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val primitiveTypeNames = setOf(
         "Int8", "Int16", "Int32", "Int64",
         "Float32", "Float64", "Bool", "Char",
-        "Str", "String", "Num", "Int", "Float", "Any"
+        "Str", "Num", "Any"
     )
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
@@ -653,7 +653,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /** True when an expression is statically a float-typed scalar. */
     private fun isFloatTyped(expr: Expr): Boolean {
-        val floatTypes = setOf("Float32", "Float64", "Float")
+        val floatTypes = setOf("Float32", "Float64")
         return when (expr) {
             is FloatLiteral -> true
             is IntegerLiteral -> false

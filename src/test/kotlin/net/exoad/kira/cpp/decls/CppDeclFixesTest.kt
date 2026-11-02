@@ -307,8 +307,8 @@ class CppDeclFixesTest {
     @Test
     fun theCoreAliasesAreSpelledAsTheirTargetsAndReachNoStdlibHeader() {
         // kira:core's header would hold its traits (unsupported until W2.4) and is hosted, which a
-        // freestanding module could not include; `Int` is `std::int32_t` wherever it is written.
-        val (emitted, _) = emit("pub X: Int = 3\npub F: Float = 0.5\npub Int as Idx\npub S: Struct { pub n: Int = 1 }\npub f: (n: Int, xs: List<Int>) Int;")
+        // freestanding module could not include; `Int32` is `std::int32_t` wherever it is written.
+        val (emitted, _) = emit("pub X: Int32 = 3\npub F: Float32 = 0.5\npub Int32 as Idx\npub S: Struct { pub n: Int32 = 1 }\npub f: (n: Int32, xs: List<Int32>) Int32;")
         val h = CppWriter.normalize(emitted.header)
         assertContains(
             h,
@@ -321,7 +321,7 @@ class CppDeclFixesTest {
         )
         assertEquals(emptyList(), emitted.uses)
         assertTrue(!h.contains("kira/std/") && !h.contains("kira::core"), h)
-        val freestanding = emit("pub X: Int = 3", uri = "pico:hall", options = CppOptions(lineDirectives = false, freestanding = listOf("pico:hall"))).first
+        val freestanding = emit("pub X: Int32 = 3", uri = "pico:hall", options = CppOptions(lineDirectives = false, freestanding = listOf("pico:hall"))).first
         assertContains(CppWriter.normalize(freestanding.header), "#include \"kira/core.hxx\"\n#include \"kira/macro_push.hxx\"\n", "  inline constexpr std::int32_t X = 3;")
         assertEquals(emptyList(), freestanding.uses)
     }
