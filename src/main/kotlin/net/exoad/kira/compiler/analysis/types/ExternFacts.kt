@@ -55,6 +55,13 @@ val FnSymbol.takesReceiverByPointer: Boolean
     }
 
 /**
+ * The C member a field of an `@_extern` struct names when it differs from the Kira name
+ * (`@_extern(c = "pio_version") pioVersion: UInt8`), or null when the two are the same.
+ */
+val FieldSymbol.externMember: String?
+    get() = markers.firstOrNull { it.name == DeclarationCollector.EXTERN }?.let { m -> m.namedParameters["c"]?.let { m.text(it) } }
+
+/**
  * A C `const T*` member of an aggregate `@_extern` struct (`x: Unsafe<T>`): it points only at
  * a module-level constant `Arr` (ExternPointerPass), static storage, so the struct holds no
  * view. A struct has no Mutable field (types.mutable.field).

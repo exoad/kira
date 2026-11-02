@@ -113,12 +113,17 @@ object ExternIntrinsic : CompilerIntrinsic(
                 else -> null
             } ?: "?"
         }
-        if (target is VariableDecl && scope !is SemanticScope.Module && scope != SemanticScope.Global) {
+        // A field of an extern struct may name its C member (`@_extern(c = "pio_version") pioVersion: UInt8`).
+        val externField = target is VariableDecl && scope is SemanticScope.Class && isMarked(context, scope.name, this.name)
+        if (target is VariableDecl && scope !is SemanticScope.Module && scope != SemanticScope.Global && !externField) {
             throw KiraRuntimeException(
                 "@_extern names a module-level constant; '${nameOf(target)}' is declared inside a ${
-                    if (scope is SemanticScope.Class) "class or struct (a field is checked by its Kira name)" else "body (a local takes no marker)"
+                    if (scope is SemanticScope.Class) "class or struct that is not extern (a field names its C member only in an @_extern struct)" else "body (a local takes no marker)"
                 }"
             )
+        }
+        if (externField && (invocation.parameters.orEmpty().isNotEmpty() || invocation.namedParameters.keys != setOf("c"))) {
+            throw KiraRuntimeException("A field names its C member as @_extern(c = \"member\"), and nothing else.")
         }
         val mode = GeneratedProvider.outputMode
         // A method of an @_opaque class takes the marker for py (D70), so under none too, as the language server runs.

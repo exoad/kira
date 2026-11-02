@@ -37,8 +37,13 @@ class ExternPointerTest {
         }
 
         pub addedLocal: () UInt32 {
-            p: Program { instructions = CODE, length = 2, origin = 3 }
+            p: Program { instructions = CODE, length = 2, origin = 3, pioVersion = 1 }
             addProgram(PIO0, p)
+        }
+
+        pub versionOf: () UInt32 {
+            p: Program { instructions = CODE, length = 2, origin = 3, pioVersion = 2 }
+            (p.pioVersion as UInt32) + (PROGRAM.pioVersion as UInt32)
         }
 
         pub wrapped: () UInt32 {
@@ -87,7 +92,9 @@ class ExternPointerTest {
     fun eachPointerIsTakenAtItsCall() {
         val source = tree.source(module)
         listOf(
-            "::pio_program_t PROGRAM = ::pio_program_t{.instructions = CODE.data(), .length = 4, .origin = -1};",
+            "::pio_program_t PROGRAM = ::pio_program_t{.instructions = CODE.data(), .length = 4, .origin = -1, .pio_version = 0};",
+            ".origin = 3, .pio_version = 1}",
+            "p.pio_version",
             "::pio_add_program(pio0, kira::ffi::ptr(PROGRAM))",
             "::sm_config_set_wrap(kira::ffi::ptr(c), std::uint32_t{5u}, std::uint32_t{9u});",
             "::pio_sm_init(pio0, std::uint32_t{0u}, std::uint32_t{7u}, kira::ffi::ptr(c))",
@@ -103,6 +110,7 @@ class ExternPointerTest {
         val header = tree.header(module)
         listOf(
             "KIRA_EXTERN_FIELD(pio_program_t, piox::ffi_::Program, instructions, const std::uint16_t*, \"Program.instructions\");",
+            "KIRA_EXTERN_FIELD(pio_program_t, piox::ffi_::Program, pio_version, std::uint8_t, \"Program.pioVersion\");",
             "KIRA_EXTERN_CHECK((sm_config_set_wrap(std::declval<pio_sm_config*>(), kira::ffi::arg<std::uint32_t>(), kira::ffi::arg<std::uint32_t>()), 0), int, \"Config.setWrap\");",
             "KIRA_EXTERN_CHECK(sm_config_wrap(std::declval<const pio_sm_config*>()), std::uint32_t, \"Config.wrapOf\");",
             "KIRA_EXTERN_CHECK(pio_add_program(std::declval<pio_hw_t*>(), std::declval<const pio_program_t*>()), std::uint32_t, \"addProgram\");",
@@ -114,10 +122,10 @@ class ExternPointerTest {
     @TestFactory
     fun everyRowRunsOnEveryCompiler(): List<DynamicNode> = listOf(CppToolchain.GCC, CppToolchain.CLANG, CppToolchain.MSVC).map { tc ->
         DynamicTest.dynamicTest("extern pointer [${tc.id}]") {
-            // added: 4327 summed, length 4, relocatable; addedLocal: 27, length 2, origin 3.
+            // added: 4327 summed, length 4, relocatable; addedLocal: 27, length 2, origin 3, version 1 (100).
             // wrapped: execctrl (5 << 7 | 9 << 12) plus clkdiv 2.5 * 256; initialised: (1 << 7 | 2 << 12) + 7; fresh: (31 << 12) + 3.
             val rows = listOf(
-                "added" to 4327041L, "addedLocal" to 27023L, "wrapped" to 37504L + 640L,
+                "added" to 4327041L, "addedLocal" to 27123L, "versionOf" to 2L, "wrapped" to 37504L + 640L,
                 "initialised" to 8327L, "fresh" to 126979L, "readWrap" to 31L, "readFresh" to 31L, "counted" to 2L,
             )
             val driver = buildString {
@@ -255,6 +263,32 @@ class ExternPointerTest {
     }
 
     @Test
+    fun onlyAnExternStructFieldNamesACMember() {
+        val text = refusedText(
+            "ffi-field-name-kira",
+            """
+            Holder: Struct {
+                pub @_extern(c = "raw_count") rawCount: Int32 = 0
+            }
+            """,
+        )
+        assertTrue(text.contains("types.extern.field: Only a field of an @_extern struct names a C member; 'rawCount' of Holder is Kira's own."), text)
+    }
+
+    @Test
+    fun aFieldNamesItsCMemberWithCAlone() {
+        val text = refusedText(
+            "ffi-field-name-shape",
+            """
+            @_extern(c = "pio_odd_t", header = "pio.h") Odd: Struct {
+                pub @_extern(cpp = "odd_count") oddCount: Int32
+            }
+            """,
+        )
+        assertTrue(text.contains("types.extern.field: A field names its C member as @_extern(c = \"member\"), and nothing else."), text)
+    }
+
+    @Test
     fun theConstructibleObjectIsStillNeverCopied() {
         val text = refusedText(
             "ffi-pointer-copy",
@@ -306,6 +340,7 @@ class ExternPointerTest {
             pub instructions: Unsafe<UInt16>
             pub length: UInt8
             pub origin: Int8
+            pub @_extern(c = "pio_version") pioVersion: UInt8 = 0
         }
 
         pub @_extern(c = "pio_sm_config", header = "pio.h") Config: Struct {
@@ -344,6 +379,7 @@ class ExternPointerTest {
                 const uint16_t *instructions;
                 uint8_t length;
                 int8_t origin;
+                uint8_t pio_version;
             } pio_program_t;
 
             typedef struct {
@@ -382,7 +418,7 @@ class ExternPointerTest {
                 for (uint i = 0; i < program->length; i++) {
                     sum += program->instructions[i];
                 }
-                return sum * 1000u + program->length * 10u + (program->origin < 0 ? 1u : (uint)program->origin);
+                return sum * 1000u + program->pio_version * 100u + program->length * 10u + (program->origin < 0 ? 1u : (uint)program->origin);
             }
 
             static inline int pio_sm_init(pio_hw_t *pio, uint sm, uint initial_pc, const pio_sm_config *config) {
@@ -420,6 +456,7 @@ class ExternPointerTest {
         /** What changes in the header, and the message that names it. */
         val DRIFTS = listOf(
             Drift("field", "const uint16_t *instructions;", "const uint32_t *instructions;", "Kira's Program.instructions no longer matches its C++ header"),
+            Drift("renamed field", "uint8_t pio_version;", "uint16_t pio_version;", "Kira's Program.pioVersion no longer matches its C++ header"),
             Drift("const parameter", "const pio_sm_config *config)", "pio_sm_config *config)", "pio_sm_init"),
             Drift("receiver", "pio_sm_config *c, uint wrap_target", "pio_sm_config c, uint wrap_target", "sm_config_set_wrap"),
         )

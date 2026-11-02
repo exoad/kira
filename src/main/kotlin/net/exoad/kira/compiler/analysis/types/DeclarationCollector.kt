@@ -370,6 +370,13 @@ internal class DeclarationCollector(
             index = index,
         )
         f.markers.addAll(markersOf(source, decl))
+        f.markers.firstOrNull { it.isNamed(EXTERN) }?.let { m ->
+            if ((owner as? ClassSymbol)?.isExternStruct != true) {
+                program.report("types.extern.field", "Only a field of an @_extern struct names a C member; '${f.name}' of ${owner.name} is Kira's own.", decl)
+            } else if (m.parameters.isNotEmpty() || m.namedParameters.keys != setOf("c")) {
+                program.report("types.extern.field", "A field names its C member as @_extern(c = \"member\"), and nothing else.", decl)
+            }
+        }
         model.declSyms[decl] = f
         model.refs[decl.name] = f
         return f

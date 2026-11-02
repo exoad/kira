@@ -143,11 +143,19 @@ class ExternIntrinsicTest {
         )
         assertRefused(
             """
+            pub Pt: Struct {
+                pub @_extern(c = "x_raw") x: Int32 = 0
+            }
+            """,
+            "@_extern names a module-level constant; 'x' is declared inside a class or struct that is not extern",
+        )
+        assertRefused(
+            """
             pub @_extern(cpp = "bibo::Pt", header = "car.hxx") Pt: Struct {
                 pub @_extern(cpp = "X") x: Int32 = 0
             }
             """,
-            "@_extern names a module-level constant; 'x' is declared inside a class or struct",
+            "A field names its C member as @_extern(c = \"member\"), and nothing else.",
         )
     }
 

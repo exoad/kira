@@ -32,6 +32,8 @@ import net.exoad.kira.compiler.analysis.types.prim
 import net.exoad.kira.compiler.analysis.types.substitute
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.isStaticPointer
+import net.exoad.kira.compiler.analysis.types.externMember
+import net.exoad.kira.compiler.analysis.types.isAggregateExtern
 import net.exoad.kira.compiler.frontend.parser.ast.elements.BinaryOp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
@@ -609,7 +611,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     fun implicitField(f: FieldSymbol): String {
         val frame = state.frame
         frame?.fieldName(f)?.let { return it }
-        val name = ctx.names.escape(f.name)
+        val name = f.externMember ?: ctx.names.escape(f.name)
         return if (frame?.receiverAccess == CppBodyState.ThisCapture.SELF) "${selfPointer()}->$name" else name
     }
 
@@ -734,7 +736,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     /** [field] over [text], the origin's C++ once it was ordered as a place's part (null: spelled here). */
     private fun fieldWith(origin: Expr, text: CppEx?, f: FieldSymbol): CppEx {
         val t = typeOf(origin)
-        val name = ctx.names.escape(f.name)
+        val name = f.externMember ?: ctx.names.escape(f.name)
         when (CppBindingTable.magicName(t)) {
             "Maybe" -> if (f.name == "value") {
                 // D40: `m.value` is `m.unwrap()`.
@@ -1328,6 +1330,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
      * `Ref<T> { value = v }` is `std::make_shared<kira::Box<T>>(v)`; an empty container is
      * `T{}`.
      */
+    private val externDecls: CppDeclEmitter by lazy { CppDeclEmitter(ctx, CppUsage.NONE) }
+
     private fun construction(e: ObjectInitExpr): CppEx {
         val ri = model.init(e) ?: return internal(e, "no construction was recorded")
         val cls = ri.cls ?: return internal(e, "a construction without a class")
@@ -1345,8 +1349,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return magicConstruction(e, cls, t, typeText, ri.fields, byField, ops)
         }
         return hoister.lower(ops, t) { texts ->
-            val inits = ri.fields.filterIsInstance<FieldInit.Given>().map { f ->
-                ".${ctx.names.escape(f.field.name)} = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}"
+            // A C aggregate has no member defaults, so an @_extern struct spells each field it leaves out.
+            val inits = ri.fields.mapNotNull { f ->
+                val member = f.field.externMember ?: ctx.names.escape(f.field.name)
+                when {
+                    f is FieldInit.Given -> ".$member = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}"
+                    cls.isAggregateExtern -> ".$member = ${f.field.default?.let { externDecls.initText(it, f.field.type) } ?: "{}"}"
+                    else -> null
+                }
             }
             CppEx("$typeText{${inits.joinToString(", ")}}", CppPrec.POSTFIX)
         }
@@ -1394,7 +1404,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val tuple = Builtins.tupleArity(cls.name) != null
         return when {
             tuple -> hoister.lower(ops, t) { texts ->
-                val inits = givenFields.map { f -> ".${ctx.names.escape(f.field.name)} = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}" }
+                val inits = givenFields.map { f -> ".${f.field.externMember ?: ctx.names.escape(f.field.name)} = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}" }
                 CppEx("$typeText{${inits.joinToString(", ")}}", CppPrec.POSTFIX)
             }
             givenFields.size == 1 && givenFields[0].field.name == "values" && cls.name in setOf("List", "Map", "Set") -> {

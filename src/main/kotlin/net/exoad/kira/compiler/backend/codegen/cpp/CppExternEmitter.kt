@@ -3,6 +3,7 @@ package net.exoad.kira.compiler.backend.codegen.cpp
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
+import net.exoad.kira.compiler.analysis.types.externMember
 import net.exoad.kira.compiler.analysis.types.Coercion
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
 import net.exoad.kira.compiler.analysis.types.FnSymbol
@@ -278,14 +279,14 @@ object CppExternEmitter : CppExternsPart {
     private fun layoutChecks(ctx: CppEmitContextImpl, cls: ClassSymbol, w: CppWriter) {
         val name = cppName(cls)
         val twin = "${ctx.namespace}::$LAYOUT_NAMESPACE::${ctx.names.escape(cls.name)}"
-        cls.fields.filter { ctx.names.escape(it.name) != it.name }.forEach { f ->
+        cls.fields.filter { it.externMember == null && ctx.names.escape(it.name) != it.name }.forEach { f ->
             (f.decl ?: cls.decl)?.let { ctx.unsupported(it, "the field '${f.name}' of the extern struct '${cls.name}' (a C++ keyword cannot name a C++ member)") }
         }
-        val fields = cls.fields.joinToString(" ") { f -> "${fieldType(ctx, f)} ${f.name};" }
+        val fields = cls.fields.joinToString(" ") { f -> "${fieldType(ctx, f)} ${f.externMember ?: f.name};" }
         w.line("namespace ${ctx.namespace}::$LAYOUT_NAMESPACE { struct ${ctx.names.escape(cls.name)} { $fields }; }")
         w.line("static_assert(sizeof($name) == sizeof($twin), \"Kira's ${cls.name} $DRIFT_MESSAGE\");")
         cls.fields.forEach { f ->
-            w.line("$FIELD_CHECK($name, $twin, ${f.name}, ${fieldType(ctx, f)}, \"${cls.name}.${f.name}\");")
+            w.line("$FIELD_CHECK($name, $twin, ${f.externMember ?: f.name}, ${fieldType(ctx, f)}, \"${cls.name}.${f.name}\");")
         }
     }
 
