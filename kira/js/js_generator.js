@@ -12,7 +12,7 @@
  *   Arr<T>                                 -> JS Array
  *   List / Map / Set / Stack / Queue / Deque -> Kira* classes below
  *   Maybe / Result / Exception             -> Kira* classes below
- *   Tuple0..Tuple9 / Pair                  -> KiraTuple* classes below
+ *   T0..T10 / Pair                         -> KiraT* classes below
  *   User classes                           -> JS classes emitted by codegen
  *   Traits                                 -> erased (duck typing)
  *
@@ -275,7 +275,7 @@ class KiraMap {
   valuesArr() { return Array.from(this._m.values()); }
   entries() {
     const out = [];
-    for (const [k, v] of this._m) out.push(new KiraTuple2(k, v));
+    for (const [k, v] of this._m) out.push(new KiraT2(k, v));
     return out;
   }
   clear() { this._m.clear(); }
@@ -334,16 +334,16 @@ class KiraDeque {
 function kira_deque_new() { return new KiraDeque(); }
 
 /* ---- Tuples ------------------------------------------------------------- */
-class KiraTuple0 {
+class KiraT0 {
   size() { return 0; }
 }
 
-class KiraTuple1 {
+class KiraT1 {
   constructor(first) { this.first = first; }
   size() { return 1; }
 }
 
-class KiraTuple2 {
+class KiraT2 {
   constructor(first, second) {
     this.first = first;
     this.second = second;
@@ -351,7 +351,7 @@ class KiraTuple2 {
   size() { return 2; }
 }
 
-class KiraTuple3 {
+class KiraT3 {
   constructor(first, second, third) {
     this.first = first;
     this.second = second;
@@ -360,7 +360,7 @@ class KiraTuple3 {
   size() { return 3; }
 }
 
-class KiraTuple4 {
+class KiraT4 {
   constructor(first, second, third, fourth) {
     this.first = first;
     this.second = second;
@@ -370,7 +370,7 @@ class KiraTuple4 {
   size() { return 4; }
 }
 
-class KiraTuple5 {
+class KiraT5 {
   constructor(first, second, third, fourth, fifth) {
     this.first = first;
     this.second = second;
@@ -381,7 +381,7 @@ class KiraTuple5 {
   size() { return 5; }
 }
 
-class KiraTuple6 {
+class KiraT6 {
   constructor(first, second, third, fourth, fifth, sixth) {
     this.first = first;
     this.second = second;
@@ -393,7 +393,7 @@ class KiraTuple6 {
   size() { return 6; }
 }
 
-class KiraTuple7 {
+class KiraT7 {
   constructor(first, second, third, fourth, fifth, sixth, seventh) {
     this.first = first;
     this.second = second;
@@ -406,7 +406,7 @@ class KiraTuple7 {
   size() { return 7; }
 }
 
-class KiraTuple8 {
+class KiraT8 {
   constructor(first, second, third, fourth, fifth, sixth, seventh, eighth) {
     this.first = first;
     this.second = second;
@@ -420,7 +420,7 @@ class KiraTuple8 {
   size() { return 8; }
 }
 
-class KiraTuple9 {
+class KiraT9 {
   constructor(first, second, third, fourth, fifth, sixth, seventh, eighth, ninth) {
     this.first = first;
     this.second = second;
@@ -433,6 +433,22 @@ class KiraTuple9 {
     this.ninth = ninth;
   }
   size() { return 9; }
+}
+
+class KiraT10 {
+  constructor(first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth) {
+    this.first = first;
+    this.second = second;
+    this.third = third;
+    this.fourth = fourth;
+    this.fifth = fifth;
+    this.sixth = sixth;
+    this.seventh = seventh;
+    this.eighth = eighth;
+    this.ninth = ninth;
+    this.tenth = tenth;
+  }
+  size() { return 10; }
 }
 
 // __KIRA_JS_PRELUDE_END__

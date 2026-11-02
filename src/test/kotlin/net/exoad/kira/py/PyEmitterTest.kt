@@ -1500,7 +1500,7 @@ class PyEmitterTest {
         val py = python(
             """
             pub Bank: Any {
-                pub onAdd: Fx<Tuple1<Int32>, Int32>
+                pub onAdd: Fx<T1<Int32>, Int32>
 
                 pub add: (v: Int32) Int32 {
                     onAdd(v)
@@ -1514,7 +1514,7 @@ class PyEmitterTest {
             f: (b: Bank) Int32 {
                 n: Ref<Int32> = Ref<Int32> { value = 1 }
                 n.value = n.value + b.onAdd(2)
-                fill: Fx<Tuple1<List<Int32>>, Void> = (out: List<Int32>) Void {
+                fill: Fx<T1<List<Int32>>, Void> = (out: List<Int32>) Void {
                     out.add(n.value)
                 }
                 xs: Mutable<List<Int32>> = List<Int32> { }
@@ -1745,7 +1745,7 @@ class PyEmitterTest {
             }
 
             f: () Int32 {
-                t: Tuple2<Int32, Int32> = Tuple2<Int32, Int32> { second = two(), first = 1 }
+                t: T2<Int32, Int32> = T2<Int32, Int32> { second = two(), first = 1 }
                 t.first
             }
             """,
@@ -1838,7 +1838,7 @@ class PyEmitterTest {
                 }
 
                 pub run: () Int32 {
-                    f: Fx<Tuple0, Int32> = () Int32 {
+                    f: Fx<T0, Int32> = () Int32 {
                         self: Int32 = twice()
                         self
                     }
@@ -2099,15 +2099,15 @@ class PyEmitterTest {
             "@_extern f: (n: Int32 = 3) Void" to "a default on the parameter 'n' of the extern 'f'",
             "@_extern f: () Int32 {\n    1\n}" to "the extern 'f' with a body",
             "pub f: () Int32" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
-            "@_extern f: () Fx<Tuple0, Int32>" to "the result of the extern 'f': an Fx<Tuple0, Int32> (Python hands Kira no function)",
-            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<Tuple1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
-            "@_extern f: (g: Fx<Tuple1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
-            "@_extern f: (gs: List<Fx<Tuple0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
-            "@_extern f: (g: Fx<Tuple0, Fx<Tuple0, Int32>>) Void" to "(an Fx returning an Fx)",
-            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
-                "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
-            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<Tuple1<Int32>, Void>\n}\n@_extern f: (g: Fx<Tuple0, Holder>) Void" to
-                "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<Tuple1<Int32>, Void> inside a value",
+            "@_extern f: () Fx<T0, Int32>" to "the result of the extern 'f': an Fx<T0, Int32> (Python hands Kira no function)",
+            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<T1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
+            "@_extern f: (g: Fx<T1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
+            "@_extern f: (gs: List<Fx<T0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
+            "@_extern f: (g: Fx<T0, Fx<T0, Int32>>) Void" to "(an Fx returning an Fx)",
+            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
+                "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<T1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
+            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (g: Fx<T0, Holder>) Void" to
+                "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<T1<Int32>, Void> inside a value",
             "In: Mutable<Any> {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Mutable<Any> {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
             "C: Struct {\n    pub c: Char = 'x'\n}\n@_extern f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
@@ -2123,7 +2123,7 @@ class PyEmitterTest {
                 pub items: Mutable<List<Node>> = List<Node> { }
             }
 
-            @_extern visit: (n: Node, f: Fx<Tuple0, Node>) Void
+            @_extern visit: (n: Node, f: Fx<T0, Node>) Void
             """,
             "selfref",
         )
@@ -2134,7 +2134,7 @@ class PyEmitterTest {
     fun anFxHandedToTheSidecarChecksWhatPythonPassesIt() {
         val py = besideSidecar(
             """
-            @_extern each: (xs: List<Str>, f: Fx<Tuple2<Str, Maybe<Int64>>, List<UInt8>>) Int32
+            @_extern each: (xs: List<Str>, f: Fx<T2<Str, Maybe<Int64>>, List<UInt8>>) Int32
 
             size: (s: Str, n: Maybe<Int64>) List<UInt8> {
                 s.bytes()

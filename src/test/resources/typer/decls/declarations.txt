@@ -15,9 +15,9 @@ module decls:declarations  profile=HOSTED ns=declarations imports=[]
   global counter: Int32  pub mut init=0
   global nowhere: Maybe<Int32>  pub const value=null
   alias Id = Int64  pub
-  alias Pair<A, B> = Tuple2<A, B>  pub
-  alias Named = Tuple2<Str, Int64>  pub
-  alias Callback = Fx<Tuple2<Str, Int32>, Bool>  pub
+  alias Pair<A, B> = T2<A, B>  pub
+  alias Named = T2<Str, Int64>  pub
+  alias Callback = Fx<T2<Str, Int32>, Bool>  pub
   alias Matrix = Arr<Arr<Float64>>  pub
   trait Speaker  pub
     fn speak: () Str  pub virtual
@@ -45,7 +45,7 @@ module decls:declarations  profile=HOSTED ns=declarations imports=[]
     field value: T  pub require #0
     fn get: () T  pub body
   fn pick<T>: (a: T, b: T, first: Bool) T  body
-  fn apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32  pub body
+  fn apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32  pub body
   fn lookup: (names: Map<Str, List<Int64>>, key: Str) Maybe<List<Int64>>  pub body
   fn intrinsicClock: () Int64  pub magic=intrinsicClock
   opaque Handle  pub @_opaque

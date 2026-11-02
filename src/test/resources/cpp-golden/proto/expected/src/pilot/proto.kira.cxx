@@ -6,7 +6,7 @@ namespace proto
   namespace
   {
     [[nodiscard]] bool isSpace(char c);
-    [[nodiscard]] kira::Tuple2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from);
+    [[nodiscard]] kira::T2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from);
     [[nodiscard]] kira::Str tailFrom(const kira::Str& s, kira::Size from);
     [[nodiscard]] kira::Str trimEnd(const kira::Str& s);
     [[nodiscard]] kira::Str fixed3(float value);
@@ -16,7 +16,7 @@ namespace proto
         return c == ' ' || c == '\t';
     }
 
-    kira::Tuple2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from)
+    kira::T2<kira::Size, kira::Size> wordAt(const kira::Str& s, kira::Size from)
     {
         kira::Size at{from};
         while(at < kira::str::length(s) && isSpace(kira::str::at(s, at)))
@@ -28,7 +28,7 @@ namespace proto
         {
             at += 1;
         }
-        return kira::Tuple2<kira::Size, kira::Size>{.first = begin, .second = at};
+        return kira::T2<kira::Size, kira::Size>{.first = begin, .second = at};
     }
 
     kira::Str tailFrom(const kira::Str& s, kira::Size from)
@@ -66,7 +66,7 @@ namespace proto
   Reply read(const kira::Str& line)
   {
       const kira::Str kept = trimEnd(line);
-      const kira::Tuple2<kira::Size, kira::Size> word = wordAt(kept, 0);
+      const kira::T2<kira::Size, kira::Size> word = wordAt(kept, 0);
       const kira::Size b{word.first};
       const kira::Size e{word.second};
       if(b >= e)
@@ -82,7 +82,7 @@ namespace proto
           }
           else if(head == "OK" || head == "INFO")
           {
-              const kira::Tuple2<kira::Size, kira::Size> topic = wordAt(kept, e);
+              const kira::T2<kira::Size, kira::Size> topic = wordAt(kept, e);
               const kira::Size tb{topic.first};
               const kira::Size te{topic.second};
               const bool named{tb < te};

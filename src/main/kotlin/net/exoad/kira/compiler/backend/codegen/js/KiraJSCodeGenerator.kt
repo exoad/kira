@@ -340,7 +340,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     /**
      * The type forms of design 2.4 this backend cannot lower: a const type
      * argument (`Arr<UInt8, 32>`, D6) and `mut T` inside a Tuple's arguments
-     * (`Fx<Tuple1<mut T>, Void>`, D24). Both used to lower silently to the
+     * (`Fx<T1<mut T>, Void>`, D24). Both used to lower silently to the
      * erased base type, dropping the size and the mutability.
      */
     private fun guardNewTypeForms(type: Type) {
@@ -1376,16 +1376,17 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             }
         }
         val ctorName = when (baseName) {
-            "Tuple0" -> "KiraTuple0"
-            "Tuple1" -> "KiraTuple1"
-            "Tuple2", "Pair" -> "KiraTuple2"
-            "Tuple3" -> "KiraTuple3"
-            "Tuple4" -> "KiraTuple4"
-            "Tuple5" -> "KiraTuple5"
-            "Tuple6" -> "KiraTuple6"
-            "Tuple7" -> "KiraTuple7"
-            "Tuple8" -> "KiraTuple8"
-            "Tuple9" -> "KiraTuple9"
+            "T0" -> "KiraT0"
+            "T1" -> "KiraT1"
+            "T2", "Pair" -> "KiraT2"
+            "T3" -> "KiraT3"
+            "T4" -> "KiraT4"
+            "T5" -> "KiraT5"
+            "T6" -> "KiraT6"
+            "T7" -> "KiraT7"
+            "T8" -> "KiraT8"
+            "T9" -> "KiraT9"
+            "T10" -> "KiraT10"
             "Exception" -> "KiraException"
             else -> baseName
         }

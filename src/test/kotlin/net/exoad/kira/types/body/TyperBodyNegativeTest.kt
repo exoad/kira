@@ -128,7 +128,7 @@ class TyperBodyNegativeTest {
         val p = snippet(
             "pub LIMIT: Int32 = 4\npub state: Mutable<Int32> = LIMIT * 2\npub xs: Mutable<Arr<Int32>> = @arrOf(1, 2)\npub ys: Mutable<List<List<Int32>>> = @listOf(@listOf(1), @listOf(2))\n" +
                 "pub buf: Mutable<StrBuf<16>> = StrBuf<16> { }\npub m: Mutable<Maybe<Int32>> = null\n" +
-                "pub P: Tuple2<Int32, Bool> = Tuple2<Int32, Bool> { 1, true }\npub PF: Int32 = P.first",
+                "pub P: T2<Int32, Bool> = T2<Int32, Bool> { 1, true }\npub PF: Int32 = P.first",
         )
         TyperTestSupport.expectNoErrors(p)
     }
@@ -155,14 +155,14 @@ class TyperBodyNegativeTest {
         // capture of n shares the object, as `n: Named` does. Through a chain of bounds too.
         val p = snippet(
             "pub Named: Mutable<Any> {\n    pub name: Str\n    pub hits: Mutable<Int32> = 0\n    pub hit: () Void {\n        hits += 1\n    }\n}\n" +
-                "pub lam<T: Named>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.hit()\n    }\n}\n" +
-                "pub viaU<T: U, U: Named>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.hit()\n    }\n}",
+                "pub lam<T: Named>: (n: T) Fx<T0, Void> {\n    () Void {\n        n.hit()\n    }\n}\n" +
+                "pub viaU<T: U, U: Named>: (n: T) Fx<T0, Void> {\n    () Void {\n        n.hit()\n    }\n}",
         )
         TyperTestSupport.expectNoErrors(p)
         // A Mutable trait's bound is satisfied by Mutable types alone, each held by reference: nothing is copied.
         val q = snippet(
             "pub Counter: Mutable<Any> {\n    pub bump: () Void\n}\n" +
-                "pub lam<T: Counter>: (n: T) Fx<Tuple0, Void> {\n    () Void {\n        n.bump()\n    }\n}",
+                "pub lam<T: Counter>: (n: T) Fx<T0, Void> {\n    () Void {\n        n.bump()\n    }\n}",
         )
         assertEquals(emptyList<String>(), q.diagnostics.map { it.code }, TyperTestSupport.render(q))
     }
@@ -171,7 +171,7 @@ class TyperBodyNegativeTest {
     fun aMutFxOnACapturedSyncObjectWritesTheOneObject() {
         // sync.kira: a body captures the Atomic and the BlockingQueue it shares by reference.
         val p = snippet(
-            "kira.sync as sync\npub lam: () Fx<Tuple0, Void> {\n    hits: Atomic<Int64> = Atomic<Int64> { value = 0 }\n" +
+            "kira.sync as sync\npub lam: () Fx<T0, Void> {\n    hits: Atomic<Int64> = Atomic<Int64> { value = 0 }\n" +
                 "    q: BlockingQueue<Int32> = BlockingQueue<Int32> { }\n    () Void {\n        hits.add(1)\n        q.push(1)\n        q.close()\n    }\n}",
         )
         TyperTestSupport.expectNoErrors(p)

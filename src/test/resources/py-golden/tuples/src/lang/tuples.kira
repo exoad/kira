@@ -14,8 +14,8 @@ minmax: (xs: List<Int32>) Pair<Int32, Int32> {
     Pair<Int32, Int32> { lo, hi }
 }
 
-tagged: (name: Str, xs: List<Int32>) Tuple3<Str, List<Int32>, Bool> {
-    Tuple3<Str, List<Int32>, Bool> { name, xs, xs.isEmpty() }
+tagged: (name: Str, xs: List<Int32>) T3<Str, List<Int32>, Bool> {
+    T3<Str, List<Int32>, Bool> { name, xs, xs.isEmpty() }
 }
 
 checked: (xs: List<Int32>) Result<List<Int32>, Str> {
@@ -38,13 +38,13 @@ main: () Void {
     trace("${p.first} ${p.second} ${p.size()}")
 
     src: Mutable<List<Int32>> = @listOf(1, 2)
-    t: Tuple3<Str, List<Int32>, Bool> = tagged("t", src)
+    t: T3<Str, List<Int32>, Bool> = tagged("t", src)
     src.add(3)
     inner: Mutable<List<Int32>> = t.second
     inner.add(4)
     trace("${t.first} ${show(t.second)} ${t.third} ${show(inner)} ${show(src)}")
 
-    named: Tuple2<Str, Int32> = Tuple2<Str, Int32> { first = "n", second = 5 }
+    named: T2<Str, Int32> = T2<Str, Int32> { first = "n", second = 5 }
     trace("${named.first}${named.second}")
 
     // a Map's entries, a Map built from them, and a walk over a Map
@@ -52,14 +52,14 @@ main: () Void {
     m["b"] = 2
     m["a"] = 1
     m["b"] = 3
-    es: Arr<Tuple2<Str, Int32>> = m.entries()
+    es: Arr<T2<Str, Int32>> = m.entries()
     trace(es.size())
     trace("${es[0].first}=${es[0].second} ${es[1].first}=${es[1].second}")
-    again: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "n", 6 }
-    head: Tuple2<Str, Int32> = es[0]
+    again: T2<Str, Int32> = T2<Str, Int32> { "n", 6 }
+    head: T2<Str, Int32> = es[0]
     built: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(named, head, again) }
     trace("${built.size()} ${built.get("n").unwrapOr(0)} ${built.keys()[0]}")
-    for e: Tuple2<Str, Int32> in m {
+    for e: T2<Str, Int32> in m {
         trace("${e.first} ${e.second}")
     }
 

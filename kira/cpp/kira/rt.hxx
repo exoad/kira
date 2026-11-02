@@ -1098,7 +1098,7 @@ namespace kira
       static_assert(impl_::isKey<K>, "a Map key is a scalar, a Str or an enum");
 
   public:
-      using Entry = Tuple2<K, V>;
+      using Entry = T2<K, V>;
 
       Map() = default;
       Map(std::initializer_list<Entry> entries)

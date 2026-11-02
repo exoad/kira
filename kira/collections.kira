@@ -84,7 +84,7 @@ pub @_magic List<T>: Mutable<Iterable<T>> {
 }
 
 pub @_magic Map<K, V>: Mutable<Any> {
-    values: Arr<Tuple2<K, V>>
+    values: Arr<T2<K, V>>
 
     pub size: () Size
     pub isEmpty: () Bool
@@ -95,7 +95,7 @@ pub @_magic Map<K, V>: Mutable<Any> {
     pub containsValue: (value: V) Bool
     pub keys: () Arr<K>
     pub valuesArr: () Arr<V>
-    pub entries: () Arr<Tuple2<K, V>>
+    pub entries: () Arr<T2<K, V>>
     pub @_mutates clear: () Void
 }
 

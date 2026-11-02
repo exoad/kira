@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.frontend.parser
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.diagnostics.Diagnostics
 import net.exoad.kira.compiler.frontend.lexer.Token
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
@@ -907,7 +908,7 @@ class KiraParser private constructor(
 
     /**
      * `kira.math as math` imports a module, `kira.math.sqrt as sqrt` one of its names (both only
-     * at the top level), and `Tuple2<A, B> as Pair<A, B>` aliases a type: the existing thing first.
+     * at the top level), and `T2<A, B> as Pair<A, B>` aliases a type: the existing thing first.
      */
     private fun parseImportOrAlias(modifiers: Map<Modifier, SourcePosition>, origin: SourcePosition): Statement {
         var i = 0
@@ -1079,11 +1080,11 @@ class KiraParser private constructor(
             )
         }
         val args = params.map { p -> putOrigin(Type(p.typeSpecifier.identifier, p.typeSpecifier.constraint, p.typeSpecifier.children, Modifier.MUTABLE in p.modifiers), at) }
-        val tuple = putOrigin(Type(putOrigin(Identifier("Tuple${args.size}"), at), null, args), at)
+        val tuple = putOrigin(Type(putOrigin(Identifier("T${args.size}"), at), null, args), at)
         return putOrigin(Type(putOrigin(Identifier("Fx"), at), null, listOf(tuple, ret)), at)
     }
 
-    /** `(a: T, b: U) R` in a type position: the function type `Fx<Tuple2<T, U>, R>`. */
+    /** `(a: T, b: U) R` in a type position: the function type `Fx<T2<T, U>, R>`. */
     private fun parseFunctionType(namesOptional: Boolean = false): Type {
         val at = here()
         expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
@@ -1107,7 +1108,7 @@ class KiraParser private constructor(
         }
         expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
         val ret = parseType()
-        val tuple = putOrigin(Type(putOrigin(Identifier("Tuple${args.size}"), at), null, args), at)
+        val tuple = putOrigin(Type(putOrigin(Identifier("T${args.size}"), at), null, args), at)
         return putOrigin(Type(putOrigin(Identifier("Fx"), at), null, listOf(tuple, ret)), at)
     }
 
@@ -2638,7 +2639,7 @@ class KiraParser private constructor(
         }
         // `mut T` in a type argument list is refused: an Fx parameter's (inside Tuple*<...>) or any other.
         if (!declaring && at(Token.Type.K_MODIFIER_MUTABLE)) {
-            refuseMut(baseLocation, if (enclosing != null && enclosing.startsWith("Tuple")) MUT_PARAM else MUT_TYPE_ARG)
+            refuseMut(baseLocation, if (enclosing != null && Builtins.tupleArity(enclosing) != null) MUT_PARAM else MUT_TYPE_ARG)
         }
         var bound: Type? = null
         fun acquireTypeBound() {

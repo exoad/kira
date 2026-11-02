@@ -189,23 +189,23 @@ class TyperPhaseTest {
     @Test
     fun mutTupleElementsAreByReferenceFxParameters() {
         val unit = CompilationUnit()
-        val fxType = ty("Fx", ty("Tuple2", ty("Int32", mutParam = true), ty("Str")), ty("Void"))
+        val fxType = ty("Fx", ty("T2", ty("Int32", mutParam = true), ty("Str")), ty("Void"))
         astModule(unit, "test:fx", field("callback", fxType, null))
         val p = typed(unit)
         expectNoErrors(p)
         val t = (p.member("test:fx", "callback") as GlobalSymbol).type
         assertEquals(KType.Fn(listOf(FnParam(KType.INT32, true), FnParam(KType.Str, false)), KType.Void), t)
-        assertEquals("Fx<Tuple2<mut Int32, Str>, Void>", t.display())
+        assertEquals("Fx<T2<mut Int32, Str>, Void>", t.display())
     }
 
     @Test
     fun mutTupleElementsKeepTheirByReferenceThroughAnAlias() {
-        // alias Args as Tuple1<mut Int32>; alias Args2 as Args; alias Both<T> as Tuple2<mut T, T>
+        // alias Args as T1<mut Int32>; alias Args2 as Args; alias Both<T> as T2<mut T, T>
         // f: Fx<Args, Void>; g: Fx<Args2, Void>; h: Fx<Both<Str>, Void>
         val unit = CompilationUnit()
-        val args = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Args"), ty("Tuple1", ty("Int32", mutParam = true)))
+        val args = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Args"), ty("T1", ty("Int32", mutParam = true)))
         val args2 = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Args2"), ty("Args"))
-        val both = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Both", ty("T")), ty("Tuple2", ty("T", mutParam = true), ty("T")))
+        val both = TypeAliasDecl(listOf(Modifier.PUBLIC), ty("Both", ty("T")), ty("T2", ty("T", mutParam = true), ty("T")))
         astModule(
             unit, "test:alias", args, args2, both,
             field("f", ty("Fx", ty("Args"), ty("Void")), null),
@@ -368,7 +368,7 @@ class TyperPhaseTest {
             }
             pub Holder<T: Named>: Any {
                 pub item: T
-                pub map<U>: (f: Fx<Tuple1<T>, U>) U {
+                pub map<U>: (f: Fx<T1<T>, U>) U {
                     f(item)
                 }
             }
@@ -379,7 +379,7 @@ class TyperPhaseTest {
         val t = holder.typeParams.single()
         assertEquals(listOf("Named"), t.bounds.map { it.display() })
         val map = holder.method("map")!!
-        assertEquals("Fx<Tuple1<T>, U>", map.params.single().type.display())
+        assertEquals("Fx<T1<T>, U>", map.params.single().type.display())
         assertEquals("U", map.ret.display())
         assertSame(map, map.typeParams.single().owner)
     }

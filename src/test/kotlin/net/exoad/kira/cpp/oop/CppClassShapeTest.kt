@@ -169,7 +169,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Visitor: Any {
-                pub each: (f: Fx<Tuple1<Int32>, Void>) Void
+                pub each: (f: Fx<T1<Int32>, Void>) Void
             }
             """
         )
@@ -352,10 +352,10 @@ class CppClassShapeTest {
                 """
                 pub Counter: Mutable<Any> {
                     pub k: Mutable<Int32> = 5
-                    pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                    pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                         f(x)
                     }
-                    pub keep: (f: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+                    pub keep: (f: Fx<T1<Int32>, Int32>) Fx<T1<Int32>, Int32> {
                         f
                     }
                 }
@@ -589,7 +589,7 @@ class CppClassShapeTest {
             """
             pub Counter: Mutable<Any> {
                 pub k: Mutable<Int32> = 5
-                pub multiplier: () Fx<Tuple1<Int32>, Int32> {
+                pub multiplier: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
                     }
@@ -597,7 +597,7 @@ class CppClassShapeTest {
             }
             pub Plain: Mutable<Any> {
                 pub k: Mutable<Int32> = 5
-                pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+                pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                     f(x)
                 }
             }
@@ -1041,7 +1041,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Reg: Mutable<Any> {
-                pub hook: Mutable<Maybe<Fx<Tuple0, Str>>> = null
+                pub hook: Mutable<Maybe<Fx<T0, Str>>> = null
             }
 
             pub Node: Mutable<Any> {
@@ -1864,18 +1864,18 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Each<T>: Any {
-                pub each: (f: Fx<Tuple1<T>, Int32>) Int32
+                pub each: (f: Fx<T1<T>, Int32>) Int32
             }
             pub Nums: Each<Int32> {
-                override pub each: (f: Fx<Tuple1<Int32>, Int32>) Int32 {
+                override pub each: (f: Fx<T1<Int32>, Int32>) Int32 {
                     f(2)
                 }
             }
             pub Maker<T>: Any {
-                pub make: () Fx<Tuple1<T>, Int32>
+                pub make: () Fx<T1<T>, Int32>
             }
             pub IntMaker: Maker<Int32> {
-                override pub make: () Fx<Tuple1<Int32>, Int32> {
+                override pub make: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x
                     }

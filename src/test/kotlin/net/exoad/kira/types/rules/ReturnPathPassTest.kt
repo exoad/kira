@@ -134,7 +134,7 @@ class ReturnPathPassTest {
     fun aLambdaNeedsItsReturnToo() {
         val p = snippet(
             """
-            pub f: (b: Bool) Fx<Tuple1<Int32>, Int32> {
+            pub f: (b: Bool) Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     if b {
                         x

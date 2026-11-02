@@ -146,7 +146,7 @@ pub Walked: Struct {
 // Hands each whole packet of a datagram to each, in order, and stops cleanly
 // at the first thing that is not one. `each` does not escape, so it lowers to
 // a template parameter and a lambda costs no heap.
-pub @_const eachPacket: (buf: View<UInt8>, each: Fx<Tuple1<View<UInt8>>, Void>) Walked {
+pub @_const eachPacket: (buf: View<UInt8>, each: Fx<T1<View<UInt8>>, Void>) Walked {
     packets: Mutable<Size> = 0
     at: Mutable<Size> = 0
     while at < buf.size() {

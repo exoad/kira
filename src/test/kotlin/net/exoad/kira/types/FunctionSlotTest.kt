@@ -35,7 +35,7 @@ class FunctionSlotTest {
 
     @Test
     fun aSlotEitherSpellingIsAFieldTheConstructionGivesAndIsCalledAsAMethod() {
-        for (slot in listOf("(n: Int32) Int32", "Fx<Tuple1<Int32>, Int32>")) {
+        for (slot in listOf("(n: Int32) Int32", "Fx<T1<Int32>, Int32>")) {
             val p = TyperTestSupport.snippet(btn(slot))
             expectNoErrors(p)
             val cls = assertIs<ClassSymbol>(p.module("test:main")!!.members["Btn"])
@@ -43,7 +43,7 @@ class FunctionSlotTest {
             assertIs<KType.Fn>(field.type, slot)
             assertTrue(cls.methods.none { it.name == "onClick" }, slot)
         }
-        assertEquals(PyTestSupport.emit(btn("(n: Int32) Int32")).python(), PyTestSupport.emit(btn("Fx<Tuple1<Int32>, Int32>")).python())
+        assertEquals(PyTestSupport.emit(btn("(n: Int32) Int32")).python(), PyTestSupport.emit(btn("Fx<T1<Int32>, Int32>")).python())
         val missing = TyperTestSupport.snippet("Btn: Any {\n    pub label: Str = \"b\"\n    pub onClick: (n: Int32) Int32\n}\n\nmain: () Void {\n    b: Btn = Btn { }\n}")
         assertTrue(expectDiagnostic(missing, "types.init.missing-required").message.contains("'onClick'"))
     }
@@ -53,7 +53,7 @@ class FunctionSlotTest {
         val p = TyperTestSupport.snippet(
             """
             Shape: Any {
-                pub area: Fx<Tuple0, Int32>
+                pub area: Fx<T0, Int32>
             }
             Sq: Shape {
                 pub s: Int32 = 3
@@ -64,7 +64,7 @@ class FunctionSlotTest {
             }
             Base: Any {
                 pub x: Int32 = 1
-                pub run: Fx<Tuple1<Int32>, Int32>
+                pub run: Fx<T1<Int32>, Int32>
             }
             Kid: Base {
                 pub override run: (n: Int32) Int32 {

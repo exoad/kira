@@ -21,8 +21,8 @@ pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<St
             break
         }
     }
-    for e: Tuple2<Str, Int32> in names {
-        total += e.second                  // @type Int32 member=Field(Tuple2.second: Int32) @ e.second
+    for e: T2<Str, Int32> in names {
+        total += e.second                  // @type Int32 member=Field(T2.second: Int32) @ e.second
     }
     for s: Int32 in set {
         continue

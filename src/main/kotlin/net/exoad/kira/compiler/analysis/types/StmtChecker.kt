@@ -62,7 +62,7 @@ internal object KiraBodyTyper : BodyTyper {
  * - **Defaults (D48)** are literals or constants; a `pub` function's default names only `pub`
  *   constants, since C++ callers see it in the header.
  * - **Loops.** `for i: T in a..b` is exclusive and `T` types both bounds; `for x: T in xs`
- *   iterates an Arr, List, Set, View or Map (as `Tuple2<K, V>`), and `T` is the element type
+ *   iterates an Arr, List, Set, View or Map (as `T2<K, V>`), and `T` is the element type
  *   exactly. Each gets a [LoopPlan].
  * - **Assignment** targets are places; writing a lambda's capture is an error.
  */

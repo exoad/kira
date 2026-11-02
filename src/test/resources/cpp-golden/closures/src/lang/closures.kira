@@ -2,14 +2,14 @@
 // and immutable (the spec); a Ref<T> is how two closures share mutable state.
 
 // A free function capturing a local: [k].
-pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+pub scaleBy: (k: Int32) Fx<T1<Int32>, Int32> {
     (x: Int32) Int32 {
         x * k
     }
 }
 
 // A non-escaping Fx parameter: a template, so a lambda costs no heap.
-pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+pub applyTo: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
     f(x)
 }
 
@@ -28,7 +28,7 @@ pub Gain: Struct {
     pub k: Int32 = 3
 
     // A struct method reading a field: a copy of the field, under its own name.
-    pub scaler: () Fx<Tuple1<Int32>, Int32> {
+    pub scaler: () Fx<T1<Int32>, Int32> {
         (x: Int32) Int32 {
             x * k
         }
@@ -39,7 +39,7 @@ pub Gain: Struct {
     }
 
     // A struct method calling a struct method: a copy of the whole struct.
-    pub twicer: () Fx<Tuple1<Int32>, Int32> {
+    pub twicer: () Fx<T1<Int32>, Int32> {
         (x: Int32) Int32 {
             twice(x)
         }
@@ -49,7 +49,7 @@ pub Gain: Struct {
 pub Counter: Mutable<Any> {
     pub k: Mutable<Int32> = 5
 
-    pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+    pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
         f(x)
     }
 
@@ -62,7 +62,7 @@ pub Counter: Mutable<Any> {
 
     // A class method whose lambda escapes: it keeps the object alive and sees
     // later writes to it (reference semantics).
-    pub multiplier: () Fx<Tuple1<Int32>, Int32> {
+    pub multiplier: () Fx<T1<Int32>, Int32> {
         (x: Int32) Int32 {
             x * k
         }
@@ -70,7 +70,7 @@ pub Counter: Mutable<Any> {
 }
 
 // Shared, mutable state is a Ref<T>: the closure copies the reference.
-pub tally: () Fx<Tuple0, Int32> {
+pub tally: () Fx<T0, Int32> {
     counter: Ref<Int32> = Ref<Int32> { value = 0 }
     () Int32 {
         counter.value = counter.value + 1

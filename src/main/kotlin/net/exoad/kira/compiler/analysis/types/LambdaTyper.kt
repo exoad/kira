@@ -6,7 +6,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 /**
  * `fx(x: Int32) Int32 { ... }` in expression position (design 3.3, 5.6). A lambda's parameter
  * and return types are written out; against an expected `Fx` they must match it exactly,
- * `mut` parameters included (D24, `Fx<Tuple1<mut T>, Void>`).
+ * `mut` parameters included (D24, `Fx<T1<mut T>, Void>`).
  *
  * Its body is typed in its own scope, which sees the enclosing locals. Every enclosing local or
  * parameter it reads is a capture ([Capture.Value]); a struct field read through the receiver

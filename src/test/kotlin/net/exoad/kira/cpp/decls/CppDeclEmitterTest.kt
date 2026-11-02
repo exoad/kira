@@ -160,11 +160,11 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub @_iram onEdge: (f: Fx<Tuple0, Void>) Void {
+                pub @_iram onEdge: (f: Fx<T0, Void>) Void {
                     f()
                 }
 
-                pub plain: (f: Fx<Tuple0, Void>) Void {
+                pub plain: (f: Fx<T0, Void>) Void {
                     f()
                 }
                 """,
@@ -253,14 +253,14 @@ class CppDeclEmitterTest {
             """
             pub N: Size = 32
             pub Arr<UInt8, N> as Frame
-            pub Tuple2<A, B> as Pair<A, B>
+            pub T2<A, B> as Pair<A, B>
             pub Str as Name
             """
         )
         assertContains(
             h,
             "  using Frame = std::array<std::uint8_t, N>;\n",
-            "  template<typename A, typename B>\n  using Pair = kira::Tuple2<A, B>;",
+            "  template<typename A, typename B>\n  using Pair = kira::T2<A, B>;",
             "  using Name = kira::Str;",
         )
     }

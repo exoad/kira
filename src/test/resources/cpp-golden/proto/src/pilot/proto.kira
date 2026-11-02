@@ -26,7 +26,7 @@ isSpace: (c: Char) Bool {
 }
 
 // [begin, end) of the first word at or after `from`.
-wordAt: (s: Str, from: Size) Tuple2<Size, Size> {
+wordAt: (s: Str, from: Size) T2<Size, Size> {
     at: Mutable<Size> = from
     while at < s.length() && isSpace(s[at]) {
         at += 1
@@ -35,7 +35,7 @@ wordAt: (s: Str, from: Size) Tuple2<Size, Size> {
     while at < s.length() && !isSpace(s[at]) {
         at += 1
     }
-    Tuple2<Size, Size> { begin, at }
+    T2<Size, Size> { begin, at }
 }
 
 tailFrom: (s: Str, from: Size) Str {
@@ -57,7 +57,7 @@ trimEnd: (s: Str) Str {
 // Classifies one line. Strips CR, so a caller may hand it either ending.
 pub read: (line: Str) Reply {
     kept: Str = trimEnd(line)
-    word: Tuple2<Size, Size> = wordAt(kept, 0)
+    word: T2<Size, Size> = wordAt(kept, 0)
     b: Size = word.first
     e: Size = word.second
     if b >= e {
@@ -67,7 +67,7 @@ pub read: (line: Str) Reply {
         if head == "ERR" {
             Reply { kind = KIND_ERR, rest = tailFrom(kept, e), line = kept }
         } else if head == "OK" || head == "INFO" {
-            topic: Tuple2<Size, Size> = wordAt(kept, e)
+            topic: T2<Size, Size> = wordAt(kept, e)
             tb: Size = topic.first
             te: Size = topic.second
             named: Bool = tb < te

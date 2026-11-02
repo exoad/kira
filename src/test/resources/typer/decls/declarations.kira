@@ -19,9 +19,9 @@ pub counter: Mutable<Int32> = 0
 pub nowhere: Maybe<Int32> = null
 
 pub Int64 as Id
-pub Tuple2<A, B> as Pair<A, B>
+pub T2<A, B> as Pair<A, B>
 pub Pair<Str, Id> as Named
-pub Fx<Tuple2<Str, Int32>, Bool> as Callback
+pub Fx<T2<Str, Int32>, Bool> as Callback
 pub Arr<Arr<Float64>> as Matrix
 
 pub Speaker: Any {
@@ -87,7 +87,7 @@ pick<T>: (a: T, b: T, first: Bool) T {
     first ? a : b
 }
 
-pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
     f(x)
 }
 

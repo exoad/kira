@@ -65,7 +65,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
      * made on [t] as written, where a type parameter is never known to be by value, and only
      * then is the parameter's name replaced by its argument, spelled as a template argument.
      * So `v: T` is `const T&` and at `T = Int32` stays `const std::int32_t&`, not the
-     * `std::int32_t` a declaration written at Int32 spells on its own; `Fx<Tuple1<T>, Int32>`
+     * `std::int32_t` a declaration written at Int32 spells on its own; `Fx<T1<T>, Int32>`
      * is `kira::Fn<std::int32_t(const T&)>` and stays `kira::Fn<std::int32_t(const
      * std::int32_t&)>`, where substituting first would have spelled the `kira::Fn<...(std::int32_t)>`
      * gcc calls "marked override, but does not override" (measured; MSVC C3668, and on a
@@ -375,7 +375,7 @@ class CppTypeSpeller(private val ctx: CppEmitContextImpl) {
             "CStr" -> "const char*"
             else -> {
                 Builtins.tupleArity(sym.name)?.let { n ->
-                    return if (n == 0) "kira::Tuple0" else "kira::Tuple$n<${a.joinToString(", ")}>"
+                    return if (n == 0) "kira::T0" else "kira::T$n<${a.joinToString(", ")}>"
                 }
                 // A class of a hosted system module is a Kira class the runtime defines (table 5.1's
                 // class row): `kira::Rc<kira::sync::Mutex<std::int32_t>>`, `kira::Rc<kira::test::Suite>`.

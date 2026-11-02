@@ -30,13 +30,13 @@ class ExternCoercionRunTest {
 
         pub @_extern(cpp = "m3::pickN", header = "m3.hxx") pickN: (m: Maybe<Int32>) Int32
 
-        pub @_extern(cpp = "m3::lenAfter", header = "m3.hxx") lenAfter: (m: Maybe<Str>, f: Fx<Tuple0, Void>) Int32
+        pub @_extern(cpp = "m3::lenAfter", header = "m3.hxx") lenAfter: (m: Maybe<Str>, f: Fx<T0, Void>) Int32
 
         pub @_extern(cpp = "m3::sizeOrNeg", header = "m3.hxx") sizeOrNeg: (m: Maybe<Str>) Int32
 
         pub @_extern(cpp = "m3::sizeThen", header = "m3.hxx") sizeThen: (m: Maybe<Str>, k: Int32) Int32
 
-        pub @_extern(cpp = "m3::callKind", header = "m3.hxx") callKind: (f: Fx<Tuple0, Int32>) Int32
+        pub @_extern(cpp = "m3::callKind", header = "m3.hxx") callKind: (f: Fx<T0, Int32>) Int32
 
         gs: Mutable<Str> = "$OLD"
         gm: Mutable<Maybe<Str>> = "$OLD"
@@ -177,11 +177,11 @@ class ExternCoercionRunTest {
 
         gks: Mutable<List<Kid>> = @listOf()
 
-        pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<Tuple0, Void>) Int32
+        pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<T0, Void>) Int32
 
-        pub @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx") nmLenAfter: (t: Named, f: Fx<Tuple0, Void>) Int32
+        pub @_extern(cpp = "m4::nmLenAfter", header = "m4.hxx") nmLenAfter: (t: Named, f: Fx<T0, Void>) Int32
 
-        pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") maybeNameLenAfter: (b: Maybe<Base>, f: Fx<Tuple0, Void>) Int32
+        pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") maybeNameLenAfter: (b: Maybe<Base>, f: Fx<T0, Void>) Int32
 
         pub kParent: () Int32 {
             h: H = H { }

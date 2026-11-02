@@ -371,7 +371,7 @@ class TypeResolver(private val program: TypedProgram) {
         if (nominal == null || arity == null) {
             program.report(
                 "types.fx.shape",
-                "Fx's first argument lists the parameter types as a tuple, like Fx<Tuple2<Int32, Str>, Bool>; " +
+                "Fx's first argument lists the parameter types as a tuple, like Fx<T2<Int32, Str>, Bool>; " +
                     "'${tuple?.display() ?: paramsNode}' is not a TupleN.",
                 t,
             )
@@ -387,7 +387,7 @@ class TypeResolver(private val program: TypedProgram) {
     /**
      * The `mut` of each element of the tuple [node] spells, read from the spelling itself: a
      * Nominal carries no by-reference flag, so when the tuple is named through an alias
-     * (`alias Args as Tuple1<mut Int32>`, then `Fx<Args, Void>`) the flags come from the alias's
+     * (`alias Args as T1<mut Int32>`, then `Fx<Args, Void>`) the flags come from the alias's
      * target, through any chain of aliases. [seen] stops a cycle, which is reported elsewhere.
      */
     private fun mutFlags(node: Type, seen: IdentityHashMap<AliasSymbol, Boolean>): List<Boolean> {

@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ClassKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.CopyFlows
@@ -19,7 +20,7 @@ internal class CppSharedCopies(p: TypedProgram) : CopyFlows(p, p.modules.filter 
         val s = n.sym as? ClassSymbol ?: return false
         if (s.kind != ClassKind.MAGIC || !seen.add(n)) return false
         if (s.isMutableType && s.name in VALUE_HELD) return true
-        return (s.name == "Maybe" || s.name == "Result" || s.name.startsWith("Tuple")) && n.typeArgs().any { held(it, seen) }
+        return (s.name == "Maybe" || s.name == "Result" || Builtins.tupleArity(s.name) != null) && n.typeArgs().any { held(it, seen) }
     }
 
     override fun says(kind: Kind, what: String): String = when (kind) {

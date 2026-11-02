@@ -415,7 +415,7 @@ internal class Rules(val program: TypedProgram) {
                     path.remove(t)
                     found
                 }
-                ClassKind.MAGIC -> if (sym.name == "Maybe" || sym.name == "Result" || sym.name.startsWith("Tuple")) {
+                ClassKind.MAGIC -> if (sym.name == "Maybe" || sym.name == "Result" || Builtins.tupleArity(sym.name) != null) {
                     t.typeArgs().any { holdsStorage(it, path) }
                 } else {
                     true
@@ -861,7 +861,7 @@ object CallReach {
                 }
                 ClassKind.MAGIC -> when {
                     sym.name == "StrBuf" || sym.name == "CStr" -> false
-                    sym.name in HOLDERS || sym.name.startsWith("Tuple") -> t.typeArgs().any { holds(it, path) }
+                    sym.name in HOLDERS || Builtins.tupleArity(sym.name) != null -> t.typeArgs().any { holds(it, path) }
                     // Ref, Weak, Any, a stdlib handle (Mutex, Thread, Suite, ...).
                     else -> true
                 }

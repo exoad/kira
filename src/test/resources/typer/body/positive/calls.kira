@@ -16,7 +16,7 @@ id<T>: (value: T) T {
     value                           // @type T
 }
 
-pub apply: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
     f(x)                            // @type Int32 call=FN_VALUE
 }
 
@@ -32,7 +32,7 @@ pub calls: () Void {
     r4b: Str = command(verb = "go", args = "x") // @type Str call=FREE(command)
     r5: Int32 = id<Int32>(7)               // @type Int32 call=FREE(id)
     r6: Str = id<Str>("s")                 // @type Str call=FREE(id)
-    r7: Int32 = apply(twice, 5)            // @type Fx<Tuple1<Int32>, Int32> coerce=FnRef(positive:calls.twice) @ twice
+    r7: Int32 = apply(twice, 5)            // @type Fx<T1<Int32>, Int32> coerce=FnRef(positive:calls.twice) @ twice
     r8: Float64 = sqrt(2.0)                // @type Float64 call=MAGIC(sqrt)
     f32: Float32 = 2.0
     r9: Float32 = sqrt(f32)                // @type Float32 call=MAGIC(sqrt)

@@ -934,7 +934,7 @@ simple Arr Map_collect(Map* m, Bool wantKeys, Bool wantBoth)
 
 simple Arr Map_keys(Map* m)      { return Map_collect(m, true,  false); }
 simple Arr Map_valuesArr(Map* m) { return Map_collect(m, false, false); }
-/* Entries flattened as key, value, key, value, ... (Tuple2 has no C shape yet). */
+/* Entries flattened as key, value, key, value, ... (T2 has no C shape yet). */
 simple Arr Map_entries(Map* m)   { return Map_collect(m, true,  true); }
 
 /* -------------------------------------------------------------------------- */

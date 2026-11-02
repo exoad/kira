@@ -94,6 +94,6 @@ pub classes: () Void {
     pts: Bool = p == q                     // @type Bool
     ma: Maybe<Animal> = d                  // @type Dog coerce=WrapSome(Animal)
     d.birthday()                           // @type Void call=METHOD(Animal.birthday)
-    words: Tuple2<Str, Int32> = Tuple2<Str, Int32> { "a", 1 } // @type Tuple2<Str, Int32>
-    first: Str = words.first               // @type Str member=Field(Tuple2.first: Str)
+    words: T2<Str, Int32> = T2<Str, Int32> { "a", 1 } // @type T2<Str, Int32>
+    first: Str = words.first               // @type Str member=Field(T2.first: Str)
 }

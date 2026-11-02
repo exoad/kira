@@ -6,8 +6,8 @@ golden.sender.pilot.carlink.WRITE_WAIT_MS as WRITE_WAIT_MS
 // handed. Its two Fx fields are stored, so they lower to std::function, and a
 // C++ test builds a Sender from two lambdas.
 pub Sender: Mutable<Any> {
-    clock: Fx<Tuple0, Int64>
-    write: Fx<Tuple2<Str, Int32>, Int32>
+    clock: Fx<T0, Int64>
+    write: Fx<T2<Str, Int32>, Int32>
     lastMs: Mutable<Int64> = -1
     worstMs: Mutable<Int64> = 0
 

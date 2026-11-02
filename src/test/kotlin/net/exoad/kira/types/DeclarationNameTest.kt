@@ -38,7 +38,7 @@ class DeclarationNameTest {
         val import = refused("main: () Void {\n    kira.math as math\n}")
         assertEquals("parse.import.nested", import.tag)
         assertTrue(import.message.contains("An import is top-level only"), import.message)
-        assertEquals("parse.import.nested", refused("main: () Void {\n    Tuple2<A, B> as Pair<A, B>\n}").tag)
+        assertEquals("parse.import.nested", refused("main: () Void {\n    T2<A, B> as Pair<A, B>\n}").tag)
     }
 
     @Test

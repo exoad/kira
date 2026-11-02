@@ -1080,53 +1080,53 @@ namespace kira
   };
 
   // ---- tuples ----------------------------------------------------------------
-  // Aggregates: Tuple2<A, B>{.first = a, .second = b}.
-  struct Tuple0
+  // Aggregates: T2<A, B>{.first = a, .second = b}.
+  struct T0
   {
-      bool operator==(const Tuple0&) const = default;
+      bool operator==(const T0&) const = default;
   };
   template<class A>
-  struct Tuple1
+  struct T1
   {
       A first;
-      bool operator==(const Tuple1&) const = default;
+      bool operator==(const T1&) const = default;
   };
   template<class A, class B>
-  struct Tuple2
+  struct T2
   {
       A first;
       B second;
-      bool operator==(const Tuple2&) const = default;
+      bool operator==(const T2&) const = default;
   };
   template<class A, class B, class C>
-  struct Tuple3
+  struct T3
   {
       A first;
       B second;
       C third;
-      bool operator==(const Tuple3&) const = default;
+      bool operator==(const T3&) const = default;
   };
   template<class A, class B, class C, class D>
-  struct Tuple4
+  struct T4
   {
       A first;
       B second;
       C third;
       D fourth;
-      bool operator==(const Tuple4&) const = default;
+      bool operator==(const T4&) const = default;
   };
   template<class A, class B, class C, class D, class E>
-  struct Tuple5
+  struct T5
   {
       A first;
       B second;
       C third;
       D fourth;
       E fifth;
-      bool operator==(const Tuple5&) const = default;
+      bool operator==(const T5&) const = default;
   };
   template<class A, class B, class C, class D, class E, class F>
-  struct Tuple6
+  struct T6
   {
       A first;
       B second;
@@ -1134,10 +1134,10 @@ namespace kira
       D fourth;
       E fifth;
       F sixth;
-      bool operator==(const Tuple6&) const = default;
+      bool operator==(const T6&) const = default;
   };
   template<class A, class B, class C, class D, class E, class F, class G>
-  struct Tuple7
+  struct T7
   {
       A first;
       B second;
@@ -1146,10 +1146,10 @@ namespace kira
       E fifth;
       F sixth;
       G seventh;
-      bool operator==(const Tuple7&) const = default;
+      bool operator==(const T7&) const = default;
   };
   template<class A, class B, class C, class D, class E, class F, class G, class H>
-  struct Tuple8
+  struct T8
   {
       A first;
       B second;
@@ -1159,10 +1159,10 @@ namespace kira
       F sixth;
       G seventh;
       H eighth;
-      bool operator==(const Tuple8&) const = default;
+      bool operator==(const T8&) const = default;
   };
   template<class A, class B, class C, class D, class E, class F, class G, class H, class I>
-  struct Tuple9
+  struct T9
   {
       A first;
       B second;
@@ -1173,6 +1173,21 @@ namespace kira
       G seventh;
       H eighth;
       I ninth;
-      bool operator==(const Tuple9&) const = default;
+      bool operator==(const T9&) const = default;
+  };
+  template<class A, class B, class C, class D, class E, class F, class G, class H, class I, class J>
+  struct T10
+  {
+      A first;
+      B second;
+      C third;
+      D fourth;
+      E fifth;
+      F sixth;
+      G seventh;
+      H eighth;
+      I ninth;
+      J tenth;
+      bool operator==(const T10&) const = default;
   };
 }

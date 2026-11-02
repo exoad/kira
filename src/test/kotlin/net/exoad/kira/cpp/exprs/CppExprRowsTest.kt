@@ -341,13 +341,13 @@ class CppExprRowsTest {
         row(
             "r10",
             """
-            pub scaleBy: (k: Int32) Fx<Tuple1<Int32>, Int32> {
+            pub scaleBy: (k: Int32) Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     x * k
                 }
             }
 
-            pub applyTo: (f: Fx<Tuple1<Int32>, Int32>, x: Int32) Int32 {
+            pub applyTo: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                 f(x)
             }
 
@@ -364,7 +364,7 @@ class CppExprRowsTest {
             pub Gain: Struct {
                 pub k: Int32 = 3
 
-                pub scaler: () Fx<Tuple1<Int32>, Int32> {
+                pub scaler: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
                     }
@@ -374,14 +374,14 @@ class CppExprRowsTest {
                     x * k * 2
                 }
 
-                pub twicer: () Fx<Tuple1<Int32>, Int32> {
+                pub twicer: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         twice(x)
                     }
                 }
             }
 
-            pub tally: () Fx<Tuple0, Int32> {
+            pub tally: () Fx<T0, Int32> {
                 counter: Ref<Int32> = Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
@@ -389,7 +389,7 @@ class CppExprRowsTest {
                 }
             }
 
-            pub constant: () Fx<Tuple1<Int32>, Int32> {
+            pub constant: () Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
                     5
                 }
@@ -1464,7 +1464,7 @@ class CppExprRowsTest {
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(Tuple2<Str, Int32> { first = "k", second = 1 }, Tuple2<Str, Int32> { first = "j", second = 2 }) }
+                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(T2<Str, Int32> { first = "k", second = 1 }, T2<Str, Int32> { first = "j", second = 2 }) }
                 (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 
@@ -1485,7 +1485,7 @@ class CppExprRowsTest {
                 "const kira::Rc<Acc> t0_ = shared_from_this();\n          const std::int32_t t1_ = bump();\n          return peek(t0_, t1_);",
                 "return kira::list::contains(a, 2) && !kira::list::contains(a, 4);",
                 "const kira::List<std::int32_t> c = kira::list::clone(a);",
-                "const kira::Map<kira::Str, std::int32_t> m = kira::Map<kira::Str, std::int32_t>{kira::Tuple2<kira::Str, std::int32_t>{.first = \"k\", .second = 1}, kira::Tuple2<kira::Str, std::int32_t>{.first = \"j\", .second = 2}};",
+                "const kira::Map<kira::Str, std::int32_t> m = kira::Map<kira::Str, std::int32_t>{kira::T2<kira::Str, std::int32_t>{.first = \"k\", .second = 1}, kira::T2<kira::Str, std::int32_t>{.first = \"j\", .second = 2}};",
                 "const kira::Set<std::int32_t> s = kira::Set<std::int32_t>{3, 4, 3};",
                 "const kira::Map<kira::Str, std::int32_t> e = kira::Map<kira::Str, std::int32_t>{};",
             ),

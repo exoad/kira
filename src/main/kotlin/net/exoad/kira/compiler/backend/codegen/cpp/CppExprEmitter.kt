@@ -1,5 +1,6 @@
 package net.exoad.kira.compiler.backend.codegen.cpp
 
+import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassKind
@@ -1445,7 +1446,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         if (givenFields.isEmpty()) {
             return CppEx("$typeText{}", CppPrec.POSTFIX)
         }
-        val tuple = cls.name.startsWith("Tuple")
+        val tuple = Builtins.tupleArity(cls.name) != null
         return when {
             tuple -> hoister.lower(ops, t) { texts ->
                 val inits = givenFields.map { f -> ".${ctx.names.escape(f.field.name)} = ${wrap(texts[byField[f.field]!!], CppPrec.ASSIGN)}" }
@@ -1891,7 +1892,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             val op = if (name == "self") ops.getOrNull(receiverIndex) else slots.getOrNull(name.toInt()).let { s -> (s as? Slot.Given)?.let { ops[it.operand + shift] } }
             op != null && hoister.rankOf(op) != CppHoister.PURE
         }
-        // w2-3 #3: an operand the expansion never names (`Tuple2.size` is
+        // w2-3 #3: an operand the expansion never names (`T2.size` is
         // `static_cast<std::int32_t>(2)`) is still evaluated, in Kira's order, unless evaluating it
         // does nothing a sibling or the program could see (a literal, a constant, a PRIVATE read).
         val named = CppBindingTable.placeholders(binding)

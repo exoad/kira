@@ -1,13 +1,13 @@
-// Fixed-arity product types. `Tuple2` doubles as the entry type for `Map`,
+// Fixed-arity product types. `T2` doubles as the entry type for `Map`,
 // so `kira:collections` leans on this module.
 
 pub Tuple<T>: Any {
     pub size: () Int32
 }
 
-// The type of a function value: `P` is the parameter tuple (`Tuple0` for
+// The type of a function value: `P` is the parameter tuple (`T0` for
 // none), `R` the return type. A `mut` in a parameter position of `P`
-// (`Fx<Tuple1<mut T>, Void>`, D24) means the callee gets the argument by
+// (`Fx<T1<mut T>, Void>`, D24) means the callee gets the argument by
 // reference.
 pub @_magic Fx<P, R>: Any
 
@@ -16,13 +16,13 @@ pub @_magic Fx<P, R>: Any
 // one is not built yet.
 pub @_magic TupleN<T>: Any
 
-pub @_magic Tuple0: Tuple<Void> {
+pub @_magic T0: Tuple<Void> {
     pub size: () Int32 {
         0
     }
 }
 
-pub @_magic Tuple1<T> : Tuple<Tuple1<T>> {
+pub @_magic T1<T> : Tuple<T1<T>> {
     pub first: T
 
     pub size: () Int32 {
@@ -30,7 +30,7 @@ pub @_magic Tuple1<T> : Tuple<Tuple1<T>> {
     }
 }
 
-pub @_magic Tuple2<A, B>: Tuple<Tuple2<A, B>> {
+pub @_magic T2<A, B>: Tuple<T2<A, B>> {
     pub first: A
     pub second: B
 
@@ -39,9 +39,9 @@ pub @_magic Tuple2<A, B>: Tuple<Tuple2<A, B>> {
     }
 }
 
-pub Tuple2<A, B> as Pair<A, B>
+pub T2<A, B> as Pair<A, B>
 
-pub @_magic Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
+pub @_magic T3<A, B, C>: Tuple<T3<A, B, C>> {
     pub first: A
     pub second: B
     pub third: C
@@ -51,7 +51,7 @@ pub @_magic Tuple3<A, B, C>: Tuple<Tuple3<A, B, C>> {
     }
 }
 
-pub @_magic Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
+pub @_magic T4<A, B, C, D>: Tuple<T4<A, B, C, D>> {
     pub first: A
     pub second: B
     pub third: C
@@ -62,7 +62,7 @@ pub @_magic Tuple4<A, B, C, D>: Tuple<Tuple4<A, B, C, D>> {
     }
 }
 
-pub @_magic Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
+pub @_magic T5<A, B, C, D, E>: Tuple<T5<A, B, C, D, E>> {
     pub first: A
     pub second: B
     pub third: C
@@ -74,7 +74,7 @@ pub @_magic Tuple5<A, B, C, D, E>: Tuple<Tuple5<A, B, C, D, E>> {
     }
 }
 
-pub @_magic Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
+pub @_magic T6<A, B, C, D, E, F>: Tuple<T6<A, B, C, D, E, F>> {
     pub first: A
     pub second: B
     pub third: C
@@ -87,7 +87,7 @@ pub @_magic Tuple6<A, B, C, D, E, F>: Tuple<Tuple6<A, B, C, D, E, F>> {
     }
 }
 
-pub @_magic Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
+pub @_magic T7<A, B, C, D, E, F, G>: Tuple<T7<A, B, C, D, E, F, G>> {
     pub first: A
     pub second: B
     pub third: C
@@ -101,7 +101,7 @@ pub @_magic Tuple7<A, B, C, D, E, F, G>: Tuple<Tuple7<A, B, C, D, E, F, G>> {
     }
 }
 
-pub @_magic Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>> {
+pub @_magic T8<A, B, C, D, E, F, G, H>: Tuple<T8<A, B, C, D, E, F, G, H>> {
     pub first: A
     pub second: B
     pub third: C
@@ -116,7 +116,7 @@ pub @_magic Tuple8<A, B, C, D, E, F, G, H>: Tuple<Tuple8<A, B, C, D, E, F, G, H>
     }
 }
 
-pub @_magic Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G, H, I>> {
+pub @_magic T9<A, B, C, D, E, F, G, H, I>: Tuple<T9<A, B, C, D, E, F, G, H, I>> {
     pub first: A
     pub second: B
     pub third: C
@@ -129,5 +129,22 @@ pub @_magic Tuple9<A, B, C, D, E, F, G, H, I>: Tuple<Tuple9<A, B, C, D, E, F, G,
 
     pub size: () Int32 {
         9
+    }
+}
+
+pub @_magic T10<A, B, C, D, E, F, G, H, I, J>: Tuple<T10<A, B, C, D, E, F, G, H, I, J>> {
+    pub first: A
+    pub second: B
+    pub third: C
+    pub fourth: D
+    pub fifth: E
+    pub sixth: F
+    pub seventh: G
+    pub eighth: H
+    pub ninth: I
+    pub tenth: J
+
+    pub size: () Int32 {
+        10
     }
 }

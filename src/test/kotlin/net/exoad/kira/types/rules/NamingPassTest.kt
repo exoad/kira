@@ -122,7 +122,7 @@ class NamingPassTest {
                     1
                 }
             }
-            pub f: () Fx<Tuple1<Int32>, Int32> {
+            pub f: () Fx<T1<Int32>, Int32> {
                 (InVal: Int32) Int32 {
                     InVal
                 }

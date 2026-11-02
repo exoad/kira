@@ -280,7 +280,7 @@ namespace
                 "addFixed: the integers a double holds, below the saturation");
   static_assert(kira::unwrapOr(kira::Maybe<std::int64_t>(kira::none), 4) == 4);
   static_assert(kira::unwrap(kira::Maybe<std::int32_t>(9)) == 9);
-  static_assert(kira::Tuple2<std::int32_t, bool>{.first = 1, .second = true} == kira::Tuple2<std::int32_t, bool>{1, true});
+  static_assert(kira::T2<std::int32_t, bool>{.first = 1, .second = true} == kira::T2<std::int32_t, bool>{1, true});
   static_assert(std::is_same_v<kira::Maybe<std::int32_t>, std::optional<std::int32_t>>);
   static_assert(std::is_same_v<kira::Maybe<kira::Maybe<std::int32_t>>, kira::Nested<std::optional<std::int32_t>>>);
   static_assert(level::fromInside() == 7 + 4 + 2);
@@ -439,8 +439,8 @@ namespace
       check(someNone && !kira::isSome(nested) && !kira::isSome(outer) && nested == outer, "Maybe<Maybe<T>>: Some(None) is not None");
       nested = some;
       check(kira::unwrap(kira::unwrap(nested)) == 3 && nested != outer, "Maybe<Maybe<T>>: Some(Some)");
-      const kira::Tuple3<std::int32_t, float, bool> t{.first = 1, .second = 2.5f, .third = true};
-      check(t.second == 2.5f && t == kira::Tuple3<std::int32_t, float, bool>{1, 2.5f, true}, "Tuple3");
+      const kira::T3<std::int32_t, float, bool> t{.first = 1, .second = 2.5f, .third = true};
+      check(t.second == 2.5f && t == kira::T3<std::int32_t, float, bool>{1, 2.5f, true}, "T3");
   }
 }
 
@@ -737,7 +737,7 @@ namespace
       check(kira::unwrap(m.remove("b")) == 20 && !kira::isSome(m.remove("b")), "Map.remove gives the value once");
       m.put("b", 4);
       kira::Str order;
-      for(const kira::Tuple2<kira::Str, std::int32_t>& e : m)
+      for(const kira::T2<kira::Str, std::int32_t>& e : m)
       {
           order += kira::cat(e.first, e.second);
       }

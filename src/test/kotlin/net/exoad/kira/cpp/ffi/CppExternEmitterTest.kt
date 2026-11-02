@@ -227,9 +227,9 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::put", header = "probe.hxx") put: (m: Maybe<Int32>) Void
 
-            pub @_extern(cpp = "probe::onTick", header = "probe.hxx") onTick: (f: Fx<Tuple1<Int32>, Void>) Void
+            pub @_extern(cpp = "probe::onTick", header = "probe.hxx") onTick: (f: Fx<T1<Int32>, Void>) Void
 
-            pub @_extern(cpp = "probe::ticker", header = "probe.hxx") ticker: () Fx<Tuple1<Int32>, Int32>
+            pub @_extern(cpp = "probe::ticker", header = "probe.hxx") ticker: () Fx<T1<Int32>, Int32>
 
             pub @_extern(cpp = "probe::find", header = "probe.hxx") find: () Maybe<Int32>
 
@@ -262,9 +262,9 @@ class CppExternEmitterTest {
     fun aCallbackMarkerPassesAnFxAsAFnArgAndAnUnmarkedFxStaysAKiraFn() {
         val c = callsOf(
             """
-            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<Tuple0, Void>) Void
+            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<T0, Void>) Void
 
-            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<Tuple0, Void>) Void
+            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<T0, Void>) Void
 
             onEdge: () Void {
             }
@@ -280,9 +280,9 @@ class CppExternEmitterTest {
         assertEquals("::probe::plain(kira::Fn<void()>(onEdge))", c.text("plain", null, "onEdge"))
         val h = header(
             """
-            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<Tuple0, Void>) Void
+            pub @_callback @_extern(cpp = "probe::attach", header = "probe.hxx") attach: (handler: Fx<T0, Void>) Void
 
-            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<Tuple0, Void>) Void
+            pub @_extern(cpp = "probe::plain", header = "probe.hxx") plain: (handler: Fx<T0, Void>) Void
             """
         )
         assertLines(

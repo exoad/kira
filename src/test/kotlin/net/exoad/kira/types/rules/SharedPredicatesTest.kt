@@ -33,7 +33,7 @@ class SharedPredicatesTest {
             }
             pub WithFx: Struct {
                 pub a: Int32 = 0
-                pub f: Maybe<Fx<Tuple0, Void>> = null
+                pub f: Maybe<Fx<T0, Void>> = null
             }
             pub Deep: Mutable<Any> {
                 pub w: List<WithFx> = List<WithFx> { }
@@ -47,7 +47,7 @@ class SharedPredicatesTest {
             pub T: Any {
                 pub m: () Int32
             }
-            pub table<X>: (a: Int32, b: Str, c: Bool, d: Int32, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: Tuple2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<Tuple0, Void>, o: List<Fx<Tuple0, Void>>, q: Maybe<Fx<Tuple0, Void>>, r: Tuple2<Int32, Fx<Tuple0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<Tuple0, Void>>, z: Gen<Int32>, zz: Gen<Fx<Tuple0, Void>>) Int32 {
+            pub table<X>: (a: Int32, b: Str, c: Bool, d: Int32, e: List<Int32>, f: Map<Str, List<Int32>>, g: Arr<UInt8, 4>, h: Maybe<Str>, i: T2<Int32, Str>, j: Plain, k: View<UInt8>, l: StrBuf<8>, m: CStr, n: Fx<T0, Void>, o: List<Fx<T0, Void>>, q: Maybe<Fx<T0, Void>>, r: T2<Int32, Fx<T0, Void>>, s: WithFx, t: Deep, u: C, v: T, w: Ref<Int32>, x: X, y: View<Fx<T0, Void>>, z: Gen<Int32>, zz: Gen<Fx<T0, Void>>) Int32 {
                 0
             }
             """,
@@ -130,17 +130,17 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub Box: Any {
-                pub f: Maybe<Fx<Tuple0, Void>> = null
+                pub f: Maybe<Fx<T0, Void>> = null
             }
             pub @_extern(cpp = "ext::a", header = "ext.hxx") a: (n: Int32, s: Str) Int32
-            pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<Tuple0, Void>>) Int32
+            pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<T0, Void>>) Int32
             pub @_extern(cpp = "ext::c", header = "ext.hxx") c: (x: Box) Int32
-            pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<Tuple0, Void>) Int32
+            pub @_extern(cpp = "ext::d", header = "ext.hxx") d: (f: Fx<T0, Void>) Int32
             pub k: (x: Box) Int32 {
                 0
             }
             pub caller: (bx: Box) Int32 {
-                fs: List<Fx<Tuple0, Void>> = List<Fx<Tuple0, Void>> { }
+                fs: List<Fx<T0, Void>> = List<Fx<T0, Void>> { }
                 a(1, "s") + b(fs) + c(bx) + d(() Void { }) + k(bx)
             }
             """,
@@ -171,7 +171,7 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub G: Mutable<Int32> = 0
-            pub pass<T>: (f: Fx<Tuple1<T>, Void>, x: T) Void {
+            pub pass<T>: (f: Fx<T1<T>, Void>, x: T) Void {
                 f(x)
             }
             pub keepG<T>: (xs: List<T>, x: T) Void {
@@ -179,17 +179,17 @@ class SharedPredicatesTest {
             }
             pub Box<T>: Any {
                 pub v: T
-                pub run: (f: Fx<Tuple1<T>, Void>) Void {
+                pub run: (f: Fx<T1<T>, Void>) Void {
                     f(this.v)
                 }
             }
             pub drive: () Void {
-                fs: Mutable<List<Fx<Tuple0, Void>>> = @listOf()
+                fs: Mutable<List<Fx<T0, Void>>> = @listOf()
                 ns: Mutable<List<Int32>> = @listOf()
-                keepG<Fx<Tuple0, Void>>(fs, () Void {
+                keepG<Fx<T0, Void>>(fs, () Void {
                     G += 1
                 })
-                keepG<Fx<Tuple0, Void>>(fs, () Void {
+                keepG<Fx<T0, Void>>(fs, () Void {
                     trace(1)
                 })
                 keepG<Int32>(ns, 1)
@@ -265,17 +265,17 @@ class SharedPredicatesTest {
             """
             kira.sync as sync
             pub Runner: Any {
-                pub f: Fx<Tuple0, Void>
+                pub f: Fx<T0, Void>
                 initially {
                     f()
                 }
             }
             pub Kid: Runner {
-                pub g: Fx<Tuple0, Void>
+                pub g: Fx<T0, Void>
                 pub n: Int32 = 0
             }
             pub Keeper: Any {
-                pub f: Fx<Tuple0, Void>
+                pub f: Fx<T0, Void>
                 pub n: Int32 = 0
             }
             pub Counted: Mutable<Any> {
@@ -303,7 +303,7 @@ class SharedPredicatesTest {
             """
             kira.sync as sync
             pub G: Mutable<Int32> = 0
-            pub hooks: Mutable<List<Fx<Tuple0, Void>>> = @listOf()
+            pub hooks: Mutable<List<Fx<T0, Void>>> = @listOf()
             pub quiet: () Void {
             }
             pub loud: () Void {

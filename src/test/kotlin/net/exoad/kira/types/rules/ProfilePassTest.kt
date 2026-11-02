@@ -41,14 +41,14 @@ class ProfilePassTest {
                 pub @_const twice: (v: Int32) Int32 {
                     v * 2
                 }
-                pub each: (buf: View<UInt8>, f: Fx<Tuple1<UInt8>, Void>) Void {
+                pub each: (buf: View<UInt8>, f: Fx<T1<UInt8>, Void>) Void {
                     for b: UInt8 in buf {
                         f(b)
                     }
                 }
-                pub reply: (servo: Int32, out: StrBuf<32>) Maybe<Tuple2<Int32, Int32>> {
+                pub reply: (servo: Int32, out: StrBuf<32>) Maybe<T2<Int32, Int32>> {
                     out.set("OK drive servo=${'$'}{servo}")
-                    servo < 0 ? null : Tuple2<Int32, Int32> { servo, servo }
+                    servo < 0 ? null : T2<Int32, Int32> { servo, servo }
                 }
                 pub pick<T: Show>: (s: T) Int32 {
                     s.code()
@@ -121,7 +121,7 @@ class ProfilePassTest {
         val p = snippet(
             """
             kira.os as os
-            pub f: (g: Fx<Tuple1<Int32>, Int32>) Fx<Tuple1<Int32>, Int32> {
+            pub f: (g: Fx<T1<Int32>, Int32>) Fx<T1<Int32>, Int32> {
                 try {
                     trace(1)
                 } on e: Str {

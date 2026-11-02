@@ -40,7 +40,7 @@ class CppClassCopyTest {
 
             pub X: Any {
                 pub c: Other
-                pub f: Fx<Tuple0, Int32>
+                pub f: Fx<T0, Int32>
                 pub n: Int32
             }
 

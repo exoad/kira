@@ -4,7 +4,7 @@
 kira.os as os
 kira.sync as sync
 
-@_extern serveLines: (reply: Fx<Tuple1<Str>, Str>) Int32
+@_extern serveLines: (reply: Fx<T1<Str>, Str>) Int32
 
 @_extern talk: (port: Int32, lines: List<Str>) List<Str>
 
