@@ -2702,6 +2702,7 @@ class KiraParser private constructor(
         if (!at(Token.Type.S_OPEN_ANGLE)) {
             return putOrigin(Type(baseIdentifier), baseLocation)
         }
+        refuseTupleAboveMax(baseIdentifier.value, baseLocation)
         expectThenAdvance(Token.Type.S_OPEN_ANGLE)
         val children = mutableListOf<Type>()
         while (!at(Token.Type.S_CLOSE_ANGLE) && !at(Token.Type.S_EOF)) {
@@ -2714,6 +2715,19 @@ class KiraParser private constructor(
         expectThenAdvance(Token.Type.S_CLOSE_ANGLE)
         return putOrigin(Type(baseIdentifier, null, children), baseLocation)
 
+    }
+
+    /** `T11<...>` and up: the tuples are T0 to T10 (Builtins.MAX_TUPLE), so a longer one is refused, never looked up as a type. */
+    private fun refuseTupleAboveMax(name: String, at: SourcePosition) {
+        val n = Regex("T([0-9]+)").matchEntire(name)?.groupValues?.get(1)?.toIntOrNull() ?: return
+        if (n <= net.exoad.kira.compiler.analysis.types.Builtins.MAX_TUPLE) return
+        Diagnostics.panic(
+            "parse.tuple.arity",
+            "The tuples are T0 to T${net.exoad.kira.compiler.analysis.types.Builtins.MAX_TUPLE}; '$name' would hold $n values: declare a Struct with named fields.",
+            location = at,
+            selectorLength = name.length,
+            context = context
+        )
     }
 
     /** After [first], `.Name` with [first] a module alias (camelCase): a qualified type. */
