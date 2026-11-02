@@ -36,7 +36,9 @@ diagnostic. ERROR means a type or rule error, which is the intended result for t
 ## Known from the libraries
 
 - An extern enum parameter (for example `gpio_num_t`) cannot be passed from Kira as `Int32`.
-- An extern class with a default constructor cannot be built with `T { }`.
+- An extern class with a default constructor is built with `T { }` only when it is declared
+  `@_constructible @_extern(...) T: Struct`, on cpp only. Kira never copies such an object, so
+  it cannot be passed to a function, returned or captured.
 - `mut` out-parameters on externs are not usable from the binding side.
 - `on` is a reserved word. A py field named `bytes` is refused.
 - `Maybe.value` on a null value stops the program at run time. Nothing warns at compile time.

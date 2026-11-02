@@ -15,6 +15,7 @@ import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TraitSymbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
+import net.exoad.kira.compiler.analysis.types.isConstructibleExtern
 import net.exoad.kira.compiler.analysis.types.suppliedByCpp
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
@@ -243,6 +244,9 @@ object CppExternEmitter : CppExternsPart {
             } else {
                 layoutChecks(ctx, cls, w)
             }
+        }
+        if (cls.isConstructibleExtern) {
+            w.line("static_assert(std::is_default_constructible_v<${cppName(cls)}>, \"Kira's ${cls.name} { } $DRIFT_MESSAGE: it has no default constructor\");")
         }
         cls.methods.forEach { functionCheck(ctx, it, cls, w) }
     }

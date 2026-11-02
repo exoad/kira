@@ -7,6 +7,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.FunctionDecl
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IntrinsicExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.NoExpr
 import net.exoad.kira.core.intrinsics.ConstIntrinsic
+import net.exoad.kira.core.intrinsics.ConstructibleIntrinsic
 import net.exoad.kira.core.intrinsics.DeclIntrinsic
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
@@ -36,6 +37,7 @@ object IntrinsicRegistry {
             MutatesIntrinsic,
             CallbackIntrinsic,
             IramIntrinsic,
+            ConstructibleIntrinsic,
         ).forEach { put(it.name, it) }
         // Operator intrinsics are known names the parser accepts as identifiers; they are not
         // markers. The member form (@_op_add_, ...) is 1.3.1's table, the one form; the free
@@ -94,6 +96,7 @@ object IntrinsicRegistry {
         MutatesIntrinsic.name,
         CallbackIntrinsic.name,
         IramIntrinsic.name,
+        ConstructibleIntrinsic.name,
     )
 
     /**

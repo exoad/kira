@@ -425,6 +425,7 @@ internal class DeclarationCollector(
         const val OPAQUE = "_opaque"
         const val CONST = "_const"
         const val MUTATES = "_mutates"
+        const val CONSTRUCTIBLE = "_constructible"
 
         /**
          * The marker invocations (arguments included) the parser recorded for [node]: an

@@ -23,3 +23,10 @@ val FnSymbol.suppliedByCpp: Boolean
         }
         return (owner == null && isPub) || (owner as? ClassSymbol)?.kind == ClassKind.OPAQUE
     }
+
+/**
+ * Whether `T { }` builds this `@_extern` struct by its C++ default constructor (`@_constructible`).
+ * Such a value is never copied by Kira (rules.extern.copy, ExternObjectPass).
+ */
+val ClassSymbol.isConstructibleExtern: Boolean
+    get() = foreign is Foreign.Extern && markers.any { it.name == DeclarationCollector.CONSTRUCTIBLE }

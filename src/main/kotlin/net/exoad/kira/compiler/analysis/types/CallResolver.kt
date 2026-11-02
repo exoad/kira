@@ -1146,6 +1146,12 @@ internal class CallResolver(private val c: PhaseC) {
             cls == null -> "${t.display()} is not a class or struct"
             cls.kind == ClassKind.MAGIC && (Builtins.prim(cls.name) != null || cls.name in Builtins.SPECIAL || cls.name in setOf("View", "MutView", "Fx", "Unsafe", "Any", "Num")) ->
                 "${t.display()} is not constructed with { }" + if (cls.name == "View" || cls.name == "MutView") "; take a view of a container with .view(), .from() or .slice()" else ""
+            cls.isConstructibleExtern && (e.positionalArgs.isNotEmpty() || e.namedArgs.isNotEmpty()) ->
+                "${t.display()} is built by its C++ default constructor and takes no values: write '${t.display()} { }'"
+            cls.isConstructibleExtern -> {
+                model.inits[e] = ResolvedInit(t, cls, emptyList(), emptyList())
+                return t
+            }
             cls.kind == ClassKind.OPAQUE || cls.foreign is Foreign.Extern -> "${t.display()} is made by the C/C++ side; call the function that returns one"
             cls.kind == ClassKind.MAGIC && cls.name == "Json" && cls.module.uri == JSON_URI ->
                 "Json is not constructed with { }; make one with Json.obj(), Json.arr(), Json.null(), Json.of(value) or Json.parse(text)"

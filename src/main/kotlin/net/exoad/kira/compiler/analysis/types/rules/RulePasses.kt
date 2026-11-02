@@ -26,5 +26,6 @@ object RulePasses {
         GenericBoundsPass(),
         NamingPass(),
         DeclRepeatPass(),
+        ExternObjectPass(),
     )
 }
