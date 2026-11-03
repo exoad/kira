@@ -121,6 +121,10 @@ object ExternIntrinsic : CompilerIntrinsic(
             )
         }
         val mode = GeneratedProvider.outputMode
+        // An `@_only` that leaves this target out drops the declaration here, so its py-only or cpp-only arguments are not checked.
+        if (OnlyIntrinsic.dropsOn(context, target, (scope as? SemanticScope.Class)?.name, mode)) {
+            return NoExpr
+        }
         // A method of an @_opaque class takes the marker for py (D70), so under none too, as the language server runs.
         val opaqueMethod = (mode == GeneratedProvider.OutputTarget.PY || mode == GeneratedProvider.OutputTarget.NONE) &&
             scope is SemanticScope.Class && isMarked(context, scope.name, OpaqueIntrinsic.name)

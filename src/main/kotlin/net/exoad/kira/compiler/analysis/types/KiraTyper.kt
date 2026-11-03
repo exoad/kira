@@ -28,6 +28,8 @@ data class TyperOptions(
     val namespaces: Map<String, String> = emptyMap(),
     /** Tell `x: T = T { .. }` (rules.decl.repeat); the backends ask for it, a typer test does not. */
     val hintDeclRepeat: Boolean = false,
+    /** The target being built ("py", "cpp"): `@_only` drops what it does not build (rules.only). Null keeps every declaration. */
+    val target: String? = null,
 )
 
 /** Phase C: types every body. W2.1 sets [KiraTyper.bodyTyper]. */
@@ -82,6 +84,9 @@ object KiraTyper {
         }
         guard(program, "body typing") {
             bodyTyper.type(program)
+        }
+        guard(program, "only targets") {
+            OnlyTargets(program).run()
         }
         guard(program, "changing functions") {
             ChangingFunctions(program).run()

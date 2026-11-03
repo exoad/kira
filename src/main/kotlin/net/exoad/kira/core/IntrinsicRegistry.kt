@@ -12,6 +12,7 @@ import net.exoad.kira.core.intrinsics.DeclIntrinsic
 import net.exoad.kira.core.intrinsics.ExternIntrinsic
 import net.exoad.kira.core.intrinsics.GlobalIntrinsic
 import net.exoad.kira.core.intrinsics.MagicIntrinsic
+import net.exoad.kira.core.intrinsics.OnlyIntrinsic
 import net.exoad.kira.core.intrinsics.OpaqueIntrinsic
 import net.exoad.kira.core.intrinsics.StaticAssertIntrinsic
 import net.exoad.kira.source.SourceContext
@@ -27,6 +28,7 @@ object IntrinsicRegistry {
             MagicIntrinsic,
             OpaqueIntrinsic,
             ExternIntrinsic,
+            OnlyIntrinsic,
             // design D7: `@_const` marks a declaration, `@_static_assert` is
             // a module-level callable; checks beyond arity are wave 2's.
             ConstIntrinsic,
@@ -89,6 +91,7 @@ object IntrinsicRegistry {
         MagicIntrinsic.name,
         OpaqueIntrinsic.name,
         ExternIntrinsic.name,
+        OnlyIntrinsic.name,
         ConstIntrinsic.name,
         InferIntrinsic.name,
         MutatesIntrinsic.name,
