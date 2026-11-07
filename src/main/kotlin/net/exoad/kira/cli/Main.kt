@@ -53,10 +53,11 @@ private fun applyTargetOverride(target: String) {
 }
 
 fun main(args: Array<String>) {
-    // `kira --fix-decl-repeat <file.kira>...` rewrites `x: T = T { .. }` to `x: T { .. }` in place (rules.decl.repeat's fix).
-    if (args.firstOrNull() == "--fix-decl-repeat") {
+    // `kira --fix-decl-equals <file.kira>...` rewrites each `x: T = v` to `x: T { v }` (and `x: T = T { .. }` to `x: T { .. }`) in place.
+    if (args.firstOrNull() == "--fix-decl-equals") {
         for (f in args.drop(1)) {
-            val n = net.exoad.kira.compiler.fix.DeclRepeatFix.rewriteFile(File(f))
+            // A file the parser refuses for another reason is named and left as it was.
+            val n = try { net.exoad.kira.compiler.fix.DeclEqualsFix.rewriteFile(File(f)).toString() } catch (e: Throwable) { "refused (${e.message?.lineSequence()?.firstOrNull()})" }
             println("$f: $n")
         }
         return

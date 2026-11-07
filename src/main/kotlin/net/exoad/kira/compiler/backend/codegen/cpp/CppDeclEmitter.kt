@@ -694,7 +694,7 @@ class CppDeclEmitter(private val ctx: CppEmitContextImpl, private val usage: Cpp
         val name = ctx.names.escape(f.name)
         val default = f.default ?: return "$type $name{};"
         if (isEmptyMagicConstruction(default)) {
-            // `xs: List<Later> = List<Later> {}` is `kira::List<Later> xs{};`, value-initialized in
+            // `xs: List<Later> {}` is `kira::List<Later> xs{};`, value-initialized in
             // place: the prvalue form `= kira::List<Later>{}` makes libc++ instantiate the
             // temporary's destructor, which needs `Later` complete (measured; gcc and MSVC accept it).
             return "$type $name{};"

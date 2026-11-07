@@ -2,10 +2,7 @@ package net.exoad.kira.suite
 
 import net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException
 import net.exoad.kira.compiler.analysis.types.AstTree
-import net.exoad.kira.compiler.analysis.types.Severity
-import net.exoad.kira.compiler.analysis.types.TypedProgram
-import net.exoad.kira.compiler.analysis.types.TyperOptions
-import net.exoad.kira.compiler.fix.DeclRepeatFix
+import net.exoad.kira.compiler.fix.DeclEqualsFix
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.py.PyTestSupport
@@ -18,7 +15,7 @@ import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** `x: T { .. }` is `x: T = T { .. }`, and rules.decl.repeat with its rewrite says the short form for the long one. */
+/** A declaration initializes with braces (`x: T { v }`, `x: T { a = 1 }`), and the old `x: T = v` is refused with the braces form. */
 class DeclShortTest {
     private val types = """
         P: Struct {
@@ -40,73 +37,83 @@ class DeclShortTest {
     /** The tree as the parser built it, node by node. */
     private fun tree(body: String): String = parsed(body).ast.statements.joinToString("\n")
 
-    private fun typed(body: String): TypedProgram = TyperTestSupport.snippet(full(body), options = TyperOptions(hintDeclRepeat = true)).also { expectNoErrors(it) }
-
-    private fun told(p: TypedProgram) = p.diagnostics.filter { it.code == "rules.decl.repeat" }
-
-    private fun repeats(body: String) = parsed(body).astDeclRepeats.map { it.local }
-
-    private fun same(short: String, long: String) {
-        assertEquals(tree(long), tree(short))
-        assertEquals(PyTestSupport.emit(full(long)).python(), PyTestSupport.emit(full(short)).python())
+    private fun same(short: String, nested: String) {
+        assertEquals(tree(nested), tree(short))
+        assertEquals(PyTestSupport.emit(full(nested)).python(), PyTestSupport.emit(full(short)).python())
     }
 
-    // ---- the parse rule: a brace on the type's line is a construction ----------------------------
+    private fun refusal(src: String): String = assertThrows<DiagnosticsException> { parsed(src) }.message!!
+
+    // ---- the parse rule: a brace on the type's line is the value or the construction ----------------------
 
     @Test
-    fun aLocalIsItsLongForm() = same(
+    fun severalValuesConstructLikeTheTypeNamedAgain() = same(
         "main: () Void {\n    p: P { 1, 2 }\n}",
-        "main: () Void {\n    p: P = P { 1, 2 }\n}",
+        "main: () Void {\n    p: P { P { 1, 2 } }\n}",
     )
 
     @Test
     fun namedArgumentsAndAnEmptyBlockToo() {
-        same("main: () Void {\n    p: P { y = 2, x = 1 }\n}", "main: () Void {\n    p: P = P { y = 2, x = 1 }\n}")
+        same("main: () Void {\n    p: P { y = 2, x = 1 }\n}", "main: () Void {\n    p: P { P { y = 2, x = 1 } }\n}")
         assertEquals(
-            tree("main: () Void {\n    xs: List<Str> = List<Str> { }\n}"),
+            tree("main: () Void {\n    xs: List<Str> { List<Str> { } }\n}"),
             tree("main: () Void {\n    xs: List<Str> { }\n}"),
         )
     }
 
     @Test
-    fun aModuleLevelValueIsItsLongForm() = same("origin: P { 1, 2 }", "origin: P = P { 1, 2 }")
+    fun aModuleLevelValueIsAlike() = same("origin: P { 1, 2 }", "origin: P { P { 1, 2 } }")
 
     @Test
-    fun aPrimitiveIsBuiltTheSameWay() = assertEquals(
-        tree("main: () Void {\n    n: Int32 = Int32 { 0 }\n}"),
-        tree("main: () Void {\n    n: Int32 { 0 }\n}"),
-    )
+    fun aLoneValueOfAnyTypeIsTheValue() {
+        val p = TyperTestSupport.snippet(
+            full(
+                """
+                make: () P {
+                    P { 1, 2 }
+                }
+
+                twice: (n: Int32) Int32 {
+                    n * 2
+                }
+
+                main: () Void {
+                    n: Int32 { 0 }
+                    s: Str { "hi" }
+                    xs: List<Int32> { @listOf(1, 2) }
+                    m: Maybe<Int32> { null }
+                    a: P { make() }
+                    b: P { a }
+                    f: Fx<T1<Int32>, Int32> { twice }
+                    g: Fx<T0, Int32> { () Int32 { 7 } }
+                    ok: Bool { n == 0 }
+                    q: Mutable<P> { make() }
+                }
+                """,
+            ),
+        )
+        expectNoErrors(p)
+    }
 
     @Test
-    fun genericsTwoDeepAndTwoParameters() {
-        assertEquals(
-            tree("main: () Void {\n    xs: List<List<Str>> = List<List<Str>> { }\n}"),
-            tree("main: () Void {\n    xs: List<List<Str>> { }\n}"),
-        )
-        assertEquals(
-            tree("main: () Void {\n    m: Map<Str, List<Int32>> = Map<Str, List<Int32>> { }\n}"),
-            tree("main: () Void {\n    m: Map<Str, List<Int32>> { }\n}"),
-        )
+    fun aLoneValueOfAClassIsNotItsFirstField() {
+        // `p: P { 1 }` is a P from the value 1: a type error, not a construction from one field (that is `P { x = 1, .. }`).
+        val codes = TyperTestSupport.snippet(full("main: () Void {\n    p: P { 1 }\n}")).diagnostics.map { it.code }
+        assertTrue(codes.any { it.startsWith("types.") }, codes.toString())
     }
 
     @Test
     fun aMutableBlockConstructsItsInnerType() {
+        same("main: () Void {\n    m: Mutable<P> { 1, 2 }\n}", "main: () Void {\n    m: Mutable<P> { P { 1, 2 } }\n}")
         assertEquals(
-            tree("main: () Void {\n    m: Mutable<Int32> = Int32 { 0 }\n}"),
-            tree("main: () Void {\n    m: Mutable<Int32> { 0 }\n}"),
-        )
-        same("main: () Void {\n    m: Mutable<P> { 1, 2 }\n}", "main: () Void {\n    m: Mutable<P> = P { 1, 2 }\n}")
-        assertEquals(
-            tree("main: () Void {\n    m: Mutable<List<Str>> = List<Str> { }\n}"),
+            tree("main: () Void {\n    m: Mutable<List<Str>> { List<Str> { } }\n}"),
             tree("main: () Void {\n    m: Mutable<List<Str>> { }\n}"),
         )
     }
 
     @Test
     fun aFieldDefaultMayUseIt() {
-        val short = "Car: Mutable<Any> {\n    pub pose: P { 1, 2 }\n    pub count: Mutable<P> { 1, 2 }\n}"
-        val long = "Car: Mutable<Any> {\n    pub pose: P = P { 1, 2 }\n    pub count: Mutable<P> = P { 1, 2 }\n}"
-        assertEquals(tree(long), tree(short))
+        val short = "Car: Mutable<Any> {\n    pub pose: P { 1, 2 }\n    pub count: Mutable<Int32> { 0 }\n}"
         expectNoErrors(TyperTestSupport.snippet(full(short)))
     }
 
@@ -122,118 +129,93 @@ class DeclShortTest {
     @Test
     fun aWithMayFollowTheBlock() = same(
         "main: () Void {\n    p: P { 1, 2 } with {\n        x = 5\n    }\n}",
-        "main: () Void {\n    p: P = P { 1, 2 } with {\n        x = 5\n    }\n}",
+        "main: () Void {\n    p: P { P { 1, 2 } with {\n        x = 5\n    } }\n}",
     )
 
     @Test
     fun aCommentAfterTheBraceIsStillTheSameLine() = same(
         "main: () Void {\n    p: P { // the pair\n        1, 2\n    }\n}",
-        "main: () Void {\n    p: P = P {\n        1, 2\n    }\n}",
+        "main: () Void {\n    p: P { P {\n        1, 2\n    } }\n}",
     )
 
     @Test
     fun aBraceThatStartsALineIsNotAConstruction() {
         for (src in listOf("x: P\n{ 1, 2 }", "x: P // a comment between\n{ 1, 2 }", "x: P\n\n{ 1, 2 }")) {
-            val e = assertThrows<DiagnosticsException> { parsed(src) }
-            assertTrue(e.message!!.contains("declares nothing"), "$src: ${e.message}")
+            assertTrue(refusal(src).contains("declares nothing"), src)
         }
     }
 
     @Test
     fun aBodyOfMembersIsStillRefusedAsADeclarationOfNothing() {
-        val e = assertThrows<DiagnosticsException> { parsed("main: () Void {\n    c: P {\n        pub x: Int32 = 1\n    }\n}") }
-        assertTrue(e.message!!.contains("declares nothing"), e.message)
+        assertTrue(refusal("main: () Void {\n    c: P {\n        pub x: Int32 { 1 }\n    }\n}").contains("declares nothing"))
     }
 
     @Test
-    fun theHintIsOffUnlessAskedFor() {
-        val p = TyperTestSupport.snippet(full("main: () Void {\n    a: P = P { 1, 2 }\n}"))
-        expectNoErrors(p)
-        assertEquals(emptyList(), told(p))
+    fun aTypeNameStillDeclaresATypeButAValueInBracesIsAConstant() {
+        // `Name: Parent { }` is a class; a PascalCase or one-capital name with a value on the brace's line is a constant's.
+        expectNoErrors(TyperTestSupport.snippet(full("Pair: Struct {\n    pub a: Int32\n}\nN: Size { 4 }\nmain: () Void {\n    q: Pair { a = 1 }\n}")))
+        expectNoErrors(TyperTestSupport.snippet(full("Pair: Struct { pub a: Int32 }\nmain: () Void {\n}")))
     }
 
-    @Test
-    fun aTypeNameStillDeclaresAType() {
-        // `Name: Parent { }` is a class; the short form is for a value's name.
-        expectNoErrors(TyperTestSupport.snippet(full("Pair: Struct {\n    pub a: Int32\n}\nmain: () Void {\n    q: Pair { 1 }\n}")))
-    }
+    // ---- the old form -------------------------------------------------------------------------------
 
     @Test
-    fun anOldFormStaysValid() {
-        expectNoErrors(TyperTestSupport.snippet(full("main: () Void {\n    p: P = P { 1, 2 }\n    n: Int32 = 0\n}")))
-    }
-
-    // ---- the hint -----------------------------------------------------------------------------------
-
-    @Test
-    fun theHintFiresOnTheRepeatedTypeInEveryPlace() {
-        val p = typed(
-            """
-            origin: P = P { 1, 2 }
-
-            Car: Mutable<Any> {
-                pub pose: P = P { 1, 2 }
-            }
-
-            main: () Void {
-                a: P = P { 1, 2 }
-                m: Mutable<P> = P { 1, 2 }
-                xs: List<Str> = List<Str> { }
-            }
-            """,
+    fun theOldFormIsRefusedWithTheBracesForm() {
+        val cases = mapOf(
+            "main: () Void {\n    n: Int32 = 0\n}" to "n: Int32 { 0 }",
+            "main: () Void {\n    p: P = P { 1, 2 }\n}" to "p: P { 1, 2 }",
+            "main: () Void {\n    m: Mutable<Int32> = Int32 { 0 }\n}" to "m: Mutable<Int32> { 0 }",
+            "main: () Void {\n    xs: List<Str> = @listOf(\"a\")\n}" to "xs: List<Str> { @listOf(\"a\") }",
+            "LIMIT: Int32 = 5\nmain: () Void {\n}" to "LIMIT: Int32 { 5 }",
+            "main: () Void {\n    f: (n: Int32) Int32 = twice\n}" to "f: Fx<T1<Int32>, Int32> { twice }",
+            "main: () Void {\n    p: P = Q { 1, 2 }\n}" to "p: P { Q { 1, 2 } }",
         )
-        val d = told(p)
-        assertEquals(listOf("origin", "pose", "a", "m", "xs"), d.map { it.message.substringAfter('`').substringBefore('`') })
-        assertTrue(d.all { it.severity == Severity.WARNING })
-        assertTrue(d.first { it.message.startsWith("`m`") }.message.contains("`m: Mutable<P> { .. }`"), d.toString())
-        assertTrue(d.first { it.message.startsWith("`a`") }.message.contains("`a: P { .. }`, the same construction without `= P`"), d.toString())
+        for ((src, fix) in cases) {
+            val m = refusal(src)
+            assertTrue(m.contains("initializes with braces, not '='") && m.contains("write '$fix'"), "$src: $m")
+        }
     }
 
     @Test
-    fun theHintFiresOnAnOldFormWithAWith() {
-        assertEquals(listOf("p"), repeats("main: () Void {\n    p: P = P { 1, 2 } with {\n        x = 5\n    }\n}"))
+    fun aFieldDefaultInATypeBodyIsRefusedToo() {
+        val m = refusal("Car: Mutable<Any> {\n    pub speed: Mutable<Int32> = 0\n}")
+        assertTrue(m.contains("speed: Mutable<Int32> { 0 }"), m)
     }
 
     @Test
-    fun theHintIsSilentOnTheShortForm() {
-        val p = typed("origin: P { 1, 2 }\nmain: () Void {\n    a: P { 1, 2 }\n    m: Mutable<P> { 1, 2 }\n}")
-        assertEquals(emptyList(), told(p))
-    }
+    fun theEqualsSignStaysForNamesAndMutation() {
+        expectNoErrors(
+            TyperTestSupport.snippet(
+                full(
+                    """
+                    scaled: (v: Int32, by: Int32 = 2) Int32 {
+                        v * by
+                    }
 
-    @Test
-    fun theHintIsSilentWhereMeaningWouldChange() {
-        val src = """
-            make: () P {
-                P { 1, 2 }
-            }
-
-            main: () Void {
-                a: P = Q { 1, 2 }
-                m: Mutable<Int64> = Int32 { 0 }
-                k: Int32 = 0
-                f: Float64 = 1.5 * 2.0
-                e: P = make()
-                g: P = (P { 1, 2 })
-                h: P =
-                    P { 1, 2 }
-                i: Int32 = P { 1, 2 }.x
-                j: Mutable<P> = Q { 1, 2 }
-            }
-        """
-        assertEquals(emptyList(), repeats(src))
-    }
-
-    @Test
-    fun theHintNamesTheTypeAsWritten() {
-        assertEquals(listOf("a"), repeats("main: () Void {\n    a: List<List<Str>> = List<List<Str>> { }\n}"))
-        assertEquals(emptyList(), repeats("main: () Void {\n    a: List<List<Str>> = List<List<Int32>> { }\n}"))
+                    main: () Void {
+                        p: P { x = 1, y = 2 } with {
+                            x = 5
+                        }
+                        m: Mutable<Int32> { scaled(by = 3, v = 1) }
+                        m = 4
+                        m += 1
+                    }
+                    """,
+                ),
+            ),
+        )
     }
 
     // ---- the rewrite ----------------------------------------------------------------------------------
 
     private val old = full(
         """
+        twice: (n: Int32) Int32 {
+            n * 2
+        }
+
         origin: P = P { 1, 2 }
+        LIMIT: Int32 = 4
 
         main: () Void {
             a: P = P { 1, 2 } // keep this
@@ -244,37 +226,71 @@ class DeclShortTest {
             p: P = P { 1, 2 } with {
                 x = 5
             }
+            f: (n: Int32) Int32 = twice
+            q: P = a
         }
         """,
     )
 
     @Test
-    fun theRewriteDropsTheRepeatAndNothingElse() {
-        val (out, n) = DeclRepeatFix.rewrite(old)
-        assertEquals(5, n)
+    fun theRewriteGivesTheBracesFormAndNothingElse() {
+        val (out, n) = DeclEqualsFix.rewrite(old)
+        assertEquals(10, n)
         assertEquals(
-            old.replace("origin: P = P {", "origin: P {").replace("a: P = P {", "a: P {").replace("m: Mutable<Int32> = Int32 {", "m: Mutable<Int32> {")
-                .replace("xs: List<List<Str>> =   List<List<Str>> {", "xs: List<List<Str>> {").replace("p: P = P {", "p: P {"),
+            old.replace("origin: P = P {", "origin: P {").replace("LIMIT: Int32 = 4", "LIMIT: Int32 { 4 }")
+                .replace("a: P = P { 1, 2 } // keep this", "a: P { 1, 2 } // keep this")
+                .replace("m: Mutable<Int32> = Int32 { 0 }", "m: Mutable<Int32> { 0 }")
+                .replace("xs: List<List<Str>> =   List<List<Str>> { }", "xs: List<List<Str>> { }")
+                .replace("b: P = Q { 1, 2 }", "b: P { Q { 1, 2 } }")
+                .replace("n: Int32 = 0", "n: Int32 { 0 }")
+                .replace("p: P = P { 1, 2 } with {", "p: P { 1, 2 } with {")
+                .replace("f: (n: Int32) Int32 = twice", "f: Fx<T1<Int32>, Int32> { twice }")
+                .replace("q: P = a", "q: P { a }"),
             out,
         )
     }
 
     @Test
-    fun theRewriteKeepsTheTreeAndIsIdempotent() {
-        val (out, _) = DeclRepeatFix.rewrite(old)
-        fun ctx(text: String) = TyperTestSupport.unitOf(module("test:main", text.trimEnd())).allSources().single { it.file.endsWith("test/main.kira") }
-        val before = ctx(old)
-        val after = ctx(out)
-        assertEquals(before.ast.statements.joinToString("\n"), after.ast.statements.joinToString("\n"))
-        assertEquals(emptyList(), after.astDeclRepeats.map { it.local })
-        assertEquals(out to 0, DeclRepeatFix.rewrite(out))
+    fun theRewriteIsIdempotentAndItsTextParsesWhereTheOldIsRefused() {
+        val (out, _) = DeclEqualsFix.rewrite(old)
+        assertEquals(out to 0, DeclEqualsFix.rewrite(out))
+        parsed(out.removePrefix(types))
+        assertThrows<DiagnosticsException> { parsed(old.removePrefix(types)) }
+    }
+
+    @Test
+    fun aConstructionFromOneValueKeepsItsOwnBraces() {
+        val (out, n) = DeclEqualsFix.rewrite("main: () Void {\n    b: Box = Box { 5 }\n    i: Int32 = Int32 { 5 }\n}\n")
+        assertEquals(2, n)
+        assertEquals("main: () Void {\n    b: Box { Box { 5 } }\n    i: Int32 { 5 }\n}\n", out)
+    }
+
+    @Test
+    fun aValueWithABraceOfItsOwnAndAComment() {
+        val (out, _) = DeclEqualsFix.rewrite("main: () Void {\n    g: Fx<T0, Int32> = () Int32 { 7 } // seven\n    s: Str = \"a // b\" // c\n}\n")
+        assertEquals("main: () Void {\n    g: Fx<T0, Int32> { () Int32 { 7 } } // seven\n    s: Str { \"a // b\" } // c\n}\n", out)
+    }
+
+    @Test
+    fun aValueSpanningLinesIsWrappedWhole() {
+        val (out, n) = DeclEqualsFix.rewrite("main: () Void {\n    g: Fx<T0, Int32> = () Int32 {\n        h()\n        7\n    }\n    y: Int32 = 3\n}\n")
+        assertEquals(2, n)
+        assertEquals("main: () Void {\n    g: Fx<T0, Int32> { () Int32 {\n        h()\n        7\n    } }\n    y: Int32 { 3 }\n}\n", out)
     }
 
     @Test
     fun theRewriteKeepsLineEndings() {
-        val crlf = "main: () Void {\r\n    a: P = P { 1, 2 }\r\n}\r\n"
-        val (out, n) = DeclRepeatFix.rewrite("$types\r\n$crlf")
-        assertEquals(1, n)
-        assertTrue(out.endsWith("main: () Void {\r\n    a: P { 1, 2 }\r\n}\r\n"), out)
+        val crlf = "main: () Void {\r\n    a: P = P { 1, 2 }\r\n    n: Int32 = 1\r\n}\r\n"
+        val (out, n) = DeclEqualsFix.rewrite("$types\r\n$crlf")
+        assertEquals(2, n)
+        assertTrue(out.endsWith("main: () Void {\r\n    a: P { 1, 2 }\r\n    n: Int32 { 1 }\r\n}\r\n"), out)
+    }
+
+    @Test
+    fun aFileThatNestsTypesIsRewrittenOnce() {
+        val src = "Shape: Mutable<Any> {\n    pub Corner: Any {\n        pub x: Int32 = 0\n    }\n    pub n: Int32 = 1\n}\n"
+        val (out, n) = DeclEqualsFix.rewrite(src)
+        assertEquals(2, n)
+        assertEquals("Shape: Mutable<Any> {\n    pub Corner: Any {\n        pub x: Int32 { 0 }\n    }\n    pub n: Int32 { 1 }\n}\n", out)
     }
 }

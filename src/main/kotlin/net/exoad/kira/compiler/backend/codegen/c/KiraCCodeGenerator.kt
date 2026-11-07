@@ -2979,7 +2979,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
-        // A primitive's block is its one value (typed as `x: T = value` is); a user type of that name is built as any class.
+        // A primitive's block is its one value (typed as `x: T { value }` is); a user type of that name is built as any class.
         if (objectInitExpr is PrimInitExpr && !userClassNames.contains(typeNameOf(objectInitExpr.typeName))) {
             objectInitExpr.value.accept(this)
             return
@@ -3196,14 +3196,14 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                 value.accept(this)
             } else if (typeName == "Maybe" && !isMaybeTyped(value)) {
-                // `p: Maybe<Pet> = null` -> Maybe_none(); any other value is
+                // `p: Maybe<Pet> { null }` -> Maybe_none(); any other value is
                 // wrapped as present. Maybe is the only nullable shape.
                 emitMaybeCoercion(value, containerTypeArgs[variableDecl.name.value]?.firstOrNull())
             } else {
                 emitCoercedTraitValue(value, typeName)
             }
             pendingArrayElementType = previousElem
-            // `b: Pet = a` copies a reference we do not own; without a retain
+            // `b: Pet { a }` copies a reference we do not own; without a retain
             // both names would release the same object.
             if (userClassNames.contains(typeName) && isBorrowedRef(value)) {
                 buffer.appendLine(";")

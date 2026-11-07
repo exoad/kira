@@ -39,8 +39,11 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     /** The expressions written inside parentheses, which the AST does not keep. */
     val astParenthesized: MutableSet<ASTNode> = Collections.newSetFromMap(IdentityHashMap())
 
-    /** Declarations written `x: T = T { .. }` whose repeated type can be dropped (`x: T { .. }`), in source order. */
-    val astDeclRepeats: MutableList<DeclRepeat> = mutableListOf()
+    /** Declarations written with the removed `= value` ([DeclEquals]), in source order; filled only when [lenientDeclEquals]. */
+    val astDeclEquals: MutableList<DeclEquals> = mutableListOf()
+
+    /** Set by the rewrite tool: the parser notes each removed `x: T = v` in [astDeclEquals] and goes on, where it refuses it. */
+    var lenientDeclEquals: Boolean = false
 
     /** The marker invocations on [node], with their arguments; empty when it has none. */
     fun <T : ASTNode> intrinsicInvocationsOf(node: T): List<IntrinsicExpr> {
@@ -155,9 +158,21 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     }
 }
 
+/** One text change on a line of the preprocessed content: the columns [startColumn] up to [endColumn] (1-based, exclusive) become [text]. */
+class DeclEdit(val line: Int, val startColumn: Int, val endColumn: Int, val text: String) {
+    /** [raw] (the line, or its raw twin: the columns before any comment agree) with the change made. */
+    fun applyTo(raw: String): String = raw.substring(0, startColumn - 1) + text + raw.substring(minOf(endColumn - 1, raw.length))
+}
+
 /**
- * One `x: T = T { .. }` the short form `x: T { .. }` says without the repeat: [decl] is the declaration ([type] its constructed type, [mutable] when written as `Mutable<type>`), and the
- * text from [startColumn] up to [endColumn] (1-based, on [line], a line of the preprocessed content) is the ` = T `
- * a rewrite replaces with one space.
+ * One declaration written with the removed `= value` (`x: T = v`, `NAME: T = T { .. }`): [decl] is it, [local] its name,
+ * and [edits] (all on lines of the preprocessed content) rewrite it to braces (`x: T { v }`, `NAME: T { .. }`).
  */
-class DeclRepeat(val decl: ASTNode, val local: String, val type: String, val mutable: Boolean, val line: Int, val startColumn: Int, val endColumn: Int)
+class DeclEquals(val decl: ASTNode, val local: String, val firstLine: Int, val lastLine: Int, val edits: List<DeclEdit>) {
+    /** The declaration's lines of [lines] with its edits applied, joined at the newline. */
+    fun applied(lines: List<String>): String {
+        val out = lines.toMutableList()
+        for (e in edits.sortedWith(compareByDescending<DeclEdit> { it.line }.thenByDescending { it.startColumn })) out[e.line - 1] = e.applyTo(out[e.line - 1])
+        return out.subList(firstLine - 1, lastLine).joinToString("\n")
+    }
+}

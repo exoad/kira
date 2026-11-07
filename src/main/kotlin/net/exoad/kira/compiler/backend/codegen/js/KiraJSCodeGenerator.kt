@@ -1435,7 +1435,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {
-        // A primitive's block is its one value (typed as `x: T = value` is); a user type of that name is built as any class.
+        // A primitive's block is its one value (typed as `x: T { value }` is); a user type of that name is built as any class.
         if (objectInitExpr is PrimInitExpr && !userClassNames.contains(typeNameOf(objectInitExpr.typeName))) {
             objectInitExpr.value.accept(this)
             return
@@ -1629,7 +1629,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 if (value is ObjectInitExpr && value.positionalArgs.isEmpty() && isCollectionType(typeName)) {
                     emitEmptyContainerFactory(baseTypeNameOf(value.typeName))
                 } else if (typeName == "Maybe" && !producesMaybe(value)) {
-                    // `p: Maybe<T> = null` -> kira_none(); any other value is the
+                    // `p: Maybe<T> { null }` -> kira_none(); any other value is the
                     // present case. Mirrors the C backend so null safety behaves
                     // the same on both targets.
                     if (isNullValue(value)) {

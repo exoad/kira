@@ -29,7 +29,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * project.kira, a project's one file: `PROJECT: Project = Project { } with { ... }`. It is Kira,
+ * project.kira, a project's one file: `PROJECT: Project { } with { ... }`. It is Kira,
  * read by the compiler's own lexer and parser; [parse] evaluates that value (strings, true/false,
  * @listOf, @mapOf, `T { }` and `with`) into a [Project], and [check] types the file against the
  * stdlib's `kira:config`, as any code is typed.
@@ -113,7 +113,7 @@ object ProjectFile {
         val project = decls.singleOrNull()?.takeIf(::isProject) as? VariableDecl
         val init = project?.value
         if (project == null || init == null) {
-            refuse(ctx, decls.firstOrNull { !isProject(it) }, "$FILE holds one declaration, 'PROJECT: Project = Project { } with { ... }', and nothing else.")
+            refuse(ctx, decls.firstOrNull { !isProject(it) }, "$FILE holds one declaration, 'PROJECT: Project { } with { ... }', and nothing else.")
         }
         return value(ctx, init) as? Obj ?: refuse(ctx, init, "PROJECT is a Project: 'Project { } with { ... }'.")
     }

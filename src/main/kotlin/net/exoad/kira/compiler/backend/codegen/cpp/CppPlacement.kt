@@ -522,7 +522,7 @@ class CppPlacement(private val ctx: CppEmitContextImpl) {
                     when {
                         c is FnSymbol && c in hoisted -> item(c, ItemKind.PROTO)
                         // A signature needs only the forward declaration; a default argument that
-                        // constructs the type (`p: Pt = Pt {}`), or calls something returning it by
+                        // constructs the type (`p: Pt {}`), or calls something returning it by
                         // value, is checked where it is declared and needs the definition.
                         c is ClassSymbol || c is TraitSymbol -> if (c in constructed(s)) item(c, ItemKind.DECL) else null
                         else -> item(c, ItemKind.DECL)

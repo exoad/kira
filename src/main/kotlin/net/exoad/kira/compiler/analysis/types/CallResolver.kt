@@ -1127,7 +1127,7 @@ internal class CallResolver(private val c: PhaseC) {
             return bail()
         }
         if (t.prim != null || t == KType.Str) {
-            // A primitive's block is its one value, typed as `x: T = value` types it (no implicit zero value).
+            // A primitive's block is its one value, typed as `x: T { value }` types it (no implicit zero value).
             if (e is PrimInitExpr) {
                 c.exprs.check(e.value, t, ctx, scope, "${t.display()} { }")
                 return t

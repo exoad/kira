@@ -320,7 +320,7 @@ class KiraParser private constructor(
                         Token.Type.S_COLON -> {
                             when (peek().type) {
                                 Token.Type.S_EQUAL -> {
-                                    append("Use ':' for type annotations, not '='. Syntax: name: Type = value")
+                                    append("Use ':' for type annotations, not '='. Syntax: name: Type { value }")
                                 }
                                 // `fx name(params): Ret` is the pre-migration form; point at
                                 // the colon-binds-the-name shape instead of the generic hint.
@@ -890,17 +890,28 @@ class KiraParser private constructor(
         name.isNotEmpty() && name[0].isUpperCase() && !name.contains(Symbols.UNDERSCORE.rep) &&
             (name.any { it.isLowerCase() } || name.drop(1).all { it.isDigit() })
 
+    /**
+     * At the `{` after `Name: T` of a PascalCase name: whether it holds a value on its line (`N: Size { 4 }`, `A: V2 { V2 { 1 } }`)
+     * where a type's body would hold members: a value starts on the brace's line, and is no `}`, modifier, `name:` or declaration marker.
+     */
+    private fun holdsValueInBraces(): Boolean {
+        if (!at(Token.Type.S_OPEN_BRACE) || startsOnNewLine()) return false
+        val first = peek(1)
+        if (first.type == Token.Type.S_CLOSE_BRACE || first.type == Token.Type.K_INITIALLY || first.content == "finally" || first.canonicalLocation.lineNumber != peek().canonicalLocation.lineNumber || opensMembers()) return false
+        return !(first.type == Token.Type.INTRINSIC_IDENTIFIER && IntrinsicRegistry.isDeclMarker(first.content.removePrefix("@")))
+    }
+
     /** `c: Cfg { }` or `URL: Any { }`: a body or a parent list after a name no type has. */
     private fun refuseValueShapedType(name: Identifier, first: Type, origin: SourcePosition): Nothing {
         val identity = net.exoad.kira.compiler.analysis.types.KiraUnparser.type(first)
         val message = if (name.value.first().isUpperCase()) {
             val pascal = name.value.split(Symbols.UNDERSCORE.rep).joinToString("") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
             "'${name.value}' is a constant's name (capitals), so it declares no type: a type's name is PascalCase, " +
-                "with a lowercase letter${if (pascal.any { it.isLowerCase() }) " ('$pascal')" else ""}, and a constant takes '=' " +
-                "('${name.value}: $identity = ...')."
+                "with a lowercase letter${if (pascal.any { it.isLowerCase() }) " ('$pascal')" else ""}, and a constant takes braces " +
+                "('${name.value}: $identity { value }')."
         } else {
             "'${name.value}: $identity { }' declares nothing: '${name.value}' is a value's name (a type's is PascalCase). " +
-                "A value takes '=' ('${name.value}: $identity = ...'), and a function its parameters first " +
+                "A value takes braces ('${name.value}: $identity { value }'), and a function its parameters first " +
                 "('${name.value}: () $identity { }')."
         }
         Diagnostics.panic("parse.type.name", message, location = origin, selectorLength = name.value.length, context = context)
@@ -957,8 +968,10 @@ class KiraParser private constructor(
 
     /**
      * One declaration, `modifiers name: identity`: a function (`name: (a: T) R { }`, body-less a
-     * slot), a variable of function type (`= value` after the signature), a type (`Name: P1, P2
-     * { }`, body-less for the host's), or a variable, field or slot (`name: T`, `name: T = v`).
+     * slot), a type (`Name: P1, P2 { }`, body-less for the host's), or a variable, field or slot
+     * (`name: T`, `name: T { v }`: the braces hold the value, or the construction's arguments).
+     * A variable of function type is `name: Fx<T1<A>, R> { f }`: after a signature a `{` is a body.
+     * The old `name: T = v` is refused with the braces form ([refuseOldInit]).
      */
     private fun parseDeclaration(modifiers: Map<Modifier, SourcePosition>?): Expr {
         val origin = here()
@@ -981,11 +994,12 @@ class KiraParser private constructor(
         val ident = name as Identifier
         val typeStart = buffer.createCheckpoint().position
         val written = parseType()
-        if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL)) {
+        val typeLast = buffer.previous()
+        if (isTypeName(ident.value) && !at(Token.Type.S_EQUAL) && !holdsValueInBraces()) {
             refuseMut(modifiers, MUT_TYPE)
             return parseTypeDecl(origin, ident, generics, written, modifiers, marks)
         }
-        // `x: T { .. }` with the brace on the type's line is `x: T = T { .. }`; a brace that starts a line is refused as before.
+        // `x: T { .. }` with the brace on the type's line holds a lone value, or the arguments that construct T; a brace that starts a line is refused as before.
         val shortForm = at(Token.Type.S_OPEN_BRACE) && !startsOnNewLine() && !opensMembers()
         if (at(Token.Type.S_COMMA) || (at(Token.Type.S_OPEN_BRACE) && !shortForm)) {
             refuseValueShapedType(ident, written, origin)
@@ -1006,21 +1020,22 @@ class KiraParser private constructor(
         }
         expectModifiers(modifiers, WrappingContext.VARIABLE)
         var value: Expr? = null
-        var repeatFrom: Token? = null
+        var oldEqual: Token? = null
         if (shortForm) {
-            // The block constructs the type again, as a node of its own (for `Mutable<U>`, U).
+            // The braces hold the value (`x: Foo { f() }` is `x: Foo = f()`, for `Mutable<U>` a U), or, with a name or several values, the construction's arguments.
             val again = reparseType(typeStart).let { mutableInner(it) ?: it }
-            value = parseObjectInitBody(context.astOrigins[again] ?: origin, again)
+            val body = parseObjectInitBody(context.astOrigins[again] ?: origin, again, declaration = true)
+            value = if (body.positionalArgs.size == 1 && body.namedArgs.isEmpty()) body.positionalArgs[0] else body
             while (at(Token.Type.K_WITH)) value = parseWithExpr(value!!)
         } else if (at(Token.Type.S_EQUAL)) {
-            repeatFrom = buffer.previous()
+            oldEqual = peek()
             advancePointer()
             value = parseExpr()
         }
         val decl = VariableDecl(ident, first, value, modifiers?.keys?.toList() ?: emptyList())
         attachIntrinsics(decl)
         putOrigin(decl, origin)
-        if (repeatFrom != null) noteDeclRepeat(decl, ident, first, repeatFrom)
+        if (oldEqual != null) refuseOldInit(decl, ident, first, typeLast, oldEqual, null)
         return decl
     }
 
@@ -1037,13 +1052,17 @@ class KiraParser private constructor(
         val returnType = parseType()
         if (at(Token.Type.S_EQUAL) && name is Identifier && name !is IntrinsicExpr) {
             // `cb: (x: Int32) Void = value`: a variable whose type is the function type.
-            refuseMut(modifier, "$MUT_BINDING, here 'name: Mutable<(...) R> = value'")
+            refuseMut(modifier, "$MUT_BINDING, here 'name: Mutable<Fx<..>> { value }'")
             expectModifiers(modifier, WrappingContext.VARIABLE)
             val type = functionTypeOf(params, returnType, signatureAt)
+            val typeLast = buffer.previous()
+            val eq = peek()
             advancePointer()
             val decl = VariableDecl(name, type, parseExpr(), modifier?.keys?.toList() ?: emptyList())
             attachIntrinsics(decl)
-            return putOrigin(decl, origin)
+            putOrigin(decl, origin)
+            refuseOldInit(decl, name, type, typeLast, eq, signatureAt)
+            return decl
         }
         refuseMut(modifier, MUT_FUNCTION)
         expectModifiers(modifier, WrappingContext.FUNCTION)
@@ -1280,7 +1299,7 @@ class KiraParser private constructor(
                 if (!startsDeclaration()) {
                     Diagnostics.panic(
                         "KiraParser::parseTypeBody",
-                        "A type body holds fields and functions: 'name: Type', 'name: Type = value' or 'name: (a: T) R { }'.",
+                        "A type body holds fields and functions: 'name: Type', 'name: Type { value }' or 'name: (a: T) R { }'.",
                         location = peek().canonicalLocation,
                         selectorLength = max(1, peek().content.length),
                         context = context
@@ -2964,7 +2983,7 @@ class KiraParser private constructor(
     }
 
     /** The `{ .. }` of a construction of [typeName], at the pointer. */
-    private fun parseObjectInitBody(origin: SourcePosition, typeName: Type): ObjectInitExpr {
+    private fun parseObjectInitBody(origin: SourcePosition, typeName: Type, declaration: Boolean = false): ObjectInitExpr {
         braceTokens.add(peek())
         expectThenAdvance(Token.Type.S_OPEN_BRACE)
         val args = mutableListOf<Expr>()
@@ -2990,10 +3009,12 @@ class KiraParser private constructor(
                             selectorLength = max(1, startToken.content.length)
                         )
                     }
-                    args.add(parseExpr().also { refuseTestInBuild(it, "A construction", "give a field with 'x = value'") })
+                    args.add(parseExpr())
                 }
             }
         }
+        // A declaration's lone value is a value, so `ok: Bool { a == b }` compares; a construction's argument that looks like a test is refused.
+        if (!(declaration && args.size == 1 && named.isEmpty())) args.forEach { refuseTestInBuild(it, "A construction", "give a field with 'x = value'") }
         expectThenAdvance(Token.Type.S_CLOSE_BRACE)
         val node = if (args.size == 1 && named.isEmpty() && isPrimitiveName(typeName)) PrimInitExpr(typeName, args[0]) else ObjectInitExpr(typeName, args, named)
         return putOrigin(node.also { braceOf[it] = braceTokens.removeAt(braceTokens.lastIndex) }, origin)
@@ -3011,23 +3032,80 @@ class KiraParser private constructor(
     private val braceTokens = ArrayList<Token>()
 
     /**
-     * Notes `x: T = T { .. }` (or `x: Mutable<U> = U { .. }`, a `with` after it allowed) for the rules.decl.repeat hint
-     * and its rewrite, when the text between the type and the `{` is only ` = T ` on one line.
+     * The removed `x: T = v` (a declaration's `=`): read in full, then refused with the braces form it becomes, or, for
+     * the rewrite tool ([SourceContext.lenientDeclEquals]), noted in [SourceContext.astDeclEquals] with its edits.
+     * [typeLast] is the declared type's last token, [equal] the `=`, [signatureAt] the `(` of a function type's signature.
      */
-    private fun noteDeclRepeat(decl: VariableDecl, name: Identifier, declared: Type, equalFrom: Token) {
+    private fun refuseOldInit(decl: VariableDecl, name: Identifier, declared: Type, typeLast: Token?, equal: Token, signatureAt: SourcePosition?) {
+        val lines = context.content.split("\n")
+        val edits = ArrayList<net.exoad.kira.source.DeclEdit>()
+        val eqLine = equal.canonicalLocation.lineNumber
+        val eqCol = equal.canonicalLocation.column
+        // The value ends where the next token starts, less the blanks before it.
+        // (An intrinsic's token starts after its '@'.)
+        var end = minOf(peek().pointerPosition - if (at(Token.Type.INTRINSIC_IDENTIFIER)) 1 else 0, context.content.length)
+        while (end > equal.pointerPosition + 1 && context.content[end - 1].isWhitespace()) end--
+        val (endLine, endCol) = lineAndColumn(lines, end)
         var init = decl.value
         while (init is WithExpr) init = init.receiver
-        val built = (init as? ObjectInitExpr) ?: return
+        val built = init as? ObjectInitExpr
+        // (A name that reads as a type's keeps its value in braces of its own: `N0: Node { }` would declare a type.)
+        val repeat = built != null && signatureAt == null && typeLast != null && !isTypeName(name.value) && repeatedType(built, declared, typeLast, equal, lines)
+        if (repeat) {
+            // `x: T = T { .. }` is `x: T { .. }`: the text between the type and the `{` goes.
+            val start = typeLast!!.canonicalLocation.column + typeLast.content.length
+            edits.add(net.exoad.kira.source.DeclEdit(eqLine, start, braceOf[built!!]!!.canonicalLocation.column, " "))
+        } else {
+            if (signatureAt != null && typeLast != null && typeLast.canonicalLocation.lineNumber == signatureAt.lineNumber) {
+                // After a signature a `{` is a body, so the variable's function type is spelled `Fx<..>`.
+                edits.add(net.exoad.kira.source.DeclEdit(signatureAt.lineNumber, signatureAt.column, typeLast.canonicalLocation.column + typeLast.content.length, net.exoad.kira.compiler.analysis.types.KiraUnparser.type(declared)))
+            }
+            edits.add(net.exoad.kira.source.DeclEdit(eqLine, eqCol, eqCol + 1, "{"))
+            edits.add(net.exoad.kira.source.DeclEdit(endLine, endCol, endCol, " }"))
+        }
+        val record = net.exoad.kira.source.DeclEquals(decl, name.value, context.astOrigins[decl]?.lineNumber ?: eqLine, endLine, edits)
+        if (context.lenientDeclEquals) {
+            // The file is parsed twice when it nests types: a declaration is noted once.
+            val same = { a: net.exoad.kira.source.DeclEquals -> a.local == record.local && a.firstLine == record.firstLine && a.lastLine == record.lastLine &&
+                a.edits.map { listOf(it.line, it.startColumn, it.endColumn, it.text) } == record.edits.map { listOf(it.line, it.startColumn, it.endColumn, it.text) } }
+            if (context.astDeclEquals.none(same)) context.astDeclEquals.add(record)
+            return
+        }
+        val whole = record.applied(lines).trim()
+        val shown = whole.lineSequence().first().let { if (whole.lines().size > 1) "$it ..." else it }
+        Diagnostics.panic(
+            "parse.decl.equals",
+            "A declaration initializes with braces, not '=': write '$shown'." +
+                " '=' is for naming a field or an argument inside the braces or a call ('T { x = 1 }'), and for changing a Mutable.",
+            location = context.astOrigins[decl] ?: equal.canonicalLocation,
+            selectorLength = name.value.length,
+            context = context
+        )
+    }
+
+    /** Whether `x: T = T { .. }` can drop its `= T`: the same type text, only ` = T ` between type and `{` on one line, not a lone value of a type that is no primitive. */
+    private fun repeatedType(built: ObjectInitExpr, declared: Type, typeLast: Token, equal: Token, lines: List<String>): Boolean {
         val declaredText = net.exoad.kira.compiler.analysis.types.KiraUnparser.type(declared)
-        if (declaredText != net.exoad.kira.compiler.analysis.types.KiraUnparser.type(built.typeName)) return
-        val brace = braceOf[built] ?: return
-        val line = equalFrom.canonicalLocation.lineNumber
-        if (brace.canonicalLocation.lineNumber != line) return
-        val start = equalFrom.canonicalLocation.column + equalFrom.content.length
+        if (declaredText != net.exoad.kira.compiler.analysis.types.KiraUnparser.type(built.typeName)) return false
+        // Inside the braces a lone value is the value (`x: T { v }`): a construction from one value keeps its own braces.
+        if (built.positionalArgs.size == 1 && built.namedArgs.isEmpty() && built !is PrimInitExpr) return false
+        val brace = braceOf[built] ?: return false
+        val line = typeLast.canonicalLocation.lineNumber
+        if (brace.canonicalLocation.lineNumber != line || equal.canonicalLocation.lineNumber != line) return false
+        val start = typeLast.canonicalLocation.column + typeLast.content.length
         val end = brace.canonicalLocation.column
-        val text = context.content.lines().getOrNull(line - 1)?.takeIf { it.length >= end - 1 }?.substring(start - 1, end - 1) ?: return
-        if (!Regex("[ \t]*=[ \t]*[A-Za-z0-9_<>, ]+[ \t]*").matches(text)) return
-        context.astDeclRepeats.add(net.exoad.kira.source.DeclRepeat(decl, name.value, declaredText, decl.modifiers.contains(net.exoad.kira.compiler.frontend.parser.ast.elements.Modifier.MUTABLE), line, start, end))
+        val text = lines.getOrNull(line - 1)?.takeIf { it.length >= end - 1 }?.substring(start - 1, end - 1) ?: return false
+        return Regex("[ \t]*=[ \t]*[A-Za-z0-9_<>, ]+[ \t]*").matches(text)
+    }
+
+    /** The 1-based line and column of [offset] in [lines] (the content split at its newlines). */
+    private fun lineAndColumn(lines: List<String>, offset: Int): Pair<Int, Int> {
+        var rest = offset
+        for ((i, l) in lines.withIndex()) {
+            if (rest <= l.length) return (i + 1) to (rest + 1)
+            rest -= l.length + 1
+        }
+        return lines.size to (lines.last().length + 1)
     }
 
     private fun parsePrimaryWithIndexing(): Expr {

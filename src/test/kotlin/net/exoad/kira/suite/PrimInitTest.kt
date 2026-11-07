@@ -1,7 +1,7 @@
 package net.exoad.kira.suite
 
 import net.exoad.kira.TestCompileSupport
-import net.exoad.kira.compiler.fix.DeclRepeatFix
+import net.exoad.kira.compiler.fix.DeclEqualsFix
 import net.exoad.kira.cpp.decls.DeclTestSupport
 import net.exoad.kira.py.PyTestSupport
 import net.exoad.kira.types.TyperTestSupport
@@ -32,9 +32,9 @@ class PrimInitTest {
     fun everyPrimitiveTypesCleanInEveryPlace() {
         for ((t, v) in prims) {
             expectNoErrors(TyperTestSupport.snippet(src("x: $t { $v }")))
-            expectNoErrors(TyperTestSupport.snippet(src("x: $t = $t { $v }")))
+            expectNoErrors(TyperTestSupport.snippet(src("x: $t { $t { $v } }")))
             expectNoErrors(TyperTestSupport.snippet(src("m: Mutable<$t> { $v }")))
-            expectNoErrors(TyperTestSupport.snippet("g: (v: $t) $t {\n    v\n}\nmain: () Void {\n    y: $t = g($t { $v })\n}"))
+            expectNoErrors(TyperTestSupport.snippet("g: (v: $t) $t {\n    v\n}\nmain: () Void {\n    y: $t { g($t { $v }) }\n}"))
         }
     }
 
@@ -42,13 +42,13 @@ class PrimInitTest {
     fun py_cpp_c_andJsEmitTheSameForTheBlockAsForTheEqualsForm() {
         for ((t, v) in prims) {
             val block = src("x: $t { $v }")
-            val equals = src("x: $t = $v")
+            val equals = src("x: $t { $t { $v } }")
             val pyOf = { x: String -> PyTestSupport.emit(x).let { it.text to it.errors.size } }
             assertEquals(pyOf(equals).first, pyOf(block).first, "py $t")
             assertEquals(pyOf(equals).second, pyOf(block).second, "py errors $t")
             val cppOf = { s: String -> DeclTestSupport.emit(DeclTestSupport.module("test:main", s)).source("test:main") }
             assertEquals(cppOf(equals), cppOf(block), "cpp $t")
-            val long = src("x: $t = $t { $v }")
+            val long = src("x: $t { ($v) }")
             assertEquals(pyOf(equals).first, pyOf(long).first, "py long $t")
             assertEquals(cppOf(equals), cppOf(long), "cpp long $t")
             val cOf = { s: String -> TestCompileSupport.transpileSnippetToC(TestCompileSupport.wrapModule("test:main", s), "test/main.kira", false) }.let { f -> { s: String -> runCatching { f(s) }.getOrElse { "refused: ${it.message}" } } }
@@ -60,8 +60,8 @@ class PrimInitTest {
 
     @Test
     fun inAnExpressionItIsTheValue() {
-        val body = "g: (v: Int32) Int32 {\n    v + 1\n}\nmain: () Void {\n    y: Int32 = g(Int32 { 3 }) + Int32 { 4 }\n}"
-        val plain = "g: (v: Int32) Int32 {\n    v + 1\n}\nmain: () Void {\n    y: Int32 = g(3) + 4\n}"
+        val body = "g: (v: Int32) Int32 {\n    v + 1\n}\nmain: () Void {\n    y: Int32 { g(Int32 { 3 }) + Int32 { 4 } }\n}"
+        val plain = "g: (v: Int32) Int32 {\n    v + 1\n}\nmain: () Void {\n    y: Int32 { g(3) + 4 }\n}"
         expectNoErrors(TyperTestSupport.snippet(body))
         assertEquals(PyTestSupport.emit(plain).python(), PyTestSupport.emit(body).python())
     }
@@ -70,8 +70,8 @@ class PrimInitTest {
     fun theBlockFixesTheTypeWhereTheBareLiteralWouldTakeTheContexts() {
         // `3` takes Int64 from the parameter; `Int32 { 3 }` is an Int32 and the parameter refuses it.
         val take = "g: (v: Int64) Int64 {\n    v\n}\nmain: () Void {\n"
-        expectNoErrors(TyperTestSupport.snippet("${take}    y: Int64 = g(3)\n}"))
-        assertTrue(TyperTestSupport.snippet("${take}    y: Int64 = g(Int32 { 3 })\n}").diagnostics.any { it.severity.name == "ERROR" })
+        expectNoErrors(TyperTestSupport.snippet("${take}    y: Int64 { g(3) }\n}"))
+        assertTrue(TyperTestSupport.snippet("${take}    y: Int64 { g(Int32 { 3 }) }\n}").diagnostics.any { it.severity.name == "ERROR" })
         assertTrue(errors("    y: Int64 { Int32 { 3 } }").isNotEmpty())
     }
 
@@ -79,7 +79,7 @@ class PrimInitTest {
 
     private fun sameRefusal(t: String, v: String) {
         val block = codes(src("x: $t { $v }").substringAfter("{\n").substringBeforeLast("\n}"))
-        val equals = codes(src("x: $t = $v").substringAfter("{\n").substringBeforeLast("\n}"))
+        val equals = codes(src("x: $t { $t { $v } }").substringAfter("{\n").substringBeforeLast("\n}"))
         assertEquals(equals.filter { !it.startsWith("rules.") }, block.filter { !it.startsWith("rules.") }, "$t { $v }")
         assertTrue(equals.any { it.startsWith("types.") }, "the equals form must refuse $t = $v for this to mean anything: $equals")
     }
@@ -121,13 +121,13 @@ class PrimInitTest {
 
     @Test
     fun aVariableOfAnotherTypeIsRefusedAsTheEqualsFormRefusesIt() {
-        val pre = "    a: Int32 = 1\n"
+        val pre = "    a: Int32 { 1 }\n"
         assertEquals(
-            codes("$pre    b: Int64 = a").filter { it.startsWith("types.") },
+            codes("$pre    b: Int64 { a }").filter { it.startsWith("types.") },
             codes("$pre    b: Int64 { a }").filter { it.startsWith("types.") },
         )
         assertTrue(codes("$pre    b: Int64 { a }").any { it.startsWith("types.") })
-        expectNoErrors(TyperTestSupport.snippet(src("a: Int32 = 1\n    b: Int32 { a }")))
+        expectNoErrors(TyperTestSupport.snippet(src("a: Int32 { 1 }\n    b: Int32 { a }")))
     }
 
     // ---- no implicit zero value --------------------------------------------------------------------------
@@ -136,7 +136,7 @@ class PrimInitTest {
     fun anEmptyBlockAndSeveralValuesAreRefusedWithTheArityMessage() {
         for ((t, s) in listOf(
             "Int32" to "x: Int32 { }", "Str" to "x: Str { }", "Bool" to "x: Bool { }", "Float64" to "x: Float64 { }",
-            "Int32" to "x: Int32 { 1, 2 }", "Str" to "x: Str { \"a\", \"b\" }", "Int32" to "x: Int32 = Int32 { }",
+            "Int32" to "x: Int32 { 1, 2 }", "Str" to "x: Str { \"a\", \"b\" }", "Int32" to "x: Int32 { }",
             "Int8" to "x: Int8 { value = 1 }",
         )) {
             val e = TyperTestSupport.snippet(src(s)).diagnostics.single { it.code == "types.init.primitive-arity" }
@@ -148,8 +148,8 @@ class PrimInitTest {
 
     @Test
     fun aModuleConstantFromABlockIsAsConstantAsTheEqualsForm() {
-        val block = TyperTestSupport.snippet("LIMIT: Int32 { 5 }\nWIDTH: Int32 { LIMIT * 2 }\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)\n}")
-        val equals = TyperTestSupport.snippet("LIMIT: Int32 = 5\nWIDTH: Int32 = LIMIT * 2\nmain: () Void {\n    a: Arr<Int32, WIDTH> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)\n}")
+        val block = TyperTestSupport.snippet("LIMIT: Int32 { 5 }\nWIDTH: Int32 { LIMIT * 2 }\nmain: () Void {\n    a: Arr<Int32, WIDTH> { @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) }\n}")
+        val equals = TyperTestSupport.snippet("LIMIT: Int32 { 5 }\nWIDTH: Int32 { LIMIT * 2 }\nmain: () Void {\n    a: Arr<Int32, WIDTH> { @arrOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) }\n}")
         expectNoErrors(equals)
         expectNoErrors(block)
         assertEquals(equals.diagnostics.map { it.code }, block.diagnostics.map { it.code })
@@ -158,7 +158,7 @@ class PrimInitTest {
     @Test
     fun aModuleConstantFromARunTimeValueIsRefusedAsTheEqualsFormRefusesIt() {
         val pre = "now: () Int32 {\n    1\n}\n"
-        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = now()\nmain: () Void {\n}").diagnostics.map { it.code }
+        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 { now() }\nmain: () Void {\n}").diagnostics.map { it.code }
         val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { now() }\nmain: () Void {\n}").diagnostics.map { it.code }
         assertTrue(equals.contains("types.const.not-constant"), equals.toString())
         assertEquals(equals, block)
@@ -166,8 +166,8 @@ class PrimInitTest {
 
     @Test
     fun aModuleConstantFromARunTimeGlobalIsRefusedAsTheEqualsFormRefusesIt() {
-        val pre = "counter: Mutable<Int32> = 1\n"
-        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 = counter\nmain: () Void {\n}").diagnostics.map { it.code }
+        val pre = "counter: Mutable<Int32> { 1 }\n"
+        val equals = TyperTestSupport.snippet(pre + "LIMIT: Int32 { counter }\nmain: () Void {\n}").diagnostics.map { it.code }
         val block = TyperTestSupport.snippet(pre + "LIMIT: Int32 { counter }\nmain: () Void {\n}").diagnostics.map { it.code }
         assertTrue(equals.any { it.startsWith("types.") }, equals.toString())
         assertEquals(equals, block)
@@ -177,17 +177,15 @@ class PrimInitTest {
     fun aMutableBlockIsAMutableOfThePrimitive() {
         expectNoErrors(TyperTestSupport.snippet(src("m: Mutable<Int32> { 0 }\n    m += 1")))
         assertEquals(
-            PyTestSupport.emit(src("m: Mutable<Int32> = 0\n    m += 1")).python(),
+            PyTestSupport.emit(src("m: Mutable<Int32> { 0 }\n    m += 1")).python(),
             PyTestSupport.emit(src("m: Mutable<Int32> { 0 }\n    m += 1")).python(),
         )
     }
 
     @Test
-    fun theHintAndTheRewriteCoverAPrimitiveLikeAnyType() {
-        val (out, n) = DeclRepeatFix.rewrite("main: () Void {\n    a: Int32 = Int32 { 0 }\n    m: Mutable<Float64> = Float64 { 1.5 }\n    s: Str = Str { \"hi\" }\n}\n")
-        assertEquals(3, n)
-        assertEquals("main: () Void {\n    a: Int32 { 0 }\n    m: Mutable<Float64> { 1.5 }\n    s: Str { \"hi\" }\n}\n", out)
-        val p = TyperTestSupport.snippet(src("a: Int32 = Int32 { 0 }"), options = net.exoad.kira.compiler.analysis.types.TyperOptions(hintDeclRepeat = true))
-        assertEquals(1, p.diagnostics.count { it.code == "rules.decl.repeat" })
+    fun theRewriteCoversAPrimitiveLikeAnyType() {
+        val (out, n) = DeclEqualsFix.rewrite("main: () Void {\n    a: Int32 = Int32 { 0 }\n    m: Mutable<Float64> = Float64 { 1.5 }\n    s: Str = Str { \"hi\" }\n    t: Str = \"x\"\n}\n")
+        assertEquals(4, n)
+        assertEquals("main: () Void {\n    a: Int32 { 0 }\n    m: Mutable<Float64> { 1.5 }\n    s: Str { \"hi\" }\n    t: Str { \"x\" }\n}\n", out)
     }
 }

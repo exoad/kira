@@ -36,5 +36,5 @@ cd src/test/resources/test-projects/01-hello && kira --out /tmp/hello   # out.ki
 - Rebuild with `./gradlew installDist` after any codegen change, or the CLI
   keeps using the stale compiler.
 - `./gradlew run` compiles the `test_kira/` smoke project.
-- A project is configured by `project.kira` alone: `PROJECT: Project = Project { } with { ... }`,
+- A project is configured by `project.kira` alone: `PROJECT: Project { } with { ... }`,
   typed against the stdlib's `kira:config`.
