@@ -45,7 +45,7 @@ class CodegenClassAndTraitTest {
             }
 
             main: () Void {
-                friend: Pet = Pet { "Mochi" }
+                friend: Pet { Pet { "Mochi" } }
                 trace(friend.name)
                 trace(friend.speak())
             }
@@ -65,7 +65,7 @@ class CodegenClassAndTraitTest {
             }
 
             main: () Void {
-                friend: Pet = Pet { "Mochi" }
+                friend: Pet { Pet { "Mochi" } }
                 trace(friend.name)
             }
             """
@@ -95,8 +95,8 @@ class CodegenClassAndTraitTest {
             }
 
             main: () Void {
-                d: Dog = Dog { "Rex" }
-                s: Speaker = d
+                d: Dog { Dog { "Rex" } }
+                s: Speaker { d }
                 announce(s)
             }
             """

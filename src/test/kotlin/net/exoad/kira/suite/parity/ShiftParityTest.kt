@@ -15,7 +15,7 @@ class ShiftParityTest {
                 trace(1 << 4)
                 trace(256 >> 2)
                 trace(-16 >> 2)
-                x: Mutable<Int32> = 1
+                x: Mutable<Int32> { 1 }
                 x <<= 1
                 trace(x)
             }
@@ -32,7 +32,7 @@ class ShiftParityTest {
             main: () Void {
                 trace(-16 >>> 28)
                 trace(-16 >>> 2)
-                x: Mutable<Int32> = -16
+                x: Mutable<Int32> { -16 }
                 x >>>= 28
                 trace(x)
             }
@@ -45,7 +45,7 @@ class ShiftParityTest {
         assertCPrints("15\n1152921504606846975\n") {
             """
             main: () Void {
-                y: Int64 = -1
+                y: Int64 { -1 }
                 trace(y >>> 60)
                 trace(y >>> 4)
             }

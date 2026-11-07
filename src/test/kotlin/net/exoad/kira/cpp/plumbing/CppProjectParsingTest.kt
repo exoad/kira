@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 
 /** project.kira's `cpp` as the C++ backend reads it, and what Project.issues says of it. */
 class CppProjectParsingTest {
-    private fun project(body: String) = "PROJECT: Project = Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
+    private fun project(body: String) = "PROJECT: Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
 
     /** bibo's old kira.yaml (design 8.3) as project.kira text: its excludes, eight namespaces and globs, comments shortened.
      * bibo's own project.kira (e5951c3) names its globs by dotted module name and lists no namespace. */

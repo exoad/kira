@@ -1,4 +1,4 @@
-pub @_const val PERIOD_TICKS: Int32 = 4
+pub @_const val PERIOD_TICKS: Int32 { 4 }
 
 pub isOn: (tick: Int32) Bool
 {

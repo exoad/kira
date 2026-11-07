@@ -4,8 +4,8 @@ kira.os as os
 // value (`with`), compared field by field, as a field, in a List, a Map and a Maybe, and returned anew.
 
 pub Seen: Struct {
-    pub last: Datagram = Datagram { }
-    pub ready: Maybe<Ready> = null
+    pub last: Datagram { }
+    pub ready: Maybe<Ready> { null }
 }
 
 pub made: (size: Size, host: Str) Datagram {
@@ -23,10 +23,10 @@ show: (d: Datagram) Void {
 }
 
 pub main: () Int32 {
-    d: Datagram = Datagram { 3, "10.0.0.2", 9 }
-    e: Mutable<Datagram> = d with {
+    d: Datagram { 3, "10.0.0.2", 9 }
+    e: Mutable<Datagram> { d with {
         port = 10
-    }
+    } }
     show(d)
     show(e)
     trace(d == e)
@@ -36,42 +36,42 @@ pub main: () Int32 {
     }
     trace(d == e)
 
-    r: Ready = Ready { }
+    r: Ready { }
     trace(r.handle)
     trace(r.events)
-    p: Ready = Ready { events = POLL_READ | POLL_ERROR }
+    p: Ready { events = POLL_READ | POLL_ERROR }
     trace(p.handle)
     trace(p.events)
 
-    s: Mutable<Seen> = Seen { }
+    s: Mutable<Seen> { }
     show(s.last)
     trace(s.ready.isNone())
     s = s with {
         last = d
         ready = p
     }
-    t: Seen = s with {
+    t: Seen { s with {
         last = bumped(last) with {
             port = 1
         }
-    }
+    } }
     show(s.last)
     show(t.last)
     trace(s.ready.unwrap() == p)
 
-    ds: Mutable<List<Datagram>> = @listOf(d, made(1, "a"))
-    kept: List<Datagram> = List<Datagram> { values = ds.toArr() }
+    ds: Mutable<List<Datagram>> { @listOf(d, made(1, "a")) }
+    kept: List<Datagram> { values = ds.toArr() }
     ds.add(made(2, "b"))
     trace(kept.size())
     trace(ds.contains(Datagram { 1, "a", 0 }))
     trace(ds.contains(Datagram { 1, "a", 1 }))
     show(ds[2])
 
-    byHost: Mutable<Map<Str, Ready>> = Map<Str, Ready> { }
+    byHost: Mutable<Map<Str, Ready>> { }
     byHost["x"] = p
     trace(byHost.containsValue(Ready { -1, 5 }))
 
-    f: Mutable<Datagram> = made(5, "c")
+    f: Mutable<Datagram> { made(5, "c") }
     f = bumped(f)
     f = bumped(f)
     show(f)

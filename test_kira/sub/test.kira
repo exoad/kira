@@ -1,3 +1,3 @@
 pub TestType: Any {
-    pub a: Int32 = 0
+    pub a: Int32 { 0 }
 }

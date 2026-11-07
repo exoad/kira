@@ -10,7 +10,7 @@ class CallParityTest {
         // Any `_` used to panic the lexer. Constants and fields may carry them now.
         assertBothPrint("99\n5\n") {
             """
-            MODE_DRIVE: Int32 = 99
+            MODE_DRIVE: Int32 { 99 }
 
             Limits: Any {
                 pub MAX_X: Int32
@@ -18,7 +18,7 @@ class CallParityTest {
 
             main: () Void {
                 trace(MODE_DRIVE)
-                l: Limits = Limits { 5 }
+                l: Limits { Limits { 5 } }
                 trace(l.MAX_X)
             }
             """
@@ -48,7 +48,7 @@ class CallParityTest {
                 trace(sub(b = 3, a = 10))
                 trace(sub(10, b = 3))
                 trace(sub(a = 10, b = 3))
-                e: Esc = Esc { 0 }
+                e: Esc { Esc { 0 } }
                 e.set(scale = 2, v = 1)
                 trace(e.get())
                 trace(clamp(hi = 10.0, lo = 0.0, value = 15.0))

@@ -135,7 +135,7 @@ class ExternIntrinsicTest {
         assertRefused(
             """
             main: () Int32 {
-                @_extern(cpp = "probe::LOCAL") loc: Int32 = 3
+                @_extern(cpp = "probe::LOCAL") loc: Int32 { 3 }
                 loc
             }
             """,
@@ -144,7 +144,7 @@ class ExternIntrinsicTest {
         assertRefused(
             """
             pub @_extern(cpp = "bibo::Pt", header = "car.hxx") Pt: Struct {
-                pub @_extern(cpp = "X") x: Int32 = 0
+                pub @_extern(cpp = "X") x: Int32 { 0 }
             }
             """,
             "@_extern names a module-level constant; 'x' is declared inside a class or struct",
@@ -163,12 +163,12 @@ class ExternIntrinsicTest {
             }
 
             pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
-                pub x: Float32 = 0.0
-                pub y: Float32 = 0.0
+                pub x: Float32 { 0.0 }
+                pub y: Float32 { 0.0 }
             }
         """
-        TyperTestSupport.expectNoErrors(TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car = Car { }\n    v: Vec2 = Vec2 { }\n    0\n}"))
-        val withValues = TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car = Car { 1 }\n    0\n}")
+        TyperTestSupport.expectNoErrors(TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car { }\n    v: Vec2 { }\n    0\n}"))
+        val withValues = TyperTestSupport.snippet("$extern\n\nmain: () Int32 {\n    car: Car { Car { 1 } }\n    0\n}")
         assertTrue(withValues.diagnostics.any { it.message.contains("Car is made by the C/C++ side") }, withValues.diagnostics.map { it.message }.toString())
         val opaque = TyperTestSupport.snippet(
             """
@@ -176,7 +176,7 @@ class ExternIntrinsicTest {
             }
 
             main: () Int32 {
-                h: Handle = Handle { }
+                h: Handle { }
                 0
             }
             """
@@ -240,7 +240,7 @@ class ExternIntrinsicTest {
         val cases = listOf(
             "pub @_extern(c = \"INT_MAX\", header = \"limits.h\") IMAX: Int32" to "@_extern on the constant 'IMAX' reaches C++ only (--target cpp, design 7.2): the C backend takes @_extern on a free function",
             "pub @_extern(\"INT_MAX\") IMAX: Int32" to "@_extern on the constant 'IMAX' reaches C++ only",
-            "pub @_extern(cpp = \"ImVec2\", header = \"imgui.h\") Vec2: Struct { pub x: Float32 = 0.0 }" to "@_extern on the struct 'Vec2' reaches C++ only",
+            "pub @_extern(cpp = \"ImVec2\", header = \"imgui.h\") Vec2: Struct { pub x: Float32 { 0.0 } }" to "@_extern on the struct 'Vec2' reaches C++ only",
             "pub @_extern(cpp = \"bibo::Car\", header = \"car.hxx\") Car: Any { pub ok: () Bool }" to "@_extern on the class 'Car' reaches C++ only",
             "pub @_opaque @_extern(cpp = \"ImDrawList\", header = \"imgui.h\") DrawList: Any {\n    pub @_extern(cpp = \"VtxCount\") count: () Int32\n}" to "@_extern on the method 'count' reaches C++ only",
             // A free function whose marker names a C++ symbol and no C one: bound to its Kira name,

@@ -12,12 +12,12 @@ class ContainerParityTest {
         assertBothPrint("bob\n3\n1\n6\n") {
             """
             main: () Void {
-                names: Arr<Str> = @arrOf("ada", "bob")
+                names: Arr<Str> { @arrOf("ada", "bob") }
                 trace(names[1])
                 trace(names[0].length())
-                flags: Arr<Bool> = @arrOf(true, false)
+                flags: Arr<Bool> { @arrOf(true, false) }
                 trace(flags[0])
-                nums: List<Int32> = List<Int32> { }
+                nums: List<Int32> { }
                 nums.add(5)
                 nums.add(6)
                 trace(nums[1])
@@ -31,7 +31,7 @@ class ContainerParityTest {
         assertCPrints("4294967296\n") {
             """
             main: () Void {
-                wide: Arr<Int64> = @arrOf(4294967296)
+                wide: Arr<Int64> { @arrOf(4294967296) }
                 trace(wide[0])
             }
             """
@@ -44,32 +44,32 @@ class ContainerParityTest {
         assertBothPrint("6\nada\ngrace\n7\n3\n") {
             """
             main: () Void {
-                xs: Arr<Int32> = @arrOf(1, 2, 3)
-                sum: Mutable<Int32> = 0
+                xs: Arr<Int32> { @arrOf(1, 2, 3) }
+                sum: Mutable<Int32> { 0 }
                 for x: Int32 in xs {
                     sum = sum + x
                 }
                 trace(sum)
 
-                names: List<Str> = List<Str> { }
+                names: List<Str> { }
                 names.add("ada")
                 names.add("grace")
                 for n: Str in names {
                     trace(n)
                 }
 
-                seen: Set<Int32> = Set<Int32> { }
+                seen: Set<Int32> { }
                 seen.add(3)
                 seen.add(3)
                 seen.add(4)
-                total: Mutable<Int32> = 0
+                total: Mutable<Int32> { 0 }
                 for v: Int32 in seen {
                     total = total + v
                 }
                 trace(total)
 
-                empty: List<Int32> = List<Int32> { }
-                ran: Mutable<Int32> = 0
+                empty: List<Int32> { }
+                ran: Mutable<Int32> { 0 }
                 for e: Int32 in empty {
                     ran = ran + 1
                 }

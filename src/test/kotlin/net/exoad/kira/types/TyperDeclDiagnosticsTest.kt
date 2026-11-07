@@ -34,7 +34,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun unknownType() {
-        val p = snippet("x: Nope = 1\nf: (a: Missing) Void { }")
+        val p = snippet("x: Nope { 1 }\nf: (a: Missing) Void { }")
         assertEquals(2, count(p, "types.type.unknown"), TyperTestSupport.render(p))
         val d = expectDiagnostic(p, "types.type.unknown")
         assertEquals(Severity.ERROR, d.severity)
@@ -49,7 +49,7 @@ class TyperDeclDiagnosticsTest {
         val p = snippet(
             """
             f: () Void {
-                local: Missing = 1
+                local: Missing { 1 }
             }
             """
         )
@@ -79,8 +79,8 @@ class TyperDeclDiagnosticsTest {
             """
             f: () Void { }
             f: () Void { }
-            LIMIT: Int32 = 1
-            LIMIT: Int32 = 2
+            LIMIT: Int32 { 1 }
+            LIMIT: Int32 { 2 }
             Point: Any {
                 pub x: Int32
                 pub x: Int32
@@ -98,8 +98,8 @@ class TyperDeclDiagnosticsTest {
     fun classInheritingTwoClasses() {
         val p = snippet(
             """
-            A: Any { a: Int32 = 0 }
-            B: Any { b: Int32 = 0 }
+            A: Any { a: Int32 { 0 } }
+            B: Any { b: Int32 { 0 } }
             C: A, B { }
             """
         )
@@ -116,7 +116,7 @@ class TyperDeclDiagnosticsTest {
         val p = snippet(
             """
             T: Any { t: () Void }
-            A: Any { a: Int32 = 0 }
+            A: Any { a: Int32 { 0 } }
             C: T, A { }
             """
         )
@@ -127,8 +127,8 @@ class TyperDeclDiagnosticsTest {
     fun inheritanceCyclesAreErrors() {
         val p = snippet(
             """
-            A: B { a: Int32 = 0 }
-            B: A { b: Int32 = 0 }
+            A: B { a: Int32 { 0 } }
+            B: A { b: Int32 { 0 } }
             P: Q { }
             Q: P { }
             """
@@ -153,8 +153,8 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun nonPubTypeOfAUsedModuleIsNotVisible() {
         val p = TyperTestSupport.type(
-            module("app:lib", "Hidden: Any { pub n: Int32 = 0 }\npub Shown: Any { pub n: Int32 = 0 }"),
-            module("app:main", "app.lib as lib\napp.lib.Shown as Shown\na: Shown = Shown { }\nb: lib.Hidden = lib.Hidden { }"),
+            module("app:lib", "Hidden: Any { pub n: Int32 { 0 } }\npub Shown: Any { pub n: Int32 { 0 } }"),
+            module("app:main", "app.lib as lib\napp.lib.Shown as Shown\na: Shown { }\nb: lib.Hidden { lib.Hidden { } }"),
         )
         assertEquals(2, count(p, "types.type.not-visible"), TyperTestSupport.render(p))
         val main = p.module("app:main")!!
@@ -162,8 +162,8 @@ class TyperDeclDiagnosticsTest {
         assertEquals(0, count(p, "types.type.unknown"))
         // A member alias of a name that is not pub is refused where it is written.
         val alias = TyperTestSupport.type(
-            module("app:lib", "Hidden: Any { pub n: Int32 = 0 }"),
-            module("app:main", "app.lib.Hidden as Hidden\nb: Hidden = Hidden { }"),
+            module("app:lib", "Hidden: Any { pub n: Int32 { 0 } }"),
+            module("app:main", "app.lib.Hidden as Hidden\nb: Hidden { }"),
         )
         assertTrue(expectDiagnostic(alias, "types.use.not-visible").message.contains("'Hidden' is not pub in module 'app.lib'"), TyperTestSupport.render(alias))
     }
@@ -171,8 +171,8 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aTypeFromAModuleThatIsNotUsedIsUnknown() {
         val p = TyperTestSupport.type(
-            module("app:lib", "pub Shown: Any { pub n: Int32 = 0 }"),
-            module("app:main", "a: Shown = Shown { }"),
+            module("app:lib", "pub Shown: Any { pub n: Int32 { 0 } }"),
+            module("app:main", "a: Shown { }"),
         )
         assertEquals(2, count(p, "types.type.unknown"), TyperTestSupport.render(p))
     }
@@ -186,11 +186,11 @@ class TyperDeclDiagnosticsTest {
     // Stage 5: two imports with one name leave it out of scope bare; a member alias chooses.
     @Test
     fun ambiguousExport() {
-        val one = module("app:one", "pub Thing: Any { pub n: Int32 = 0 }")
-        val two = module("app:two", "pub Thing: Any { pub n: Int32 = 0 }")
-        val p = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\nt: Thing = Thing { }"))
+        val one = module("app:one", "pub Thing: Any { pub n: Int32 { 0 } }")
+        val two = module("app:two", "pub Thing: Any { pub n: Int32 { 0 } }")
+        val p = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\nt: Thing { }"))
         assertTrue(expectDiagnostic(p, "types.use.bare").message.contains("add `app.one.Thing as Thing` or write `one.Thing`"), TyperTestSupport.render(p))
-        val chosen = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\napp.two.Thing as Thing\nt: Thing = Thing { }"))
+        val chosen = TyperTestSupport.type(one, two, module("app:main", "app.one as one\napp.two as two\napp.two.Thing as Thing\nt: Thing { }"))
         TyperTestSupport.expectNoErrors(chosen)
         assertEquals("app:two", (chosen.graph.lookup(chosen.module("app:main")!!, "Thing") as ModuleGraph.Lookup.Found).from.uri)
     }
@@ -198,8 +198,8 @@ class TyperDeclDiagnosticsTest {
     // bibo's tools/npu uses kira:math and its own pylib, whose hypot, atan2 and exp K5's kira:math gained.
     @Test
     fun aUsedProjectModuleBeatsAUsedStdlibModule() {
-        val lib = module("app:lib", "pub exp: (x: Float64) Float64 {\n    x\n}\npub Regex: Any { pub n: Int32 = 0 }\npub IGNORE_CASE: Int32 = 7")
-        val body = "f: () Float64 {\n    r: Regex = Regex { }\n    exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n"
+        val lib = module("app:lib", "pub exp: (x: Float64) Float64 {\n    x\n}\npub Regex: Any { pub n: Int32 { 0 } }\npub IGNORE_CASE: Int32 { 7 }")
+        val body = "f: () Float64 {\n    r: Regex { }\n    exp(2.0) + sqrt(4.0) + IGNORE_CASE as Float64\n}\n"
         // Each name the project means is its member alias, which beats the ambient stdlib.
         val p = TyperTestSupport.type(
             lib,
@@ -241,11 +241,11 @@ class TyperDeclDiagnosticsTest {
     fun arityAndShapeErrors() {
         val p = snippet(
             """
-            a: List<Int32, Int32> = 1
-            b: Map<Str> = 1
-            c: Int32<Str> = 1
-            d: Arr<Int32, Str> = 1
-            e: Arr<Int32, Int32, Int32> = 1
+            a: List<Int32, Int32> { 1 }
+            b: Map<Str> { 1 }
+            c: Int32<Str> { 1 }
+            d: Arr<Int32, Str> { 1 }
+            e: Arr<Int32, Int32, Int32> { 1 }
             """
         )
         assertEquals(4, count(p, "types.type.arity"), TyperTestSupport.render(p))
@@ -254,7 +254,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun fxNeedsATupleOfParameters() {
-        val p = snippet("f: Fx<Int32, Void> = 1\ng: Fx<T1<Int32>, Int32> = 1")
+        val p = snippet("f: Fx<Int32, Void> { 1 }\ng: Fx<T1<Int32>, Int32> { 1 }")
         assertEquals(1, count(p, "types.fx.shape"), TyperTestSupport.render(p))
         val g = p.workspaceModules.single().members["g"] as GlobalSymbol
         assertTrue(g.type is KType.Fn, g.type.toString())
@@ -262,13 +262,13 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aValueNamedInTypePosition() {
-        val p = snippet("helper: () Void { }\nx: helper = 1")
+        val p = snippet("helper: () Void { }\nx: helper { 1 }")
         expectDiagnostic(p, "types.type.not-a-type")
     }
 
     @Test
     fun aMutableGlobalCannotSizeAnArr() {
-        val p = snippet("COUNT: Mutable<Size> = 4\nbuf: Arr<UInt8, COUNT> = @arrOf(1, 2, 3, 4)")
+        val p = snippet("COUNT: Mutable<Size> { 4 }\nbuf: Arr<UInt8, COUNT> { @arrOf(1, 2, 3, 4) }")
         expectDiagnostic(p, "types.type.const-arg")
     }
 
@@ -278,10 +278,10 @@ class TyperDeclDiagnosticsTest {
     fun constantFoldingReportsOverflowAndDivisionByZero() {
         val p = snippet(
             """
-            BIG: Int32 = 2147483647 + 1
-            ZERO: Int32 = 1 / 0
-            WRAP: UInt8 = 255 + 1
-            HUGE: Size = 4294967295 + 1
+            BIG: Int32 { 2147483647 + 1 }
+            ZERO: Int32 { 1 / 0 }
+            WRAP: UInt8 { 255 + 1 }
+            HUGE: Size { 4294967295 + 1 }
             """
         )
         assertEquals(2, count(p, "types.const.overflow"), TyperTestSupport.render(p))
@@ -292,14 +292,14 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun aConstantThatDependsOnItself() {
-        val p = snippet("A: Int32 = B + 1\nB: Int32 = A + 1")
+        val p = snippet("A: Int32 { B + 1 }\nB: Int32 { A + 1 }")
         expectDiagnostic(p, "types.const.cycle")
         assertNull((p.workspaceModules.single().members["A"] as GlobalSymbol).constValue)
     }
 
     @Test
     fun strBufTakesOnePositiveConstant() {
-        val p = snippet("CAP: Size = 64\nZERO: Size = 0\na: StrBuf<CAP> = 1\nb: StrBuf<Int32> = 1\nc: StrBuf<ZERO> = 1\nd: CStr = 1")
+        val p = snippet("CAP: Size { 64 }\nZERO: Size { 0 }\na: StrBuf<CAP> { 1 }\nb: StrBuf<Int32> { 1 }\nc: StrBuf<ZERO> { 1 }\nd: CStr { 1 }")
         assertEquals(2, count(p, "types.type.const-arg"), TyperTestSupport.render(p))
         val m = p.workspaceModules.single()
         assertEquals("StrBuf<64>", (m.members["a"] as GlobalSymbol).type.toString())
@@ -312,17 +312,17 @@ class TyperDeclDiagnosticsTest {
         // but not `Arr<UInt8, 4>` (a ConstTypeArg comes with the frontend package's parser).
         val p = snippet(
             """
-            pub ONE: Size = 1
-            pub TWO: Size = 2
-            pub THREE: Size = 3
-            pub FOUR: Size = 4
-            pub MAGIC: Arr<UInt8, FOUR> = @arrOf(1, 2, 3)
-            pub OVER: Arr<UInt8, TWO> = @arrOf(1, 2, 3)
-            pub EXACT: Arr<UInt8, THREE> = @arrOf(1, 2, 3)
-            pub OPEN: Arr<UInt8> = @arrOf(1, 2, 3)
-            pub NESTED: Arr<Arr<UInt8, TWO>, ONE> = @arrOf(@arrOf(1, 2, 3))
+            pub ONE: Size { 1 }
+            pub TWO: Size { 2 }
+            pub THREE: Size { 3 }
+            pub FOUR: Size { 4 }
+            pub MAGIC: Arr<UInt8, FOUR> { @arrOf(1, 2, 3) }
+            pub OVER: Arr<UInt8, TWO> { @arrOf(1, 2, 3) }
+            pub EXACT: Arr<UInt8, THREE> { @arrOf(1, 2, 3) }
+            pub OPEN: Arr<UInt8> { @arrOf(1, 2, 3) }
+            pub NESTED: Arr<Arr<UInt8, TWO>, ONE> { @arrOf(@arrOf(1, 2, 3)) }
             pub Frame: Any {
-                pub head: Arr<UInt8, TWO> = @arrOf(1)
+                pub head: Arr<UInt8, TWO> { @arrOf(1) }
             }
             """
         )
@@ -410,7 +410,7 @@ class TyperDeclDiagnosticsTest {
     @Test
     fun aLiteralOutOfRangeDoesNotFoldAndIsLeftToPhaseC() {
         // Phases A and B alone: phase C's literal check reports it (TyperBodyNegativeTest).
-        val p = TyperTestSupport.phasesAAndB { snippet("X: UInt8 = 256") }
+        val p = TyperTestSupport.phasesAAndB { snippet("X: UInt8 { 256 }") }
         val x = p.workspaceModules.single().members["X"] as GlobalSymbol
         assertNull(x.constValue)
         assertTrue(p.diagnostics.isEmpty(), "W2.1's literal checks report it: ${TyperTestSupport.render(p)}")
@@ -420,7 +420,7 @@ class TyperDeclDiagnosticsTest {
 
     @Test
     fun lenientDowngradesErrorsToWarnings() {
-        val p = snippet("x: Nope = 1", mode = TyperMode.LENIENT)
+        val p = snippet("x: Nope { 1 }", mode = TyperMode.LENIENT)
         val d = expectDiagnostic(p, "types.type.unknown")
         assertEquals(Severity.WARNING, d.severity)
         assertTrue(!p.hasErrors)

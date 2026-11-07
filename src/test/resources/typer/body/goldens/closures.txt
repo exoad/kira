@@ -46,8 +46,8 @@ closures.kira:66:9  (x: Int32) Int32 { ... }  Fx<T1<Int32>, Int32>
 closures.kira:67:13  x * k  Int32
 closures.kira:67:13  x  Int32  place=Param(x)  sym=<lambda>(x)
 closures.kira:67:17  k  Int32  place=Field(This(Counter).k)  sym=Counter.k
-closures.kira:74:27  Ref<Int32> { value = 0 }  Ref<Int32>
-closures.kira:74:48  0  Int32  const=0:Int32
+closures.kira:74:14  Ref<Int32> { value = 0 }  Ref<Int32>
+closures.kira:74:35  0  Int32  const=0:Int32
 closures.kira:75:5  () Int32 { ... }  Fx<T0, Int32>
 closures.kira:76:9  counter.value = counter.value + 1  Void
 closures.kira:76:9  counter.value  Int32  member=Field(Ref.value: Int32)  place=Field(Local(counter).value)

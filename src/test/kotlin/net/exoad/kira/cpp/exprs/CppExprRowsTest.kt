@@ -31,11 +31,11 @@ class CppExprRowsTest {
         "rows:shapes",
         """
         pub Pt: Struct {
-            pub x: Int32 = 0
-            pub y: Int32 = 0
+            pub x: Int32 { 0 }
+            pub y: Int32 { 0 }
         }
 
-        pub SCALE: Int32 = 3
+        pub SCALE: Int32 { 3 }
 
         pub origin: () Pt {
             Pt { }
@@ -52,12 +52,12 @@ class CppExprRowsTest {
             }
 
             pub low3: (next: UInt8) UInt8 {
-                bits: UInt8 = next & 7
+                bits: UInt8 { next & 7 }
                 bits
             }
 
             pub bump: (x: UInt8) UInt8 {
-                y: Mutable<UInt8> = x
+                y: Mutable<UInt8> { x }
                 y += 1
                 y
             }
@@ -90,7 +90,7 @@ class CppExprRowsTest {
             "r2",
             """
             pub crcInit: () UInt32 {
-                crc: Mutable<UInt32> = 0xFFFFFFFF
+                crc: Mutable<UInt32> { 0xFFFFFFFF }
                 crc = crc ^ 1
                 crc
             }
@@ -193,7 +193,7 @@ class CppExprRowsTest {
         row(
             "r5",
             """
-            pub LIDAR_IP: Str = "192.168.1.62"
+            pub LIDAR_IP: Str { "192.168.1.62" }
 
             pub len: (s: Str) Size {
                 s.length()
@@ -204,7 +204,7 @@ class CppExprRowsTest {
             }
 
             pub grow: (n: Int32) List<Int32> {
-                xs: Mutable<List<Int32>> = List<Int32> { }
+                xs: Mutable<List<Int32>> { }
                 xs.add(n)
                 xs.add(n + 1)
                 xs
@@ -288,7 +288,7 @@ class CppExprRowsTest {
         row(
             "r8",
             """
-            pub calls: Mutable<Int32> = 0
+            pub calls: Mutable<Int32> { 0 }
 
             pub tick: () Int32 {
                 calls += 1
@@ -308,9 +308,9 @@ class CppExprRowsTest {
             "r9",
             """
             pub Reply: Struct {
-                pub kind: Int32 = 0
-                pub line: Str = ""
-                pub rest: Str = ""
+                pub kind: Int32 { 0 }
+                pub line: Str { "" }
+                pub rest: Str { "" }
             }
 
             pub make: (s: Str) Reply {
@@ -322,7 +322,7 @@ class CppExprRowsTest {
             }
 
             pub cell: () Int32 {
-                c: Ref<Int32> = Ref<Int32> { value = 7 }
+                c: Ref<Int32> { value = 7 }
                 c.value
             }
             """,
@@ -352,7 +352,7 @@ class CppExprRowsTest {
             }
 
             pub addAll: (xs: List<Int32>, k: Int32) Int32 {
-                total: Mutable<Int32> = 0
+                total: Mutable<Int32> { 0 }
                 for x: Int32 in xs {
                     total += applyTo((v: Int32) Int32 {
                         v + k
@@ -362,7 +362,7 @@ class CppExprRowsTest {
             }
 
             pub Gain: Struct {
-                pub k: Int32 = 3
+                pub k: Int32 { 3 }
 
                 pub scaler: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
@@ -382,7 +382,7 @@ class CppExprRowsTest {
             }
 
             pub tally: () Fx<T0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 }
+                counter: Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
                     counter.value
@@ -436,7 +436,7 @@ class CppExprRowsTest {
             }
 
             pub halved: (a: Int32, b: Int32) Int32 {
-                h: Mutable<Int32> = a
+                h: Mutable<Int32> { a }
                 h /= b
                 h
             }
@@ -542,7 +542,7 @@ class CppExprRowsTest {
         row(
             "r14",
             """
-            pub TAG: Str = "tag"
+            pub TAG: Str { "tag" }
 
             pub greet: (name: Str, n: Int32) Str {
                 "hello ${'$'}{name}, you are ${'$'}{n}"
@@ -593,7 +593,7 @@ class CppExprRowsTest {
             }
 
             pub setFirst: (a: Arr<Int32, 2>, v: Int32) Arr<Int32, 2> {
-                b: Mutable<Arr<Int32, 2>> = a
+                b: Mutable<Arr<Int32, 2>> { a }
                 b[0] = v
                 b
             }
@@ -616,11 +616,11 @@ class CppExprRowsTest {
             "r16",
             """
             pub P2: Struct {
-                pub x: Int32 = 0
-                pub y: Int32 = 0
+                pub x: Int32 { 0 }
+                pub y: Int32 { 0 }
             }
 
-            pub A: Str = "abc"
+            pub A: Str { "abc" }
 
             pub samePoint: (a: P2, b: P2) Bool {
                 a == b
@@ -683,7 +683,7 @@ class CppExprRowsTest {
 
             pub longer: (a: Int32, neg: Bool) Int32 {
                 (if neg {
-                    t: Int32 = a * 2
+                    t: Int32 { a * 2 }
                     t + 1
                 } else {
                     0
@@ -708,7 +708,7 @@ class CppExprRowsTest {
         row(
             "r19",
             """
-            ticks: Mutable<Int32> = 0
+            ticks: Mutable<Int32> { 0 }
 
             next: () Int32 {
                 ticks += 1
@@ -764,13 +764,13 @@ class CppExprRowsTest {
             "s1",
             """
             pub Holder: Struct {
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
 
             pub locals: (v: Int32) Int32 {
-                x: Int32 = v
-                y: Mutable<Int32> = x
-                r: Holder = Holder { n = y }
+                x: Int32 { v }
+                y: Mutable<Int32> { x }
+                r: Holder { n = y }
                 y += r.n
                 y
             }
@@ -781,10 +781,10 @@ class CppExprRowsTest {
         row(
             "s2",
             """
-            pub LIMIT: Int32 = 4
+            pub LIMIT: Int32 { 4 }
 
             pub sumTo: (n: Size) Size {
-                t: Mutable<Size> = 0
+                t: Mutable<Size> { 0 }
                 for i: Size in 0.until(n) {
                     t += i
                 }
@@ -792,7 +792,7 @@ class CppExprRowsTest {
             }
 
             pub constBound: () Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in 0.until(LIMIT) {
                     t += i
                 }
@@ -803,7 +803,7 @@ class CppExprRowsTest {
             }
 
             pub each: (xs: List<Int32>, names: List<Str>) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for x: Int32 in xs {
                     t += x
                 }
@@ -830,25 +830,25 @@ class CppExprRowsTest {
         row(
             "s3",
             """
-            pub K2_OK: Int32 = 0
-            pub K2_ERR: Int32 = 1
+            pub K2_OK: Int32 { 0 }
+            pub K2_ERR: Int32 { 1 }
 
             pub Out: Mutable<Any> {
-                pub kind: Mutable<Int32> = K2_OK
+                pub kind: Mutable<Int32> { K2_OK }
             }
 
-            pub TAIL: Arr<UInt8, 2> = @arrOf(0x00, 0xFF)
+            pub TAIL: Arr<UInt8, 2> { @arrOf(0x00, 0xFF) }
 
             pub places: () Int32 {
-                o: Mutable<Out> = Out { }
+                o: Mutable<Out> { }
                 o.kind = K2_ERR
-                p: Mutable<Arr<UInt8, 4>> = @arrOf(1, 2, 3, 4)
+                p: Mutable<Arr<UInt8, 4>> { @arrOf(1, 2, 3, 4) }
                 p[3] = TAIL[1]
                 (p[3] as Int32) + o.kind
             }
 
             pub mapped: () Size {
-                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> { }
                 m["k"] = 30
                 m["k"] = 31
                 m.size()
@@ -869,8 +869,8 @@ class CppExprRowsTest {
             "s4",
             """
             pub control: (n: Int32) Int32 {
-                i: Mutable<Int32> = 0
-                t: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
+                t: Mutable<Int32> { 0 }
                 while i < n {
                     i += 1
                     if i == 2 {
@@ -907,9 +907,9 @@ class CppExprRowsTest {
             }
 
             pub caught: () Str {
-                msg: Mutable<Str> = ""
+                msg: Mutable<Str> { "" }
                 try {
-                    v: Int32 = risky(false)
+                    v: Int32 { risky(false) }
                     msg = "no"
                 } on e: Str {
                     msg = e
@@ -945,8 +945,8 @@ class CppExprRowsTest {
             }
 
             pub locals: () Int32 {
-                a: Maybe<Int32> = null
-                b: Maybe<Int32> = 7
+                a: Maybe<Int32> { null }
+                b: Maybe<Int32> { 7 }
                 a.unwrapOr(1) + b.value
             }
             """,
@@ -973,7 +973,7 @@ class CppExprRowsTest {
             }
 
             pub halved: (n: Int32) Int32 {
-                r: Result<Int32, Str> = half(n)
+                r: Result<Int32, Str> { half(n) }
                 r.isOk() ? r.unwrap() : -1
             }
             """,
@@ -991,7 +991,7 @@ class CppExprRowsTest {
             }
 
             pub text: () Str {
-                b: List<UInt8> = @listOf(0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82)
+                b: List<UInt8> { @listOf(0x68, 0xC3, 0xA9, 0xFF, 0xE2, 0x82) }
                 Str.of(b)
             }
             """,
@@ -1084,8 +1084,8 @@ class CppExprRowsTest {
             }
 
             pub spaces: (s: Str) Int32 {
-                n: Mutable<Int32> = 0
-                i: Mutable<Size> = 0
+                n: Mutable<Int32> { 0 }
+                i: Mutable<Size> { 0 }
                 while i < s.length() {
                     if s[i].isWhitespace() {
                         n += 1
@@ -1154,13 +1154,13 @@ class CppExprRowsTest {
             "d61",
             """
             pub sorted: (xs: List<Int32>) List<Int32> {
-                out: Mutable<List<Int32>> = xs.view().toList()
+                out: Mutable<List<Int32>> { xs.view().toList() }
                 out.sort()
                 out
             }
 
             pub words: (s: Str) Str {
-                ws: Mutable<List<Str>> = s.splitWhitespace()
+                ws: Mutable<List<Str>> { s.splitWhitespace() }
                 ws.sort()
                 ws.joinToString(",")
             }
@@ -1189,7 +1189,7 @@ class CppExprRowsTest {
             }
 
             pub lend: () UInt8 {
-                p: Mutable<Arr<UInt8, 4>> = @arrOf(0, 0, 0, 0)
+                p: Mutable<Arr<UInt8, 4>> { @arrOf(0, 0, 0, 0) }
                 poke(p.from(2), 9)
                 p[2]
             }
@@ -1225,24 +1225,24 @@ class CppExprRowsTest {
             }
 
             pub negTwice: (a: Int32) Int32 {
-                y: Mutable<Int32> = a
-                z: Int32 = -(-y)
+                y: Mutable<Int32> { a }
+                z: Int32 { -(-y) }
                 y += 1
                 z * 10 + y
             }
 
             pub big: () Int64 {
-                big: Int64 = 1 << 40
+                big: Int64 { 1 << 40 }
                 big
             }
 
             pub ubig: () UInt64 {
-                u: UInt64 = 1 << 63
+                u: UInt64 { 1 << 63 }
                 u
             }
 
             pub mask: (v: UInt64) UInt64 {
-                m: UInt64 = ~0
+                m: UInt64 { ~0 }
                 v & ~0xFF & m
             }
 
@@ -1259,7 +1259,7 @@ class CppExprRowsTest {
             }
 
             pub mulAssign16: (a: UInt16, b: UInt16) UInt16 {
-                x: Mutable<UInt16> = a
+                x: Mutable<UInt16> { a }
                 x *= b
                 x
             }
@@ -1287,8 +1287,8 @@ class CppExprRowsTest {
         row(
             "f2",
             """
-            ticks: Mutable<Int32> = 0
-            idx: Mutable<Size> = 0
+            ticks: Mutable<Int32> { 0 }
+            idx: Mutable<Size> { 0 }
 
             next: () Int32 {
                 ticks += 1
@@ -1305,7 +1305,7 @@ class CppExprRowsTest {
             }
 
             pub Box: Mutable<Any> {
-                pub v: Mutable<Int32> = 0
+                pub v: Mutable<Int32> { 0 }
 
                 pub pair: (a: Int32, b: Int32) Int32 {
                     v * 100 + a * 10 + b
@@ -1345,23 +1345,23 @@ class CppExprRowsTest {
             pub targetFirst: () Int32 {
                 ticks = 0
                 idx = 0
-                s: Mutable<Arr<Int32, 4>> = @arrOf(0, 0, 0, 0)
+                s: Mutable<Arr<Int32, 4>> { @arrOf(0, 0, 0, 0) }
                 s[nextSize()] = next()
                 s[1] * 10 + s[2]
             }
 
             pub dividedOnce: () Int32 {
                 idx = 0
-                p: Mutable<Arr<Int32, 4>> = @arrOf(80, 80, 80, 80)
-                d: Int32 = 2
+                p: Mutable<Arr<Int32, 4>> { @arrOf(80, 80, 80, 80) }
+                d: Int32 { 2 }
                 p[nextSize()] /= d
                 p[1] * 100 + p[2] + (idx as Int32)
             }
 
             pub shiftedOnce: () Int32 {
                 idx = 0
-                q: Mutable<Arr<Int32, 4>> = @arrOf(1, 1, 1, 1)
-                n: Int32 = 3
+                q: Mutable<Arr<Int32, 4>> { @arrOf(1, 1, 1, 1) }
+                n: Int32 { 3 }
                 q[nextSize()] <<= n
                 q[1] * 10 + (idx as Int32)
             }
@@ -1369,7 +1369,7 @@ class CppExprRowsTest {
             pub mutReceiverBound: () Int32 {
                 ticks = 0
                 idx = 0
-                boxes: Arr<Box, 1> = @arrOf(Box { })
+                boxes: Arr<Box, 1> { @arrOf(Box { }) }
                 boxes[nextSize() - 1].grow(next(), next())
                 boxes[0].v
             }
@@ -1396,8 +1396,8 @@ class CppExprRowsTest {
         row(
             "f3",
             """
-            gl: Mutable<List<Int32>> = List<Int32> { values = @arrOf(11, 22, 33) }
-            idx: Mutable<Size> = 0
+            gl: Mutable<List<Int32>> { values = @arrOf(11, 22, 33) }
+            idx: Mutable<Size> { 0 }
 
             nextSize: () Size {
                 idx += 1
@@ -1413,7 +1413,7 @@ class CppExprRowsTest {
             }
 
             sumV: (v: View<Int32>) Int32 {
-                s: Mutable<Int32> = 0
+                s: Mutable<Int32> { 0 }
                 for x: Int32 in v {
                     s += x
                 }
@@ -1431,7 +1431,7 @@ class CppExprRowsTest {
             }
 
             pub Acc: Mutable<Any> {
-                pub n: Mutable<Int32> = 1
+                pub n: Mutable<Int32> { 1 }
 
                 pub bump: () Int32 {
                     n = 2
@@ -1448,30 +1448,30 @@ class CppExprRowsTest {
             }
 
             pub thisBeforeBump: () Int32 {
-                x: Mutable<Acc> = Acc { }
+                x: Mutable<Acc> { }
                 x.viaThis()
             }
 
             pub fixedContains: () Bool {
-                a: Arr<Int32, 3> = @arrOf(1, 2, 3)
+                a: Arr<Int32, 3> { @arrOf(1, 2, 3) }
                 a.contains(2) && !a.contains(4)
             }
 
             pub fixedClone: () Size {
-                a: Arr<Int32, 3> = @arrOf(1, 2, 3)
-                c: Arr<Int32> = a.clone()
+                a: Arr<Int32, 3> { @arrOf(1, 2, 3) }
+                c: Arr<Int32> { a.clone() }
                 c.size()
             }
 
             pub mapLiteral: () Int32 {
-                m: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf(T2<Str, Int32> { first = "k", second = 1 }, T2<Str, Int32> { first = "j", second = 2 }) }
+                m: Map<Str, Int32> { values = @arrOf(T2<Str, Int32> { first = "k", second = 1 }, T2<Str, Int32> { first = "j", second = 2 }) }
                 (m.size() as Int32) * 10 + m.get("j").unwrapOr(-1)
             }
 
             pub setLiteral: () Size {
-                s: Set<Int32> = Set<Int32> { values = @arrOf(3, 4, 3) }
-                e: Map<Str, Int32> = Map<Str, Int32> { values = @arrOf() }
-                f: Set<Float32> = Set<Float32> { values = @arrOf(1.5, 2.5) }
+                s: Set<Int32> { values = @arrOf(3, 4, 3) }
+                e: Map<Str, Int32> { values = @arrOf() }
+                f: Set<Float32> { values = @arrOf(1.5, 2.5) }
                 s.size() * 100 + e.size() * 10 + f.size()
             }
             """,

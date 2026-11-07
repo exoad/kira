@@ -4,8 +4,8 @@
 
 // ImVec2 is a value: an extern struct with fields gets a sizeof check too.
 pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
-    pub x: Float32 = 0.0
-    pub y: Float32 = 0.0
+    pub x: Float32 { 0.0 }
+    pub y: Float32 { 0.0 }
 }
 
 // ImDrawList* is a handle C++ owns: opaque, with extern methods under their C++ names.

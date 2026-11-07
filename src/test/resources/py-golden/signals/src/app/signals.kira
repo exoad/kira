@@ -8,14 +8,14 @@ kira.time as time
 @_extern raiseInt: () Void
 
 pub main: () Int32 {
-    a: List<Str> = args()
-    how: Str = a.size() > 1 ? a[1] : "flag"
-    stop: Atomic<Bool> = Atomic<Bool> { value = false }
+    a: List<Str> { args() }
+    how: Str { a.size() > 1 ? a[1] : "flag" }
+    stop: Atomic<Bool> { value = false }
     if how == "flag" {
-        onInt: Bool = onSignal(SIGNAL_INT, stop)
-        onTerm: Bool = onSignal(SIGNAL_TERM, stop)
+        onInt: Bool { onSignal(SIGNAL_INT, stop) }
+        onTerm: Bool { onSignal(SIGNAL_TERM, stop) }
         println("installed ${onInt} ${onTerm}")
-        ticks: Mutable<Int32> = 0
+        ticks: Mutable<Int32> { 0 }
         while !stop.load() && ticks < 500 {
             ticks += 1
             if ticks == 3 {
@@ -31,18 +31,18 @@ pub main: () Int32 {
     } else if how == "join" || how == "pop" {
         // Raised on the worker, as Windows delivers Ctrl-C, while the main thread waits on it.
         onSignal(SIGNAL_INT, stop)
-        q: BlockingQueue<Int32> = BlockingQueue<Int32> { }
-        worker: Thread = spawn("worker", () Void {
+        q: BlockingQueue<Int32> { }
+        worker: Thread { spawn("worker", () Void {
             sleepMs(200)
             raiseInt()
-            ticks: Mutable<Int32> = 0
+            ticks: Mutable<Int32> { 0 }
             while !stop.load() && ticks < 300 {
                 ticks += 1
                 sleepMs(10)
             }
             println("the worker saw the flag: ${stop.load()}")
             q.close()
-        })
+        }) }
         if how == "pop" {
             println("popped: ${q.pop(-1).isSome()}")
         }

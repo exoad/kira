@@ -75,7 +75,7 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                v: Mutable<Int32> = sum(3, 4)
+                v: Mutable<Int32> { sum(3, 4) }
                 trace("syntax-ok\\n")
             }
             """
@@ -157,10 +157,10 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                numbers: Arr<Int32> = @arrOf(10, 20, 30)
-                head: Int32 = first(numbers)
-                entries: Map<Str, Int32> = Map<Str, Int32> { }
-                present: Bool = hasAny(entries)
+                numbers: Arr<Int32> { @arrOf(10, 20, 30) }
+                head: Int32 { first(numbers) }
+                entries: Map<Str, Int32> { }
+                present: Bool { hasAny(entries) }
                 if present {
                     trace("map has values")
                 } else {
@@ -207,7 +207,7 @@ class BackendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            pub READY: Int32 = 0
+            pub READY: Int32 { 0 }
 
             pub Box<T>: Any {
                 pub value: T
@@ -218,9 +218,9 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                state: Int32 = READY
-                wrapped: Box<Int32> = Box<Int32> { 7 }
-                value: Int32 = id<Int32>(wrapped.value)
+                state: Int32 { READY }
+                wrapped: Box<Int32> { Box<Int32> { 7 } }
+                value: Int32 { id<Int32>(wrapped.value) }
                 if state == READY {
                     trace(value)
                 }
@@ -272,7 +272,7 @@ class BackendCompilationPipelineTest {
             }
 
             main: () Void {
-                friend: Pet = Pet { "Mochi", "meow" }
+                friend: Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())
             }

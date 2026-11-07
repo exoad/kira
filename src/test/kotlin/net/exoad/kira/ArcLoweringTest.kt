@@ -39,8 +39,8 @@ class ArcLoweringTest {
             $pet
 
             main: () Void {
-                a: Pet = Pet { "m" }
-                b: Pet = a
+                a: Pet { Pet { "m" } }
+                b: Pet { a }
                 trace(b.name)
             }
             """,
@@ -60,7 +60,7 @@ class ArcLoweringTest {
             $pet
 
             main: () Void {
-                a: Mutable<Pet> = Pet { "m" }
+                a: Mutable<Pet> { Pet { "m" } }
                 a = Pet { "n" }
                 trace(a.name)
             }
@@ -80,7 +80,7 @@ class ArcLoweringTest {
 
             main: () Void {
                 for i: Int32 in 0.until(4) {
-                    p: Pet = Pet { "m" }
+                    p: Pet { Pet { "m" } }
                     trace(p.name)
                 }
             }
@@ -113,7 +113,7 @@ class ArcLoweringTest {
             }
 
             main: () Void {
-                b: Box = Box { Pet { "m" } }
+                b: Box { Box { Pet { "m" } } }
                 trace(b.inner.name)
             }
             """,
@@ -136,8 +136,8 @@ class ArcLoweringTest {
             }
 
             main: () Void {
-                p: Pet = Pet { "m" }
-                b: Box = Box { p }
+                p: Pet { Pet { "m" } }
+                b: Box { Box { p } }
                 trace(b.inner.name)
             }
             """,
@@ -155,13 +155,13 @@ class ArcLoweringTest {
             $pet
 
             make: () Pet {
-                other: Pet = Pet { "o" }
-                p: Pet = Pet { "m" }
+                other: Pet { Pet { "o" } }
+                p: Pet { Pet { "m" } }
                 p
             }
 
             main: () Void {
-                a: Pet = make()
+                a: Pet { make() }
                 trace(a.name)
             }
             """,
@@ -187,9 +187,9 @@ class ArcLoweringTest {
         val c = emit(
             """
             main: () Void {
-                l: List<Int32> = List<Int32> { }
-                m: Map<Str, Int32> = Map<Str, Int32> { }
-                s: Set<Int32> = Set<Int32> { }
+                l: List<Int32> { }
+                m: Map<Str, Int32> { }
+                s: Set<Int32> { }
                 l.add(1)
                 trace(l.size())
             }

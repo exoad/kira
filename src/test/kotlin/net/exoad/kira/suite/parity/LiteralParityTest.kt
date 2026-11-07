@@ -27,11 +27,11 @@ class LiteralParityTest {
         assertCPrints("9223372036854775807\n-1\n-9223372036854775808\n") {
             """
             main: () Void {
-                big: Int64 = 0x7FFFFFFFFFFFFFFF
+                big: Int64 { 0x7FFFFFFFFFFFFFFF }
                 trace(big)
-                neg: Int64 = 0xFFFFFFFFFFFFFFFF
+                neg: Int64 { 0xFFFFFFFFFFFFFFFF }
                 trace(neg)
-                least: Int64 = 0x8000000000000000
+                least: Int64 { 0x8000000000000000 }
                 trace(least)
             }
             """

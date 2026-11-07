@@ -13,7 +13,7 @@ pub main: () Void {
     println(pylib.joinPath("c", "d"))
     println("stdlib's joinPath: ${path.joinPath("a", "b").length()} characters")
     println("${floorMod(-7.0, 3.0)} against the stdlib's ${math.floorMod(-7.0, 3.0)}")
-    mine: Ran = Ran { }
-    theirs: os.Ran = os.Ran { }
+    mine: Ran { }
+    theirs: os.Ran { os.Ran { } }
     println("${mine.code} ${mine.out}, the stdlib's ${theirs.code}")
 }

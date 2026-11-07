@@ -235,7 +235,7 @@ hall.kira:95:90  d.periodUs > 0  Bool
 hall.kira:95:90  d.periodUs  UInt32  member=Field(Decoder.periodUs: UInt32)  place=Field(Param(d).periodUs)
 hall.kira:95:90  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
 hall.kira:95:103  0  UInt32  const=0:UInt32
-hall.kira:101:27  Decoder { }  Decoder
+hall.kira:101:16  Decoder { }  Decoder
 hall.kira:102:26  t0  UInt64  place=Param(t0)  sym=golden.hall:pico.hall.settle(t0)
 hall.kira:103:21  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
 hall.kira:104:9  d = d.fed(s, t)  Void

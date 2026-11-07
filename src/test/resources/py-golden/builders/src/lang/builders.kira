@@ -5,15 +5,15 @@ Pt: Struct {
     pub y: Int32
 }
 
-CORNERS: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)
+CORNERS: Arr<Int32, 4> { @arrOf(1, 2, 3, 4) }
 
-NAMES: List<Str> = @listOf(
+NAMES: List<Str> { @listOf(
     "ada",
     "bea",
-)
+) }
 
 total: (xs: List<Int64>) Int64 {
-    t: Mutable<Int64> = 0
+    t: Mutable<Int64> { 0 }
     for x: Int64 in xs {
         t += x
     }
@@ -21,7 +21,7 @@ total: (xs: List<Int64>) Int64 {
 }
 
 join: (xs: Arr<Str>) Str {
-    out: Mutable<Str> = ""
+    out: Mutable<Str> { "" }
     for s: Str in xs {
         out += s
     }
@@ -29,22 +29,22 @@ join: (xs: Arr<Str>) Str {
 }
 
 main: () Void {
-    xs: List<Int32> = @listOf(3, 1, 2)
+    xs: List<Int32> { @listOf(3, 1, 2) }
     println("${xs.size()} ${xs[0]} ${xs[2]}")
     println("${total(@listOf(10, 20, 30))}")
     println(join(@arrOf("a", "b", "c")))
-    empty: List<Str> = @listOf()
-    typed: List<Int64> = @listOf<Int64>()
+    empty: List<Str> { @listOf() }
+    typed: List<Int64> { @listOf<Int64>() }
     println("${empty.size()} ${typed.size()} ${CORNERS[3]} ${NAMES[1]}")
-    pts: List<Pt> = @listOf(Pt { 1, 2 }, Pt { 3, 4 })
-    moved: Mutable<List<Pt>> = pts.view().toList()
+    pts: List<Pt> { @listOf(Pt { 1, 2 }, Pt { 3, 4 }) }
+    moved: Mutable<List<Pt>> { pts.view().toList() }
     moved.add(Pt { 5, 6 })
     println("${pts.size()} ${moved.size()} ${pts[1].y}")
-    bytes: List<UInt8> = @listOf(0x41, 0x42)
+    bytes: List<UInt8> { @listOf(0x41, 0x42) }
     println("${bytes.size()} ${bytes[1]}")
-    seen: Set<Str> = @setOf("b", "a", "b")
+    seen: Set<Str> { @setOf("b", "a", "b") }
     println("${seen.size()} ${seen.contains("a")} ${seen.contains("c")}")
-    ages: Map<Str, Int32> = @mapOf("ada", 36, "bea", 41, "ada", 37)
+    ages: Map<Str, Int32> { @mapOf("ada", 36, "bea", 41, "ada", 37) }
     println("${ages.size()} ${ages.get("ada").unwrap()} ${ages.get("bea").unwrap()}")
     for e: T2<Str, Int32> in ages {
         println("${e.first}=${e.second}")
@@ -52,6 +52,6 @@ main: () Void {
     for w: Int32 in @arrOf(7, 8) {
         println("${w}")
     }
-    ids: Set<Int64> = @setOf<Int64>()
+    ids: Set<Int64> { @setOf<Int64>() }
     println("${ids.size()} ${@listOf(1, 2).size()}")
 }

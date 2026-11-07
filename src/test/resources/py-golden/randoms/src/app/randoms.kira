@@ -9,7 +9,7 @@ pub seeded: (seed: Int64) Random {
 }
 
 pub floats: (r: Random, n: Int32) List<Float64> {
-    out: Mutable<List<Float64>> = @listOf()
+    out: Mutable<List<Float64>> { @listOf() }
     for i: Int32 in 0.until(n) {
         out.add(r.nextFloat())
     }
@@ -17,7 +17,7 @@ pub floats: (r: Random, n: Int32) List<Float64> {
 }
 
 pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
-    out: Mutable<List<Float64>> = @listOf()
+    out: Mutable<List<Float64>> { @listOf() }
     for i: Int32 in 0.until(n) {
         out.add(r.uniform(lo, hi))
     }
@@ -25,7 +25,7 @@ pub uniforms: (r: Random, n: Int32, lo: Float64, hi: Float64) List<Float64> {
 }
 
 pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
-    out: Mutable<List<Int64>> = @listOf()
+    out: Mutable<List<Int64>> { @listOf() }
     for i: Int32 in 0.until(n) {
         out.add(r.below(stop))
     }
@@ -33,7 +33,7 @@ pub belows: (r: Random, n: Int32, stop: Int64) List<Int64> {
 }
 
 pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
-    out: Mutable<List<Int64>> = @listOf()
+    out: Mutable<List<Int64>> { @listOf() }
     for i: Int32 in 0.until(n) {
         out.add(r.between(lo, hi))
     }
@@ -41,7 +41,7 @@ pub betweens: (r: Random, n: Int32, lo: Int64, hi: Int64) List<Int64> {
 }
 
 pub bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
-    out: Mutable<List<Int64>> = @listOf()
+    out: Mutable<List<Int64>> { @listOf() }
     for i: Int32 in 0.until(n) {
         out.add(r.bits(k))
     }
@@ -49,14 +49,14 @@ pub bitsOf: (r: Random, n: Int32, k: Int32) List<Int64> {
 }
 
 pub main: () Int32 {
-    t: Suite = Suite { title = "randoms - kira:random on py" }
-    r: Random = newRandom(7)
-    f: Float64 = r.nextFloat()
+    t: Suite { title = "randoms - kira:random on py" }
+    r: Random { newRandom(7) }
+    f: Float64 { r.nextFloat() }
     t.checkStr("${f} ${r.uniform(1.0, 2.0)}", "0.32383276483316237 1.150849173924502", "newRandom(7) draws random.Random(7)'s floats")
-    a: Int64 = r.below(100)
-    b: Int64 = r.between(1, 6)
-    c: Int64 = r.bits(16)
-    d: Int64 = r.bits(0)
+    a: Int64 { r.below(100) }
+    b: Int64 { r.between(1, 6) }
+    c: Int64 { r.bits(16) }
+    d: Int64 { r.bits(0) }
     t.checkStr("${a} ${b} ${c} ${d} ${r.bits(63)}", "83 1 4747 0 4942639112109623332", "and its integers after them")
     t.check(newRandom(-7).below(1000000000000000000) == 455200494606748983, "a negative seed is Python's")
     t.check(newRandom(4611686018427387904).between(-5, 5) == -2, "and a large one")

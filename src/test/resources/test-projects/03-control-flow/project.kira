@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "control.flow"
     srcDir = "src"
     target = "c"

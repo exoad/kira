@@ -47,8 +47,8 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                s: Str = "  Kira  "
-                t: Str = s.trim()
+                s: Str { "  Kira  " }
+                t: Str { s.trim() }
                 trace(t.length())
                 trace(t.toUpper())
                 trace(t.startsWith("Ki"))
@@ -71,7 +71,7 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                seen: Set<Int32> = Set<Int32> { }
+                seen: Set<Int32> { }
                 seen.add(1)
                 seen.add(2)
                 seen.add(1)
@@ -93,12 +93,12 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                ages: Map<Str, Int32> = Map<Str, Int32> { }
+                ages: Map<Str, Int32> { }
                 ages.put("ada", 36)
-                found: Maybe<Int32> = ages.get("ada")
+                found: Maybe<Int32> { ages.get("ada") }
                 trace(found.isSome())
                 trace(found.unwrapOr(0))
-                missing: Maybe<Int32> = ages.get("nobody")
+                missing: Maybe<Int32> { ages.get("nobody") }
                 trace(missing.unwrapOr(-1))
             }
             """,
@@ -119,17 +119,17 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                undo: Stack<Int32> = Stack<Int32> { }
+                undo: Stack<Int32> { }
                 undo.push(10)
-                top: Maybe<Int32> = undo.pop()
+                top: Maybe<Int32> { undo.pop() }
                 trace(top.unwrapOr(0))
-                empty: Maybe<Int32> = undo.pop()
+                empty: Maybe<Int32> { undo.pop() }
                 trace(empty.isNone())
 
-                jobs: Queue<Int32> = Queue<Int32> { }
+                jobs: Queue<Int32> { }
                 jobs.enqueue(1)
                 jobs.enqueue(2)
-                first: Maybe<Int32> = jobs.dequeue()
+                first: Maybe<Int32> { jobs.dequeue() }
                 trace(first.unwrapOr(0))
             }
             """,
@@ -148,7 +148,7 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                n: Int32 = 7
+                n: Int32 { 7 }
                 trace(n.toInt64())
             }
             """,
@@ -187,7 +187,7 @@ class StdlibLoweringTest {
         val generated = emit(
             """
             main: () Void {
-                names: List<Str> = List<Str> { }
+                names: List<Str> { }
                 names.add("ada")
                 names.add("grace")
                 trace(names.size())

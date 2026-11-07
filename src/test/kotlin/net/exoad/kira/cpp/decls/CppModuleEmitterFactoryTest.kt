@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 class CppModuleEmitterFactoryTest {
     @Test
     fun aTyperErrorIsTheRunsDiagnosticAndNoModuleIsEmitted() {
-        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "pub X: Int32 = \"not a number\"\npub Y: Nope = 1"))
+        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "pub X: Int32 { \"not a number\" }\npub Y: Nope { 1 }"))
         val errors = emitted.runDiagnostics.filter { it.isError }
         assertTrue(errors.any { it.code.startsWith("types.") }, emitted.render(emitted.runDiagnostics))
         val m = emitted.module("test:main")
@@ -28,7 +28,7 @@ class CppModuleEmitterFactoryTest {
 
     @Test
     fun aTyperWarningPassesThroughAsAWarning() {
-        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "test.main as main\npub X: Int32 = 1"))
+        val emitted = DeclTestSupport.emit(DeclTestSupport.module("test:main", "test.main as main\npub X: Int32 { 1 }"))
         val warning = emitted.runDiagnostics.firstOrNull { it.code == "types.use.self" } ?: kotlin.test.fail(emitted.render(emitted.runDiagnostics))
         assertTrue(!warning.isError)
         assertTrue(emitted.header("test:main").contains("inline constexpr std::int32_t X = 1;"))
@@ -37,7 +37,7 @@ class CppModuleEmitterFactoryTest {
     @Test
     fun theTyperReadsTheManifestGlobs() {
         val emitted = DeclTestSupport.emit(
-            DeclTestSupport.module("pico:hall", "pub X: Int32 = 1"),
+            DeclTestSupport.module("pico:hall", "pub X: Int32 { 1 }"),
             options = CppOptions(lineDirectives = false, headerOnly = listOf("pico:**"), freestanding = listOf("pico:hall")),
         )
         val h = emitted.header("pico:hall")

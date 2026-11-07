@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.py.bags"
     srcDir = "src"
     target = "py"

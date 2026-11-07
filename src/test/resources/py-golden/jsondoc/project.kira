@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.py.jsondoc"
     srcDir = "src"
     target = "py"

@@ -126,8 +126,8 @@ class ParserSuiteTest {
     fun parsesTopLevelVariableDeclarations() {
         val ast = parseModule(
             """
-            immutable: Int32 = 1
-            mutable: Mutable<Str> = "a"
+            immutable: Int32 { 1 }
+            mutable: Mutable<Str> { "a" }
             typed: Int32
             """
         )
@@ -157,7 +157,7 @@ class ParserSuiteTest {
             """
             pub Counter: Mutable<Any> {
                 pub value: Int32
-                pub label: Mutable<Str> = ""
+                pub label: Mutable<Str> { "" }
 
                 pub increment: () Int32 {
                     value = value + 1
@@ -230,8 +230,8 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             main: () Void {
-                a: Arr<Arr<Arr<Int32>>> = @arrOf(@arrOf(@arrOf(1)))
-                b: Arr<Arr<Arr<Arr<Int32>>>> = @arrOf(@arrOf(@arrOf(@arrOf(1))))
+                a: Arr<Arr<Arr<Int32>>> { @arrOf(@arrOf(@arrOf(1))) }
+                b: Arr<Arr<Arr<Arr<Int32>>>> { @arrOf(@arrOf(@arrOf(@arrOf(1)))) }
             }
             """
         )
@@ -243,10 +243,10 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                a: Arr<Int32> = @arrOf(1)
-                b: Bool = a.size() > 0
-                c: Bool = a.size() >= 1
-                d: Bool = a.size() < 2
+                a: Arr<Int32> { @arrOf(1) }
+                b: Bool { a.size() > 0 }
+                c: Bool { a.size() >= 1 }
+                d: Bool { a.size() < 2 }
             }
             """
         )
@@ -261,8 +261,8 @@ class ParserSuiteTest {
             }
 
             main: () Void {
-                x: Int32 = id<Int32>(1)
-                s: Str = id<Str>("a")
+                x: Int32 { id<Int32>(1) }
+                s: Str { id<Str>("a") }
             }
             """
         )
@@ -273,8 +273,8 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             f: (x: Int64) Bool {
-                low: Bool = x < -LIMIT
-                high: Bool = x > (LIMIT)
+                low: Bool { x < -LIMIT }
+                high: Bool { x > (LIMIT) }
                 x < -LIMIT || x > (LIMIT)
             }
             """
@@ -295,7 +295,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                x: Int32 = 2
+                x: Int32 { 2 }
                 if x == 1 {
                     trace("one")
                 } else if x == 2 {
@@ -313,7 +313,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                i: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
                 while i < 3 {
                     i = i + 1
                 }
@@ -340,7 +340,7 @@ class ParserSuiteTest {
         parseModule(
             """
             pick: (x: Int32) Int32 {
-                result: Mutable<Int32> = 0
+                result: Mutable<Int32> { 0 }
                 for i: Int32 in 0..11 {
                     if i == 2 {
                         continue
@@ -383,7 +383,7 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                a: Mutable<Int32> = 1
+                a: Mutable<Int32> { 1 }
                 a += 2
                 a -= 1
                 a *= 3
@@ -405,12 +405,12 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                a: Int32 = 1 + 2 * 3 - 4 / 2
-                b: Bool = a > 2 && a <= 9 || a != 5
-                c: Int32 = 1 .. 3 .size()
-                d: Int32 = -a
-                e: Bool = !b
-                f: Int32 = ~a
+                a: Int32 { 1 + 2 * 3 - 4 / 2 }
+                b: Bool { a > 2 && a <= 9 || a != 5 }
+                c: Int32 { 1 .. 3 .size() }
+                d: Int32 { -a }
+                e: Bool { !b }
+                f: Int32 { ~a }
             }
             """
         )
@@ -421,13 +421,13 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                values: Arr<Int32> = @arrOf(1, 2, 3)
-                first: Int32 = values[0]
-                length: Int32 = values.size()
-                typed: Int32 = first as Int32
-                isArr: Bool = values == Arr<Int32>
-                obj: Any = values
-                cast: Arr<Int32> = obj as Arr<Int32>
+                values: Arr<Int32> { @arrOf(1, 2, 3) }
+                first: Int32 { values[0] }
+                length: Int32 { values.size() }
+                typed: Int32 { first as Int32 }
+                isArr: Bool { values == Arr<Int32> }
+                obj: Any { values }
+                cast: Arr<Int32> { obj as Arr<Int32> }
             }
             """
         )
@@ -438,10 +438,10 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             f: (x: Int32, n: Int64) Int32 {
-                a: Float64 = x as Float64 / 1000.0
-                b: Int64 = n + x as Int64
-                c: Bool = x as Int64 > n
-                d: Int64 = -x as Int64
+                a: Float64 { x as Float64 / 1000.0 }
+                b: Int64 { n + x as Int64 }
+                c: Bool { x as Int64 > n }
+                d: Int64 { -x as Int64 }
                 x as Int32 + 1
             }
             """
@@ -475,7 +475,7 @@ class ParserSuiteTest {
             parse(
                 "" +
                     "f: (x: Int32, n: Int64) Bool {\n" +
-                    "    c: Bool = x as Int64 < n\n" +
+                    "    c: Bool { x as Int64 < n }\n" +
                     "    return c\n" +
                     "}\n"
             )
@@ -486,8 +486,8 @@ class ParserSuiteTest {
         parseModule(
             """
             g: (x: Int32, n: Int64, xs: Arr<Int32>) Bool {
-                c: Bool = (x as Int64) < n
-                d: List<Int32> = xs as List<Int32>
+                c: Bool { (x as Int64) < n }
+                d: List<Int32> { xs as List<Int32> }
                 c
             }
             """
@@ -495,7 +495,7 @@ class ParserSuiteTest {
     }
 
     private fun valueOf(expr: String): net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr =
-        assertNotNull(declsOf(parseModule("x: Int32 = $expr")).filterIsInstance<VariableDecl>().single().value)
+        assertNotNull(declsOf(parseModule("x: Int32 { $expr }")).filterIsInstance<VariableDecl>().single().value)
 
     @Test
     fun theUnparserParenthesizesACastAsTheParserReadsIt() {
@@ -521,7 +521,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             f: (n: Int32) Int64 {
-                s: Mutable<Int64> = 0
+                s: Mutable<Int64> { 0 }
                 for i: Int64 in 0..n as Int64 {
                     s += i
                 }
@@ -551,8 +551,8 @@ class ParserSuiteTest {
             }
 
             main: () Void {
-                p1: Point = Point { 1, 2 }
-                p2: Point = Point { x = 3, y = 4 }
+                p1: Point { 1, 2 }
+                p2: Point { x = 3, y = 4 }
             }
             """
         )
@@ -563,9 +563,9 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                empty: Arr<Int32> = @arrOf()
-                nums: Arr<Int32> = @arrOf(1, 2, 3)
-                nested: Arr<Arr<Int32>> = @arrOf(@arrOf(1), @arrOf(2, 3))
+                empty: Arr<Int32> { @arrOf() }
+                nums: Arr<Int32> { @arrOf(1, 2, 3) }
+                nested: Arr<Arr<Int32>> { @arrOf(@arrOf(1), @arrOf(2, 3)) }
             }
             """
         )
@@ -614,10 +614,10 @@ class ParserSuiteTest {
         // `(x: Int32) Int32` is the spelling of Fx<T1<Int32>, Int32>, `() Void` of Fx<T0, Void>.
         val ast = parseModule(
             """
-            f: (x: Int32) Int32 = (x: Int32) Int32 { x }
-            g: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x }
-            h: () Void = () Void { }
-            k: Fx<T0, Void> = () Void { }
+            f: Fx<T1<Int32>, Int32> { (x: Int32) Int32 { x } }
+            g: Fx<T1<Int32>, Int32> { (x: Int32) Int32 { x } }
+            h: Fx<T0, Void> { () Void { } }
+            k: Fx<T0, Void> { () Void { } }
             """
         )
         fun text(t: net.exoad.kira.compiler.frontend.parser.ast.elements.Type): String {
@@ -633,7 +633,7 @@ class ParserSuiteTest {
         // Accepted: UPPER_SNAKE_CASE globals and fields.
         val ast = parseModule(
             """
-            MAX_SIZE: Int32 = 10
+            MAX_SIZE: Int32 { 10 }
 
             Limits: Any {
                 pub MAX_X: Int32
@@ -676,7 +676,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             pub C: Mutable<Any> {
-                x: Mutable<Int32> = 0
+                x: Mutable<Int32> { 0 }
                 initially { x = 1 }
             }
             """
@@ -722,7 +722,7 @@ class ParserSuiteTest {
         val ast = parseModule(
             """
             main: () Void {
-                m: Map<Str, Map<Str, Map<Str, Int32>>> = Map<Str, Map<Str, Map<Str, Int32>>> { }
+                m: Map<Str, Map<Str, Map<Str, Int32>>> { }
             }
             """
         )
@@ -733,7 +733,7 @@ class ParserSuiteTest {
     @Test
     fun nestingTooDeepIsALocatedDiagnostic() {
         val deep = "(".repeat(50_000) + "1" + ")".repeat(50_000)
-        val e = assertThrows<DiagnosticsException> { parseModule("x: Int32 = $deep") }
+        val e = assertThrows<DiagnosticsException> { parseModule("x: Int32 { $deep }") }
         assertTrue(e.message.contains("nests too deeply"), e.message)
         assertEquals(1, e.location?.lineNumber)
     }
@@ -809,8 +809,8 @@ class ParserSuiteTest {
         val s = growthParse(
             """
             pub Reply: Struct, Show, Eq {
-                pub kind: Int32 = 0
-                pub topic: Str = ""
+                pub kind: Int32 { 0 }
+                pub topic: Str { "" }
                 pub isEmpty: () Bool { kind == 0 }
                 initially { kind = 4 }
             }
@@ -881,8 +881,8 @@ class ParserSuiteTest {
         val fn = growthParse(
             """
             f: (neg: Bool, x: Int32) Int32 {
-                v: Int32 = neg ? -x : x
-                sign: Str = neg ? "-" : ""
+                v: Int32 { neg ? -x : x }
+                sign: Str { neg ? "-" : "" }
                 v > LIMIT ? LIMIT : v
             }
             """
@@ -923,7 +923,7 @@ class ParserSuiteTest {
         refusedAs(
             """
             f: (c: Bool) Int32 {
-                v: Int32 = if c { 1 }
+                v: Int32 { if c { 1 } }
                 return v
             }
             """,
@@ -945,7 +945,7 @@ class ParserSuiteTest {
         val fn = growthParse(
             """
             f: (buf: View<UInt8>) Void {
-                twice: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x * 2 }
+                twice: Fx<T1<Int32>, Int32> { (x: Int32) Int32 { x * 2 } }
                 each(buf, (p: View<UInt8>) Void { n += 1 })
             }
             """
@@ -987,7 +987,7 @@ class ParserSuiteTest {
             assertTrue(assertNotNull(e.location).lineNumber >= 1)
         }
         // A lambda's parameter list follows the same rule.
-        refusedAs("f: () Void { g: Fx<T2<Int32, Int32>, Void> = (a: Int32 = 1, b: Int32) Void { } }", "KiraParser::parseFunctionDeclParameters", "A required parameter cannot follow")
+        refusedAs("f: () Void { g: Fx<T2<Int32, Int32>, Void> { (a: Int32 = 1, b: Int32) Void { } } }", "KiraParser::parseFunctionDeclParameters", "A required parameter cannot follow")
         // Defaults after every required parameter stay fine.
         growthParse("f: (host: Str, port: Int32 = 8080, ssl: Bool = true) Void { }")
     }
@@ -999,13 +999,13 @@ class ParserSuiteTest {
         val fn = growthParse(
             """
             f: (line: Str) Void {
-                out: Reply = Reply { line = trimEnd(line), kind = 2 }
-                p: Point = Point { 1, y = 2 }
+                out: Reply { line = trimEnd(line), kind = 2 }
+                p: Point { 1, y = 2 }
                 e: Esc { pulse = 0 }
-                q: Point = Point { 1, 2 }
-                empty: Walked = Walked {}
+                q: Point { 1, 2 }
+                empty: Walked {}
             }
-            """.replace("e: Esc { pulse = 0 }", "e: Esc = Esc { pulse = 0 }")
+            """.replace("e: Esc { pulse = 0 }", "e: Esc { pulse = 0 }")
         ).single<FunctionDecl>()
         val inits = body(fn).map { assertIs<ObjectInitExpr>(assertIs<VariableDecl>(it.expr).value) }
         assertTrue(inits[0].positionalArgs.isEmpty())
@@ -1023,7 +1023,7 @@ class ParserSuiteTest {
 
     @Test
     fun namedArgumentBeforePositionalIsRejected() {
-        refusedAs("f: () Void { p: Point = Point { y = 2, 1 } }", "KiraParser::parseObjectInit", "Positional arguments must come before named arguments in a construction")
+        refusedAs("f: () Void { p: Point { y = 2, 1 } }", "KiraParser::parseObjectInit", "Positional arguments must come before named arguments in a construction")
         refusedAs("f: () Void { g(y = 2, 1) }", "KiraParser::parseFunctionCallParameter", "Positional arguments must come before named arguments")
     }
 
@@ -1091,7 +1091,7 @@ class ParserSuiteTest {
         val cls = growthParse(
             """
             Stop: Mutable<Behaviour> {
-                count: Mutable<Int32> = 0
+                count: Mutable<Int32> { 0 }
                 initially { count = 1 }
                 override pub id: () Str { "stop" }
             }
@@ -1104,7 +1104,7 @@ class ParserSuiteTest {
         assertTrue(Modifier.PUBLIC in id.modifiers)
         assertEquals(1, cls.members.filterIsInstance<VariableDecl>().size)
         // A class without the blocks reads exactly as before.
-        val plain = growthParse("Plain: Any { x: Int32 = 0 }").single<ClassDecl>()
+        val plain = growthParse("Plain: Any { x: Int32 { 0 } }").single<ClassDecl>()
         assertNull(plain.initially)
     }
 
@@ -1112,7 +1112,7 @@ class ParserSuiteTest {
     fun duplicateBlocksAndMisplacedOverrideAreRejected() {
         refusedAs("C: Any { initially { } initially { } }", "KiraParser::parseTypeBody", "only one 'initially' block")
         refusedAs("C: Any { finally { } }", "parse.removed", "'finally' is not part of Kira any more")
-        refusedAs("override x: Int32 = 1", "KiraParser::expectModifiers", "The modifier 'override' cannot be applied to a variable")
+        refusedAs("override x: Int32 { 1 }", "KiraParser::expectModifiers", "The modifier 'override' cannot be applied to a variable")
     }
 
     // --- const type arguments, mut in tuples -------------------------------------
@@ -1121,7 +1121,7 @@ class ParserSuiteTest {
     fun integerTypeArgumentsBecomeConstTypeArgs() {
         val p = growthParse(
             """
-            pub MAGIC: Arr<UInt8, 4> = @arrOf(1, 2, 3, 4)
+            pub MAGIC: Arr<UInt8, 4> { @arrOf(1, 2, 3, 4) }
             pub Arr<UInt8, USER_CMD_BYTES> as Frame
             """
         )
@@ -1289,9 +1289,9 @@ class ParserSuiteTest {
                 if (x < LIMIT) { trace(3) }
                 if x == LIMIT_M { trace(4) }
                 if isOk(Foo { 1 }) { trace(5) }
-                y: Int32 = x < LIMIT ? 1 : 2
-                crc: Int32 = (x & 1) != 0 ? (x >> 1) ^ 7 : x >> 1
-                dir: Int32 = (x == 1) == FORWARD_ASCENDING ? 1 : -1
+                y: Int32 { x < LIMIT ? 1 : 2 }
+                crc: Int32 { (x & 1) != 0 ? (x >> 1) ^ 7 : x >> 1 }
+                dir: Int32 { (x == 1) == FORWARD_ASCENDING ? 1 : -1 }
             }
             """
         ).single<FunctionDecl>()
@@ -1348,14 +1348,14 @@ class ParserSuiteTest {
     fun charLiteralsDecodeTheirEscapes() {
         val p = growthParse(
             listOf(
-                "a: Char = 'a'",
-                "sp: Char = ' '",
-                "n: Char = '\\n'",
-                "t: Char = '\\t'",
-                "r: Char = '\\r'",
-                "b: Char = '\\\\'",
-                "q: Char = '\\''",
-                "z: Char = '\\0'",
+                "a: Char { 'a' }",
+                "sp: Char { ' ' }",
+                "n: Char { '\\n' }",
+                "t: Char { '\\t' }",
+                "r: Char { '\\r' }",
+                "b: Char { '\\\\' }",
+                "q: Char { '\\'' }",
+                "z: Char { '\\0' }",
             ).joinToString("\n")
         )
         val values = p.decls.map { assertIs<CharLiteral>(assertIs<VariableDecl>(it).value).value }
@@ -1364,8 +1364,8 @@ class ParserSuiteTest {
 
     @Test
     fun charLiteralsOutsideOneByteOrWithUnknownEscapesAreRejected() {
-        refusedAs("c: Char = '€'", "KiraParser::parseCharLiteral", "A Char is one byte (0..255)")
-        refusedAs("c: Char = '\\q'", "KiraParser::parseCharLiteral", "Unknown escape sequence '\\q'")
+        refusedAs("c: Char { '€' }", "KiraParser::parseCharLiteral", "A Char is one byte (0..255)")
+        refusedAs("c: Char { '\\q' }", "KiraParser::parseCharLiteral", "Unknown escape sequence '\\q'")
     }
 
     @Test
@@ -1373,11 +1373,11 @@ class ParserSuiteTest {
         val p = growthParse(
             listOf(
                 "fixed3: (sign: Str, whole: Int32, frac: Int32, f: Float32) Str {",
-                "    a: Str = \"\${sign}\${whole}.\${(frac as Str).padStart(3, '0')}\"",
-                "    b: Str = \"STEER \${fixed3(f)}\"",
-                "    c: Str = \"plain\"",
-                "    d: Str = \"cost \\\$5 and \\\${not a hole}\"",
-                "    e: Str = \"\${(f > 0.0 ? \"pos\" : \"neg\")}!\"",
+                "    a: Str { \"\${sign}\${whole}.\${(frac as Str).padStart(3, '0')}\" }",
+                "    b: Str { \"STEER \${fixed3(f)}\" }",
+                "    c: Str { \"plain\" }",
+                "    d: Str { \"cost \\\$5 and \\\${not a hole}\" }",
+                "    e: Str { \"\${(f > 0.0 ? \"pos\" : \"neg\")}!\" }",
                 "    a",
                 "}",
             ).joinToString("\n")
@@ -1409,7 +1409,7 @@ class ParserSuiteTest {
             """
             f: () Void {
                 for i: Int32 in 0..4 { trace(i) }
-                p: Point = Point { 1, 2 }
+                p: Point { 1, 2 }
                 x = 1
                 x += 1
                 @_trace_("plain")
@@ -1432,22 +1432,22 @@ class ParserSuiteTest {
 
     /** (a fragment of the construct's diagnostic name) to (a program using it). */
     private val newConstructs = listOf(
-        "struct declaration" to "S: Struct { x: Int32 = 1 }",
+        "struct declaration" to "S: Struct { x: Int32 { 1 } }",
         // A returned ternary is the if/else of returns on C and JS; one held in a local is not lowered.
-        "if-expression" to "f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }",
-        "lambda expression" to "f: () Void { g: Fx<T1<Int32>, Int32> = (x: Int32) Int32 { x } }",
-        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: (p: P) Void { p.x = 1 }",
-        "'this' expression" to "P: Mutable<Any> { x: Mutable<Int32> = 0\n pub get: () Int32 { this.x } }",
-        "char literal" to "f: () Void { c: Char = 'a' }",
+        "if-expression" to "f: (c: Bool) Int32 { x: Int32 { c ? 1 : 2 }\n x }",
+        "lambda expression" to "f: () Void { g: Fx<T1<Int32>, Int32> { (x: Int32) Int32 { x } } }",
+        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> { 0 } }\nf: (p: P) Void { p.x = 1 }",
+        "'this' expression" to "P: Mutable<Any> { x: Mutable<Int32> { 0 }\n pub get: () Int32 { this.x } }",
+        "char literal" to "f: () Void { c: Char { 'a' } }",
         "interpolated string literal" to "f: (n: Int32) Str { \"n=\${n}\" }",
-        "an 'initially' block" to "P: Mutable<Any> { x: Mutable<Int32> = 0\n initially { x = 1 } }",
-        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nf: () Void { p: P = P { x = 1 } }",
+        "an 'initially' block" to "P: Mutable<Any> { x: Mutable<Int32> { 0 }\n initially { x = 1 } }",
+        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> { 0 } }\nf: () Void { p: P { x = 1 } }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nf: () Int32 { g(1) }",
         // Measured before: only the trailing positions were inspected, and this
         // one ended in an IllegalStateException from the argument binder.
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nf: () Int32 { g(1, c = 3) }",
         "@_static_assert" to "f: () Void { @_static_assert(1 == 1, \"ok\") }",
-        "const type argument" to "f: () Void { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4) }",
+        "const type argument" to "f: () Void { xs: Arr<Int32, 4> { @arrOf(1, 2, 3, 4) } }",
     )
 
     @Test
@@ -1468,7 +1468,7 @@ class ParserSuiteTest {
         assertTrue(c.contains("if((a < 0))") && c.contains("else if((a > 0))") && c.contains("return 0;"), c)
         val js = emitJS(src)
         assertTrue(js.contains("a < 0") && js.contains("a > 0") && js.contains("return -1;") && js.contains("return 0;"), js)
-        assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
+        assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 { c ? 1 : 2 }\n x }") }
     }
 
     @Test
@@ -1489,7 +1489,7 @@ class ParserSuiteTest {
             """
             g: (a: Int32, b: Int32 = 2) Int32 { a + b }
             f: () Int32 {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 for i: Int32 in 0.until(3) { n += i }
                 n = g(n, b = 5)
                 g(n, 1)
@@ -1536,22 +1536,22 @@ class ParserSuiteTest {
      * with "type not found".
      */
     private val cliConstructs = listOf(
-        "struct declaration" to "S: Struct { x: Int32 = 1 }\nmain: () Int32 { 0 }",
-        "if-expression" to "main: () Int32 { x: Int32 = 1\n y: Int32 = if x > 0 {\n trace(x)\n 1\n } else {\n 2\n }\n y }",
-        "if-expression" to "main: () Int32 { x: Int32 = 1\n y: Int32 = x > 0 ? 1 : 2\n y }",
-        "a try used as a value" to "main: () Int32 { x: Int32 = try { 1 } on e: Str { 2 }\n x }",
+        "struct declaration" to "S: Struct { x: Int32 { 1 } }\nmain: () Int32 { 0 }",
+        "if-expression" to "main: () Int32 { x: Int32 { 1 }\n y: Int32 { if x > 0 {\n trace(x)\n 1\n } else {\n 2\n } }\n y }",
+        "if-expression" to "main: () Int32 { x: Int32 { 1 }\n y: Int32 { x > 0 ? 1 : 2 }\n y }",
+        "a try used as a value" to "main: () Int32 { x: Int32 { try { 1 } on e: Str { 2 } }\n x }",
         "lambda expression" to "main: () Int32 { trace((x: Int32) Int32 { x })\n 0 }",
-        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nmain: () Int32 { p: P = P { 0 }\n p.x = 1\n p.x }",
-        "'this' expression" to "P: Mutable<Any> {\n x: Mutable<Int32> = 0\n pub get: () Int32 { this.x }\n}\nmain: () Int32 { p: P = P { 0 }\n p.get() }",
+        "member or index place" to "P: Mutable<Any> { x: Mutable<Int32> { 0 } }\nmain: () Int32 { p: P { P { 0 } }\n p.x = 1\n p.x }",
+        "'this' expression" to "P: Mutable<Any> {\n x: Mutable<Int32> { 0 }\n pub get: () Int32 { this.x }\n}\nmain: () Int32 { p: P { P { 0 } }\n p.get() }",
         "char literal" to "main: () Int32 { trace('a')\n 0 }",
-        "interpolated string literal" to "main: () Int32 { n: Int32 = 3\n s: Str = \"n=\${n}\"\n trace(s)\n 0 }",
-        "an 'initially' block" to "P: Mutable<Any> {\n x: Mutable<Int32> = 0\n initially { x = 1 }\n}\nmain: () Int32 { p: P = P { 0 }\n p.x }",
-        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> = 0 }\nmain: () Int32 { p: P = P { x = 1 }\n p.x }",
+        "interpolated string literal" to "main: () Int32 { n: Int32 { 3 }\n s: Str { \"n=\${n}\" }\n trace(s)\n 0 }",
+        "an 'initially' block" to "P: Mutable<Any> {\n x: Mutable<Int32> { 0 }\n initially { x = 1 }\n}\nmain: () Int32 { p: P { P { 0 } }\n p.x }",
+        "named construction" to "P: Mutable<Any> { x: Mutable<Int32> { 0 } }\nmain: () Int32 { p: P { x = 1 }\n p.x }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2) Int32 { a + b }\nmain: () Int32 { g(1) }",
         "omits a default-valued parameter ('b')" to "g: (a: Int32, b: Int32 = 2, c: Int32 = 3) Int32 { a + b + c }\nmain: () Int32 { g(1, c = 3) }",
         "@_static_assert" to "@_static_assert(1 == 1, \"ok\")\nmain: () Int32 { 0 }",
         "@_static_assert" to "main: () Int32 { @_static_assert(1 == 1, \"ok\")\n 0 }",
-        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n 0 }",
+        "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> { @arrOf(1, 2, 3, 4) }\n 0 }",
     )
 
     private fun assertRefusedByTheBackend(target: String, backend: String) {

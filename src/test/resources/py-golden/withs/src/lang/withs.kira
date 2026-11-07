@@ -4,7 +4,7 @@
 Box: Struct {
     pub w: Int32
     pub h: Int32
-    pub area: Int32 = 0
+    pub area: Int32 { 0 }
 
     initially {
         area = w * h
@@ -23,8 +23,8 @@ Trim: Any {
 
 // A class with a `mut` field: edited in place.
 Counter: Mutable<Any> {
-    pub frames: Mutable<Int64> = 0
-    pub label: Mutable<Str> = ""
+    pub frames: Mutable<Int64> { 0 }
+    pub label: Mutable<Str> { "" }
 
     pub count: () Void {
         frames += 1
@@ -32,14 +32,14 @@ Counter: Mutable<Any> {
 }
 
 Holder: Mutable<Any> {
-    pub box: Mutable<Box> = Box { 1, 1 }
+    pub box: Mutable<Box> { 1, 1 }
 }
 
-BENCH_TRIM: Trim = Trim { 1500, 1541 } with {
+BENCH_TRIM: Trim { 1500, 1541 } with {
     escMinUs = 1620
 }
 
-NAMED_TRIM: Trim = Trim { servoCenterUs = 1400, escMinUs = 1500 } with {
+NAMED_TRIM: Trim { servoCenterUs = 1400, escMinUs = 1500 } with {
     servoCenterUs = 1450
 }
 
@@ -62,38 +62,38 @@ sum: (a: Int32, b: Box) Int32 {
 }
 
 main: () Void {
-    b: Box = Box { 2, 3 }
-    c: Box = b with {
+    b: Box { 2, 3 }
+    c: Box { b with {
         w = 10
-    }
+    } }
     println("${show(b)} ${show(c)}")
     println(show(wider(b, 5)))
-    k: Int32 = 7
+    k: Int32 { 7 }
     println("${sum(k, b with {
         h = 5
     })}")
-    g: Box = b with {
+    g: Box { b with {
         w = grown(3)
-    }
+    } }
     println(show(g))
     println("${trimText(BENCH_TRIM)} ${trimText(NAMED_TRIM)}")
-    t: Trim = BENCH_TRIM with {
+    t: Trim { BENCH_TRIM with {
         servoCenterUs = 1490
-    }
+    } }
     println("${trimText(t)} ${trimText(BENCH_TRIM)}")
-    n: Counter = Counter { }
+    n: Counter { }
     n with {
         count()
         count()
         label = "two"
     }
     println("${n.frames} ${n.label}")
-    holder: Holder = Holder { }
+    holder: Holder { }
     holder.box = holder.box with {
         w = 4
     }
     println(show(holder.box))
-    acc: Mutable<Box> = Box { 0, 1 }
+    acc: Mutable<Box> { 0, 1 }
     for i: Int32 in 0.until(6) {
         acc = acc with {
             w = w + i
@@ -104,24 +104,24 @@ main: () Void {
     }
     println(show(acc))
     try {
-        d: Box = b with {
+        d: Box { b with {
             w = 100
             throw "stop"
-        }
+        } }
         println(show(d))
     } on e: Str {
         println("caught ${e}, ${show(b)}")
     }
-    f: () Str = () Str {
+    f: Fx<T0, Str> { () Str {
         show(b with {
             h = 9
         })
-    }
+    } }
     println(f())
-    chained: Box = (b with {
+    chained: Box { (b with {
         w = 4
     }) with {
         h = 4
-    }
+    } }
     println(show(chained))
 }

@@ -6,9 +6,9 @@
 pub Account: Mutable<Any> {
     pub owner: Str
     limit: Int32
-    pub balance: Mutable<Int32> = 0
-    history: Mutable<List<Int32>> = List<Int32> { }
-    pub note: Mutable<Maybe<Str>> = null
+    pub balance: Mutable<Int32> { 0 }
+    history: Mutable<List<Int32>> { }
+    pub note: Mutable<Maybe<Str>> { null }
 
     pub deposit: (amount: Int32) Int32 {
         balance += amount

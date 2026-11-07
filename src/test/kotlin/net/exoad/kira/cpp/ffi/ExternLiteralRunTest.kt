@@ -24,9 +24,9 @@ class ExternLiteralRunTest {
     private val module = Module(
         "app:lit",
         """
-        LIM: Int64 = 5
+        LIM: Int64 { 5 }
 
-        gc: Mutable<Bool> = true
+        gc: Mutable<Bool> { true }
 
         pub @_extern(cpp = "q::w", header = "q.hxx") w: (x: Int64) Int32
 
@@ -116,54 +116,54 @@ class ExternLiteralRunTest {
         }
 
         pub namedW: () Int32 {
-            n: Int64 = 5
+            n: Int64 { 5 }
             w(n)
         }
 
         pub namedB: () Int32 {
-            x: Int8 = 3
+            x: Int8 { 3 }
             b(x)
         }
 
         pub sumW: () Int32 {
-            n: Int64 = 5
+            n: Int64 { 5 }
             w(n + 1)
         }
 
         pub sumB: () Int32 {
-            x: Int8 = 3
-            y: Int8 = 4
+            x: Int8 { 3 }
+            y: Int8 { 4 }
             b(x + y)
         }
 
         pub sumUb: () Int32 {
-            ux: UInt8 = 3
+            ux: UInt8 { 3 }
             ub(ux + ux)
         }
 
         pub mulH: () Int32 {
-            hx: Int16 = 3
+            hx: Int16 { 3 }
             h(hx * hx)
         }
 
         pub sumWidth8: () Int32 {
-            x: Int8 = 3
-            y: Int8 = 4
+            x: Int8 { 3 }
+            y: Int8 { 4 }
             width8(x + y)
         }
 
         pub mulWidth64: () Int32 {
-            n: Int64 = 5
+            n: Int64 { 5 }
             width64(n * 2)
         }
 
         pub negB: () Int32 {
-            x: Int8 = 3
+            x: Int8 { 3 }
             b(-x)
         }
 
         pub negWidth8: () Int32 {
-            x: Int8 = 3
+            x: Int8 { 3 }
             width8(-x)
         }
 
@@ -248,12 +248,12 @@ class ExternLiteralRunTest {
         }
 
         pub boxW: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.w(5)
         }
 
         pub boxWidth: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.width(5)
         }
         """,

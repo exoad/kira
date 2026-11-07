@@ -38,9 +38,9 @@ class ExternCoercionRunTest {
 
         pub @_extern(cpp = "m3::callKind", header = "m3.hxx") callKind: (f: Fx<T0, Int32>) Int32
 
-        gs: Mutable<Str> = "$OLD"
-        gm: Mutable<Maybe<Str>> = "$OLD"
-        gls: Mutable<List<Str>> = @listOf("$OLD")
+        gs: Mutable<Str> { "$OLD" }
+        gm: Mutable<Maybe<Str>> { "$OLD" }
+        gls: Mutable<List<Str>> { @listOf("$OLD") }
 
         reset: () Void {
             gs = "$OLD"
@@ -65,12 +65,12 @@ class ExternCoercionRunTest {
         }
 
         pub mWrapInt: () Int32 {
-            n: Int32 = 5
+            n: Int32 { 5 }
             pickN(n)
         }
 
         pub mMaybeInt: () Int32 {
-            mn: Maybe<Int32> = 5
+            mn: Maybe<Int32> { 5 }
             pickN(mn)
         }
 
@@ -156,14 +156,14 @@ class ExternCoercionRunTest {
         }
 
         pub Base: Any {
-            pub name: Str = "$OLD"
+            pub name: Str { "$OLD" }
         }
 
         pub Kid: Base {
         }
 
         pub Dog: Named {
-            pub label: Str = "$OLD"
+            pub label: Str { "$OLD" }
 
             override pub nm: () Str {
                 label
@@ -171,11 +171,11 @@ class ExternCoercionRunTest {
         }
 
         pub H: Mutable<Any> {
-            pub kid: Mutable<Kid> = Kid { }
-            pub dog: Mutable<Dog> = Dog { }
+            pub kid: Mutable<Kid> { }
+            pub dog: Mutable<Dog> { }
         }
 
-        gks: Mutable<List<Kid>> = @listOf()
+        gks: Mutable<List<Kid>> { @listOf() }
 
         pub @_extern(cpp = "m4::nameLenAfter", header = "m4.hxx") nameLenAfter: (b: Base, f: Fx<T0, Void>) Int32
 
@@ -184,17 +184,17 @@ class ExternCoercionRunTest {
         pub @_extern(cpp = "m4::maybeNameLenAfter", header = "m4.hxx") maybeNameLenAfter: (b: Maybe<Base>, f: Fx<T0, Void>) Int32
 
         pub kParent: () Int32 {
-            h: H = H { }
+            h: H { }
             nameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 
         pub kTrait: () Int32 {
-            h: H = H { }
+            h: H { }
             nmLenAfter(h.dog, () Void { h.dog = Dog { label = "x" } })
         }
 
         pub kMaybeParent: () Int32 {
-            h: H = H { }
+            h: H { }
             maybeNameLenAfter(h.kid, () Void { h.kid = Kid { name = "x" } })
         }
 

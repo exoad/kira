@@ -16,6 +16,6 @@ object ProjectText {
             stdlib?.let { add("dependencies = @mapOf(\"kira_stdlib\", ${ProjectFile.quote(it)})") }
             addAll(more)
         }
-        return "PROJECT: Project = Project { } with {\n" + fields.joinToString("") { "    $it\n" } + "}\n"
+        return "PROJECT: Project { } with {\n" + fields.joinToString("") { "    $it\n" } + "}\n"
     }
 }

@@ -28,8 +28,8 @@ pub @_magic Regex: Any {
 }
 
 // compile's flags: 0, or the sum of these.
-pub IGNORE_CASE: Int32 = 2
-pub MULTILINE: Int32 = 8
+pub IGNORE_CASE: Int32 { 2 }
+pub MULTILINE: Int32 { 8 }
 
 // re.compile(pattern, flags); none for a pattern re refuses, regexError() its reason.
 pub @_magic compile: (pattern: Str, flags: Int32) Maybe<Regex>

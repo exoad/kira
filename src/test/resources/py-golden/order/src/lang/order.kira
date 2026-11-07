@@ -5,10 +5,10 @@
 // written, then the defaults in declaration order, then `initially`. && and || short-circuit.
 // The expected output is the C++ backend's run of this same module.
 
-ticks: Mutable<Int32> = 0
-idx: Mutable<Size> = 0
-slots: Mutable<List<Int32>> = List<Int32> { }
-gs: Mutable<Str> = "a"
+ticks: Mutable<Int32> { 0 }
+idx: Mutable<Size> { 0 }
+slots: Mutable<List<Int32>> { }
+gs: Mutable<Str> { "a" }
 
 next: () Int32 {
     ticks += 1
@@ -52,7 +52,7 @@ makeBox: () Box {
 }
 
 Counter: Mutable<Any> {
-    pub n: Mutable<Int32> = 0
+    pub n: Mutable<Int32> { 0 }
 
     pub bump: () Int32 {
         n += 10
@@ -72,10 +72,10 @@ Counter: Mutable<Any> {
 
 Track: Mutable<Any> {
     pub a: Int32
-    pub b: Int32 = next()
+    pub b: Int32 { next() }
     pub c: Int32
-    pub d: Int32 = next()
-    pub seen: Mutable<Int32> = 0
+    pub d: Int32 { next() }
+    pub seen: Mutable<Int32> { 0 }
 
     initially {
         seen = next()
@@ -123,14 +123,14 @@ main: () Void {
     trace("${gs}:${changeS()}")
     gs = "a"
     trace(gs + "${changeS()}")
-    c: Mutable<Counter> = Counter { }
+    c: Mutable<Counter> { }
     trace(c.run())
     trace(c.runPlain())
     ticks = 0
-    t: Track = Track { a = next(), c = next() }
+    t: Track { a = next(), c = next() }
     trace(show(t))
     ticks = 0
-    u: Track = Track { c = next(), a = next() }
+    u: Track { c = next(), a = next() }
     trace(show(u))
     ticks = 0
     if ticks > 0 && next() > 0 {
@@ -140,7 +140,7 @@ main: () Void {
         trace("yes")
     }
     trace(ticks)
-    steps: Mutable<Int32> = 0
+    steps: Mutable<Int32> { 0 }
     while next() < 5 && steps < 100 {
         steps += 1
     }

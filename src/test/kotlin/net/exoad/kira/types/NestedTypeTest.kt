@@ -24,11 +24,11 @@ class NestedTypeTest {
     private val shapes = """
         pub Shape: Any {
             pub Corner: Any {
-                pub x: Int32 = 0
-                pub mark: Mark = Mark { }
+                pub x: Int32 { 0 }
+                pub mark: Mark { }
 
                 pub Mark: Any {
-                    pub label: Str = "m"
+                    pub label: Str { "m" }
                 }
 
                 pub to: (other: Corner) Side {
@@ -41,7 +41,7 @@ class NestedTypeTest {
                 pub b: Corner
             }
 
-            pub first: Corner = Corner { }
+            pub first: Corner { }
 
             pub marked: () Corner.Mark {
                 Corner.Mark { label = "first" }
@@ -63,8 +63,8 @@ class NestedTypeTest {
     @Test
     fun itsNamesResolveInsideAndOutside() {
         val p = TyperTestSupport.snippet(
-            shapes + "\n\nf: () Str {\n    s: Shape = Shape { }\n    c: Shape.Corner = Shape.Corner { x = 2 }\n" +
-                "    side: Shape.Side = s.first.to(c)\n    m: Shape.Corner.Mark = s.marked()\n    \"${'$'}{side.b.x} ${'$'}{m.label}\"\n}",
+            shapes + "\n\nf: () Str {\n    s: Shape { }\n    c: Shape.Corner { x = 2 }\n" +
+                "    side: Shape.Side { s.first.to(c) }\n    m: Shape.Corner.Mark { s.marked() }\n    \"${'$'}{side.b.x} ${'$'}{m.label}\"\n}",
         )
         expectNoErrors(p)
         val main = p.module("test:main")!!
@@ -82,13 +82,13 @@ class NestedTypeTest {
             lib,
             module(
                 "test:main",
-                "test.shapes as shapes\ntest.shapes.Shape as Shape\n\nf: () Int32 {\n    a: Shape.Corner = Shape.Corner { x = 1 }\n" +
-                    "    b: shapes.Shape.Corner = shapes.Shape.Corner { x = 2 }\n    m: Shape.Corner.Mark = Shape { }.marked()\n    a.x + b.x\n}",
+                "test.shapes as shapes\ntest.shapes.Shape as Shape\n\nf: () Int32 {\n    a: Shape.Corner { x = 1 }\n" +
+                    "    b: shapes.Shape.Corner { x = 2 }\n    m: Shape.Corner.Mark { Shape { }.marked() }\n    a.x + b.x\n}",
             ),
         )
         expectNoErrors(p)
         // Without either, the nested name is no more in scope than its outer.
-        val bare = TyperTestSupport.type(lib, module("test:main", "test.shapes as shapes\n\nf: () Int32 {\n    a: Shape.Corner = Shape.Corner { }\n    a.x\n}"))
+        val bare = TyperTestSupport.type(lib, module("test:main", "test.shapes as shapes\n\nf: () Int32 {\n    a: Shape.Corner { Shape.Corner { } }\n    a.x\n}"))
         assertTrue(bare.diagnostics.any { it.isError }, TyperTestSupport.render(bare))
     }
 
@@ -102,7 +102,7 @@ class NestedTypeTest {
                 }
 
                 pub Cat: Animal {
-                    pub lives: Int32 = 9
+                    pub lives: Int32 { 9 }
 
                     override pub noise: () Str {
                         "mew"
@@ -121,20 +121,20 @@ class NestedTypeTest {
 
     @Test
     fun aTypeInsideAFunctionIsStillRefused() {
-        val e = assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", "f: () Void {\n    Local: Any {\n        pub x: Int32 = 0\n    }\n}")) }
+        val e = assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", "f: () Void {\n    Local: Any {\n        pub x: Int32 { 0 }\n    }\n}")) }
         assertTrue(e.message.contains("parse.type.nested") || e.message.contains("declared at the top level of a file or in a type's body"), e.message)
     }
 
     @Test
     fun theNestedNameCannotBeWrittenInSource() {
         // The lexer refuses `Shape_Corner`, so a nested type's name never meets a written one.
-        val e = assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", "$shapes\n\ng: Shape_Corner = Shape.Corner { }")) }
+        val e = assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", "$shapes\n\ng: Shape_Corner { Shape.Corner { } }")) }
         assertTrue(e.message.contains("Underscores are not allowed"), e.message)
     }
 
     @Test
     fun aGlobalOfANestedTypeKeepsItsType() {
-        val p = TyperTestSupport.snippet("$shapes\n\nCORNER: Shape.Corner = Shape.Corner { x = 4 }")
+        val p = TyperTestSupport.snippet("$shapes\n\nCORNER: Shape.Corner { Shape.Corner { x = 4 } }")
         expectNoErrors(p)
         assertEquals("Shape.Corner", (p.module("test:main")!!.members["CORNER"] as GlobalSymbol).type.toString())
     }
@@ -148,7 +148,7 @@ class NestedTypeTest {
         assertTrue(text.contains("class Shape_Corner_Mark:") && text.indexOf("class Shape_Corner_Mark:") < text.indexOf("class Shape:"), text)
         val dir = Files.createTempDirectory("nested_cpp").toFile()
         File(dir, "project.kira").writeText(
-            "PROJECT: Project = Project { } with {\n    name = \"nest\"\n    srcDir = \"src\"\n    target = \"cpp\"\n" +
+            "PROJECT: Project { } with {\n    name = \"nest\"\n    srcDir = \"src\"\n    target = \"cpp\"\n" +
                 "    dependencies = @mapOf(\"kira_stdlib\", \"${File("kira").absoluteFile.path.replace('\\', '/')}\")\n}\n",
         )
         File(dir, "src/app").mkdirs()

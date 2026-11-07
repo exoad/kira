@@ -2,8 +2,8 @@
 // the members bare, the subject narrowed inside and after the block. The output was worked out by hand.
 
 Pt: Struct {
-    pub x: Int32 = 0
-    pub y: Int32 = 0
+    pub x: Int32 { 0 }
+    pub y: Int32 { 0 }
 
     pub sum: () Int32 {
         x + y
@@ -13,7 +13,7 @@ Pt: Struct {
 Line: Struct {
     pub start: Pt
     pub end: Pt
-    pub closed: Bool = false
+    pub closed: Bool { false }
 
     pub length: () Int32 {
         end.x - start.x
@@ -22,11 +22,11 @@ Line: Struct {
 
 Seg: Struct {
     pub tip: Maybe<Pt>
-    pub weight: Int32 = 1
+    pub weight: Int32 { 1 }
 }
 
 Grid: Struct {
-    pub limit: Int32 = 3
+    pub limit: Int32 { 3 }
 
     // The outer scope after the members: the enclosing type's field.
     pub inside: (p: Pt) Bool {
@@ -34,7 +34,7 @@ Grid: Struct {
     }
 }
 
-made: Mutable<Int32> = 0
+made: Mutable<Int32> { 0 }
 
 make: (k: Int32) Pt {
     made += 1
@@ -48,41 +48,41 @@ at: (k: Int32) Maybe<Pt> {
 // A held value whose checks need statements, a nested block's too: each check's def is handed the held values.
 // The first held block, so its held value and its def are both number 0, and their names must still differ.
 hoisted: (k: Int32) Str {
-    a: Bool = make(k) == Pt {
+    a: Bool { make(k) == Pt {
         (if x > 1 {
-            t: Int32 = x * 2
+            t: Int32 { x * 2 }
             t
         } else {
             0
         }) == 6
-    }
-    b: Bool = Line { Pt { k, 0 }, make(k) } == Line {
+    } }
+    b: Bool { Line { Pt { k, 0 }, make(k) } == Line {
         closed == false,
         end == Pt {
             (try {
-                n: Int32 = x + y + start.x
+                n: Int32 { x + y + start.x }
                 n
             } on e: Str {
                 0
             }) > 6
         }
-    }
+    } }
     "${a} ${b}"
 }
 
 // Fields, a method, `||` inside a check, and a Bool member alone.
 fields: (p: Pt, line: Line) Str {
-    a: Bool = p == Pt { x == 1, y > 1 }
-    b: Bool = p == Pt { sum() == 5 }
-    c: Bool = p == Pt { x == 9 || y == 4 }
-    d: Bool = line == Line { closed }
+    a: Bool { p == Pt { x == 1, y > 1 } }
+    b: Bool { p == Pt { sum() == 5 } }
+    c: Bool { p == Pt { x == 9 || y == 4 } }
+    d: Bool { line == Line { closed } }
     "${a} ${b} ${c} ${d}"
 }
 
 // A nested block reads the field it tests; a Maybe field is tested for a value first.
 nested: (line: Line, seg: Seg) Str {
-    a: Bool = line == Line { start == Pt { x == 0 }, length() > 2 }
-    b: Bool = seg == Seg { tip == Pt { y == 4 }, weight > 0 }
+    a: Bool { line == Line { start == Pt { x == 0 }, length() > 2 } }
+    b: Bool { seg == Seg { tip == Pt { y == 4 }, weight > 0 } }
     "${a} ${b}"
 }
 
@@ -103,8 +103,8 @@ held: (k: Int32) Bool {
 
 // In a while condition, a ternary's condition and the rest of an `&&`.
 loops: (k: Int32) Int32 {
-    i: Mutable<Int32> = 0
-    p: Mutable<Pt> = Pt { 0, 0 }
+    i: Mutable<Int32> { 0 }
+    p: Mutable<Pt> { 0, 0 }
     while p == Pt { x < k } && i < 10 {
         p = Pt { p.x + 1, p.y }
         i += 1
@@ -128,7 +128,7 @@ main: () Void {
     trace(held(5))
     trace(made)
     trace(loops(4))
-    g: Grid = Grid { }
+    g: Grid { }
     trace(g.inside(Pt { 1, 2 }))
     trace(g.inside(Pt { 1, 3 }))
     trace(hoisted(3))

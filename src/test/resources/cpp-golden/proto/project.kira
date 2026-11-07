@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.proto"
     srcDir = "src"
     target = "cpp"

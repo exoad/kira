@@ -6,25 +6,25 @@
 // types.member.shape and types.op.unsupported (fallbacks the parser's shapes never produce).
 
 pub Point: Struct {
-    pub x: Int32 = 0
+    pub x: Int32 { 0 }
 }
 
 pub codes: (s: Str, v: View<UInt8>, i: Int32, p: Point) Void {
-    a: Int32 = @arrOf()                    // @error types.builder.untyped
-    b: UInt32 = bitCast<UInt32>()          // @error types.bitcast.args
-    c: UInt32 = bitCast(1.5)               // @error types.bitcast.type-args
-    d: Int32 = Point(1)                    // @error types.call.type-name
-    e: Fx<T2<Int32, Int32>, Int32> = (a: Int32, a: Int32) Int32 { a } // @error types.decl.duplicate
+    a: Int32 { @arrOf() }                    // @error types.builder.untyped
+    b: UInt32 { bitCast<UInt32>() }          // @error types.bitcast.args
+    c: UInt32 { bitCast(1.5) }               // @error types.bitcast.type-args
+    d: Int32 { Point(1) }                    // @error types.call.type-name
+    e: Fx<T2<Int32, Int32>, Int32> { (a: Int32, a: Int32) Int32 { a } } // @error types.decl.duplicate
     s[0] = 'a'                             // @error types.index.str-write
     v[0] = 1                               // @error types.index.view-write
-    g: Bool = i == Str                     // @error types.conform.never
-    h: Fx<T1<Int32>, Void> = (q: Int32 = 1) Void { } // @error types.lambda.default
-    j: Int32 = Point.x                     // @error types.member.static
+    g: Bool { i == Str }                     // @error types.conform.never
+    h: Fx<T1<Int32>, Void> { (q: Int32 = 1) Void { } } // @error types.lambda.default
+    j: Int32 { Point.x }                     // @error types.member.static
     Result.success(1)                      // @error types.result.context
     @_static_assert(true, "here")          // @error types.static-assert.position
-    k: Fx<T2<Bool, Str>, Void> = assert // @error types.fn.foreign-value
-    m: Point = p.copy(x = 1)               // @error types.with.copy
-    n: Int32 = @_infer                     // @error types.intrinsic.value
+    k: Fx<T2<Bool, Str>, Void> { assert } // @error types.fn.foreign-value
+    m: Point { p.copy(x = 1) }               // @error types.with.copy
+    n: Int32 { @_infer }                     // @error types.intrinsic.value
     nested: () Void {                   // @error types.decl.nested
     }
 }

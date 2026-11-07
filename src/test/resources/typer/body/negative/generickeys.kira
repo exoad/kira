@@ -6,15 +6,15 @@ pub Holder: Any {
 }
 
 pub Index<K>: Mutable<Any> {
-    pub m: Mutable<Map<K, Int32>> = Map<K, Int32> { }
+    pub m: Mutable<Map<K, Int32>> { }
 }
 
 pub Bag<T>: Mutable<Any> {
-    pub s: Set<T> = Set<T> { }
+    pub s: Set<T> { }
 }
 
 pub Outer<T>: Mutable<Any> {
-    pub ix: Index<T> = Index<T> { }
+    pub ix: Index<T> { }
 }
 
 pub Plain<T>: Any {
@@ -24,7 +24,7 @@ pub Plain<T>: Any {
 pub Map<K, Str> as Reg<K>
 
 pub put<K>: (k: K) Size {
-    m: Map<K, Int32> = Map<K, Int32> { }
+    m: Map<K, Int32> { }
     m.size()
 }
 
@@ -33,19 +33,19 @@ pub relay<T>: (t: T) Size {
 }
 
 pub fine: (r: Reg<Int64>) Size {
-    a: Index<Int32> = Index<Int32> { }
-    b: Outer<Str> = Outer<Str> { }
-    c: Bag<Char> = Bag<Char> { }
-    p: Plain<Holder> = Plain<Holder> { Holder { 1 } }
+    a: Index<Int32> { }
+    b: Outer<Str> { }
+    c: Bag<Char> { }
+    p: Plain<Holder> { Plain<Holder> { Holder { 1 } } }
     put<Int32>(1) + relay<Str>("x") + r.size()
 }
 
 pub keys: (h: Holder) Size {
-    d: Index<Holder> = Index<Holder> { }           // @error types.type.key ; @error types.type.key
-    e: Bag<Holder> = Bag<Holder> { }               // @error types.type.key ; @error types.type.key
-    f: Outer<Holder> = Outer<Holder> { }           // @error types.type.key ; @error types.type.key
-    i: Size = put<Holder>(h)                       // @error types.type.key
-    j: Size = relay<Holder>(h)                     // @error types.type.key
+    d: Index<Holder> { }           // @error types.type.key ; @error types.type.key
+    e: Bag<Holder> { }               // @error types.type.key ; @error types.type.key
+    f: Outer<Holder> { }           // @error types.type.key ; @error types.type.key
+    i: Size { put<Holder>(h) }                       // @error types.type.key
+    j: Size { relay<Holder>(h) }                     // @error types.type.key
     i + j
 }
 

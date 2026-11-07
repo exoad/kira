@@ -20,8 +20,8 @@ class CodegenGenericTest {
             }
 
             main: () Void {
-                wrapped: Box<Int32> = Box<Int32> { 7 }
-                value: Int32 = id<Int32>(wrapped.value)
+                wrapped: Box<Int32> { Box<Int32> { 7 } }
+                value: Int32 { id<Int32>(wrapped.value) }
                 trace(value)
             }
             """
@@ -38,7 +38,7 @@ class CodegenGenericTest {
         val output = emit(
             """
             main: () Void {
-                grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
+                grid: Arr<Arr<Int32>> { @arrOf(@arrOf(1, 2), @arrOf(3, 4)) }
                 trace(grid[1][0])
             }
             """

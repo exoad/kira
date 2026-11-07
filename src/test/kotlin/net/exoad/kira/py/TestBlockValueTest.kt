@@ -15,8 +15,8 @@ import kotlin.test.assertTrue
 class TestBlockValueTest {
     private val structs = """
         Pt: Struct {
-            pub x: Int32 = 0
-            pub y: Int32 = 0
+            pub x: Int32 { 0 }
+            pub y: Int32 { 0 }
         }
 
         Line: Struct {
@@ -75,13 +75,13 @@ class TestBlockValueTest {
 
     @Test
     fun aTestBlockNarrowsTheIfValueArmItProves() {
-        val passed = "f: (s: Shape) Int32 {\n    v: Int32 = if s == Circle { radius > 1 } {\n        t: Int32 = s.radius * 2\n        t\n    } else {\n        0\n    }\n    v\n}"
+        val passed = "f: (s: Shape) Int32 {\n    v: Int32 { if s == Circle { radius > 1 } {\n        t: Int32 { s.radius * 2 }\n        t\n    } else {\n        0\n    } }\n    v\n}"
         // The block's own subject and the arm's read, both as the Circle the test proved.
         assertEquals(List(2) { "s:Shape->Circle" }, narrowed(passed, classes = true))
-        val failed = "f: (s: Shape) Int32 {\n    v: Int32 = if s != Circle { radius > 1 } {\n        0\n    } else {\n        t: Int32 = s.radius * 2\n        t\n    }\n    v\n}"
+        val failed = "f: (s: Shape) Int32 {\n    v: Int32 { if s != Circle { radius > 1 } {\n        0\n    } else {\n        t: Int32 { s.radius * 2 }\n        t\n    } }\n    v\n}"
         assertEquals(List(2) { "s:Shape->Circle" }, narrowed(failed, classes = true))
         // A failed block proves nothing of the identity: the other arm sees a Shape.
-        val wrong = "f: (s: Shape) Int32 {\n    v: Int32 = if s == Circle { radius > 1 } {\n        0\n    } else {\n        t: Int32 = s.radius\n        t\n    }\n    v\n}"
+        val wrong = "f: (s: Shape) Int32 {\n    v: Int32 { if s == Circle { radius > 1 } {\n        0\n    } else {\n        t: Int32 { s.radius }\n        t\n    } }\n    v\n}"
         expectDiagnostic(TyperTestSupport.snippet(text(wrong, classes = true)), "types.member.unknown")
         // C++ reads the arm through the cast the test made.
         val cpp = DeclTestSupport.emit(DeclTestSupport.module("app:main", text(passed, classes = true)))
@@ -91,7 +91,7 @@ class TestBlockValueTest {
 
     @Test
     fun aTestBlockOnAMaybeNarrowsABodysLastIfValue() {
-        val body = "f: (m: Maybe<Pt>) Int32 {\n    if m == Pt { x > 0 } {\n        d: Int32 = m.x + m.y\n        d\n    } else {\n        -1\n    }\n}"
+        val body = "f: (m: Maybe<Pt>) Int32 {\n    if m == Pt { x > 0 } {\n        d: Int32 { m.x + m.y }\n        d\n    } else {\n        -1\n    }\n}"
         assertEquals(List(3) { "m:Maybe<Pt>->Pt" }, narrowed(body, classes = false))
         val py = PyTestSupport.emit(text(body)).python()
         assertTrue(py.contains("    if m is not None and m.x > 0:\n        d = _k_i32(m.x + m.y)\n        return d\n"), py)
@@ -107,18 +107,18 @@ class TestBlockValueTest {
             }
 
             pick: (m: Maybe<Pt>, k: Int32) Int32 {
-                v: Int32 = if m == Pt { x > k } {
-                    t: Int32 = m.x * 2
+                v: Int32 { if m == Pt { x > k } {
+                    t: Int32 { m.x * 2 }
                     t
                 } else {
                     0
-                }
-                w: Int32 = if probe(k) == Pt { y > 2 } {
-                    u: Int32 = k + 1
+                } }
+                w: Int32 { if probe(k) == Pt { y > 2 } {
+                    u: Int32 { k + 1 }
                     u
                 } else {
                     -k
-                }
+                } }
                 v + w
             }
 

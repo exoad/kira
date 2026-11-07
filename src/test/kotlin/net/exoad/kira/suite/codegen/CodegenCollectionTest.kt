@@ -11,8 +11,8 @@ class CodegenCollectionTest {
         val output = emit(
             """
             main: () Void {
-                numbers: Arr<Int32> = @arrOf(10, 20, 30)
-                entries: Map<Str, Int32> = Map<Str, Int32> { }
+                numbers: Arr<Int32> { @arrOf(10, 20, 30) }
+                entries: Map<Str, Int32> { }
                 trace(numbers[0])
                 entries.put("a", 1)
             }
@@ -30,10 +30,10 @@ class CodegenCollectionTest {
         val output = emit(
             """
             main: () Void {
-                names: List<Str> = List<Str> { }
-                seen: Set<Int32> = Set<Int32> { }
-                stack: Stack<Int32> = Stack<Int32> { }
-                queue: Queue<Int32> = Queue<Int32> { }
+                names: List<Str> { }
+                seen: Set<Int32> { }
+                stack: Stack<Int32> { }
+                queue: Queue<Int32> { }
                 names.add("ada")
                 seen.add(1)
                 stack.push(2)
@@ -52,7 +52,7 @@ class CodegenCollectionTest {
         val output = emit(
             """
             main: () Void {
-                numbers: Arr<Int32> = @arrOf(10, 20)
+                numbers: Arr<Int32> { @arrOf(10, 20) }
                 trace(numbers[0])
             }
             """
@@ -67,7 +67,7 @@ class CodegenCollectionTest {
         val output = emit(
             """
             main: () Void {
-                s: Str = "  Kira  "
+                s: Str { "  Kira  " }
                 trace(s.trim().length())
             }
             """

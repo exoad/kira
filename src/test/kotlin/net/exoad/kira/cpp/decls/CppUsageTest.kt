@@ -15,10 +15,10 @@ import kotlin.test.assertTrue
  */
 class CppUsageTest {
     private val sources = """
-        pub Pt: Struct { pub x: Int32 = 0 }
-        pub Other: Struct { pub x: Int32 = 0 }
+        pub Pt: Struct { pub x: Int32 { 0 } }
+        pub Other: Struct { pub x: Int32 { 0 } }
         pub f: (p: Pt, q: Pt) Bool {
-            same: Bool = p == q
+            same: Bool { p == q }
             same
         }
     """
@@ -56,7 +56,7 @@ class CppUsageTest {
         val (_, ctx) = DeclTestSupport.emitWith(
             DeclTestSupport.module(
                 "test:main",
-                "pub Pt: Struct { pub x: Int32 = 0 }\npub Val: Struct { pub x: Int32 = 0 }\npub Other: Struct { pub x: Int32 = 0 }\n" +
+                "pub Pt: Struct { pub x: Int32 { 0 } }\npub Val: Struct { pub x: Int32 { 0 } }\npub Other: Struct { pub x: Int32 { 0 } }\n" +
                     "pub f: (xs: List<Pt>, m: Map<Str, Val>, o: List<Other>) Bool { xs.contains(Pt { 1 }) && m.containsValue(Val { 2 }) && o.size() > 0 }",
             ),
             uri = "test:main",

@@ -10,8 +10,8 @@ pub @_magic Never: Any
 
 pub @_magic Bool: Any
 
-pub @_magic @_global true: Bool = Bool { }
-pub @_magic @_global false: Bool = Bool { }
+pub @_magic @_global true: Bool { }
+pub @_magic @_global false: Bool { }
 
 // `null` is not a keyword. It is a built-in global of the bottom-ish type
 // `Null`, exactly like `true` and `false` are globals of type `Bool`.
@@ -21,7 +21,7 @@ pub @_magic @_global false: Bool = Bool { }
 // absent one is spelled `Maybe<Pet>`.
 pub @_magic Null: Any
 
-pub @_magic @_global null: Null = Null { }
+pub @_magic @_global null: Null { }
 
 pub Equatable<T>: Any {
     pub equals: (other: T) Bool

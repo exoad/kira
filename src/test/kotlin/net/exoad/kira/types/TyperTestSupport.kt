@@ -124,7 +124,7 @@ object TyperTestSupport {
      */
     val dialectParserWhole: Unit by lazy {
         val parses = try {
-            unitOf(module("probe:dialect", "pub Probe: Struct { pub x: Int32 = 0 }"))
+            unitOf(module("probe:dialect", "pub Probe: Struct { pub x: Int32 { 0 } }"))
             true
         } catch (_: DiagnosticsException) {
             false

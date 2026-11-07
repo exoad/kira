@@ -16,7 +16,7 @@ class VisibilityPassTest {
         expectClean(
             modules(
                 "test:lib" to """
-                    pub SCALE: Int32 = 100
+                    pub SCALE: Int32 { 100 }
                     pub percent: (v: Int32) Int32 {
                         clamp(v) * SCALE
                     }
@@ -42,7 +42,7 @@ class VisibilityPassTest {
             snippet(
                 """
                 pub Counter: Mutable<Any> {
-                    n: Mutable<Int32> = 0
+                    n: Mutable<Int32> { 0 }
                     step: () Int32 {
                         1
                     }
@@ -77,12 +77,12 @@ class VisibilityPassTest {
                     }
                 }
                 pub Pt: Struct {
-                    x: Int32 = 0
+                    x: Int32 { 0 }
                 }
                 pub f: () Int32 {
-                    c: Cfg = Cfg { n = 1 }
-                    d: Cfg = Cfg { 2 }
-                    p: Pt = Pt { x = 3 }
+                    c: Cfg { n = 1 }
+                    d: Cfg { Cfg { 2 } }
+                    p: Pt { x = 3 }
                     c.get() + d.get()
                 }
                 """,
@@ -96,7 +96,7 @@ class VisibilityPassTest {
     fun aPrivateFunctionOrConstantOfAnotherModule() {
         val p = modules(
             "test:lib" to """
-                LIMIT: Int32 = 3
+                LIMIT: Int32 { 3 }
                 helper: () Int32 {
                     LIMIT
                 }
@@ -123,7 +123,7 @@ class VisibilityPassTest {
         val p = snippet(
             """
             pub Counter: Mutable<Any> {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 step: () Int32 {
                     1
                 }
@@ -147,7 +147,7 @@ class VisibilityPassTest {
         val p = snippet(
             """
             pub Base: Mutable<Any> {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 secret: () Int32 {
                     n
                 }

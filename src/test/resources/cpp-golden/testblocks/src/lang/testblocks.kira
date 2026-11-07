@@ -7,7 +7,7 @@ pub Shape: Any {
 
 pub Circle: Shape {
     pub radius: Int32
-    pub filled: Bool = false
+    pub filled: Bool { false }
 
     override pub area: () Int32 {
         3 * radius * radius
@@ -23,8 +23,8 @@ pub Square: Shape {
 }
 
 pub Pt: Struct {
-    pub x: Int32 = 0
-    pub y: Int32 = 0
+    pub x: Int32 { 0 }
+    pub y: Int32 { 0 }
 
     // The receiver as the subject: its fields read through it.
     pub atOrigin: () Bool {

@@ -12,6 +12,6 @@ pub floorMod: (a: Float64, b: Float64) Float64 {
 }
 
 pub Ran: Any {
-    pub code: Int32 = 7
-    pub out: Str = "pylib's"
+    pub code: Int32 { 7 }
+    pub out: Str { "pylib's" }
 }

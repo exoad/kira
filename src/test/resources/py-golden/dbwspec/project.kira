@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.py.dbwspec"
     srcDir = "src"
     target = "py"

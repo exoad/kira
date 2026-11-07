@@ -85,7 +85,7 @@ class RangeTest {
             }
 
             pub floats: () Bool {
-                r: Range<Float64> = 0..2.5
+                r: Range<Float64> { 0..2.5 }
                 1.5 in r
             }
             """
@@ -102,12 +102,12 @@ class RangeTest {
         val p = typed(
             """
             pub held: (x: Int32) Bool {
-                r: Range<Int32> = 9..13
+                r: Range<Int32> { 9..13 }
                 x in r && r.contains(x) && r.begin <= r.end
             }
 
             pub walk: (r: Range<Int32>) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in r {
                     t += i
                 }
@@ -167,7 +167,7 @@ class RangeTest {
         val p = typed(
             """
             pub f: (x: Int32) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in -2..2 {
                     t += i
                 }
@@ -237,11 +237,11 @@ class RangeTest {
     @Test
     fun existingDiagnosticsCoverTheRestOfARangesRules() {
         // A float range is a value and a test, never a loop; a float literal is no integer end.
-        only(typed("pub f: (r: Range<Float64>) Int32 {\n    t: Mutable<Int32> = 0\n    for i: Float64 in r {\n        t += 1\n    }\n    t\n}"), "types.for.range-type")
+        only(typed("pub f: (r: Range<Float64>) Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Float64 in r {\n        t += 1\n    }\n    t\n}"), "types.for.range-type")
         only(typed("pub f: (x: Int32) Bool {\n    x in 0..2.5\n}"), "types.literal.float-to-int")
         expectDiagnostic(typed("pub f: (r: Range<Str>) Bool {\n    true\n}"), "rules.generics.bound")
         // A range is a value now, so the old position error is gone and a wrong slot is a mismatch.
-        val p = typed("pub f: () Int32 {\n    r: Int32 = 0..3\n    r\n}")
+        val p = typed("pub f: () Int32 {\n    r: Int32 { 0..3 }\n    r\n}")
         expectDiagnostic(p, "types.assign.mismatch")
         assertFalse(p.diagnostics.any { it.code == "types.range.position" }, TyperTestSupport.render(p))
     }
@@ -290,8 +290,8 @@ class RangeTest {
         val out = cpp(
             """
             pub f: (x: Int32) Int32 {
-                r: Range<Int32> = 1..4
-                t: Mutable<Int32> = 0
+                r: Range<Int32> { 1..4 }
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in r {
                     t += i
                 }
@@ -310,7 +310,7 @@ class RangeTest {
     @Test
     fun cAndJsRefuseInAndARangeValueButKeepTheRangeLoop() {
         val tested = "f: (k: Int32) Bool {\n    k in 9..13\n}\n"
-        val held = "f: () Int32 {\n    r: Range<Int32> = 1..4\n    0\n}\n"
+        val held = "f: () Int32 {\n    r: Range<Int32> { 1..4 }\n    0\n}\n"
         for ((source, what) in listOf(tested to "`in` outside a for loop", held to "a range as a value")) {
             val refused = listOf(
                 assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(source, "test/main.kira") },
@@ -318,7 +318,7 @@ class RangeTest {
             )
             refused.forEach { assertTrue(it.message.orEmpty().contains(what), it.message) }
         }
-        val loop = "f: () Int32 {\n    t: Mutable<Int32> = 0\n    for i: Int32 in 0..3 {\n        t += i\n    }\n    t\n}\n"
+        val loop = "f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Int32 in 0..3 {\n        t += i\n    }\n    t\n}\n"
         assertTrue(TestCompileSupport.transpileSnippetToC(loop, "test/main.kira").contains("i_more && i <= i_last"))
         assertNull(runCatching { TestCompileSupport.transpileSnippetToJS(loop, "test/main.kira") }.exceptionOrNull())
     }

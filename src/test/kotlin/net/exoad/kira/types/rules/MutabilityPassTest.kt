@@ -13,10 +13,10 @@ class MutabilityPassTest {
         val p = snippet(
             """
             pub f: () Void {
-                n: Int32 = 0
-                g: Fx<T0, Void> = () Void {
+                n: Int32 { 0 }
+                g: Fx<T0, Void> { () Void {
                     n = 1
-                }
+                } }
             }
             """,
         )

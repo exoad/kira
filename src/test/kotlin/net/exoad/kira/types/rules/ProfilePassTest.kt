@@ -24,17 +24,17 @@ class ProfilePassTest {
         expectClean(
             snippet(
                 """
-                pub MODE_A: Int32 = 0
+                pub MODE_A: Int32 { 0 }
                 pub Frame: Struct {
-                    pub bytes: Arr<UInt8, 8> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
-                    pub mode: Int32 = MODE_A
+                    pub bytes: Arr<UInt8, 8> { @arrOf(0, 0, 0, 0, 0, 0, 0, 0) }
+                    pub mode: Int32 { MODE_A }
                     pub cleared: () Frame {
-                        b: Mutable<Arr<UInt8, 8>> = bytes
+                        b: Mutable<Arr<UInt8, 8>> { bytes }
                         b[0] = 0
                         Frame { b, mode }
                     }
                 }
-                pub STATE: Mutable<Int32> = 0
+                pub STATE: Mutable<Int32> { 0 }
                 pub Show: Any {
                     pub code: () Int32
                 }
@@ -92,7 +92,7 @@ class ProfilePassTest {
         val p = snippet(
             """
             pub Node: Any {
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
             pub Show: Any {
                 pub code: () Int32
@@ -126,7 +126,7 @@ class ProfilePassTest {
                     trace(1)
                 } on e: Str {
                 }
-                t: Str = "n=${'$'}{1}"
+                t: Str { "n=${'$'}{1}" }
                 g
             }
             pub g: () Int64 {
@@ -186,7 +186,7 @@ class ProfilePassTest {
         val util = "test:util" to """
             kira.os as os
             pub greet: () Int32 {
-                s: Str = "a" + "b"
+                s: Str { "a" + "b" }
                 s.length() as Int32
             }
         """

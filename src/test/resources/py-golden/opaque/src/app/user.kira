@@ -11,7 +11,7 @@ golden.py.opaque.app.opaque.sameObject as sameObject
 
 Pair: Mutable<Any> {
     pub left: Counter
-    pub spare: Mutable<Maybe<Counter>> = null
+    pub spare: Mutable<Maybe<Counter>> { null }
 }
 
 labelOf: (c: Counter) Str {
@@ -23,14 +23,14 @@ labelOf: (c: Counter) Str {
 }
 
 main: () Void {
-    a: Mutable<Counter> = counter("a")
-    all: Mutable<List<Counter>> = @listOf(a, counter(""))
+    a: Mutable<Counter> { counter("a") }
+    all: Mutable<List<Counter>> { @listOf(a, counter("")) }
     trace(a.bump(2))
     trace(all[0].bump(3))
     trace(sameObject(a, all[0]))
-    copied: List<Counter> = all
+    copied: List<Counter> { all }
     trace(sameObject(copied[1], all[1]))
-    p: Mutable<Pair> = Pair { a }
+    p: Mutable<Pair> { Pair { a } }
     p.spare = maybeCounter("")
     trace(p.spare.isNone())
     p.spare = maybeCounter("c")
@@ -38,11 +38,11 @@ main: () Void {
     trace(p.left.total())
     trace(labelOf(a))
     trace(labelOf(all[1]))
-    pair: T2<List<Int32>, Int32> = T2<List<Int32>, Int32> { @listOf(1, 2), 0 }
+    pair: T2<List<Int32>, Int32> { @listOf(1, 2), 0 }
     trace(a.absorb(pair))
-    kept: List<Int32> = pair.first
+    kept: List<Int32> { pair.first }
     trace(kept.size())
-    c: Conn = dialer()
+    c: Conn { dialer() }
     try {
         trace(c.wait())
     } on e: Str {

@@ -8,7 +8,7 @@ kira.time as time
 // throw, panic or exit in a handler ends the process (D76); main serves itself through kira:http's client.
 
 withHeader: (name: Str, value: Str) HttpAnswer {
-    h: Mutable<Map<Str, Str>> = Map<Str, Str> { }
+    h: Mutable<Map<Str, Str>> { }
     h.put(name, value)
     HttpAnswer { status = 200, headers = h }
 }
@@ -17,7 +17,7 @@ pub route: (r: HttpRequest) HttpAnswer {
     if r.path == "/text" {
         HttpAnswer { status = 200, contentType = "text/plain; charset=utf-8", body = "hello".bytes() }
     } else if r.path == "/json" {
-        h: Mutable<Map<Str, Str>> = Map<Str, Str> { }
+        h: Mutable<Map<Str, Str>> { }
         h.put("Cache-Control", "no-store")
         h.put("Location", "/text")
         HttpAnswer { status = 200, body = "{\"ok\": true}".bytes(), headers = h }
@@ -59,7 +59,7 @@ pub route: (r: HttpRequest) HttpAnswer {
 // A body of at most 64 bytes is read, any for /open; any other length is refused unread, the length it saw in the body.
 pub admit: (path: Str, n: Int64) HttpAnswer {
     if path != "/open" && (n < 0 || n > 64) {
-        code: Int32 = n < 0 ? 400 : 413
+        code: Int32 { n < 0 ? 400 : 413 }
         HttpAnswer { status = code, contentType = "text/plain", body = "length ${n}".bytes() }
     } else {
         HttpAnswer { status = 0 }
@@ -86,15 +86,15 @@ pub why: () Str {
 // serve on the main thread, which an onSignal handler ends as it ends kira:os's waits (D78): the driver's SIGINT 300 ms
 // in; the port is free after.
 pub serveOnSignal: () Str {
-    flag: Atomic<Bool> = Atomic<Bool> { value = false }
-    installed: Bool = onSignal(SIGNAL_INT, flag)
-    s: HttpServer = httpServer("127.0.0.1", 0, route).value
-    before: Int64 = monoNowMs()
-    served: Bool = s.serve()
-    took: Int64 = monoNowMs() - before
-    reason: Str = httpError()
-    again: Maybe<HttpServer> = httpServer("127.0.0.1", s.port(), route)
-    freed: Bool = again.isSome()
+    flag: Atomic<Bool> { value = false }
+    installed: Bool { onSignal(SIGNAL_INT, flag) }
+    s: HttpServer { httpServer("127.0.0.1", 0, route).value }
+    before: Int64 { monoNowMs() }
+    served: Bool { s.serve() }
+    took: Int64 { monoNowMs() - before }
+    reason: Str { httpError() }
+    again: Maybe<HttpServer> { httpServer("127.0.0.1", s.port(), route) }
+    freed: Bool { again.isSome() }
     if freed {
         again.value.shutdown()
     }
@@ -107,55 +107,55 @@ bodyOf: (r: Maybe<HttpReply>) Str {
 }
 
 pub main: () Int32 {
-    t: Suite = Suite { title = "httpserver - kira:http's server on py" }
-    s: HttpServer = httpServerWithPost("127.0.0.1", 0, route, admit).value
-    port: Int32 = s.port()
+    t: Suite { title = "httpserver - kira:http's server on py" }
+    s: HttpServer { httpServerWithPost("127.0.0.1", 0, route, admit).value }
+    port: Int32 { s.port() }
     t.check(port > 0, "port 0 binds a free port, which port() says")
     t.check(httpServer("127.0.0.1", port, route).isNone() && httpError() != "", "a second server on it is none, httpError saying why")
-    third: Maybe<HttpServer> = httpServer("127.0.0.1", 0, route)
+    third: Maybe<HttpServer> { httpServer("127.0.0.1", 0, route) }
     t.check(third.isSome() && httpError() == "", "a bind that works clears the reason")
     third.value.shutdown()
-    served: Atomic<Bool> = Atomic<Bool> { value = false }
-    th: Thread = spawn("serve", () Void {
+    served: Atomic<Bool> { value = false }
+    th: Thread { spawn("serve", () Void {
         served.store(s.serve())
-    })
-    url: Str = "http://127.0.0.1:${port}"
+    }) }
+    url: Str { "http://127.0.0.1:${port}" }
     t.checkStr(bodyOf(httpGet(url + "/text", 5000)), "200 hello", "kira:http's client reads its server's 200")
     t.checkStr(bodyOf(httpGet(url + "/refused", 5000)), "409 {\"ok\": false}", "and a 409 with its body")
     t.check(httpGet(url + "/missing", 5000).value.status == 404, "and a 404 without one, Python's error page")
     t.checkStr(bodyOf(httpGet(url + "/drop", 5000)), "none: Remote end closed connection without response", "a status of 0 answers nothing")
     t.checkStr(bodyOf(httpPost(url + "/echo", "hi".bytes(), "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 2: hi", "a POST's body reaches the handler")
-    one: List<UInt8> = @listOf(65)
+    one: List<UInt8> { @listOf(65) }
     t.checkStr(bodyOf(httpPost(url + "/echo", one, "text/plain", 5000)), "200 POST /echo '127.0.0.1:${port}' 1: A", "one byte too")
     t.check(!s.serve() && httpError() == "the server is serving", "a second serve while it serves is false")
     s.shutdown()
     th.join()
     t.check(served.load(), "shutdown ends serve, which is true")
-    after: Maybe<HttpServer> = httpServer("127.0.0.1", port, route)
+    after: Maybe<HttpServer> { httpServer("127.0.0.1", port, route) }
     t.check(after.isSome(), "and frees its port")
     after.value.shutdown()
     t.check(s.serve() && httpError() == "", "a serve after it returns true at once")
-    idle: HttpServer = httpServer("127.0.0.1", 0, route).value
+    idle: HttpServer { httpServer("127.0.0.1", 0, route).value }
     idle.shutdown()
     t.check(idle.serve(), "and so does one after a shutdown before any serve")
     idle.shutdown()
-    again: Maybe<HttpServer> = httpServer("127.0.0.1", idle.port(), route)
+    again: Maybe<HttpServer> { httpServer("127.0.0.1", idle.port(), route) }
     t.check(again.isSome(), "which freed its port at once")
     again.value.shutdown()
-    unbound: HttpServer = HttpServer { }
+    unbound: HttpServer { }
     t.check(!unbound.serve() && httpError() == "the server is unbound" && unbound.port() == -1, "an HttpServer no call bound serves nothing")
-    base: HttpAnswer = HttpAnswer { body = "x".bytes() }
-    answer: Mutable<HttpAnswer> = base
+    base: HttpAnswer { body = "x".bytes() }
+    answer: Mutable<HttpAnswer> { base }
     answer.body.add(33)
     answer.headers.put("A", "b")
-    request: HttpRequest = HttpRequest { body = "a".bytes() }
-    other: Mutable<HttpRequest> = request
+    request: HttpRequest { body = "a".bytes() }
+    other: Mutable<HttpRequest> { request }
     other.body.add(98)
-    reply: HttpReply = HttpReply { status = 1, body = "r".bytes() }
-    copied: Mutable<HttpReply> = reply
+    reply: HttpReply { status = 1, body = "r".bytes() }
+    copied: Mutable<HttpReply> { reply }
     copied.body.add(115)
     t.check(base.body.size() == 1 && base.headers.size() == 0 && request.body.size() == 1 && reply.body.size() == 1, "each struct is a value, its List and Map copied with it")
-    same: HttpReply = HttpReply { status = 1, body = "r".bytes() }
+    same: HttpReply { status = 1, body = "r".bytes() }
     t.check(same == reply && copied != reply && other != request && answer.body.size() == 2, "and compared field by field")
     t.finish()
 }

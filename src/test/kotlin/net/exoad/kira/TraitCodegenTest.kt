@@ -54,19 +54,19 @@ class TraitCodegenTest {
             }
 
             main: () Void {
-                dog: Dog = Dog { "Rex" }
-                cat: Cat = Cat { "Luna" }
+                dog: Dog { Dog { "Rex" } }
+                cat: Cat { Cat { "Luna" } }
                 announce(dog)
                 announce(cat)
-                loud: Int32 = noiseLevel(dog)
+                loud: Int32 { noiseLevel(dog) }
                 trace(loud)
-                s: Speaker = dog
+                s: Speaker { dog }
                 trace(s.name())
                 trace(makeCatSpeaker().name())
             }
 
             makeCatSpeaker: () Speaker {
-                c: Cat = Cat { "Mochi" }
+                c: Cat { Cat { "Mochi" } }
                 c
             }
         """.trimIndent()

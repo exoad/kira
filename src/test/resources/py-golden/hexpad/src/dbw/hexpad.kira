@@ -31,11 +31,11 @@ pub crcLine: (crc: UInt16) Str {
 
 // dbw_gen.py's crc16: MSB first, no reflection.
 pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt16 {
-    crc: Mutable<UInt16> = init
-    i: Mutable<Size> = 0
+    crc: Mutable<UInt16> { init }
+    i: Mutable<Size> { 0 }
     while i < data.size() {
         crc = crc ^ ((data[i] as UInt16) << 8)
-        k: Mutable<Int32> = 0
+        k: Mutable<Int32> { 0 }
         while k < 8 {
             if (crc & 0x8000) != 0 {
                 crc = (crc << 1) ^ poly
@@ -51,13 +51,13 @@ pub crc16: (data: View<UInt8>, poly: UInt16, init: UInt16, xorout: UInt16) UInt1
 
 // dbw_gen.py's byte_table: the declaration, a brace, rows of twelve bytes, and the close.
 pub byteTable: (ind: Str, pad: Str, decl: Str, data: View<UInt8>) List<Str> {
-    out: Mutable<List<Str>> = List<Str> { }
+    out: Mutable<List<Str>> { }
     out.add(ind + decl + " =")
     out.add(ind + "{")
-    i: Mutable<Size> = 0
+    i: Mutable<Size> { 0 }
     while i < data.size() {
-        row: Mutable<Str> = ind + pad
-        k: Mutable<Size> = i
+        row: Mutable<Str> { ind + pad }
+        k: Mutable<Size> { i }
         while k < data.size() && k < i + 12 {
             if k > i {
                 row = row + ", "
@@ -84,19 +84,19 @@ main: () Void {
     trace(build(0xDEADBEEF))
     trace(build(0x1A))
     trace(build(0))
-    check: List<UInt8> = @listOf(0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39)
+    check: List<UInt8> { @listOf(0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39) }
     trace("crc check: these parameters give " + hex4(crc16(check, 0x1021, 0xFFFF, 0)))
     trace(crcLine(crc16(check, 0x1021, 0xFFFF, 0)))
     trace(crcLine(crc16(check, 0x1021, 0, 0)))
     trace(crcLine(crc16(check, 0x8005, 0, 0xFFFF)))
-    data: Mutable<List<UInt8>> = List<UInt8> { }
-    b: Mutable<Int32> = 0
+    data: Mutable<List<UInt8>> { }
+    b: Mutable<Int32> { 0 }
     while b < 26 {
         data.add((b * 37) as UInt8)
         b += 1
     }
-    rows: List<Str> = byteTable("  ", "    ", "constexpr UInt8 TABLE[26]", data)
-    r: Mutable<Size> = 0
+    rows: List<Str> { byteTable("  ", "    ", "constexpr UInt8 TABLE[26]", data) }
+    r: Mutable<Size> { 0 }
     while r < rows.size() {
         trace(rows[r])
         r += 1

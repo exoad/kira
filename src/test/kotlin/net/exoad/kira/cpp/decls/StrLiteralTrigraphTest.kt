@@ -43,9 +43,9 @@ class StrLiteralTrigraphTest {
             DeclTestSupport.module(
                 uri,
                 """
-                pub QUERY: Str = "a ??= b"
+                pub QUERY: Str { "a ??= b" }
                 pub Cfg: Struct {
-                    pub text: Str = "??/"
+                    pub text: Str { "??/" }
                 }
                 pub show: (label: Str = "??'") Void
                 @_static_assert(1 == 1, "??(")

@@ -10,7 +10,7 @@ class ControlFlowRuntimeTest {
         assertStdout("two\n") {
             """
             main: () Void {
-                x: Int32 = 2
+                x: Int32 { 2 }
                 if x == 1 {
                     trace("one")
                 } else {
@@ -26,7 +26,7 @@ class ControlFlowRuntimeTest {
         assertStdout("0\n1\n2\n3\n4\n") {
             """
             main: () Void {
-                i: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
                 while i < 5 {
                     trace(i)
                     i = i + 1

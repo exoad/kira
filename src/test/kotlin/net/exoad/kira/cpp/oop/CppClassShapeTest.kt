@@ -186,8 +186,8 @@ class CppClassShapeTest {
             pub Governor: Mutable<Any> {
                 dry: Bool
                 pub seconds: Int32
-                secondsMs: Mutable<Int64> = 0
-                label: Mutable<Str> = "gov"
+                secondsMs: Mutable<Int64> { 0 }
+                label: Mutable<Str> { "gov" }
 
                 pub ms: () Int64 {
                     secondsMs
@@ -235,7 +235,7 @@ class CppClassShapeTest {
                 pub get: () Int32 { k }
             }
             pub OneDefaulted: Mutable<Any> {
-                k: Mutable<Int32> = 5
+                k: Mutable<Int32> { 5 }
                 pub get: () Int32 { k }
             }
             pub Two: Any {
@@ -256,12 +256,12 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Base: Mutable<Any> {
-                a: Mutable<Int32> = 1
+                a: Mutable<Int32> { 1 }
                 pub getA: () Int32 { a }
             }
             pub Leaf: Mutable<Base> {
                 b: Int32
-                c: Mutable<Int32> = 3
+                c: Mutable<Int32> { 3 }
                 pub getB: () Int32 { b + c }
             }
             """
@@ -305,7 +305,7 @@ class CppClassShapeTest {
                 }
             }
             pub Dog: Mutable<Animal> {
-                tricks: Mutable<Int32> = 0
+                tricks: Mutable<Int32> { 0 }
                 override pub sound: () Str {
                     "woof"
                 }
@@ -327,7 +327,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Base: Mutable<Any> {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 pub plain: () Int32 { n }
                 pub replaced: () Int32 { 1 }
                 pub bump: () Void { n = n + 1 }
@@ -351,7 +351,7 @@ class CppClassShapeTest {
                 uri,
                 """
                 pub Counter: Mutable<Any> {
-                    pub k: Mutable<Int32> = 5
+                    pub k: Mutable<Int32> { 5 }
                     pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                         f(x)
                     }
@@ -384,7 +384,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Base: Mutable<Any> {
-                k: Mutable<Int32> = 0
+                k: Mutable<Int32> { 0 }
                 pub get: () Int32 { k }
             }
             pub Leaf: Mutable<Base> {
@@ -446,7 +446,7 @@ class CppClassShapeTest {
         val e = emit(
             """
             pub Tally: Mutable<Any> {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 pub add: (k: Int32) Void {
                     n = n + k
                 }
@@ -497,7 +497,7 @@ class CppClassShapeTest {
                 pub value: T
             }
             pub IntBox: Mutable<Box<Int32>> {
-                hits: Mutable<Int32> = 0
+                hits: Mutable<Int32> { 0 }
                 pub count: () Int32 { hits }
             }
             """
@@ -551,7 +551,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             """
             pub Node: Mutable<Any> {
-                hits: Mutable<Int32> = 0
+                hits: Mutable<Int32> { 0 }
                 pub me: () Node {
                     this
                 }
@@ -573,7 +573,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub Pt: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
                 pub copy: () Pt {
                     this
                 }
@@ -588,7 +588,7 @@ class CppClassShapeTest {
         val h = header(
             """
             pub Counter: Mutable<Any> {
-                pub k: Mutable<Int32> = 5
+                pub k: Mutable<Int32> { 5 }
                 pub multiplier: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
@@ -596,7 +596,7 @@ class CppClassShapeTest {
                 }
             }
             pub Plain: Mutable<Any> {
-                pub k: Mutable<Int32> = 5
+                pub k: Mutable<Int32> { 5 }
                 pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                     f(x)
                 }
@@ -611,7 +611,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Node: Mutable<Any> {
-                me: Mutable<Maybe<Node>> = null
+                me: Mutable<Maybe<Node>> { null }
                 initially {
                     keep(this)
                 }
@@ -631,9 +631,9 @@ class CppClassShapeTest {
             """
             pub Band: Any {
                 pub lo: Int32
-                pub mid: Int32 = 5
+                pub mid: Int32 { 5 }
                 pub hi: Int32
-                pub tail: Int32 = 9
+                pub tail: Int32 { 9 }
             }
             pub named: () Band {
                 Band { hi = 30, lo = 10 }
@@ -655,17 +655,17 @@ class CppClassShapeTest {
             """
             pub Band: Any {
                 pub lo: Int32
-                pub mid: UInt8 = 5
+                pub mid: UInt8 { 5 }
                 pub hi: Int32
             }
             pub Base: Any {
                 pub name: Str
-                pub level: Int8 = -1
-                pub wide: Int32 = 0
+                pub level: Int8 { -1 }
+                pub wide: Int32 { 0 }
             }
             pub Leaf: Base {
                 pub small: UInt8
-                pub tail: Int64 = 3
+                pub tail: Int64 { 3 }
             }
             pub band: () Band {
                 Band { lo = 1, hi = 2 }
@@ -686,7 +686,7 @@ class CppClassShapeTest {
     fun twoImpureArgumentsAreEvaluatedAsWrittenIntoTemporaries() {
         val s = emit(
             """
-            calls: Mutable<Int32> = 0
+            calls: Mutable<Int32> { 0 }
             first: () Int32 {
                 calls = calls + 1
                 calls
@@ -770,7 +770,7 @@ class CppClassShapeTest {
             }
 
             pub Tree: Mutable<Any> {
-                pub kid: Mutable<Maybe<Kid>> = null
+                pub kid: Mutable<Maybe<Kid>> { null }
 
                 pub clear: () Int32 {
                     kid = null
@@ -805,7 +805,7 @@ class CppClassShapeTest {
             }
 
             pub trio: (h: Named, k: Int32) Trio {
-                label: Str = "x"
+                label: Str { "x" }
                 Trio { label, h.rename(), k }
             }
             """
@@ -816,7 +816,7 @@ class CppClassShapeTest {
     // ---- field defaults run in Kira's order, inside the constructor (R-D and OQ-2, second-class round 3) -------
 
     private val counting = """
-        pub counter: Mutable<Int32> = 0
+        pub counter: Mutable<Int32> { 0 }
 
         pub next: () Int32 {
             counter += 1
@@ -831,7 +831,7 @@ class CppClassShapeTest {
         // mem-initializer reads seed, after every argument (the given values first, as Kira has it).
         val (h, s) = both(
             """
-            pub seed: Mutable<Int32> = 1
+            pub seed: Mutable<Int32> { 1 }
 
             pub bumpSeed: () Int32 {
                 seed += 10
@@ -840,7 +840,7 @@ class CppClassShapeTest {
 
             pub Duo: Any {
                 pub a: Int32
-                pub b: Int32 = seed
+                pub b: Int32 { seed }
                 pub c: Int32
             }
 
@@ -868,9 +868,9 @@ class CppClassShapeTest {
             $counting
 
             pub Two: Any {
-                pub a: Int32 = next()
-                pub b: Int32 = next()
-                pub c: Int32 = 7
+                pub a: Int32 { next() }
+                pub b: Int32 { next() }
+                pub c: Int32 { 7 }
             }
 
             pub none: () Two {
@@ -901,7 +901,7 @@ class CppClassShapeTest {
             $counting
 
             pub Base: Mutable<Any> {
-                pub seen: Mutable<Int32> = 0
+                pub seen: Mutable<Int32> { 0 }
 
                 initially {
                     seen = next()
@@ -909,8 +909,8 @@ class CppClassShapeTest {
             }
 
             pub Kid: Mutable<Base> {
-                pub k: Int32 = next()
-                pub after: Mutable<Int32> = 0
+                pub k: Int32 { next() }
+                pub after: Mutable<Int32> { 0 }
 
                 initially {
                     after = next()
@@ -939,11 +939,11 @@ class CppClassShapeTest {
             $counting
 
             pub Low: Any {
-                pub a: Int32 = next()
+                pub a: Int32 { next() }
             }
 
             pub High: Low {
-                pub b: Int32 = next()
+                pub b: Int32 { next() }
             }
 
             pub high: () High {
@@ -972,7 +972,7 @@ class CppClassShapeTest {
             }
 
             pub Slot: Mutable<Any> {
-                pub item: Mutable<Maybe<Str>> = pick()
+                pub item: Mutable<Maybe<Str>> { pick() }
             }
 
             pub empty: () Slot {
@@ -1012,7 +1012,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Reg: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
             }
 
             pub enroll: (r: Reg, n: Node) Void {
@@ -1041,7 +1041,7 @@ class CppClassShapeTest {
         val messages = unsupported(
             """
             pub Reg: Mutable<Any> {
-                pub hook: Mutable<Maybe<Fx<T0, Str>>> = null
+                pub hook: Mutable<Maybe<Fx<T0, Str>>> { null }
             }
 
             pub Node: Mutable<Any> {
@@ -1106,7 +1106,7 @@ class CppClassShapeTest {
             """
             pub Node: Mutable<Any> {
                 pub name: Str
-                pub size: Mutable<Int32> = 0
+                pub size: Mutable<Int32> { 0 }
 
                 initially {
                     measure()
@@ -1170,7 +1170,7 @@ class CppClassShapeTest {
                 pub name: Str
             }
             pub Owner: Mutable<Any> {
-                pet: Mutable<Maybe<Pet>> = null
+                pet: Mutable<Maybe<Pet>> { null }
                 pub get: () Maybe<Pet> {
                     pet
                 }
@@ -1188,7 +1188,7 @@ class CppClassShapeTest {
         val slot = header(
             """
             pub Handler: Any {
-                pub tag: Int32 = 0
+                pub tag: Int32 { 0 }
                 pub process: (data: Str) Void
             }
             """
@@ -1272,7 +1272,7 @@ class CppClassShapeTest {
                 pub area: () Int32
             }
             pub Sq: Struct, Shape {
-                pub side: Int32 = 2
+                pub side: Int32 { 2 }
                 override pub area: () Int32 { side }
             }
             pub one: () Int32 { 1 }
@@ -1323,7 +1323,7 @@ class CppClassShapeTest {
                 pub id: () Int32
             }
             pub C: Mutable<A>, B {
-                n: Mutable<Int32> = 0
+                n: Mutable<Int32> { 0 }
                 override pub id: () Int32 {
                     n += 1
                     n
@@ -1351,7 +1351,7 @@ class CppClassShapeTest {
                 pub tag: () Int32
             }
             pub Animal: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
                 pub tag: () Int32 {
                     1
                 }
@@ -1389,7 +1389,7 @@ class CppClassShapeTest {
                 override pub b: () Int32
             }
             pub S: Struct, T {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
                 override pub b: () Int32 { 20 }
             }
             """
@@ -1409,7 +1409,7 @@ class CppClassShapeTest {
             }
             pub Box<T>: Struct, Shape {
                 pub value: T
-                pub side: Int32 = 1
+                pub side: Int32 { 1 }
                 override pub area: () Int32 { side }
             }
             """
@@ -1430,7 +1430,7 @@ class CppClassShapeTest {
                 pub again: () T { get() }
             }
             pub Five: Struct, Source<Int32> {
-                pub v: Int32 = 5
+                pub v: Int32 { 5 }
                 override pub get: () Int32 { v }
             }
             """
@@ -1449,7 +1449,7 @@ class CppClassShapeTest {
                     pub twice: () Int32 { area() }
                 }
                 pub Square: Struct, Shape {
-                    pub side: Int32 = 3
+                    pub side: Int32 { 3 }
                     override pub area: () Int32 { side }
                 }
                 """,
@@ -1470,7 +1470,7 @@ class CppClassShapeTest {
         val s = emit(
             """
             pub Frame: Mutable<Any> {
-                pub buf: Mutable<Arr<UInt8, 4>> = @arrOf(1, 2, 3, 4)
+                pub buf: Mutable<Arr<UInt8, 4>> { @arrOf(1, 2, 3, 4) }
                 pub id: Int32
             }
             pub Tagged: Mutable<Frame> {
@@ -1511,7 +1511,7 @@ class CppClassShapeTest {
         val (h, s) = both(
             siblings + """
             pub S: Struct, Abs, Def {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
             pub viaAbs<T: Abs>: (s: T) Int32 {
                 s.f()
@@ -1535,7 +1535,7 @@ class CppClassShapeTest {
             pub C: One, Two {
             }
             pub S: Struct, One, Two {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
             """
         )
@@ -1559,7 +1559,7 @@ class CppClassShapeTest {
                 override pub f: () Int32 { 3 }
             }
             pub S: Struct, B, C {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
             """
         )
@@ -1596,7 +1596,7 @@ class CppClassShapeTest {
         val shapes = OopTestSupport.module(
             "test:shapes",
             """
-            FACTOR: Int32 = 3
+            FACTOR: Int32 { 3 }
 
             Int32 as Len
 
@@ -1625,7 +1625,7 @@ class CppClassShapeTest {
             }
 
             pub Local: Struct, Shape {
-                pub side: Int32 = 2
+                pub side: Int32 { 2 }
                 override pub area: () Int32 {
                     side
                 }
@@ -1639,7 +1639,7 @@ class CppClassShapeTest {
             test.shapes.Shape as Shape
 
             pub Square: Struct, Shape {
-                pub side: Int32 = 4
+                pub side: Int32 { 4 }
                 override pub area: () Int32 {
                     side
                 }
@@ -1688,7 +1688,7 @@ class CppClassShapeTest {
             test.shapes.Shape as Shape
 
             pub Square: Struct, Shape {
-                pub side: Int32 = 4
+                pub side: Int32 { 4 }
                 override pub area: () Int32 {
                     side
                 }
@@ -1716,7 +1716,7 @@ class CppClassShapeTest {
                 n.name()
             }
             pub Cat: Struct, Named {
-                pub v: Int32 = 1
+                pub v: Int32 { 1 }
                 override pub name: () Str {
                     "cat"
                 }
@@ -1752,7 +1752,7 @@ class CppClassShapeTest {
             test.shapes.Named as Named
 
             pub Cat: Struct, Named {
-                pub v: Int32 = 1
+                pub v: Int32 { 1 }
                 override pub name: () Str {
                     "cat"
                 }
@@ -1955,7 +1955,7 @@ class CppClassShapeTest {
                 }
             }
             pub Square: Struct, Shape {
-                pub side: Int32 = 3
+                pub side: Int32 { 3 }
                 override pub area: () Int32 {
                     side
                 }
@@ -2008,7 +2008,7 @@ class CppClassShapeTest {
         val (h, _) = both(
             """
             pub Pt: Struct {
-                pub x: Int32 = 1
+                pub x: Int32 { 1 }
             }
             pub Sink<T>: Any {
                 pub put: (v: T) Int32
@@ -2120,7 +2120,7 @@ class CppClassShapeTest {
             pub C: Abs<Int32>, Def {
             }
             pub S: Struct, Abs<Int32>, Def {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
             }
             """
         )
@@ -2149,7 +2149,7 @@ class CppClassShapeTest {
             pub Both: Abs, Def<Int32> {
             }
             pub S: Struct, Both {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
             }
             """
         )
@@ -2176,7 +2176,7 @@ class CppClassShapeTest {
                 }
             }
             pub S: Struct, Abs, Def {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
             pub C: Abs, Def {
             }

@@ -19,7 +19,7 @@ class TypeRuntimeTest {
             }
 
             main: () Void {
-                friend: Pet = Pet { "Mochi", "meow" }
+                friend: Pet { "Mochi", "meow" }
                 trace(friend.name)
                 trace(friend.speak())
             }
@@ -40,7 +40,7 @@ class TypeRuntimeTest {
             }
 
             main: () Void {
-                wrapped: Box<Int32> = Box<Int32> { 7 }
+                wrapped: Box<Int32> { Box<Int32> { 7 } }
                 trace(id<Int32>(wrapped.value))
             }
             """
@@ -98,8 +98,8 @@ class TypeRuntimeTest {
             }
 
             main: () Void {
-                dog: Dog = Dog { "Rex" }
-                cat: Cat = Cat { "Luna" }
+                dog: Dog { Dog { "Rex" } }
+                cat: Cat { Cat { "Luna" } }
                 announce(dog)
                 announce(cat)
                 trace(noiseLevel(dog))

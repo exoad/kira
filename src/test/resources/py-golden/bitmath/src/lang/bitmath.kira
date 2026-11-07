@@ -49,30 +49,30 @@ constantsI8: (v: Int8) Str {
 }
 
 compoundI8: (v: Int8, n: Int32) Str {
-    a: Mutable<Int8> = v
+    a: Mutable<Int8> { v }
     a &= 0x3C
-    b: Mutable<Int8> = v
+    b: Mutable<Int8> { v }
     b |= 0x3C
-    c: Mutable<Int8> = v
+    c: Mutable<Int8> { v }
     c ^= 0x3C
-    d: Mutable<Int8> = v
+    d: Mutable<Int8> { v }
     d <<= n
-    e: Mutable<Int8> = v
+    e: Mutable<Int8> { v }
     e >>= n
-    g: Mutable<Int8> = v
+    g: Mutable<Int8> { v }
     g >>>= n
-    h: Mutable<Int8> = v
+    h: Mutable<Int8> { v }
     h <<= 7
-    k: Mutable<Int8> = v
+    k: Mutable<Int8> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI8: (v: Int8) Void {
-    l: Mutable<Str> = "Int8 ${v} <<"
-    r: Mutable<Str> = "Int8 ${v} >>"
-    u: Mutable<Str> = "Int8 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "Int8 ${v} <<" }
+    r: Mutable<Str> { "Int8 ${v} >>" }
+    u: Mutable<Str> { "Int8 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 8 {
         l += " ${shlI8(v, n)}"
         r += " ${shrI8(v, n)}"
@@ -105,30 +105,30 @@ constantsI16: (v: Int16) Str {
 }
 
 compoundI16: (v: Int16, n: Int32) Str {
-    a: Mutable<Int16> = v
+    a: Mutable<Int16> { v }
     a &= 0x3C
-    b: Mutable<Int16> = v
+    b: Mutable<Int16> { v }
     b |= 0x3C
-    c: Mutable<Int16> = v
+    c: Mutable<Int16> { v }
     c ^= 0x3C
-    d: Mutable<Int16> = v
+    d: Mutable<Int16> { v }
     d <<= n
-    e: Mutable<Int16> = v
+    e: Mutable<Int16> { v }
     e >>= n
-    g: Mutable<Int16> = v
+    g: Mutable<Int16> { v }
     g >>>= n
-    h: Mutable<Int16> = v
+    h: Mutable<Int16> { v }
     h <<= 15
-    k: Mutable<Int16> = v
+    k: Mutable<Int16> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI16: (v: Int16) Void {
-    l: Mutable<Str> = "Int16 ${v} <<"
-    r: Mutable<Str> = "Int16 ${v} >>"
-    u: Mutable<Str> = "Int16 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "Int16 ${v} <<" }
+    r: Mutable<Str> { "Int16 ${v} >>" }
+    u: Mutable<Str> { "Int16 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 16 {
         l += " ${shlI16(v, n)}"
         r += " ${shrI16(v, n)}"
@@ -161,30 +161,30 @@ constantsI32: (v: Int32) Str {
 }
 
 compoundI32: (v: Int32, n: Int32) Str {
-    a: Mutable<Int32> = v
+    a: Mutable<Int32> { v }
     a &= 0x3C
-    b: Mutable<Int32> = v
+    b: Mutable<Int32> { v }
     b |= 0x3C
-    c: Mutable<Int32> = v
+    c: Mutable<Int32> { v }
     c ^= 0x3C
-    d: Mutable<Int32> = v
+    d: Mutable<Int32> { v }
     d <<= n
-    e: Mutable<Int32> = v
+    e: Mutable<Int32> { v }
     e >>= n
-    g: Mutable<Int32> = v
+    g: Mutable<Int32> { v }
     g >>>= n
-    h: Mutable<Int32> = v
+    h: Mutable<Int32> { v }
     h <<= 31
-    k: Mutable<Int32> = v
+    k: Mutable<Int32> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI32: (v: Int32) Void {
-    l: Mutable<Str> = "Int32 ${v} <<"
-    r: Mutable<Str> = "Int32 ${v} >>"
-    u: Mutable<Str> = "Int32 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "Int32 ${v} <<" }
+    r: Mutable<Str> { "Int32 ${v} >>" }
+    u: Mutable<Str> { "Int32 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 32 {
         l += " ${shlI32(v, n)}"
         r += " ${shrI32(v, n)}"
@@ -217,30 +217,30 @@ constantsI64: (v: Int64) Str {
 }
 
 compoundI64: (v: Int64, n: Int32) Str {
-    a: Mutable<Int64> = v
+    a: Mutable<Int64> { v }
     a &= 0x3C
-    b: Mutable<Int64> = v
+    b: Mutable<Int64> { v }
     b |= 0x3C
-    c: Mutable<Int64> = v
+    c: Mutable<Int64> { v }
     c ^= 0x3C
-    d: Mutable<Int64> = v
+    d: Mutable<Int64> { v }
     d <<= n
-    e: Mutable<Int64> = v
+    e: Mutable<Int64> { v }
     e >>= n
-    g: Mutable<Int64> = v
+    g: Mutable<Int64> { v }
     g >>>= n
-    h: Mutable<Int64> = v
+    h: Mutable<Int64> { v }
     h <<= 63
-    k: Mutable<Int64> = v
+    k: Mutable<Int64> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineI64: (v: Int64) Void {
-    l: Mutable<Str> = "Int64 ${v} <<"
-    r: Mutable<Str> = "Int64 ${v} >>"
-    u: Mutable<Str> = "Int64 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "Int64 ${v} <<" }
+    r: Mutable<Str> { "Int64 ${v} >>" }
+    u: Mutable<Str> { "Int64 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 64 {
         l += " ${shlI64(v, n)}"
         r += " ${shrI64(v, n)}"
@@ -273,30 +273,30 @@ constantsU8: (v: UInt8) Str {
 }
 
 compoundU8: (v: UInt8, n: Int32) Str {
-    a: Mutable<UInt8> = v
+    a: Mutable<UInt8> { v }
     a &= 0x3C
-    b: Mutable<UInt8> = v
+    b: Mutable<UInt8> { v }
     b |= 0x3C
-    c: Mutable<UInt8> = v
+    c: Mutable<UInt8> { v }
     c ^= 0x3C
-    d: Mutable<UInt8> = v
+    d: Mutable<UInt8> { v }
     d <<= n
-    e: Mutable<UInt8> = v
+    e: Mutable<UInt8> { v }
     e >>= n
-    g: Mutable<UInt8> = v
+    g: Mutable<UInt8> { v }
     g >>>= n
-    h: Mutable<UInt8> = v
+    h: Mutable<UInt8> { v }
     h <<= 7
-    k: Mutable<UInt8> = v
+    k: Mutable<UInt8> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU8: (v: UInt8) Void {
-    l: Mutable<Str> = "UInt8 ${v} <<"
-    r: Mutable<Str> = "UInt8 ${v} >>"
-    u: Mutable<Str> = "UInt8 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "UInt8 ${v} <<" }
+    r: Mutable<Str> { "UInt8 ${v} >>" }
+    u: Mutable<Str> { "UInt8 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 8 {
         l += " ${shlU8(v, n)}"
         r += " ${shrU8(v, n)}"
@@ -329,30 +329,30 @@ constantsU16: (v: UInt16) Str {
 }
 
 compoundU16: (v: UInt16, n: Int32) Str {
-    a: Mutable<UInt16> = v
+    a: Mutable<UInt16> { v }
     a &= 0x3C
-    b: Mutable<UInt16> = v
+    b: Mutable<UInt16> { v }
     b |= 0x3C
-    c: Mutable<UInt16> = v
+    c: Mutable<UInt16> { v }
     c ^= 0x3C
-    d: Mutable<UInt16> = v
+    d: Mutable<UInt16> { v }
     d <<= n
-    e: Mutable<UInt16> = v
+    e: Mutable<UInt16> { v }
     e >>= n
-    g: Mutable<UInt16> = v
+    g: Mutable<UInt16> { v }
     g >>>= n
-    h: Mutable<UInt16> = v
+    h: Mutable<UInt16> { v }
     h <<= 15
-    k: Mutable<UInt16> = v
+    k: Mutable<UInt16> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU16: (v: UInt16) Void {
-    l: Mutable<Str> = "UInt16 ${v} <<"
-    r: Mutable<Str> = "UInt16 ${v} >>"
-    u: Mutable<Str> = "UInt16 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "UInt16 ${v} <<" }
+    r: Mutable<Str> { "UInt16 ${v} >>" }
+    u: Mutable<Str> { "UInt16 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 16 {
         l += " ${shlU16(v, n)}"
         r += " ${shrU16(v, n)}"
@@ -385,30 +385,30 @@ constantsU32: (v: UInt32) Str {
 }
 
 compoundU32: (v: UInt32, n: Int32) Str {
-    a: Mutable<UInt32> = v
+    a: Mutable<UInt32> { v }
     a &= 0x3C
-    b: Mutable<UInt32> = v
+    b: Mutable<UInt32> { v }
     b |= 0x3C
-    c: Mutable<UInt32> = v
+    c: Mutable<UInt32> { v }
     c ^= 0x3C
-    d: Mutable<UInt32> = v
+    d: Mutable<UInt32> { v }
     d <<= n
-    e: Mutable<UInt32> = v
+    e: Mutable<UInt32> { v }
     e >>= n
-    g: Mutable<UInt32> = v
+    g: Mutable<UInt32> { v }
     g >>>= n
-    h: Mutable<UInt32> = v
+    h: Mutable<UInt32> { v }
     h <<= 31
-    k: Mutable<UInt32> = v
+    k: Mutable<UInt32> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU32: (v: UInt32) Void {
-    l: Mutable<Str> = "UInt32 ${v} <<"
-    r: Mutable<Str> = "UInt32 ${v} >>"
-    u: Mutable<Str> = "UInt32 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "UInt32 ${v} <<" }
+    r: Mutable<Str> { "UInt32 ${v} >>" }
+    u: Mutable<Str> { "UInt32 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 32 {
         l += " ${shlU32(v, n)}"
         r += " ${shrU32(v, n)}"
@@ -441,30 +441,30 @@ constantsU64: (v: UInt64) Str {
 }
 
 compoundU64: (v: UInt64, n: Int32) Str {
-    a: Mutable<UInt64> = v
+    a: Mutable<UInt64> { v }
     a &= 0x3C
-    b: Mutable<UInt64> = v
+    b: Mutable<UInt64> { v }
     b |= 0x3C
-    c: Mutable<UInt64> = v
+    c: Mutable<UInt64> { v }
     c ^= 0x3C
-    d: Mutable<UInt64> = v
+    d: Mutable<UInt64> { v }
     d <<= n
-    e: Mutable<UInt64> = v
+    e: Mutable<UInt64> { v }
     e >>= n
-    g: Mutable<UInt64> = v
+    g: Mutable<UInt64> { v }
     g >>>= n
-    h: Mutable<UInt64> = v
+    h: Mutable<UInt64> { v }
     h <<= 63
-    k: Mutable<UInt64> = v
+    k: Mutable<UInt64> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineU64: (v: UInt64) Void {
-    l: Mutable<Str> = "UInt64 ${v} <<"
-    r: Mutable<Str> = "UInt64 ${v} >>"
-    u: Mutable<Str> = "UInt64 ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "UInt64 ${v} <<" }
+    r: Mutable<Str> { "UInt64 ${v} >>" }
+    u: Mutable<Str> { "UInt64 ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 64 {
         l += " ${shlU64(v, n)}"
         r += " ${shrU64(v, n)}"
@@ -497,30 +497,30 @@ constantsSize: (v: Size) Str {
 }
 
 compoundSize: (v: Size, n: Int32) Str {
-    a: Mutable<Size> = v
+    a: Mutable<Size> { v }
     a &= 0x3C
-    b: Mutable<Size> = v
+    b: Mutable<Size> { v }
     b |= 0x3C
-    c: Mutable<Size> = v
+    c: Mutable<Size> { v }
     c ^= 0x3C
-    d: Mutable<Size> = v
+    d: Mutable<Size> { v }
     d <<= n
-    e: Mutable<Size> = v
+    e: Mutable<Size> { v }
     e >>= n
-    g: Mutable<Size> = v
+    g: Mutable<Size> { v }
     g >>>= n
-    h: Mutable<Size> = v
+    h: Mutable<Size> { v }
     h <<= 63
-    k: Mutable<Size> = v
+    k: Mutable<Size> { v }
     k >>>= 1
     "${a} ${b} ${c} ${d} ${e} ${g} ${h} ${k}"
 }
 
 lineSize: (v: Size) Void {
-    l: Mutable<Str> = "Size ${v} <<"
-    r: Mutable<Str> = "Size ${v} >>"
-    u: Mutable<Str> = "Size ${v} >>>"
-    n: Mutable<Int32> = 0
+    l: Mutable<Str> { "Size ${v} <<" }
+    r: Mutable<Str> { "Size ${v} >>" }
+    u: Mutable<Str> { "Size ${v} >>>" }
+    n: Mutable<Int32> { 0 }
     while n < 64 {
         l += " ${shlSize(v, n)}"
         r += " ${shrSize(v, n)}"
@@ -561,7 +561,7 @@ mixed: (a: UInt16, b: UInt16, n: Int32) UInt16 {
 }
 
 Flags: Mutable<Any> {
-    pub bits: Mutable<UInt8> = 0
+    pub bits: Mutable<UInt8> { 0 }
 
     pub set: (n: Int32) Void {
         bits |= 1 << n
@@ -587,7 +587,7 @@ given: (v: Int32) Int32 {
 }
 
 indexed: () Void {
-    xs: Mutable<List<Int32>> = List<Int32> { }
+    xs: Mutable<List<Int32>> { }
     xs.add(0x0F)
     xs.add(-16)
     xs.add(0x70000000)
@@ -617,7 +617,7 @@ counts: () Void {
     trace(byte(7))
     trace(mixed(0xF00F, 0x0FF0, 4))
     trace(mixed(0xFFFF, 0xFFFF, 15))
-    f: Mutable<Flags> = Flags { }
+    f: Mutable<Flags> { }
     f.set(0)
     f.set(7)
     f.set(3)
@@ -654,9 +654,9 @@ power: (a: Float64, b: Float64) Void {
 }
 
 maths: () Void {
-    inf: Float64 = ratio(1.0, 0.0)
-    nan: Float64 = ratio(0.0, 0.0)
-    vs: Mutable<List<Float64>> = List<Float64> { }
+    inf: Float64 { ratio(1.0, 0.0) }
+    nan: Float64 { ratio(0.0, 0.0) }
+    vs: Mutable<List<Float64>> { }
     vs.add(0.0)
     vs.add(-0.0)
     vs.add(0.5)
@@ -679,7 +679,7 @@ maths: () Void {
     vs.add(inf)
     vs.add(-inf)
     vs.add(nan)
-    i: Mutable<Size> = 0
+    i: Mutable<Size> { 0 }
     while i < vs.size() {
         rounding(vs[i])
         root(vs[i])
@@ -740,9 +740,9 @@ maths: () Void {
 }
 
 main: () Void {
-    topSize: Size = lessOne(0)
-    highSize: Size = topSize - 0x5A5A5A5A
-    topU64: UInt64 = lessOneU64(0)
+    topSize: Size { lessOne(0) }
+    highSize: Size { topSize - 0x5A5A5A5A }
+    topU64: UInt64 { lessOneU64(0) }
     lineI8(0)
     lineI8(1)
     lineI8(-1)

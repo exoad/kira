@@ -4,7 +4,7 @@
 // The expected output is the C++ backend's run of this same module.
 
 Cell: Mutable<Any> {
-    pub count: Mutable<Int32> = 0
+    pub count: Mutable<Int32> { 0 }
 
     pub bump: () Int32 {
         count += 1
@@ -26,13 +26,13 @@ grade: (n: Int32) Str {
 }
 
 sign: (n: Int32) Int32 {
-    s: Int32 = n > 0 ? 1 : n < 0 ? -1 : 0
+    s: Int32 { n > 0 ? 1 : n < 0 ? -1 : 0 }
     s
 }
 
 sumOdd: (limit: Int32) Int32 {
-    i: Mutable<Int32> = 0
-    total: Mutable<Int32> = 0
+    i: Mutable<Int32> { 0 }
+    total: Mutable<Int32> { 0 }
     while true {
         i += 1
         if i > limit {
@@ -59,28 +59,28 @@ main: () Void {
     trace("a" + "b" == "ab")
     trace(true && !false)
     trace(1 < 2 == true)
-    first: Mutable<Cell> = Cell { }
-    second: Cell = first
+    first: Mutable<Cell> { }
+    second: Cell { first }
     first.bump()
     second.bump()
     trace(first.count)
     trace(second.count)
-    p: Pair = Pair { 7, "x" }
-    q: Pair = p
+    p: Pair { 7, "x" }
+    q: Pair { p }
     trace(q.swapped())
-    cells: Mutable<List<Cell>> = List<Cell> { }
+    cells: Mutable<List<Cell>> { }
     cells.add(first)
     cells.add(Cell { })
     cells[0].bump()
     trace(first.count)
     trace(cells[1].bump())
-    pairs: Mutable<List<Pair>> = List<Pair> { }
+    pairs: Mutable<List<Pair>> { }
     pairs.add(p)
     pairs.add(Pair { b = "y", a = 8 })
     trace(pairs[1].swapped())
     trace(pairs.size())
     trace(pairs.isEmpty())
-    removed: Pair = pairs.removeAt(0)
+    removed: Pair { pairs.removeAt(0) }
     trace(removed.a)
     trace(pairs.size())
     pairs.clear()

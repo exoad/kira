@@ -39,7 +39,7 @@ class ConformanceTest {
         }
 
         Pt: Struct {
-            pub x: Int32 = 0
+            pub x: Int32 { 0 }
         }
     """.trimIndent()
 
@@ -59,7 +59,7 @@ class ConformanceTest {
 
     /** `a: Bool = <rhs side>` inside a function that has a Shape, a Maybe, a Pt and a function at hand. */
     private fun compare(test: String): Expr =
-        initOf("ZERO: Int32 = 0\n\nf: (s: Shape, m: Maybe<Int32>, p: Pt, g: (x: Int32) Int32, k: Int32) Void {\n    a: Bool = $test\n}")
+        initOf("ZERO: Int32 { 0 }\n\nf: (s: Shape, m: Maybe<Int32>, p: Pt, g: (x: Int32) Int32, k: Int32) Void {\n    a: Bool { $test }\n}")
 
     // ---- spelling decides --------------------------------------------------------------------
 
@@ -111,7 +111,7 @@ class ConformanceTest {
         assertEquals("parse.removed", e.tag)
         assertTrue(e.message.contains("'x == T'") && e.message.contains("'x != T'"), e.message)
         // It is a plain name now.
-        expectNoErrors(snippet("f: () Int32 {\n    is: Int32 = 2\n    is + 1\n}"))
+        expectNoErrors(snippet("f: () Int32 {\n    is: Int32 { 2 }\n    is + 1\n}"))
     }
 
     // ---- the typer ---------------------------------------------------------------------------
@@ -125,8 +125,8 @@ class ConformanceTest {
             }
 
             f: (c: Circle, d: Circle, s: Shape) Bool {
-                a: Bool = c == d
-                b: Bool = s == Circle
+                a: Bool { c == d }
+                b: Bool { s == Circle }
                 a && b
             }
             """,
@@ -145,7 +145,7 @@ class ConformanceTest {
         val p = snippet(
             """
             f: (s: Shape, m: Maybe<Int32>) Int32 {
-                t: Mutable<Shape> = s
+                t: Mutable<Shape> { s }
                 t == Circle ? 0 : s == Circle && m == Int32 ? s.radius + m : -1
             }
             """,
@@ -153,7 +153,7 @@ class ConformanceTest {
         expectNoErrors(p)
         val narrowed = p.model.narrowings.entries.map { (id, n) -> "${id.value}:${n.from.display()}->${n.to.display()}" }.sorted()
         assertEquals(listOf("m:Maybe<Int32>->Int32", "s:Shape->Circle"), narrowed)
-        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    t: Mutable<Shape> = s\n    t == Circle ? t.radius : 0\n}"), "types.member.unknown")
+        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    t: Mutable<Shape> { s }\n    t == Circle ? t.radius : 0\n}"), "types.member.unknown")
     }
 
     @Test
@@ -173,7 +173,7 @@ class ConformanceTest {
         val py = PyTestSupport.emit(
             """
             Pt: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
 
             probe: () Maybe<Int32> {
@@ -181,11 +181,11 @@ class ConformanceTest {
             }
 
             f: (m: Maybe<Int32>, p: Pt, n: Maybe<Int32>, k: Int32) Int32 {
-                a: Bool = m == Int32
-                b: Bool = m != Int32
-                c: Bool = p == Pt
-                d: Bool = probe() == Maybe<Int32>
-                e: Bool = (k > 0 ? m : n) != Int32
+                a: Bool { m == Int32 }
+                b: Bool { m != Int32 }
+                c: Bool { p == Pt }
+                d: Bool { probe() == Maybe<Int32> }
+                e: Bool { (k > 0 ? m : n) != Int32 }
                 m == Int32 && a ? m + 1 : 0
             }
             """,
@@ -214,7 +214,7 @@ class ConformanceTest {
     fun onCppAClassWithoutVirtualMethodsIsRefusedAndCAndJsRefuseEveryTest() {
         val src = DeclTestSupport.module(
             "app:main",
-            "Animal: Any {\n    pub name: Str\n}\n\nDog: Animal {\n    pub tricks: Int32 = 2\n}\n\npub f: (a: Animal) Bool {\n    a == Dog\n}",
+            "Animal: Any {\n    pub name: Str\n}\n\nDog: Animal {\n    pub tricks: Int32 { 2 }\n}\n\npub f: (a: Animal) Bool {\n    a == Dog\n}",
         )
         val emitted = DeclTestSupport.emit(src)
         assertTrue(

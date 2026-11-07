@@ -3,7 +3,7 @@
 kira.os as os
 
 main: () Int32 {
-    a: List<Str> = args()
+    a: List<Str> { args() }
     if a.size() > 1 {
         throw "asked to: ${a[1]}"
     }

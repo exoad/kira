@@ -43,7 +43,7 @@ class NullSafetyTest {
             $pet
 
             main: () Void {
-                p: Pet = null
+                p: Pet { null }
             }
             """,
             "test:nullsafety.reject"
@@ -67,8 +67,8 @@ class NullSafetyTest {
             $pet
 
             main: () Void {
-                p: Maybe<Pet> = null
-                q: Maybe<Int32> = null
+                p: Maybe<Pet> { null }
+                q: Maybe<Int32> { null }
             }
             """,
             "test:nullsafety.allow"
@@ -87,8 +87,8 @@ class NullSafetyTest {
             $pet
 
             main: () Void {
-                p: Maybe<Pet> = null
-                q: Str = p.name
+                p: Maybe<Pet> { null }
+                q: Str { p.name }
             }
             """,
             "test:nullsafety.deref"
@@ -107,7 +107,7 @@ class NullSafetyTest {
             $pet
 
             main: () Void {
-                p: Maybe<Pet> = null
+                p: Maybe<Pet> { null }
                 trace(p.name)
             }
             """,
@@ -127,9 +127,9 @@ class NullSafetyTest {
             $pet
 
             main: () Void {
-                p: Maybe<Pet> = null
-                a: Bool = p.isSome()
-                b: Bool = p.isNone()
+                p: Maybe<Pet> { null }
+                a: Bool { p.isSome() }
+                b: Bool { p.isNone() }
             }
             """,
             "test:nullsafety.api"
@@ -146,13 +146,13 @@ class NullSafetyTest {
         val messages = diagnosticsFor(
             """
             first: () Void {
-                s: Maybe<Str> = null
+                s: Maybe<Str> { null }
             }
 
             second: (s: Str) Size {
-                b: Mutable<Size> = s.length()
+                b: Mutable<Size> { s.length() }
                 trace(s.length())
-                c: Size = b > 0 ? s.length() : b
+                c: Size { b > 0 ? s.length() : b }
                 c
             }
             """,
@@ -174,12 +174,12 @@ class NullSafetyTest {
             }
 
             read: () Str {
-                m: Maybe<Str> = find()
+                m: Maybe<Str> { find() }
                 if m.isNull() {
                     ""
                 } else {
-                    x: Str = m.value
-                    y: Bool = m.isNull()
+                    x: Str { m.value }
+                    y: Bool { m.isNull() }
                     x
                 }
             }
@@ -198,25 +198,25 @@ class NullSafetyTest {
         val messages = diagnosticsFor(
             """
             f: (c: Bool, s: Str) Size {
-                k: Size = if c {
-                    s: Maybe<Str> = null
+                k: Size { if c {
+                    s: Maybe<Str> { null }
                     s.unwrapOr("zz").size()
                 } else {
                     0
-                }
-                a: Size = if c {
-                    t: Maybe<Str> = null
+                } }
+                a: Size { if c {
+                    t: Maybe<Str> { null }
                     t.unwrapOr("zz").size()
                 } else {
                     0
-                }
-                b: Size = if c {
-                    t: Str = "four"
+                } }
+                b: Size { if c {
+                    t: Str { "four" }
                     t.size()
                 } else {
                     0
-                }
-                n: Size = s.size()
+                } }
+                n: Size { s.size() }
                 n + k + a + b
             }
             """,
@@ -233,7 +233,7 @@ class NullSafetyTest {
             $pet
 
             f: (p: Maybe<Pet>) Str {
-                q: Str = p.name
+                q: Str { p.name }
                 q
             }
             """,

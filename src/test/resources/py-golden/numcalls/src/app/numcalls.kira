@@ -2,14 +2,14 @@
 // toFloat64 widens. The expected output is the C++ backend's run of this module.
 
 pub main: () Void {
-    a: Int32 = -7
-    b: Int64 = 9000000000
-    u: UInt64 = (0 - 1) as UInt64
-    w: UInt64 = 9007199254740993
-    s: UInt8 = 200
-    f: Float64 = 25000000000.5
-    n: Float64 = 0.0 / 0.0
-    z: Float64 = -0.0
+    a: Int32 { -7 }
+    b: Int64 { 9000000000 }
+    u: UInt64 { (0 - 1) as UInt64 }
+    w: UInt64 { 9007199254740993 }
+    s: UInt8 { 200 }
+    f: Float64 { 25000000000.5 }
+    n: Float64 { 0.0 / 0.0 }
+    z: Float64 { -0.0 }
     trace(a.equals(-7))
     trace(a.equals(7))
     trace(f.equals(f))

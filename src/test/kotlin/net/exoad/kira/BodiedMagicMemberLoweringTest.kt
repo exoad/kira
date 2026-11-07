@@ -27,7 +27,7 @@ class BodiedMagicMemberLoweringTest {
         val dir = Files.createTempDirectory("kira-bodied-lowering").toFile()
         File(dir, "project.kira").writeText(
             """
-            PROJECT: Project = Project { } with {
+            PROJECT: Project { } with {
                 name = "bodiedlowering"
                 srcDir = "src"
                 target = "c"
@@ -229,7 +229,7 @@ class BodiedMagicMemberLoweringTest {
 """
 
         private const val MAIN = """main: () Void {
-    s: Str = "hello"
+    s: Str { "hello" }
     if s.startsTwice("he") {
         print("yes")
     }

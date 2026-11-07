@@ -11,7 +11,7 @@ pub Speaker: Any {
 
 pub Animal: Mutable<Any> {
     pub name: Str
-    pub age: Mutable<Int32> = 0
+    pub age: Mutable<Int32> { 0 }
 
     pub describe: () Str {
         name                        // @type Str place=Field(This(Animal).name) sym=Animal.name
@@ -27,7 +27,7 @@ pub Animal: Mutable<Any> {
 }
 
 pub Dog: Mutable<Animal>, Speaker {
-    pub tricks: Mutable<Int32> = 0
+    pub tricks: Mutable<Int32> { 0 }
 
     override pub sound: () Str {
         "woof"                      // @type Str
@@ -51,8 +51,8 @@ pub Dog: Mutable<Animal>, Speaker {
 }
 
 pub Point: Mutable<Any> {
-    pub x: Mutable<Int32> = 0
-    pub y: Int32 = 0
+    pub x: Mutable<Int32> { 0 }
+    pub y: Int32 { 0 }
 
     pub sum: () Int32 {
         x + y                       // @type Int32
@@ -72,28 +72,28 @@ pub Box<T>: Any {
 }
 
 pub classes: () Void {
-    d: Dog = Dog { "Rex" }                 // @type Dog
-    d2: Dog = Dog { name = "Bo", tricks = 2 } // @type Dog
-    a: Animal = d                          // @type Dog coerce=Upcast(Dog -> Animal)
-    s: Speaker = d                         // @type Dog coerce=Upcast(Dog -> Speaker)
-    n: Str = d.name                        // @type Str member=Field(Animal.name: Str)
-    t: Str = s.speak()                     // @type Str call=TRAIT(Speaker.speak)
-    lt: Str = s.loud()                     // @type Str call=TRAIT(Speaker.loud)
-    u: Str = a.sound()                     // @type Str call=VIRTUAL(Animal.sound)
-    v: Str = a.describe()                  // @type Str call=METHOD(Animal.describe)
-    w: Str = d.speak()                     // @type Str call=VIRTUAL(Dog.speak)
-    p: Mutable<Point> = Point { 1, 2 }          // @type Point
-    q: Point = Point { y = 5 }             // @type Point
-    total: Int32 = p.sum()                 // @type Int32 call=METHOD(Point.sum)
+    d: Dog { Dog { "Rex" } }                 // @type Dog
+    d2: Dog { name = "Bo", tricks = 2 } // @type Dog
+    a: Animal { d }                          // @type Dog coerce=Upcast(Dog -> Animal)
+    s: Speaker { d }                         // @type Dog coerce=Upcast(Dog -> Speaker)
+    n: Str { d.name }                        // @type Str member=Field(Animal.name: Str)
+    t: Str { s.speak() }                     // @type Str call=TRAIT(Speaker.speak)
+    lt: Str { s.loud() }                     // @type Str call=TRAIT(Speaker.loud)
+    u: Str { a.sound() }                     // @type Str call=VIRTUAL(Animal.sound)
+    v: Str { a.describe() }                  // @type Str call=METHOD(Animal.describe)
+    w: Str { d.speak() }                     // @type Str call=VIRTUAL(Dog.speak)
+    p: Mutable<Point> { 1, 2 }          // @type Point
+    q: Point { y = 5 }             // @type Point
+    total: Int32 { p.sum() }                 // @type Int32 call=METHOD(Point.sum)
     p.shift(3)                             // @type Void call=METHOD(Point.shift)
     p.x = 7                                // @type Int32 member=Field(Point.x: Int32) place=Field(Local(p).x) @ p.x
-    b: Box<Int32> = Box<Int32> { value = 5 } // @type Box<Int32>
-    got: Int32 = b.get()                   // @type Int32 call=METHOD(Box.get)
-    bv: Int32 = b.value                    // @type Int32 member=Field(Box.value: Int32)
-    same: Bool = d == a                    // @type Dog coerce=Upcast(Dog -> Animal) @ d
-    pts: Bool = p == q                     // @type Bool
-    ma: Maybe<Animal> = d                  // @type Dog coerce=WrapSome(Animal)
+    b: Box<Int32> { value = 5 } // @type Box<Int32>
+    got: Int32 { b.get() }                   // @type Int32 call=METHOD(Box.get)
+    bv: Int32 { b.value }                    // @type Int32 member=Field(Box.value: Int32)
+    same: Bool { d == a }                    // @type Dog coerce=Upcast(Dog -> Animal) @ d
+    pts: Bool { p == q }                     // @type Bool
+    ma: Maybe<Animal> { d }                  // @type Dog coerce=WrapSome(Animal)
     d.birthday()                           // @type Void call=METHOD(Animal.birthday)
-    words: T2<Str, Int32> = T2<Str, Int32> { "a", 1 } // @type T2<Str, Int32>
-    first: Str = words.first               // @type Str member=Field(T2.first: Str)
+    words: T2<Str, Int32> { "a", 1 } // @type T2<Str, Int32>
+    first: Str { words.first }               // @type Str member=Field(T2.first: Str)
 }

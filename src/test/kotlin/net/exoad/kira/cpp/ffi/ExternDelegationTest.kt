@@ -45,15 +45,15 @@ class ExternDelegationTest {
         pub @_extern(cpp = "probe::count", header = "probe.hxx") count: () Int32
 
         pub @_extern(cpp = "probe::Rec", header = "probe.hxx") Rec: Struct {
-            pub c: Int8 = 0
-            pub n: Int32 = 0
+            pub c: Int8 { 0 }
+            pub n: Int32 { 0 }
         }
 
         pub @_extern(cpp = "probe::rec", header = "probe.hxx") rec: () Rec
 
         pub run: (label: Str) Int32 {
             take(label)
-            r: Rec = rec()
+            r: Rec { rec() }
             name() == "abc" ? LIMIT : r.c == 1 ? r.n : count()
         }
     """

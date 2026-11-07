@@ -66,7 +66,7 @@ class ExternFxRunTest {
 
         pub @_extern(cpp = "f7::newBox", header = "f7.hxx") newBox: () Box
 
-        gc: Mutable<Bool> = true
+        gc: Mutable<Bool> { true }
 
         two: () Int32 {
             2
@@ -101,12 +101,12 @@ class ExternFxRunTest {
         }
 
         pub aCapture: () Int32 {
-            k: Int32 = two() + 3
+            k: Int32 { two() + 3 }
             callKind(() Int32 { k })
         }
 
         pub aCapturePick: () Int32 {
-            k: Int32 = two() + 3
+            k: Int32 { two() + 3 }
             pick(() Int32 { k })
         }
 
@@ -123,22 +123,22 @@ class ExternFxRunTest {
         }
 
         pub aMethod: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             callKind(() Int32 { bx.get() })
         }
 
         pub aMethodPick: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             pick(() Int32 { bx.get() })
         }
 
         pub boxKind: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.kind(() Int32 { 4 })
         }
 
         pub boxPick: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.pick(() Int32 { 4 })
         }
 
@@ -175,22 +175,22 @@ class ExternFxRunTest {
         }
 
         pub boxRefKind: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.kind(two)
         }
 
         pub boxRefPick: () Int32 {
-            bx: Box = newBox()
+            bx: Box { newBox() }
             bx.pick(two)
         }
 
         pub local: () Int32 {
-            g: Fx<T0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> { () Int32 { 8 } }
             callKind(g)
         }
 
         pub localPick: () Int32 {
-            g: Fx<T0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> { () Int32 { 8 } }
             pick(g)
         }
 
@@ -203,17 +203,17 @@ class ExternFxRunTest {
         }
 
         pub element: () Int32 {
-            fs: List<Fx<T0, Int32>> = @listOf(() Int32 { 9 })
+            fs: List<Fx<T0, Int32>> { @listOf(() Int32 { 9 }) }
             callKind(fs[0])
         }
 
         pub unwrapped: () Int32 {
-            mf: Maybe<Fx<T0, Int32>> = () Int32 { 4 }
+            mf: Maybe<Fx<T0, Int32>> { () Int32 { 4 } }
             callKind(mf.unwrap())
         }
 
         pub valueResult: () Int32 {
-            mk: Fx<T0, Fx<T0, Int32>> = makeFx
+            mk: Fx<T0, Fx<T0, Int32>> { makeFx }
             callKind(mk())
         }
 
@@ -222,13 +222,13 @@ class ExternFxRunTest {
         }
 
         pub ifMixed: () Int32 {
-            g: Fx<T0, Int32> = () Int32 { 8 }
+            g: Fx<T0, Int32> { () Int32 { 8 } }
             callKind(if gc { g } else { () Int32 { 0 } })
         }
 
         pub ifStatements: () Int32 {
             callKind(if gc {
-                z: Int32 = two() + 3
+                z: Int32 { two() + 3 }
                 () Int32 { z }
             } else {
                 two
@@ -367,7 +367,7 @@ class ExternFxRunTest {
         $EXTERNS
 
         pub Counter: Mutable<Any> {
-            pub n: Mutable<Int32> = 5
+            pub n: Mutable<Int32> { 5 }
 
             pub viaThis: () Int32 {
                 callKind(() Int32 { n })
@@ -383,22 +383,22 @@ class ExternFxRunTest {
         }
 
         pub kThis: () Int32 {
-            c: Counter = Counter { }
+            c: Counter { }
             c.viaThis()
         }
 
         pub kThisPick: () Int32 {
-            c: Counter = Counter { }
+            c: Counter { }
             c.viaThisPick()
         }
 
         pub kMethod: () Int32 {
-            c: Counter = Counter { }
+            c: Counter { }
             callKind(() Int32 { c.get() })
         }
 
         pub kMethodPick: () Int32 {
-            c: Counter = Counter { }
+            c: Counter { }
             pick(() Int32 { c.get() })
         }
         """,
@@ -453,7 +453,7 @@ class ExternFxRunTest {
             pub @_extern(cpp = "f7::newBox", header = "f7.hxx") newBox: () Box
 
             pub mValue: () Int32 {
-                bx: Box = newBox()
+                bx: Box { newBox() }
                 callKind(bx.get)
             }
             """,

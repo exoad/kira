@@ -32,7 +32,7 @@ class RangeLoopTest {
 
     @Test
     fun aLoopOverARangeHoldsItsEnd() {
-        val out = py("pub f: () Int32 {\n    t: Mutable<Int32> = 0\n    for i: Int32 in 1..4 {\n        t += i\n    }\n    t\n}\n")
+        val out = py("pub f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Int32 in 1..4 {\n        t += i\n    }\n    t\n}\n")
         assertTrue(out.contains("for i in range(1, 5):"), out)
     }
 
@@ -42,7 +42,7 @@ class RangeLoopTest {
     fun anInclusiveLoopStopsAtItsEndOnEveryTypeAndEveryEnd() {
         val body = """
             pub f: (n: Int32) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in 0..n {
                     t += i
                 }
@@ -72,7 +72,7 @@ class RangeLoopTest {
     fun untilAndIndicesCountAsTheOldHalfOpenLoopDid() {
         val body = """
             pub f: (n: Size, xs: List<Int32>, s: Str) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Size in 0.until(n) {
                     t += 1
                 }
@@ -106,9 +106,9 @@ class RangeLoopTest {
     fun anUntilValueIsTheStdlibsUntilAndLeavesItsEndOut() {
         val body = """
             pub f: (x: Int32, xs: List<Int32>) Int32 {
-                u: Until<Int32> = 2.until(5)
-                w: Until<Size> = xs.indices()
-                t: Mutable<Int32> = 0
+                u: Until<Int32> { 2.until(5) }
+                w: Until<Size> { xs.indices() }
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in u {
                     t += i
                 }
@@ -148,34 +148,34 @@ class RangeLoopTest {
 
     @Test
     fun untilCountsIntegersOfOneType() {
-        only(typed("pub f: (a: Int32, b: Int64) Int32 {\n    t: Mutable<Int32> = 0\n    for i: Int32 in a.until(b) {\n        t += 1\n    }\n    t\n}"), "types.until.mismatch")
-        only(typed("pub f: (n: Float64) Bool {\n    u: Until<Int32> = 0.until(n)\n    true\n}"), "types.until.element")
+        only(typed("pub f: (a: Int32, b: Int64) Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Int32 in a.until(b) {\n        t += 1\n    }\n    t\n}"), "types.until.mismatch")
+        only(typed("pub f: (n: Float64) Bool {\n    u: Until<Int32> { 0.until(n) }\n    true\n}"), "types.until.element")
         expectDiagnostic(typed("pub f: (u: Until<Float64>) Bool {\n    true\n}"), "rules.generics.bound")
     }
 
     @Test
     fun aLoopToNMinusOneGetsAHint() {
-        val p = typed("pub f: (n: Size) Size {\n    t: Mutable<Size> = 0\n    for i: Size in 0..(n - 1) {\n        t += i\n    }\n    t\n}")
+        val p = typed("pub f: (n: Size) Size {\n    t: Mutable<Size> { 0 }\n    for i: Size in 0..(n - 1) {\n        t += i\n    }\n    t\n}")
         expectNoErrors(p)
         val hint = p.diagnostics.single { it.code == "types.for.minus-one" }
         assertEquals(Severity.WARNING, hint.severity)
         assertTrue(hint.message.contains("0.until(n)") && hint.message.contains("indices()"), hint.message)
-        assertFalse(typed("pub f: (n: Size) Size {\n    t: Mutable<Size> = 0\n    for i: Size in 0..n {\n        t += i\n    }\n    t\n}").diagnostics.any { it.code == "types.for.minus-one" })
+        assertFalse(typed("pub f: (n: Size) Size {\n    t: Mutable<Size> { 0 }\n    for i: Size in 0..n {\n        t += i\n    }\n    t\n}").diagnostics.any { it.code == "types.for.minus-one" })
     }
 
     // ---- C and JS ---------------------------------------------------------------------------------
 
     @Test
     fun cAndJsCountInclusiveRangesAndUntilAndRefuseIndices() {
-        val loops = "f: () Int32 {\n    t: Mutable<Int32> = 0\n    for i: Int32 in 0..3 {\n        t += i\n    }\n    for j: Int32 in 0.until(3) {\n        t += j\n    }\n    t\n}\n"
+        val loops = "f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Int32 in 0..3 {\n        t += i\n    }\n    for j: Int32 in 0.until(3) {\n        t += j\n    }\n    t\n}\n"
         val c = TestCompileSupport.transpileSnippetToC(loops, "test/main.kira")
         assertTrue(c.contains("for(Int32 i = 0, i_last = 3; i_more && i <= i_last; i_more = i != i_last && (++i, 1))"), c)
         assertTrue(c.contains("for(Int32 j = 0; j < 3; ++j)"), c)
         val js = TestCompileSupport.transpileSnippetToJS(loops, "test/main.kira")
         assertTrue(js.contains("for (let i = 0, i_last = 3; i <= i_last; ++i)"), js)
         assertTrue(js.contains("for (let j = 0; j < 3; ++j)"), js)
-        val indices = "f: (xs: List<Int32>) Int32 {\n    t: Mutable<Int32> = 0\n    for i: Size in xs.indices() {\n        t += 1\n    }\n    t\n}\n"
-        val held = "f: () Int32 {\n    u: Until<Int32> = 0.until(3)\n    0\n}\n"
+        val indices = "f: (xs: List<Int32>) Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Size in xs.indices() {\n        t += 1\n    }\n    t\n}\n"
+        val held = "f: () Int32 {\n    u: Until<Int32> { 0.until(3) }\n    0\n}\n"
         for ((source, what) in listOf(indices to "xs.indices()", held to "`until` or `indices` outside a for loop's head")) {
             listOf(
                 assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(source, "test/main.kira") },
@@ -190,7 +190,7 @@ class RangeLoopTest {
     fun theFixerRewritesEachOldLoopToTheSameSteps() {
         val src = """
             f: (xs: List<Int32>, s: Str, n: Size, lo: Int32) Int32 {
-                t: Mutable<Int32> = 0
+                t: Mutable<Int32> { 0 }
                 for i: Size in 0..xs.size() {
                     t += xs[i]
                 }
@@ -236,7 +236,7 @@ class RangeLoopTest {
 
     @Test
     fun theFixedLoopsCountWhatTheOldOnesDid() {
-        val old = "pub f: (xs: List<Int32>, n: Int32) Int32 {\n    t: Mutable<Int32> = 0\n    for i: Size in 0..xs.size() {\n        t += xs[i]\n    }\n    for j: Int32 in 0..n {\n        t += j\n    }\n    t\n}\n"
+        val old = "pub f: (xs: List<Int32>, n: Int32) Int32 {\n    t: Mutable<Int32> { 0 }\n    for i: Size in 0..xs.size() {\n        t += xs[i]\n    }\n    for j: Int32 in 0..n {\n        t += j\n    }\n    t\n}\n"
         val fixed = RangeLoopFix.rewrite(old).text
         val p = py(fixed)
         assertTrue(p.contains("for i in range(0, len(xs)):") && p.contains("for j in range(0, n):"), p)

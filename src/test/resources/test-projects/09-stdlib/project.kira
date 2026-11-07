@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "stdlib.tour"
     srcDir = "src"
     target = "c"

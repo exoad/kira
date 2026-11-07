@@ -2,15 +2,15 @@
 
 kira.math as math
 
-pub SCALE: Int32 = 1000
-pub NAME: Str = "units"
-pub calls: Mutable<Int32> = 0
-pub seen: Mutable<List<Int32>> = List<Int32> { }
-pub TABLE: List<Int32> = @listOf(3, 1, 4)
+pub SCALE: Int32 { 1000 }
+pub NAME: Str { "units" }
+pub calls: Mutable<Int32> { 0 }
+pub seen: Mutable<List<Int32>> { }
+pub TABLE: List<Int32> { @listOf(3, 1, 4) }
 
 pub Meter: Mutable<Any> {
     pub label: Str
-    pub reads: Mutable<Int32> = 0
+    pub reads: Mutable<Int32> { 0 }
 
     pub read: (raw: Int32) Int32 {
         reads += 1

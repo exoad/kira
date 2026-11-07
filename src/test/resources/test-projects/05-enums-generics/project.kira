@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "enums.generics"
     srcDir = "src"
     target = "c"

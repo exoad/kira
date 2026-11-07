@@ -1,7 +1,7 @@
 // Throws for app:main to catch: one module's throw, another's try.
 
 pub number: (s: Str) Int64 {
-    v: Maybe<Int64> = s.toInt64()
+    v: Maybe<Int64> { s.toInt64() }
     if v.isNone() {
         throw "not a number: ${s}"
     }

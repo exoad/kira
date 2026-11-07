@@ -58,7 +58,7 @@ class ReturnPathPassTest {
             snippet(
                 """
                 pub spin: () Int32 {
-                    result: Mutable<Int32> = 0
+                    result: Mutable<Int32> { 0 }
                     while true {
                         result = 1
                         break
@@ -66,9 +66,9 @@ class ReturnPathPassTest {
                     result
                 }
                 pub nested: () Int32 {
-                    result: Mutable<Int32> = 0
+                    result: Mutable<Int32> { 0 }
                     while true {
-                        i: Mutable<Int32> = 0
+                        i: Mutable<Int32> { 0 }
                         while i < 3 {
                             if i == 2 {
                                 break
@@ -113,7 +113,7 @@ class ReturnPathPassTest {
         val p = snippet(
             """
             pub count: (n: Int32) Int32 {
-                i: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
                 while i < n {
                     i += 1
                 }

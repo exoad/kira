@@ -2,12 +2,12 @@ golden.py.throwing.lib.parse as parse
 golden.py.throwing.lib.parse.checked as checked
 golden.py.throwing.lib.parse.number as number
 
-log: Mutable<List<Int32>> = List<Int32> { }
+log: Mutable<List<Int32>> { }
 
 Account: Mutable<Any> {
     pub name: Str
-    pub balance: Mutable<Int32> = 0
-    pub last: Mutable<Result<Int32, Str>> = Result.success(0)
+    pub balance: Mutable<Int32> { 0 }
+    pub last: Mutable<Result<Int32, Str>> { Result.success(0) }
 
     pub take: (n: Int32) Int32 {
         if n > balance {
@@ -31,8 +31,8 @@ deep: (n: Int32) Int32 {
 }
 
 guarded: (s: Str) Int64 {
-    result: Mutable<Int64> = -1
-    done: Mutable<Bool> = false
+    result: Mutable<Int64> { -1 }
+    done: Mutable<Bool> { false }
     try {
         result = number(s)
         done = true
@@ -43,7 +43,7 @@ guarded: (s: Str) Int64 {
 }
 
 loop: () Int32 {
-    n: Mutable<Int32> = 0
+    n: Mutable<Int32> { 0 }
     for i: Int32 in 0.until(5) {
         try {
             if i % 2 == 1 {
@@ -85,7 +85,7 @@ main: () Void {
     } on err: Str {
         trace("${err} after ${log.size()}")
     }
-    a: Mutable<Account> = Account { "amy" }
+    a: Mutable<Account> { Account { "amy" } }
     a.balance = 5
     try {
         trace(a.take(2))
@@ -117,7 +117,7 @@ main: () Void {
     // Result
     trace(describe(checked(4)))
     trace(describe(checked(-3)))
-    r: Result<Int32, Str> = checked(10)
+    r: Result<Int32, Str> { checked(10) }
     trace(r.isOk())
     trace(r.isErr())
     a.last = checked(-1)

@@ -5,10 +5,10 @@ kira.bytes as bytes
 // unilidar module's), written through MutViews of a List and of an Arr. The expected output is
 // the C++ backend's run of main, then the driver's run of these against struct and dbwcodec.
 
-HEADER_BYTES: Size = 10
-CRC_BYTES: Size = 2
-MAGIC0: UInt8 = 0xFB
-MAGIC1: UInt8 = 0xB1
+HEADER_BYTES: Size { 10 }
+CRC_BYTES: Size { 2 }
+MAGIC0: UInt8 { 0xFB }
+MAGIC1: UInt8 { 0xB1 }
 
 pub Arr<UInt8, 32> as Cmd
 
@@ -22,11 +22,11 @@ pub Frame: Mutable<Any> {
 
 // framing.crc: CRC-16/CCITT-FALSE, a bit at a time.
 pub crc16: (data: View<UInt8>) UInt16 {
-    crc: Mutable<UInt16> = 0xFFFF
-    i: Mutable<Size> = 0
+    crc: Mutable<UInt16> { 0xFFFF }
+    i: Mutable<Size> { 0 }
     while i < data.size() {
         crc ^= (data[i] as UInt16) << 8
-        bit: Mutable<Int32> = 0
+        bit: Mutable<Int32> { 0 }
         while bit < 8 {
             crc = (crc & 0x8000) != 0 ? (crc << 1) ^ 0x1021 : crc << 1
             bit += 1
@@ -37,7 +37,7 @@ pub crc16: (data: View<UInt8>) UInt16 {
 }
 
 append: (out: List<UInt8>, v: View<UInt8>) Void {
-    i: Mutable<Size> = 0
+    i: Mutable<Size> { 0 }
     while i < v.size() {
         out.add(v[i])
         i += 1
@@ -47,15 +47,15 @@ append: (out: List<UInt8>, v: View<UInt8>) Void {
 // encode_raw: the magic, version, flags, seq, type and payload length, the payload, and the
 // CRC of all of it.
 pub encodeRaw: (typ: UInt16, payload: View<UInt8>, seq: UInt16, flags: UInt8, version: UInt8) List<UInt8> {
-    out: Mutable<List<UInt8>> = @listOf(MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0)
+    out: Mutable<List<UInt8>> { @listOf(MAGIC0, MAGIC1, version, flags, 0, 0, 0, 0, 0, 0) }
     writeU16Le(out.view(), 4, seq)
     writeU16Le(out.view(), 6, typ)
     writeU16Le(out.from(8), 0, payload.size() as UInt16)
     append(out, payload)
-    crc: UInt16 = crc16(out)
+    crc: UInt16 { crc16(out) }
     out.add(0)
     out.add(0)
-    end: Size = out.size()
+    end: Size { out.size() }
     writeU16Le(out.slice(end - 2, 2), 0, crc)
     out
 }
@@ -65,13 +65,13 @@ pub parseFrame: (data: View<UInt8>) Maybe<Frame> {
     if data.size() < HEADER_BYTES + CRC_BYTES || data[0] != MAGIC0 || data[1] != MAGIC1 {
         null
     } else {
-        n: Size = readU16Le(data, 8) as Size
+        n: Size { readU16Le(data, 8) as Size }
         if data.size() != HEADER_BYTES + n + CRC_BYTES {
             null
         } else if readU16Le(data, data.size() - 2) != crc16(data.slice(0, data.size() - 2)) {
             null
         } else {
-            payload: Mutable<List<UInt8>> = List<UInt8> { }
+            payload: Mutable<List<UInt8>> { }
             append(payload, data.slice(HEADER_BYTES, n))
             Frame { data[2], data[3], readU16Le(data, 4), readU16Le(data, 6), payload }
         }
@@ -80,11 +80,11 @@ pub parseFrame: (data: View<UInt8>) Maybe<Frame> {
 
 // The L2's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
 pub crc32: (buf: View<UInt8>) UInt32 {
-    crc: Mutable<UInt32> = 0xFFFFFFFF
-    i: Mutable<Size> = 0
+    crc: Mutable<UInt32> { 0xFFFFFFFF }
+    i: Mutable<Size> { 0 }
     while i < buf.size() {
         crc ^= buf[i] as UInt32
-        bit: Mutable<Int32> = 0
+        bit: Mutable<Int32> { 0 }
         while bit < 8 {
             crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
             bit += 1
@@ -97,7 +97,7 @@ pub crc32: (buf: View<UInt8>) UInt32 {
 // unilidar's command: the magic, kind, length, type and value little-endian, the CRC of the
 // type and value, and the tail.
 pub command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Cmd {
-    p: Mutable<Cmd> = Cmd { }
+    p: Mutable<Cmd> { }
     p[0] = 0x55
     p[1] = 0xAA
     p[2] = 0x05
@@ -106,7 +106,7 @@ pub command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Cmd {
     writeU32Le(p.view(), 8, 32)
     writeU32Le(p.from(12), 0, cmdType)
     writeU32Le(p.slice(16, 4), 0, cmdValue)
-    crc: UInt32 = crc32(p.slice(12, 8))
+    crc: UInt32 { crc32(p.slice(12, 8)) }
     writeU32Le(p.view(), 20, crc)
     p[30] = 0x00
     p[31] = 0xFF
@@ -160,8 +160,8 @@ stamp: (p: MutView<UInt8>, v: UInt8) UInt32 {
 // ---- main ----------------------------------------------------------------------------------
 
 hex: (v: View<UInt8>) Str {
-    s: Mutable<Str> = ""
-    i: Mutable<Size> = 0
+    s: Mutable<Str> { "" }
+    i: Mutable<Size> { 0 }
     while i < v.size() {
         if i > 0 {
             s = s + " "
@@ -173,14 +173,14 @@ hex: (v: View<UInt8>) Str {
 }
 
 main: () Void {
-    standby: Cmd = command(100, 2, 1)
+    standby: Cmd { command(100, 2, 1) }
     trace(hex(standby))
     trace(hex(command(2000, 4, 0)))
     trace(u32At(standby, 4))
     trace(u32At(standby.from(8), 0))
     trace(crc32(standby.slice(12, 8)) == u32At(standby, 20))
 
-    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    buf: Mutable<List<UInt8>> { @listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) }
     putU16(buf.view(), 0, 0xFFFF)
     putU32(buf.view(), 2, 0xDEADBEEF)
     putU64(buf.from(6), 0, 0x0102030405060708)
@@ -202,21 +202,21 @@ main: () Void {
     trace(hex(buf.slice(0, 8)))
     trace(stamp(buf.slice(0, 0), 7))
 
-    payload: List<UInt8> = @listOf(0x10, 0x20, 0x30)
-    frame: List<UInt8> = encodeRaw(0x0102, payload, 0xFFFE, 0x01, 1)
+    payload: List<UInt8> { @listOf(0x10, 0x20, 0x30) }
+    frame: List<UInt8> { encodeRaw(0x0102, payload, 0xFFFE, 0x01, 1) }
     trace(hex(frame))
-    back: Maybe<Frame> = parseFrame(frame)
+    back: Maybe<Frame> { parseFrame(frame) }
     if back.isNull() {
         trace("none")
     } else {
-        f: Frame = back.value
+        f: Frame { back.value }
         trace("v${f.version} flags ${f.flags} seq ${f.seq} type ${f.type} ${hex(f.payload)}")
     }
     trace(parseFrame(frame.slice(0, frame.size() - 1)).isNull())
-    bad: Mutable<List<UInt8>> = List<UInt8> { values = frame.toArr() }
+    bad: Mutable<List<UInt8>> { values = frame.toArr() }
     bad.set(10, 0x11)
     trace(parseFrame(bad).isNull())
-    empty: List<UInt8> = List<UInt8> { }
+    empty: List<UInt8> { }
     trace(hex(encodeRaw(7, empty, 0, 0, 1)))
     trace(parseFrame(encodeRaw(7, empty, 0, 0, 1)).isNull())
 }

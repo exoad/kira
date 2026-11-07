@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.sysdecls"
     srcDir = "src"
     target = "cpp"

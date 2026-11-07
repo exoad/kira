@@ -71,7 +71,7 @@ pub kinds: (c: Char) Str {
 }
 
 pub main: () Int32 {
-    t: Suite = Suite { title = "pytext - kira:pytext on py" }
+    t: Suite { title = "pytext - kira:pytext on py" }
     t.check(pyInt("8_0").unwrapOr(0) == 80 && pyInt("٨٠").unwrapOr(0) == 80, "pyInt reads 8_0 and Arabic-Indic digits as 80")
     t.check(pyInt(" 82").unwrapOr(0) == 82 && pyInt("+81").unwrapOr(0) == 81 && pyTextError() == "", "and a space and a sign, with no reason")
     t.check(pyInt("x").isNone() && pyTextError() == "ValueError: invalid literal for int() with base 10: 'x'", "and none for x, ValueError's own text")
@@ -106,6 +106,6 @@ zeroOf: (v: Float64) Float64 {
 }
 
 ch: (code: Int32) Str {
-    c: Char = code as Char
+    c: Char { code as Char }
     "${c}"
 }

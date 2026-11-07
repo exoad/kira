@@ -89,8 +89,8 @@ class FfiDriftCompileTest {
     /** Kira's view of `pt.h`'s `PtCfg`, whose first field is a C enum: declared as the integer given. */
     private fun cfgModule(modeType: String): String = """
         pub @_extern(c = "PtCfg", header = "pt.h") Cfg: Struct {
-            pub mode: $modeType = 0
-            pub n: Int32 = 0
+            pub mode: $modeType { 0 }
+            pub n: Int32 { 0 }
         }
     """
 
@@ -135,8 +135,8 @@ class FfiDriftCompileTest {
      */
     private val cfgCallModule = """
         pub @_extern(c = "PtCfg", header = "pt.h") Cfg: Struct {
-            pub mode: Int32 = 0
-            pub n: Int32 = 0
+            pub mode: Int32 { 0 }
+            pub n: Int32 { 0 }
         }
 
         pub @_extern(c = "pt_cfg_get", header = "pt.h") cfgGet: () Cfg
@@ -568,7 +568,7 @@ class FfiDriftCompileTest {
 
     /** `struct PtInt { int x; int y; }` declared with Int32 fields: int and std::int32_t are one scalar (on arm-none-eabi too, where is_same was not enough). */
     private fun cIntFieldClean(tc: CppToolchain) {
-        val (header, result) = compileScalar(tc, "int-field", "pub @_extern(c = \"PtInt\", header = \"pt.h\") PtI: Struct {\n    pub x: Int32 = 0\n    pub y: Int32 = 0\n}")
+        val (header, result) = compileScalar(tc, "int-field", "pub @_extern(c = \"PtInt\", header = \"pt.h\") PtI: Struct {\n    pub x: Int32 { 0 }\n    pub y: Int32 { 0 }\n}")
         assertTrue(header.contains("KIRA_EXTERN_FIELD(PtInt, sc::ffi_::PtI, x, std::int32_t, \"PtI.x\");"), header)
         if (!result.success) {
             fail("${tc.id}: a C int field declared Int32 does not build:\n${result.describe()}")
@@ -626,21 +626,21 @@ class FfiDriftCompileTest {
     }
 
     private fun fieldTypeDrift(tc: CppToolchain) {
-        val (header, result) = compilePt(tc, "field-type", "pub x: Float32 = 0.0\npub y: Float32 = 0.0")
+        val (header, result) = compilePt(tc, "field-type", "pub x: Float32 { 0.0 }\npub y: Float32 { 0.0 }")
         assertTrue(header.contains("KIRA_EXTERN_FIELD(Pt, pt::ffi_::Pt, x, float, \"Pt.x\");"), header)
         assertTrue(!result.success, "${tc.id}: Kira's 'x: Float32' against C's int32_t x compiled (is_convertible would let it):\n${result.describe()}")
         assertMessage(tc, result, "Kira's Pt.x ${CppExternEmitter.DRIFT_MESSAGE}")
     }
 
     private fun fieldOrderDrift(tc: CppToolchain) {
-        val (header, result) = compilePt(tc, "field-order", "pub y: Int32 = 0\npub x: Int32 = 0")
+        val (header, result) = compilePt(tc, "field-order", "pub y: Int32 { 0 }\npub x: Int32 { 0 }")
         assertTrue(header.contains("namespace pt::ffi_ { struct Pt { std::int32_t y; std::int32_t x; }; }"), header)
         assertTrue(!result.success, "${tc.id}: Kira's Pt with y before x against C's x before y compiled (sizeof and is_same both pass):\n${result.describe()}")
         assertMessage(tc, result, "Kira's Pt.y ${CppExternEmitter.DRIFT_MESSAGE} (it is not at that offset)")
     }
 
     private fun ptClean(tc: CppToolchain) {
-        val (header, result) = compilePt(tc, "pt-clean", "pub x: Int32 = 0\npub y: Int32 = 0")
+        val (header, result) = compilePt(tc, "pt-clean", "pub x: Int32 { 0 }\npub y: Int32 { 0 }")
         assertTrue(header.contains("extern \"C\" {\n#include \"pt.h\"\n}\n"), header)
         if (!result.success) {
             fail("${tc.id}: the right struct and the c = function do not build:\n${result.describe()}")

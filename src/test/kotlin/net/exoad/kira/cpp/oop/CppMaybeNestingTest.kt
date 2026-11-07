@@ -34,16 +34,16 @@ class CppMaybeNestingTest {
         // Map.get of a key mapped to null is Some(None); of a missing key, None.
 
         pub Node: Any {
-            pub n: Int32 = 7
+            pub n: Int32 { 7 }
         }
 
         pub run: () Void {
-            m: Mutable<Map<Str, Maybe<Node>>> = Map<Str, Maybe<Node>> { }
+            m: Mutable<Map<Str, Maybe<Node>>> { }
             m["a"] = null
             m["b"] = Node { }
-            a: Maybe<Maybe<Node>> = m.get("a")
-            b: Maybe<Maybe<Node>> = m.get("b")
-            c: Maybe<Maybe<Node>> = m.get("c")
+            a: Maybe<Maybe<Node>> { m.get("a") }
+            b: Maybe<Maybe<Node>> { m.get("b") }
+            c: Maybe<Maybe<Node>> { m.get("c") }
             // Kira: 1 (the key is there, mapped to null), 1, then 0 (no key)
             if a.isNull() {
                 trace(0)
@@ -74,7 +74,7 @@ class CppMaybeNestingTest {
         "oop:b10s",
         """
         pub Node: Any {
-            pub n: Int32 = 7
+            pub n: Int32 { 7 }
         }
 
         some<T>: (x: T) Maybe<T> {
@@ -86,22 +86,22 @@ class CppMaybeNestingTest {
         }
 
         pub run: () Void {
-            s: Mutable<Stack<Maybe<Node>>> = Stack<Maybe<Node>> { }
+            s: Mutable<Stack<Maybe<Node>>> { }
             s.push(null)
             s.push(Node { })
             trace(level(s.peek()))
             trace(level(s.pop()))
             trace(level(s.pop()))
             trace(level(s.pop()))
-            q: Mutable<Queue<Maybe<Node>>> = Queue<Maybe<Node>> { }
+            q: Mutable<Queue<Maybe<Node>>> { }
             q.enqueue(null)
             trace(level(q.dequeue()))
             trace(level(q.dequeue()))
-            nul: Maybe<Node> = null
-            nn: Maybe<Node> = Node { }
+            nul: Maybe<Node> { null }
+            nn: Maybe<Node> { Node { } }
             trace(level(some<Maybe<Node>>(nul)))
             trace(level(some<Maybe<Node>>(nn)))
-            x: Mutable<Maybe<Maybe<Node>>> = null
+            x: Mutable<Maybe<Maybe<Node>>> { null }
             trace(level(x))
             x = some<Maybe<Node>>(nul)
             trace(level(x))
@@ -109,7 +109,7 @@ class CppMaybeNestingTest {
             trace(level(x))
             x = null
             trace(level(x))
-            m: Mutable<Map<Str, Maybe<Node>>> = Map<Str, Maybe<Node>> { }
+            m: Mutable<Map<Str, Maybe<Node>>> { }
             m["a"] = null
             trace(level(m.remove("a")))
             trace(level(m.remove("a")))
@@ -125,13 +125,13 @@ class CppMaybeNestingTest {
         }
 
         pub run: () Void {
-            m: Mutable<Map<Str, Maybe<Int32>>> = Map<Str, Maybe<Int32>> { }
+            m: Mutable<Map<Str, Maybe<Int32>>> { }
             m["a"] = null
             m["b"] = 5
             trace(level(m.get("a")))
             trace(level(m.get("b")))
             trace(level(m.get("c")))
-            x: Mutable<Maybe<Maybe<Int32>>> = null
+            x: Mutable<Maybe<Maybe<Int32>>> { null }
             trace(level(x))
             x = m.get("a")
             trace(level(x))

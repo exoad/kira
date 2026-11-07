@@ -133,7 +133,7 @@ class CliSuiteTest {
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
-                        x: MissingType = 1
+                        x: MissingType { 1 }
                         trace(x)
                     }
                 """.trimIndent(),
@@ -157,7 +157,7 @@ class CliSuiteTest {
             mapOf(
                 "src/app/main.kira" to """
                     main: () Void {
-                        s: Str = "a\0b"
+                        s: Str { "a\0b" }
                         trace(s)
                     }
                 """.trimIndent(),
@@ -182,7 +182,7 @@ class CliSuiteTest {
             mapOf(
                 "src/app/main.kira" to """
                     f: (s: Maybe<Str>) Size {
-                        n: Size = s.size()
+                        n: Size { s.size() }
                         n
                     }
                 """.trimIndent(),
@@ -231,7 +231,7 @@ class CliSuiteTest {
         )
     }
 
-    private val dumpSource = "main: () Void {\n    x: Int32 = 1 + 2\n    trace(\"hi\")\n}\n"
+    private val dumpSource = "main: () Void {\n    x: Int32 { 1 + 2 }\n    trace(\"hi\")\n}\n"
 
     @Test
     fun helpListsEveryDumpFlagWithItsText() {
@@ -269,7 +269,7 @@ class CliSuiteTest {
 
     @Test
     fun dumpTypedExitsOneOnATyperError() {
-        val dir = tempProject("dump-typed-error", basicProject(), mapOf("src/app/main.kira" to "main: () Void {\n    x: Int32 = \"s\"\n}\n"))
+        val dir = tempProject("dump-typed-error", basicProject(), mapOf("src/app/main.kira" to "main: () Void {\n    x: Int32 { \"s\" }\n}\n"))
         val result = runCli(dir, "--dump-typed")
         assertEquals(1, result.exitCode, result.stdout + result.stderr)
         assertTrue(result.stdout.contains("diag error"), result.stdout)

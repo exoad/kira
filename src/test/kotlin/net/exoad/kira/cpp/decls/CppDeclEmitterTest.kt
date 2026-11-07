@@ -68,19 +68,19 @@ class CppDeclEmitterTest {
     fun constantsKeepTheirSpellingAndTakeTheirSuffix() {
         val h = header(
             """
-            pub LIMIT: Int32 = 10
-            pub IP: Str = "192.168.1.62"
-            pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
-            pub MASK: UInt32 = 0xFFFFFFFF
-            pub HALF: Float32 = 0.5
-            pub RATE: Float64 = 1e-3
-            pub WHOLE: Float32 = 2
-            pub BIG: UInt64 = 0xFFFFFFFFFFFFFFF
-            pub QUOTE: Str = "say \"hi\"\n"
-            pub NL: Char = '\n'
-            pub DOUBLED: Int32 = LIMIT * 2
-            pub NEG: Int32 = -7
-            pub LIST: Arr<Int32> = @arrOf(1, 2, 3)
+            pub LIMIT: Int32 { 10 }
+            pub IP: Str { "192.168.1.62" }
+            pub MAGIC: Arr<UInt8, 4> { @arrOf(0x55, 0xAA, 0x05, 0x0A) }
+            pub MASK: UInt32 { 0xFFFFFFFF }
+            pub HALF: Float32 { 0.5 }
+            pub RATE: Float64 { 1e-3 }
+            pub WHOLE: Float32 { 2 }
+            pub BIG: UInt64 { 0xFFFFFFFFFFFFFFF }
+            pub QUOTE: Str { "say \"hi\"\n" }
+            pub NL: Char { '\n' }
+            pub DOUBLED: Int32 { LIMIT * 2 }
+            pub NEG: Int32 { -7 }
+            pub LIST: Arr<Int32> { @arrOf(1, 2, 3) }
             """
         )
         assertContains(
@@ -109,9 +109,9 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub servoMin: Mutable<Int32> = 1230
-                calls: Mutable<Int32> = 0
-                LOCAL: Float32 = 0.10
+                pub servoMin: Mutable<Int32> { 1230 }
+                calls: Mutable<Int32> { 0 }
+                LOCAL: Float32 { 0.10 }
                 """,
             ),
             uri = "test:main",
@@ -134,7 +134,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                count: Mutable<Int32> = 0
+                count: Mutable<Int32> { 0 }
 
                 pub @_iram onEdge: () Void {
                     count = count + 1
@@ -185,7 +185,7 @@ class CppDeclEmitterTest {
         }
         val plain = errorsOf(
             """
-            count: Mutable<Int32> = 0
+            count: Mutable<Int32> { 0 }
 
             helper: () Void {
                 count = count + 1
@@ -200,7 +200,7 @@ class CppDeclEmitterTest {
 
         val iram = errorsOf(
             """
-            count: Mutable<Int32> = 0
+            count: Mutable<Int32> { 0 }
 
             pub @_iram helper: () Void {
                 count = count + 1
@@ -231,8 +231,8 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                calls: Mutable<Int32> = 0
-                LOCAL: Float32 = 0.10
+                calls: Mutable<Int32> { 0 }
+                LOCAL: Float32 { 0.10 }
                 helper: (v: Float32) Float32 { v * LOCAL }
                 orphan: () Void { }
                 pub go: () Void { calls += 1 }
@@ -251,7 +251,7 @@ class CppDeclEmitterTest {
     fun anAliasIsAUsingDeclarationAndAGenericOneATemplate() {
         val h = header(
             """
-            pub N: Size = 32
+            pub N: Size { 32 }
             pub Arr<UInt8, N> as Frame
             pub T2<A, B> as Pair<A, B>
             pub Str as Name
@@ -269,10 +269,10 @@ class CppDeclEmitterTest {
 
     @Test
     fun structEqualityIsDefaultedOnlyWhereTheProgramComparesIt() {
-        val plain = header("pub Pt: Struct { pub x: Int32 = 0 }")
+        val plain = header("pub Pt: Struct { pub x: Int32 { 0 } }")
         assertTrue(!plain.contains("operator=="), plain)
         val compared = header(
-            "pub Pt: Struct { pub x: Int32 = 0 }",
+            "pub Pt: Struct { pub x: Int32 { 0 } }",
             usageOf = { ctx -> CppUsage.of(compared = setOf(ctx.symbol.members["Pt"] as ClassSymbol)) },
         )
         assertContains(compared, "  struct Pt\n  {\n      std::int32_t x = 0;\n\n      bool operator==(const Pt&) const = default;\n  };")
@@ -281,7 +281,7 @@ class CppDeclEmitterTest {
     @Test
     fun aStructCycleIsAnError() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub A: Struct { pub b: Maybe<B> = null }\npub B: Struct { pub a: Maybe<A> = null }"),
+            DeclTestSupport.module("test:main", "pub A: Struct { pub b: Maybe<B> { null } }\npub B: Struct { pub a: Maybe<A> { null } }"),
             uri = "test:main",
         )
         val cycle = emitted.diagnostics.filter { it.code == CppPlacement.STRUCT_CYCLE_CODE }
@@ -297,7 +297,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub SCALE: Int32 = 100
+                pub SCALE: Int32 { 100 }
                 pub command: (verb: Str, args: Str = "", n: Int32 = SCALE) Str { "${'$'}{verb} ${'$'}{args} ${'$'}{n}" }
                 isSpace: (c: Char) Bool { c == ' ' }
                 pub tell: (unused: Int32, used: Int32) Void { trace(used) }
@@ -322,7 +322,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "lib:units",
                 """
-                pub SCALE: Int32 = 100
+                pub SCALE: Int32 { 100 }
                 clampPct: (v: Int32) Int32 { v }
                 pub percent: (part: Int32, whole: Int32) Int32 { part * whole }
                 pub @_const crc: (v: UInt32) UInt32 { v }
@@ -367,7 +367,7 @@ class CppDeclEmitterTest {
     @Test
     fun fxMainIsDeclaredInTheHeaderAndWrappedByIntMain() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("programs:forward", "CREEP: Float32 = 0.10\nmain: () Int32 { 0 }"),
+            DeclTestSupport.module("programs:forward", "CREEP: Float32 { 0.10 }\nmain: () Int32 { 0 }"),
             uri = "programs:forward",
             parts = fakeBodies,
         )
@@ -383,7 +383,7 @@ class CppDeclEmitterTest {
     @Test
     fun aModuleWithNothingForASourceEmitsNone() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("pilot:carlink", "pub LINK_OK: Int32 = 0\npub WRITE_WAIT_MS: Int32 = 30"),
+            DeclTestSupport.module("pilot:carlink", "pub LINK_OK: Int32 { 0 }\npub WRITE_WAIT_MS: Int32 { 30 }"),
             uri = "pilot:carlink",
         )
         assertNull(emitted.source)
@@ -394,8 +394,8 @@ class CppDeclEmitterTest {
 
     @Test
     fun theHeaderIncludesTheRuntimeByProfileThenUsedModulesRelatively() {
-        val units = DeclTestSupport.module("lib:units", "pub SCALE: Int32 = 100")
-        val report = DeclTestSupport.module("app:report", "lib.units as units\nlib.units.SCALE as SCALE\npub LIMIT: Int32 = SCALE")
+        val units = DeclTestSupport.module("lib:units", "pub SCALE: Int32 { 100 }")
+        val report = DeclTestSupport.module("app:report", "lib.units as units\nlib.units.SCALE as SCALE\npub LIMIT: Int32 { SCALE }")
         val hosted = DeclTestSupport.emitWith(units, report, uri = "app:report").first
         assertContains(
             CppWriter.normalize(hosted.header),
@@ -411,7 +411,7 @@ class CppDeclEmitterTest {
     @Test
     fun aKiraWrittenStdlibModuleIsHeaderOnlyUnderKiraStd() {
         val (emitted, ctx) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("app:calc", "kira.math as math\nkira.bytes as bytes\npub ZERO: Float64 = 0.0"),
+            DeclTestSupport.module("app:calc", "kira.math as math\nkira.bytes as bytes\npub ZERO: Float64 { 0.0 }"),
             uri = "app:calc",
         )
         // kira:math has Kira-written functions, so it is included through the include path; kira:bytes is all magic and is not.
@@ -425,7 +425,7 @@ class CppDeclEmitterTest {
 
     @Test
     fun theStdlibBannerNamesTheModuleNotTheCheckout() {
-        val (emitted, _) = DeclTestSupport.emit(DeclTestSupport.module("app:calc", "pub ZERO: Float64 = 0.0"), includeStdlib = true).let { e ->
+        val (emitted, _) = DeclTestSupport.emit(DeclTestSupport.module("app:calc", "pub ZERO: Float64 { 0.0 }"), includeStdlib = true).let { e ->
             e.module("kira:bytes") to e
         }
         assertContains(CppWriter.normalize(emitted.header), "// GENERATED by kira dev --target cpp from kira.bytes (kira/bytes.kira). Do not edit")
@@ -445,14 +445,14 @@ class CppDeclEmitterTest {
 
     @Test
     fun aKeywordNameGetsATrailingUnderscore() {
-        val h = header("pub Box: Struct { pub new: Int32 = 0 pub delete: () Void }\npub register: (template: Int32) Void")
+        val h = header("pub Box: Struct { pub new: Int32 { 0 } pub delete: () Void }\npub register: (template: Int32) Void")
         assertContains(h, "      std::int32_t new_ = 0;\n\n      void delete_() const;", "void register_(std::int32_t template_);")
     }
 
     @Test
     fun aPubNameOnTheMacroListIsWarned() {
         val (emitted, _) = DeclTestSupport.emitWith(
-            DeclTestSupport.module("test:main", "pub ERROR: Int32 = 1\npub IN: Int32 = 0\nOUT: () Void { }\npub max: (a: Int32, b: Int32) Int32"),
+            DeclTestSupport.module("test:main", "pub ERROR: Int32 { 1 }\npub IN: Int32 { 0 }\nOUT: () Void { }\npub max: (a: Int32, b: Int32) Int32"),
             uri = "test:main",
         )
         val warnings = emitted.diagnostics.filter { it.code == CppDeclEmitter.MACRO_NAME_CODE }
@@ -472,7 +472,7 @@ class CppDeclEmitterTest {
             DeclTestSupport.module(
                 "test:main",
                 """
-                pub Node: Any { pub v: Int32 = 0 }
+                pub Node: Any { pub v: Int32 { 0 } }
                 pub Shape: Any { pub area: () Int32 }
                 pub f: () Void { }
                 pub @_extern(cpp = "bibo::openCar", header = "car.hxx") openCar: () Int32

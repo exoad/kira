@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 /** A project at its root: loaded, what Project.issues says of it, and its dependencies' sources. */
 class ProjectTest {
     private fun write(dir: Path, body: String) {
-        Files.writeString(dir.resolve(ProjectFile.FILE), "PROJECT: Project = Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n")
+        Files.writeString(dir.resolve(ProjectFile.FILE), "PROJECT: Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n")
     }
 
     @Test

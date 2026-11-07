@@ -11,14 +11,14 @@ class FrontendCompilationPipelineTest {
         val source = TestCompileSupport.wrapModule(
             moduleUri,
             """
-            x: Int32 = 1
-            y: Int32 = 2
+            x: Int32 { 1 }
+            y: Int32 { 2 }
 
             add: (a: Int32, b: Int32) Int32 {
                 a + b
             }
 
-            answer: Int32 = add(x, y)
+            answer: Int32 { add(x, y) }
             """
         )
 

@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "test_kira"
     srcDir = "sub"
     target = "c"

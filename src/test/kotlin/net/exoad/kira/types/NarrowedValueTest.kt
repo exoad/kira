@@ -94,12 +94,12 @@ class NarrowedValueTest {
 
     @Test
     fun theTernaryLaneCWritesForAnIfValueNarrowsAsTheIfDid() {
-        val ternary = "f: (s: Shape) Int32 {\n    v: Int32 = s == Circle ? s.radius : 0\n    v\n}"
-        val ifValue = "f: (s: Shape) Int32 {\n    v: Int32 = if s == Circle {\n        s.radius\n    } else {\n        0\n    }\n    v\n}"
+        val ternary = "f: (s: Shape) Int32 {\n    v: Int32 { s == Circle ? s.radius : 0 }\n    v\n}"
+        val ifValue = "f: (s: Shape) Int32 {\n    v: Int32 { if s == Circle {\n        s.radius\n    } else {\n        0\n    } }\n    v\n}"
         assertEquals(listOf("s:Shape->Circle"), narrowed(ternary))
         assertEquals("parse.if.ternary", assertThrows<DiagnosticsException> { TyperTestSupport.unitOf(module("test:main", text(ifValue))) }.tag)
         // A Maybe test of a ternary binds below it, so py tests the ternary whole.
-        val py = PyTestSupport.emit("f: (m: Maybe<Int32>, n: Maybe<Int32>, k: Int32) Bool {\n    e: Bool = (k > 0 ? m : n) != Int32\n    e\n}").python()
+        val py = PyTestSupport.emit("f: (m: Maybe<Int32>, n: Maybe<Int32>, k: Int32) Bool {\n    e: Bool { (k > 0 ? m : n) != Int32 }\n    e\n}").python()
         assertTrue(py.contains("    e = (m if k > 0 else n) is None\n"), py)
     }
 
@@ -107,9 +107,9 @@ class NarrowedValueTest {
 
     @Test
     fun anIfValuesStatementArmsSeeTheirConditionsNarrowing() {
-        val src = "f: (s: Shape, m: Maybe<Int32>) Int32 {\n    v: Int32 = if s == Circle {\n        r: Int32 = s.radius\n        r * 2\n    } else if m != Int32 {\n        -1\n    } else {\n        w: Int32 = m\n        w + 1\n    }\n    v\n}"
+        val src = "f: (s: Shape, m: Maybe<Int32>) Int32 {\n    v: Int32 { if s == Circle {\n        r: Int32 { s.radius }\n        r * 2\n    } else if m != Int32 {\n        -1\n    } else {\n        w: Int32 { m }\n        w + 1\n    } }\n    v\n}"
         assertEquals(listOf("m:Maybe<Int32>->Int32", "s:Shape->Circle"), narrowed(src))
-        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    v: Int32 = if s == Circle {\n        0\n    } else {\n        r: Int32 = s.radius\n        r\n    }\n    v\n}"), "types.member.unknown")
+        expectDiagnostic(snippet("f: (s: Shape) Int32 {\n    v: Int32 { if s == Circle {\n        0\n    } else {\n        r: Int32 { s.radius }\n        r\n    } }\n    v\n}"), "types.member.unknown")
     }
 
     @Test
@@ -132,7 +132,7 @@ class NarrowedValueTest {
         val src = "h: (n: Int32) Int32 {\n    if n > 1 {\n        throw \"far\"\n    }\n    n\n}\n\n" +
             "f: (s: Shape) Int32 {\n    s == Circle ? (try {\n        h(s.radius)\n    } on e: Str {\n        -1\n    }) : 0\n}"
         assertEquals(listOf("s:Shape->Circle"), narrowed(src))
-        val lambda = "f: (s: Shape) Int32 {\n    g: (x: Shape) Int32 = (x: Shape) Int32 {\n        x == Circle ? x.radius : 7\n    }\n    g(s)\n}"
+        val lambda = "f: (s: Shape) Int32 {\n    g: Fx<T1<Shape>, Int32> { (x: Shape) Int32 {\n        x == Circle ? x.radius : 7\n    } }\n    g(s)\n}"
         assertEquals(listOf("x:Shape->Circle"), narrowed(lambda))
     }
 
@@ -151,7 +151,7 @@ class NarrowedValueTest {
     @Test
     fun onPyANarrowedArmWithStatementsIsADefThatReadsTheName() {
         val py = PyTestSupport.emit(
-            "f: (m: Maybe<Int32>) Int32 {\n    v: Int32 = if m == Int32 {\n        t: Int32 = m * 10\n        t + 1\n    } else {\n        0\n    }\n    v\n}",
+            "f: (m: Maybe<Int32>) Int32 {\n    v: Int32 { if m == Int32 {\n        t: Int32 { m * 10 }\n        t + 1\n    } else {\n        0\n    } }\n    v\n}",
         ).python()
         assertTrue(py.contains("    def _k_t0():\n        if m is not None:\n            t = _k_i32(m * 10)\n            return _k_i32(t + 1)\n        else:\n            return 0\n    v = _k_t0()\n"), py)
     }

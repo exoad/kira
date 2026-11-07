@@ -19,23 +19,23 @@ pub @_magic lastErrorKind: () Str
 // --- networking ------------------------------------------------------------
 
 // Bits for Poller.add and Ready.events.
-pub POLL_READ: Int32 = 1
-pub POLL_WRITE: Int32 = 2
+pub POLL_READ: Int32 { 1 }
+pub POLL_WRITE: Int32 { 2 }
 // Set by the poller only: the peer hung up or the handle is in error.
-pub POLL_ERROR: Int32 = 4
+pub POLL_ERROR: Int32 { 4 }
 
 // What recvFrom read: the byte count (into the caller's view) and where
 // the datagram came from.
 pub Datagram: Struct {
-    pub size: Size = 0
-    pub host: Str = ""
-    pub port: Int32 = 0
+    pub size: Size { 0 }
+    pub host: Str { "" }
+    pub port: Int32 { 0 }
 }
 
 // One handle Poller.wait found ready, and why (POLL_* bits).
 pub Ready: Struct {
-    pub handle: Int64 = -1
-    pub events: Int32 = 0
+    pub handle: Int64 { -1 }
+    pub events: Int32 { 0 }
 }
 
 // A non-blocking UDP socket.
@@ -223,9 +223,9 @@ pub @_magic nice: (increment: Int32) Maybe<Int32>
 
 // What runCapture's child did: its exit code (128 + the signal that ended it) and what it wrote.
 pub Ran: Struct {
-    pub code: Int32 = -1
-    pub out: Str = ""
-    pub err: Str = ""
+    pub code: Int32 { -1 }
+    pub out: Str { "" }
+    pub err: Str { "" }
 }
 
 // Runs argv (no shell) to its end with input on its stdin (none: this one's), its output read as UTF-8 (U+FFFD
@@ -254,8 +254,8 @@ pub @_magic spawnPiped: (argv: List<Str>) Maybe<PipedProcess>
 // --- signals, environment, arguments, exit ---------------------------------
 
 // Signal numbers common to POSIX and the C runtime on Windows.
-pub SIGNAL_INT: Int32 = 2
-pub SIGNAL_TERM: Int32 = 15
+pub SIGNAL_INT: Int32 { 2 }
+pub SIGNAL_TERM: Int32 { 15 }
 
 // Installs a handler for `sig` that only sets `flag` to true, so it is
 // async-signal-safe and a loop can poll the flag. On POSIX the handler

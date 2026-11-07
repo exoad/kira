@@ -229,13 +229,13 @@ class SysDeclTest {
             assertTrue(all.all { it.code == "types.init.missing-required" }, "only a missing require field:\n${TyperTestSupport.render(program)}")
             return all.map { it.message }
         }
-        val none = missingOf("pub main: () Void {\n    t: Thread = Thread { }\n}")
+        val none = missingOf("pub main: () Void {\n    t: Thread { }\n}")
         assertEquals(1, none.size, "Thread { }: $none")
         assertTrue("'name'" in none[0] && "'body'" in none[0], "Thread { } must name both require fields: ${none[0]}")
-        val nameOnly = missingOf("pub main: () Void {\n    t: Thread = Thread { name = \"w\" }\n}")
+        val nameOnly = missingOf("pub main: () Void {\n    t: Thread { name = \"w\" }\n}")
         assertEquals(1, nameOnly.size, "Thread { name }: $nameOnly")
         assertTrue("'body'" in nameOnly[0] && "'name'" !in nameOnly[0], "Thread { name } must name body alone: ${nameOnly[0]}")
-        val both = missingOf("pub main: () Void {\n    t: Thread = Thread { name = \"w\", body = () Void { } }\n}")
+        val both = missingOf("pub main: () Void {\n    t: Thread { name = \"w\", body = () Void { } }\n}")
         assertEquals(emptyList(), both, "Thread { name, body } types clean")
     }
 

@@ -52,7 +52,7 @@ pub Animal: Any {
 }
 
 pub Dog: Mutable<Animal> {
-    tricks: Mutable<Int32> = 0
+    tricks: Mutable<Int32> { 0 }
 
     override pub sound: () Str {
         "woof"
@@ -86,6 +86,6 @@ pub bump: (c: Ref<Int32>) Int32 {
 }
 
 pub petName: (w: Weak<Pet>) Str {
-    p: Maybe<Pet> = w.upgrade()
+    p: Maybe<Pet> { w.upgrade() }
     p.isNone() ? "gone" : p.unwrap().name
 }

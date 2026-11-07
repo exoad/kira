@@ -41,19 +41,19 @@ class DeclScopeAndNamesTest {
     fun aMemberNamedLikeAModuleDeclarationSpellsTheDeclarationThroughTheNamespace() {
         val h = header(
             """
-            pub width: Int32 = 5
-            pub OTHER: Int32 = 3
-            LIMIT: Int32 = 7
+            pub width: Int32 { 5 }
+            pub OTHER: Int32 { 3 }
+            LIMIT: Int32 { 7 }
             pub scale: (x: Int32) Int32
             pub Box: Struct {
-                pub width: Int32 = width
-                pub LIMIT: Int32 = LIMIT
-                pub other: Int32 = OTHER
+                pub width: Int32 { width }
+                pub LIMIT: Int32 { LIMIT }
+                pub other: Int32 { OTHER }
                 pub grow: (by: Int32 = OTHER) Int32
                 pub scale: (x: Int32 = width) Int32
             }
             pub Plain: Struct {
-                pub w: Int32 = width
+                pub w: Int32 { width }
             }
             """,
         )
@@ -74,9 +74,9 @@ class DeclScopeAndNamesTest {
     fun aHeaderOnlyModuleQualifiesItsImplNamesTheSameWay() {
         val h = header(
             """
-            LIMIT: Int32 = 7
+            LIMIT: Int32 { 7 }
             pub Box: Struct {
-                pub LIMIT: Int32 = LIMIT
+                pub LIMIT: Int32 { LIMIT }
             }
             """,
             uri = "lib:units",
@@ -89,9 +89,9 @@ class DeclScopeAndNamesTest {
     fun aMethodBodyIsSpelledInClassScopeAndAFreeFunctionIsNot() {
         val (emitted, _) = emit(
             """
-            pub LIMIT: Int32 = 7
+            pub LIMIT: Int32 { 7 }
             pub Box: Struct {
-                pub LIMIT: Int32 = 1
+                pub LIMIT: Int32 { 1 }
                 pub limit: () Int32 { LIMIT }
             }
             pub limit: () Int32 { LIMIT }
@@ -110,9 +110,9 @@ class DeclScopeAndNamesTest {
         val classes = ScopeRecordingClasses()
         val (emitted, ctx) = emit(
             """
-            pub LIMIT: Int32 = 7
+            pub LIMIT: Int32 { 7 }
             pub Holder: Any {
-                pub n: Int32 = 1
+                pub n: Int32 { 1 }
                 pub limit: () Int32 { LIMIT }
             }
             pub Sized: Any {
@@ -135,10 +135,10 @@ class DeclScopeAndNamesTest {
         assertEquals("width", CppNames().escape("width"))
         val h = header(
             """
-            pub std: Int32 = 1
+            pub std: Int32 { 1 }
             pub S: Struct {
-                pub kira: Int32 = std
-                pub v: Int32 = 2
+                pub kira: Int32 { std }
+                pub v: Int32 { 2 }
             }
             """,
         )

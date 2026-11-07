@@ -435,7 +435,7 @@ class KiraCppBackendTest {
             }
         """))
         val user = PlumbingTestSupport.write(p.root, "src/geo/user.kira", PlumbingTestSupport.source("""
-            pub LIMIT: Int32 = 3
+            pub LIMIT: Int32 { 3 }
         """))
         val unit = PlumbingTestSupport.compilationUnit(mapOf(geometry to Files.readString(geometry), user to Files.readString(user)), p.project, p.root)
         val fake = FakeCppModuleEmitter(CppOptions(runtimeDir = "lib"))

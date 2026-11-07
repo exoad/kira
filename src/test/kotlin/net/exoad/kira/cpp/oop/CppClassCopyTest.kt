@@ -35,7 +35,7 @@ class CppClassCopyTest {
             "types.init.missing-required",
             """
             pub Other: Any {
-                pub k: Int32 = 3
+                pub k: Int32 { 3 }
             }
 
             pub X: Any {

@@ -14,7 +14,7 @@ class CollectionRuntimeTest {
         assertStdout("10\n") {
             """
             main: () Void {
-                numbers: Arr<Int32> = @arrOf(10, 20, 30)
+                numbers: Arr<Int32> { @arrOf(10, 20, 30) }
                 trace(numbers[0])
             }
             """
@@ -34,7 +34,7 @@ class CollectionRuntimeTest {
                 "test:runtime.nested",
                 """
                 main: () Void {
-                    grid: Arr<Arr<Int32>> = @arrOf(@arrOf(1, 2), @arrOf(3, 4))
+                    grid: Arr<Arr<Int32>> { @arrOf(@arrOf(1, 2), @arrOf(3, 4)) }
                     trace(grid[1][0])
                 }
                 """
@@ -57,12 +57,12 @@ class CollectionRuntimeTest {
         assertStdout("1\n36\n-1\n") {
             """
             main: () Void {
-                ages: Map<Str, Int32> = Map<Str, Int32> { }
+                ages: Map<Str, Int32> { }
                 ages.put("ada", 36)
-                found: Maybe<Int32> = ages.get("ada")
+                found: Maybe<Int32> { ages.get("ada") }
                 trace(found.isSome())
                 trace(found.unwrapOr(0))
-                missing: Maybe<Int32> = ages.get("nobody")
+                missing: Maybe<Int32> { ages.get("nobody") }
                 trace(missing.unwrapOr(-1))
             }
             """
@@ -74,7 +74,7 @@ class CollectionRuntimeTest {
         assertStdout("2\ngrace\n1\n") {
             """
             main: () Void {
-                names: List<Str> = List<Str> { }
+                names: List<Str> { }
                 names.add("ada")
                 names.add("grace")
                 trace(names.size())
@@ -90,7 +90,7 @@ class CollectionRuntimeTest {
         assertStdout("2\n1\n") {
             """
             main: () Void {
-                seen: Set<Int32> = Set<Int32> { }
+                seen: Set<Int32> { }
                 seen.add(1)
                 seen.add(2)
                 seen.add(1)
@@ -106,17 +106,17 @@ class CollectionRuntimeTest {
         assertStdout("10\n1\n1\n") {
             """
             main: () Void {
-                undo: Stack<Int32> = Stack<Int32> { }
+                undo: Stack<Int32> { }
                 undo.push(10)
-                top: Maybe<Int32> = undo.pop()
+                top: Maybe<Int32> { undo.pop() }
                 trace(top.unwrapOr(0))
-                empty: Maybe<Int32> = undo.pop()
+                empty: Maybe<Int32> { undo.pop() }
                 trace(empty.isNone())
 
-                jobs: Queue<Int32> = Queue<Int32> { }
+                jobs: Queue<Int32> { }
                 jobs.enqueue(1)
                 jobs.enqueue(2)
-                first: Maybe<Int32> = jobs.dequeue()
+                first: Maybe<Int32> { jobs.dequeue() }
                 trace(first.unwrapOr(0))
             }
             """

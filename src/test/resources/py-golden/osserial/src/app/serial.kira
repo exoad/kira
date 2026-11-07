@@ -11,29 +11,29 @@ text: (buf: List<UInt8>, n: Int64) Str {
 // The driver's stand-in port, whose descriptor is a socket's: the bytes waiting, then a read without limit that the
 // driver's SIGINT 300 ms in ends (D78), as EINTR ends C++'s poll.
 pub readOnSignal: () Str {
-    flag: Atomic<Bool> = Atomic<Bool> { value = false }
-    installed: Bool = onSignal(SIGNAL_INT, flag)
-    port: Serial = Serial {}
-    opened: Bool = port.open("stand-in", 115200)
-    buf: Mutable<List<UInt8>> = @listOf(0, 0, 0, 0, 0, 0, 0, 0)
-    n: Int64 = port.read(buf.from(0), 2000)
-    first: Str = text(buf, n)
-    m: Int64 = port.read(buf.from(0), -1)
+    flag: Atomic<Bool> { value = false }
+    installed: Bool { onSignal(SIGNAL_INT, flag) }
+    port: Serial {}
+    opened: Bool { port.open("stand-in", 115200) }
+    buf: Mutable<List<UInt8>> { @listOf(0, 0, 0, 0, 0, 0, 0, 0) }
+    n: Int64 { port.read(buf.from(0), 2000) }
+    first: Str { text(buf, n) }
+    m: Int64 { port.read(buf.from(0), -1) }
     "installed ${installed} open ${opened}: read ${n} '${first}', then ${m}, ${lastErrorKind()}, the flag ${flag.load()}"
 }
 
 // Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
 pub readSome: (port: Serial, size: Size, ms: Int64) Str {
-    buf: Mutable<List<UInt8>> = @listOf()
+    buf: Mutable<List<UInt8>> { @listOf() }
     for i: Size in 0.until(size) {
         buf.add(0)
     }
-    n: Int64 = port.read(buf.from(0), ms)
+    n: Int64 { port.read(buf.from(0), ms) }
     "${n} '${text(buf, n)}'"
 }
 
 pub openPort: (path: Str, baud: Int32) Serial {
-    port: Serial = Serial {}
+    port: Serial {}
     port.open(path, baud)
     port
 }
@@ -59,11 +59,11 @@ pub why: () Str {
 }
 
 pub main: () Int32 {
-    port: Serial = Serial {}
+    port: Serial {}
     println("open ${port.open("kira-no-such-port", 115200)}")
     println(lastError())
     println(lastErrorKind())
-    buf: Mutable<List<UInt8>> = @listOf(0, 0)
+    buf: Mutable<List<UInt8>> { @listOf(0, 0) }
     println("read ${port.read(buf.from(0), 10)} write ${port.write(buf)} open ${port.isOpen()} handle ${port.handle()}")
     println(lastError())
     0

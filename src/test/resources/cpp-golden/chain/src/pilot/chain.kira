@@ -1,22 +1,22 @@
 // The behaviour chain: the one class hierarchy bibo has, and Maybe<Class>.
 
-pub ID_WASD: Str = "net.exoad.tt02bibo.wasd"
-pub ID_STOP: Str = "net.exoad.tt02bibo.stop"
+pub ID_WASD: Str { "net.exoad.tt02bibo.wasd" }
+pub ID_STOP: Str { "net.exoad.tt02bibo.stop" }
 
-pub ACT_NOTHING: Int32 = 0
-pub ACT_CLAMP: Int32 = 1
-pub ACT_PROPOSE: Int32 = 2
+pub ACT_NOTHING: Int32 { 0 }
+pub ACT_CLAMP: Int32 { 1 }
+pub ACT_PROPOSE: Int32 { 2 }
 
 pub Reply: Struct {
-    pub act: Int32 = ACT_NOTHING
-    pub throttle: Float32 = 0.0
-    pub steer: Float32 = 0.0
+    pub act: Int32 { ACT_NOTHING }
+    pub throttle: Float32 { 0.0 }
+    pub steer: Float32 { 0.0 }
 }
 
 pub Pass: Struct {
-    pub dtMs: Int32 = 0
-    pub nowMs: Int64 = 0
-    pub haveHolder: Bool = false
+    pub dtMs: Int32 { 0 }
+    pub nowMs: Int64 { 0 }
+    pub haveHolder: Bool { false }
 }
 
 // A trait lowers to an abstract C++ class; a default body is a virtual with a
@@ -51,8 +51,8 @@ pub make: (wanted: Str) Maybe<Behaviour> {
 }
 
 pub Chain: Mutable<Any> {
-    loaded: Mutable<List<Behaviour>> = List<Behaviour> {}
-    refusal: Mutable<Str> = ""
+    loaded: Mutable<List<Behaviour>> {}
+    refusal: Mutable<Str> { "" }
 
     // Why the last load was refused, empty when it loaded.
     pub why: () Str {
@@ -65,8 +65,8 @@ pub Chain: Mutable<Any> {
             refusal = "no behaviour"
             false
         } else {
-            it: Behaviour = b.unwrap()
-            wanted: Str = it.id()
+            it: Behaviour { b.unwrap() }
+            wanted: Str { it.id() }
             if wanted.isEmpty() {
                 refusal = "a behaviour with no id"
                 false
@@ -86,7 +86,7 @@ pub Chain: Mutable<Any> {
     }
 
     pub has: (wanted: Str) Bool {
-        result: Mutable<Bool> = false
+        result: Mutable<Bool> { false }
         for b: Behaviour in loaded {
             if b.id() == wanted {
                 result = true

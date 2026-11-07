@@ -72,17 +72,17 @@ class MutabilityTest {
 
     @Test
     fun aMutableBindingIsTheTreeMutWas() {
-        val new = decl(parse("x: Mutable<List<Int32>> = List<Int32> { }\n")) as VariableDecl
+        val new = decl(parse("x: Mutable<List<Int32>> { }\n")) as VariableDecl
         assertEquals(listOf(Modifier.MUTABLE), new.modifiers)
         assertEquals("List", (new.type.identifier as Identifier).value)
         // A field the same way, with its modifiers.
-        val field = (decl(parse("C: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n}\n")) as ClassDecl).members.single() as VariableDecl
+        val field = (decl(parse("C: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n}\n")) as ClassDecl).members.single() as VariableDecl
         assertEquals(setOf(Modifier.PUBLIC, Modifier.MUTABLE), field.modifiers.toSet())
     }
 
     @Test
     fun aMutableTypeIsMarkedAndItsParentUnwrapped() {
-        val ctx = parse("Base: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n}\n\nTop: Mutable<Base> {\n    pub m: Int32 = 1\n}\n")
+        val ctx = parse("Base: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n}\n\nTop: Mutable<Base> {\n    pub m: Int32 { 1 }\n}\n")
         val base = decl(ctx, 0) as ClassDecl
         val top = decl(ctx, 1) as ClassDecl
         assertTrue(Modifier.MUTABLE in base.modifiers && base.parents.isEmpty(), "Mutable<Any> names no parent")
@@ -92,8 +92,8 @@ class MutabilityTest {
 
     @Test
     fun mutIsRefusedWithWhatReplacesIt() {
-        assertContains(refusal("f: () Void {\n    mut x: Int32 = 0\n}\n"), "'name: Mutable<T>'")
-        assertContains(refusal("C: Any {\n    pub n: Int32 = 0\n    pub mut bump: () Void {\n    }\n}\n"), "declare the type 'Name: Mutable<Parent>'")
+        assertContains(refusal("f: () Void {\n    mut x: Int32 { 0 }\n}\n"), "'name: Mutable<T>'")
+        assertContains(refusal("C: Any {\n    pub n: Int32 { 0 }\n    pub mut bump: () Void {\n    }\n}\n"), "declare the type 'Name: Mutable<Parent>'")
         assertContains(refusal("f: (mut xs: List<Int32>) Void {\n}\n"), "a parameter is never Mutable")
         assertContains(refusal("f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    f(mut ys)\n}\n"), "pass the value itself")
         assertContains(refusal("f: (each: Fx<T1<mut Int32>, Void>) Void {\n}\n"), "a parameter is never Mutable")
@@ -101,17 +101,17 @@ class MutabilityTest {
 
     @Test
     fun mutIsRefusedAtEveryOtherSite() {
-        val call = "f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    ys: List<Int32> = List<Int32> { }\n    %s\n}\n"
+        val call = "f: (xs: List<Int32>) Void {\n}\n\ng: () Void {\n    ys: List<Int32> { }\n    %s\n}\n"
         for ((text, help) in listOf(
             call.format("f(xs = mut ys)") to "pass the value itself",
             call.format("f(mut xs = ys)") to "pass the value itself",
             "f: () Void {\n    for mut i: 0..3 {\n    }\n}\n" to "a loop variable is never Mutable",
             "f: (cb: (mut n: Int32) Void) Void {\n}\n" to "a parameter is never Mutable",
             "f: () Void {\n    g: (n: Int32) Void = (mut n: Int32) Void {\n    }\n}\n" to "a parameter is never Mutable",
-            "mut C: Any {\n    pub n: Int32 = 0\n}\n" to "a type whose values change is 'Name: Mutable<Parent>'",
-            "mut COUNT: Int32 = 0\n" to "a binding that changes is 'name: Mutable<T>'",
-            "C: Any {\n    pub mut n: Int32 = 0\n}\n" to "a binding that changes is 'name: Mutable<T>'",
-            "xs: List<mut Int32> = List<Int32> { }\n" to "a type argument is never Mutable",
+            "mut C: Any {\n    pub n: Int32 { 0 }\n}\n" to "a type whose values change is 'Name: Mutable<Parent>'",
+            "mut COUNT: Int32 { 0 }\n" to "a binding that changes is 'name: Mutable<T>'",
+            "C: Any {\n    pub mut n: Int32 { 0 }\n}\n" to "a binding that changes is 'name: Mutable<T>'",
+            "xs: List<mut Int32> { List<Int32> { } }\n" to "a type argument is never Mutable",
         )) {
             val message = refusal(text)
             assertContains(message, "'mut' is not part of Kira any more", message = text)
@@ -123,9 +123,9 @@ class MutabilityTest {
     fun mutableIsRefusedOnAParameterAValueTypeAndTwice() {
         assertContains(refusal("f: (xs: Mutable<List<Int32>>) Void {\n}\n"), "A parameter is never Mutable")
         assertContains(refusal("f: (each: (n: Mutable<Int32>) Void) Void {\n}\n"), "A parameter is never Mutable")
-        assertContains(refusal("S: Struct, Mutable<Any> {\n    pub n: Int32 = 0\n}\n"), "drop 'Struct'")
-        assertContains(refusal("x: Mutable<Mutable<Int32>> = 0\n"), "says it twice")
-        assertContains(refusal("Mutable: Any {\n    pub n: Int32 = 0\n}\n"), "the language's own")
+        assertContains(refusal("S: Struct, Mutable<Any> {\n    pub n: Int32 { 0 }\n}\n"), "drop 'Struct'")
+        assertContains(refusal("x: Mutable<Mutable<Int32>> { 0 }\n"), "says it twice")
+        assertContains(refusal("Mutable: Any {\n    pub n: Int32 { 0 }\n}\n"), "the language's own")
     }
 
     // ---- the typer -------------------------------------------------------------------------------
@@ -133,50 +133,50 @@ class MutabilityTest {
     @Test
     fun mutableInAnyOtherTypePositionIsRefused() {
         expectDiagnostic(TyperTestSupport.snippet("f: () Mutable<Int32> {\n    1\n}\n"), "types.mutable.position")
-        expectDiagnostic(TyperTestSupport.snippet("xs: List<Mutable<Int32>> = List<Mutable<Int32>> { }\n"), "types.mutable.position")
+        expectDiagnostic(TyperTestSupport.snippet("xs: List<Mutable<Int32>> { }\n"), "types.mutable.position")
     }
 
     @Test
     fun aTypeWithMutableStateSaysSo() {
-        expectDiagnostic(TyperTestSupport.snippet("C: Any {\n    pub n: Mutable<Int32> = 0\n}\n"), "types.mutable.field")
-        expectDiagnostic(TyperTestSupport.snippet("C: Any {\n    pub xs: List<Int32> = List<Int32> { }\n}\n"), "types.mutable.contagion")
+        expectDiagnostic(TyperTestSupport.snippet("C: Any {\n    pub n: Mutable<Int32> { 0 }\n}\n"), "types.mutable.field")
+        expectDiagnostic(TyperTestSupport.snippet("C: Any {\n    pub xs: List<Int32> { }\n}\n"), "types.mutable.contagion")
         // Through a Maybe too, and a value type is told to drop Struct.
-        val s = TyperTestSupport.snippet("S: Struct {\n    pub m: Maybe<List<Int32>> = null\n}\n")
+        val s = TyperTestSupport.snippet("S: Struct {\n    pub m: Maybe<List<Int32>> { null }\n}\n")
         assertContains(expectDiagnostic(s, "types.mutable.contagion").message, "Struct")
-        expectNoErrors(TyperTestSupport.snippet("C: Mutable<Any> {\n    pub xs: List<Int32> = List<Int32> { }\n    pub n: Mutable<Int32> = 0\n}\n"))
+        expectNoErrors(TyperTestSupport.snippet("C: Mutable<Any> {\n    pub xs: List<Int32> { }\n    pub n: Mutable<Int32> { 0 }\n}\n"))
     }
 
     @Test
     fun aSubtypeOfAMutableTypeRestatesIt() {
         val p = TyperTestSupport.snippet(
-            "Base: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n}\n\nTop: Base {\n    pub m: Int32 = 1\n}\n\nmake: () Top {\n    Top { }\n}\n",
+            "Base: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n}\n\nTop: Base {\n    pub m: Int32 { 1 }\n}\n\nmake: () Top {\n    Top { }\n}\n",
         )
         assertContains(expectDiagnostic(p, "types.mutable.restate").message, "'Top: Mutable<Base>'")
-        expectNoErrors(TyperTestSupport.snippet("Base: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n}\n\nTop: Mutable<Base> {\n    pub m: Int32 = 1\n}\n\nmake: () Top {\n    Top { }\n}\n"))
+        expectNoErrors(TyperTestSupport.snippet("Base: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n}\n\nTop: Mutable<Base> {\n    pub m: Int32 { 1 }\n}\n\nmake: () Top {\n    Top { }\n}\n"))
     }
 
     @Test
     fun aSharedValueChangesThroughAnyBindingAndOnlyAMutableOneIsReassigned() {
         // A List is Mutable: added to through a plain local and a parameter.
-        expectNoErrors(TyperTestSupport.snippet("fill: (xs: List<Int32>) Void {\n    xs.add(1)\n    xs[0] = 2\n}\n\nf: () Void {\n    xs: List<Int32> = List<Int32> { }\n    xs.add(1)\n    fill(xs)\n}\n"))
-        expectDiagnostic(TyperTestSupport.snippet("f: () Void {\n    xs: List<Int32> = List<Int32> { }\n    xs = List<Int32> { }\n}\n"), "rules.mutability.local")
+        expectNoErrors(TyperTestSupport.snippet("fill: (xs: List<Int32>) Void {\n    xs.add(1)\n    xs[0] = 2\n}\n\nf: () Void {\n    xs: List<Int32> { }\n    xs.add(1)\n    fill(xs)\n}\n"))
+        expectDiagnostic(TyperTestSupport.snippet("f: () Void {\n    xs: List<Int32> { }\n    xs = List<Int32> { }\n}\n"), "rules.mutability.local")
         expectDiagnostic(TyperTestSupport.snippet("f: (xs: List<Int32>) Void {\n    xs = List<Int32> { }\n}\n"), "rules.mutability.param")
         // A field changes only when it is Mutable; a value type's never, whatever binds it.
-        expectDiagnostic(TyperTestSupport.snippet("C: Mutable<Any> {\n    pub n: Int32 = 0\n    pub m: Mutable<Int32> = 0\n}\n\nf: (c: C) Void {\n    c.m = 1\n    c.n = 2\n}\n"), "rules.mutability.field")
-        expectDiagnostic(TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 = 0\n}\n\nf: () Void {\n    p: Mutable<P> = P { }\n    p.x = 1\n}\n"), "rules.mutability.field")
-        expectNoErrors(TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 = 0\n}\n\nf: () Void {\n    p: Mutable<P> = P { }\n    p = p with {\n        x = 1\n    }\n}\n"))
+        expectDiagnostic(TyperTestSupport.snippet("C: Mutable<Any> {\n    pub n: Int32 { 0 }\n    pub m: Mutable<Int32> { 0 }\n}\n\nf: (c: C) Void {\n    c.m = 1\n    c.n = 2\n}\n"), "rules.mutability.field")
+        expectDiagnostic(TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 { 0 }\n}\n\nf: () Void {\n    p: Mutable<P> { }\n    p.x = 1\n}\n"), "rules.mutability.field")
+        expectNoErrors(TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 { 0 }\n}\n\nf: () Void {\n    p: Mutable<P> { }\n    p = p with {\n        x = 1\n    }\n}\n"))
     }
 
     @Test
     fun aLambdaChangesASharedValueItCapturedButAssignsNoCapture() {
-        expectNoErrors(TyperTestSupport.snippet("f: () Void {\n    xs: List<Int32> = List<Int32> { }\n    g: () Void = () Void {\n        xs.add(1)\n    }\n    g()\n}\n"))
-        expectDiagnostic(TyperTestSupport.snippet("f: () Void {\n    n: Mutable<Int32> = 0\n    g: () Void = () Void {\n        n = 1\n    }\n    g()\n}\n"), "types.lambda.assign-capture")
+        expectNoErrors(TyperTestSupport.snippet("f: () Void {\n    xs: List<Int32> { }\n    g: Fx<T0, Void> { () Void {\n        xs.add(1)\n    } }\n    g()\n}\n"))
+        expectDiagnostic(TyperTestSupport.snippet("f: () Void {\n    n: Mutable<Int32> { 0 }\n    g: Fx<T0, Void> { () Void {\n        n = 1\n    } }\n    g()\n}\n"), "types.lambda.assign-capture")
     }
 
     @Test
     fun aFunctionOfAMutableTypeChangesItWhenItsBodyDoes() {
         val p = TyperTestSupport.snippet(
-            "Counter: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    pub bump: () Void {\n        n += 1\n    }\n\n    pub read: () Int32 {\n        n\n    }\n\n    pub bumpTwice: () Void {\n        bump()\n        bump()\n    }\n}\n",
+            "Counter: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n\n    pub bump: () Void {\n        n += 1\n    }\n\n    pub read: () Int32 {\n        n\n    }\n\n    pub bumpTwice: () Void {\n        bump()\n        bump()\n    }\n}\n",
         )
         expectNoErrors(p)
         val fns = p.modules.flatMap { it.declarations }.filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>().single { it.name == "Counter" }.methods.associateBy { it.name }
@@ -198,7 +198,7 @@ class MutabilityTest {
         // Only Mutable types satisfy the bound, so a function changing one through any binding changes the one value.
         expectNoErrors(
             TyperTestSupport.snippet(
-                "Named: Mutable<Any> {\n    pub hits: Mutable<Int32> = 0\n\n    pub hit: () Void {\n        hits += 1\n    }\n}\n\n" +
+                "Named: Mutable<Any> {\n    pub hits: Mutable<Int32> { 0 }\n\n    pub hit: () Void {\n        hits += 1\n    }\n}\n\n" +
                     "poke<T: Named>: (n: T) Void {\n    n.hit()\n    n.hits = 2\n}\n",
             ),
         )
@@ -206,7 +206,7 @@ class MutabilityTest {
 
     @Test
     fun aListParameterTheFunctionChangesIsPassedByReference() {
-        val p = TyperTestSupport.snippet("fill: (xs: List<Int32>, n: Int32) Void {\n    xs.add(n)\n}\n\nsize: (xs: List<Int32>) Size {\n    xs.size()\n}\n\nf: () Void {\n    xs: List<Int32> = List<Int32> { }\n    fill(xs, 1)\n    trace(size(xs))\n}\n")
+        val p = TyperTestSupport.snippet("fill: (xs: List<Int32>, n: Int32) Void {\n    xs.add(n)\n}\n\nsize: (xs: List<Int32>) Size {\n    xs.size()\n}\n\nf: () Void {\n    xs: List<Int32> { }\n    fill(xs, 1)\n    trace(size(xs))\n}\n")
         expectNoErrors(p)
         val fns = p.modules.flatMap { it.declarations }.filterIsInstance<FnSymbol>().associateBy { it.name }
         assertTrue(fns.getValue("fill").params[0].byRef, "a List the callee changes")
@@ -221,7 +221,7 @@ class MutabilityTest {
     fun conformanceToMutableIsDecidedOrTestedAtRunTime() {
         val always = TyperTestSupport.snippet("f: (xs: List<Int32>) Bool {\n    xs == Mutable<Any>\n}\n")
         expectDiagnostic(always, "types.conform.always")
-        val never = TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 = 0\n}\n\nf: (p: P) Bool {\n    p == Mutable<Any>\n}\n")
+        val never = TyperTestSupport.snippet("P: Struct {\n    pub x: Int32 { 0 }\n}\n\nf: (p: P) Bool {\n    p == Mutable<Any>\n}\n")
         expectDiagnostic(never, "types.conform.never")
     }
 
@@ -236,13 +236,13 @@ class MutabilityTest {
             }
 
             main: () Void {
-                a: List<Int32> = @listOf(1)
-                b: List<Int32> = a
+                a: List<Int32> { @listOf(1) }
+                b: List<Int32> { a }
                 b.add(2)
                 grow(a)
                 trace(a.size())
                 trace(b.size())
-                c: List<Int32> = a.view().toList()
+                c: List<Int32> { a.view().toList() }
                 c.add(3)
                 trace(a.size())
             }
@@ -256,8 +256,8 @@ class MutabilityTest {
         val out = runPy(
             """
             main: () Void {
-                a: Arr<Int32, 2> = @arrOf(1, 2)
-                b: Mutable<Arr<Int32, 2>> = a
+                a: Arr<Int32, 2> { @arrOf(1, 2) }
+                b: Mutable<Arr<Int32, 2>> { a }
                 b[0] = 9
                 trace(a[0])
                 trace(b[0])
@@ -272,23 +272,23 @@ class MutabilityTest {
         val out = runPy(
             """
             Box: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
             }
 
             Pt: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
 
             main: () Void {
-                b: Box = Box { }
-                c: Box = b with {
+                b: Box { }
+                c: Box { b with {
                     n = 5
-                }
+                } }
                 trace(b.n)
-                p: Pt = Pt { 1 }
-                q: Pt = p with {
+                p: Pt { Pt { 1 } }
+                q: Pt { p with {
                     x = 2
-                }
+                } }
                 trace(p.x)
                 trace(q.x)
             }
@@ -301,8 +301,8 @@ class MutabilityTest {
     fun aRunTimeTestOfMutableAsksTheObjectsType() {
         // A trait with a Mutable implementer is tested at run time, against that implementer (py lowers it isinstance).
         val p = TyperTestSupport.snippet(
-            "Shape: Any {\n    pub area: () Int32\n}\n\nFixed: Shape {\n    pub side: Int32 = 2\n\n    override pub area: () Int32 {\n        side * side\n    }\n}\n\n" +
-                "Grow: Mutable<Shape> {\n    pub side: Mutable<Int32> = 1\n\n    override pub area: () Int32 {\n        side\n    }\n}\n\nchanges: (s: Shape) Bool {\n    s == Mutable<Shape>\n}\n",
+            "Shape: Any {\n    pub area: () Int32\n}\n\nFixed: Shape {\n    pub side: Int32 { 2 }\n\n    override pub area: () Int32 {\n        side * side\n    }\n}\n\n" +
+                "Grow: Mutable<Shape> {\n    pub side: Mutable<Int32> { 1 }\n\n    override pub area: () Int32 {\n        side\n    }\n}\n\nchanges: (s: Shape) Bool {\n    s == Mutable<Shape>\n}\n",
         )
         expectNoErrors(p)
         val v = p.model.conformances.values.single()
@@ -315,14 +315,14 @@ class MutabilityTest {
         val e = DeclTestSupport.emit(
             DeclTestSupport.module(
                 "test:share",
-                "pub f: () Int32 {\n    xs: List<Int32> = List<Int32> { }\n    xs.add(1)\n    xs.size() as Int32\n}\n",
+                "pub f: () Int32 {\n    xs: List<Int32> { }\n    xs.add(1)\n    xs.size() as Int32\n}\n",
             ),
         )
         assertTrue(e.diagnostics("test:share").any { it.code == "cpp.unsupported" && it.message.contains("not Mutable") }, e.render(e.diagnostics("test:share")))
         val ok = DeclTestSupport.emit(
             DeclTestSupport.module(
                 "test:share",
-                "pub f: () Int32 {\n    xs: Mutable<List<Int32>> = List<Int32> { }\n    xs.add(1)\n    xs.size() as Int32\n}\n",
+                "pub f: () Int32 {\n    xs: Mutable<List<Int32>> { }\n    xs.add(1)\n    xs.size() as Int32\n}\n",
             ),
         )
         assertFalse(ok.diagnostics("test:share").any { it.code == "cpp.unsupported" }, ok.render(ok.diagnostics("test:share")))
@@ -335,7 +335,7 @@ class MutabilityTest {
             """
             P: Struct {
                 pub n: Int32
-                pub a: Arr<Int32> = @arrOf(0, 0)
+                pub a: Arr<Int32> { @arrOf(0, 0) }
 
                 initially {
                     a.set(0, n)
@@ -343,13 +343,13 @@ class MutabilityTest {
             }
 
             main: () Void {
-                p: P = P { 1 }
-                q: P = p with {
+                p: P { P { 1 } }
+                q: P { p with {
                     n = 2
-                }
-                r: P = p with {
+                } }
+                r: P { p with {
                     a.set(1, 9)
-                }
+                } }
                 trace(p.a.get(0))
                 trace(q.a.get(0))
                 trace(p.a.get(1))
@@ -371,24 +371,24 @@ class MutabilityTest {
         val refused = cppRefusals(
             """
             Bag: Mutable<Any> {
-                pub items: Mutable<List<Int32>> = List<Int32> { }
+                pub items: Mutable<List<Int32>> { }
             }
 
             pub f: () Int32 {
-                a: Mutable<List<Int32>> = @listOf(1, 2)
-                b: Mutable<List<Int32>> = a
+                a: Mutable<List<Int32>> { @listOf(1, 2) }
+                b: Mutable<List<Int32>> { a }
                 b.add(3)
-                bag: Bag = Bag { }
+                bag: Bag { }
                 bag.items = a
                 bag.items.add(4)
-                rows: Mutable<List<List<Int32>>> = List<List<Int32>> { }
+                rows: Mutable<List<List<Int32>>> { }
                 rows.add(a)
                 rows[0].add(5)
-                g: () Size = () Size {
+                g: Fx<T0, Size> { () Size {
                     a.size()
-                }
+                } }
                 a.add(6)
-                total: Size = a.size() + b.size() + g()
+                total: Size { a.size() + b.size() + g() }
                 total as Int32
             }
             """,
@@ -401,19 +401,19 @@ class MutabilityTest {
         val ok = cppRefusals(
             """
             Bag: Mutable<Any> {
-                pub items: Mutable<List<Int32>> = List<Int32> { }
+                pub items: Mutable<List<Int32>> { }
             }
 
             pub f: () Int32 {
-                a: Mutable<List<Int32>> = @listOf(1, 2)
-                b: Mutable<List<Int32>> = a.view().toList()
+                a: Mutable<List<Int32>> { @listOf(1, 2) }
+                b: Mutable<List<Int32>> { a.view().toList() }
                 b.add(3)
-                built: Mutable<List<Int32>> = List<Int32> { }
+                built: Mutable<List<Int32>> { }
                 built.add(4)
-                bag: Bag = Bag { }
+                bag: Bag { }
                 bag.items = built
                 bag.items.add(5)
-                total: Size = a.size() + b.size() + bag.items.size()
+                total: Size { a.size() + b.size() + bag.items.size() }
                 total as Int32
             }
             """,
@@ -424,11 +424,11 @@ class MutabilityTest {
     @Test
     fun cppRefusesAListPassedByReferenceFromAPlainBindingOrATemporary() {
         val grow = "grow: (xs: List<Int32>) Void {\n    xs.add(9)\n}\n\n"
-        val plain = cppRefusals(grow + "pub f: () Int32 {\n    a: List<Int32> = @listOf(1, 2)\n    grow(a)\n    a.size() as Int32\n}\n")
+        val plain = cppRefusals(grow + "pub f: () Int32 {\n    a: List<Int32> { @listOf(1, 2) }\n    grow(a)\n    a.size() as Int32\n}\n")
         assertTrue(plain.any { it.contains("'a' passed to 'grow', which changes it, from a binding that is not Mutable") }, plain.toString())
         val temp = cppRefusals(grow + "pub f: () Void {\n    grow(@listOf(1, 2))\n}\n")
         assertTrue(temp.any { it.contains("no place of its own, passed to 'grow'") }, temp.toString())
-        assertEquals(emptyList(), cppRefusals(grow + "pub f: () Int32 {\n    a: Mutable<List<Int32>> = @listOf(1, 2)\n    grow(a)\n    a.size() as Int32\n}\n"))
+        assertEquals(emptyList(), cppRefusals(grow + "pub f: () Int32 {\n    a: Mutable<List<Int32>> { @listOf(1, 2) }\n    grow(a)\n    a.size() as Int32\n}\n"))
     }
 
     @Test
@@ -436,7 +436,7 @@ class MutabilityTest {
         val e = DeclTestSupport.emit(
             DeclTestSupport.module(
                 "test:refs",
-                "Counter: Mutable<Any> {\n    pub n: Mutable<Int32> = 0\n\n    pub bump: () Void {\n        n += 1\n    }\n\n    pub read: () Int32 {\n        n\n    }\n}\n\n" +
+                "Counter: Mutable<Any> {\n    pub n: Mutable<Int32> { 0 }\n\n    pub bump: () Void {\n        n += 1\n    }\n\n    pub read: () Int32 {\n        n\n    }\n}\n\n" +
                     "pub fill: (xs: List<Int32>) Void {\n    xs.add(1)\n}\n",
             ),
         )

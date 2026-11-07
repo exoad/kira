@@ -127,7 +127,7 @@ class CppProfileAndBindingUseTest {
             DeclTestSupport.module(
                 "r5:wrap",
                 """
-                pub IP: Str = "192.168.1.62"
+                pub IP: Str { "192.168.1.62" }
 
                 pub n: (s: Str) Size {
                     IP.length() + s.length()

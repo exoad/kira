@@ -10,8 +10,8 @@ class StdlibRuntimeTest {
         assertStdout("4\nKIRA\n1\n") {
             """
             main: () Void {
-                s: Str = "  Kira  "
-                t: Str = s.trim()
+                s: Str { "  Kira  " }
+                t: Str { s.trim() }
                 trace(t.length())
                 trace(t.toUpper())
                 trace(t.startsWith("Ki"))
@@ -25,7 +25,7 @@ class StdlibRuntimeTest {
         assertStdout("7\n") {
             """
             main: () Void {
-                n: Int32 = 7
+                n: Int32 { 7 }
                 trace(n.toInt64())
             }
             """

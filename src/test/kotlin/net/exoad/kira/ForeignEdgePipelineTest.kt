@@ -20,7 +20,7 @@ class ForeignEdgePipelineTest {
             @_extern foreignClose: (h: Handle) Void
 
             main: () Void {
-                h: Handle = foreignOpen("x")
+                h: Handle { foreignOpen("x") }
                 foreignClose(h)
             }
             """

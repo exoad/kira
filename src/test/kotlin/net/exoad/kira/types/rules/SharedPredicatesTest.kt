@@ -28,21 +28,21 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub Plain: Struct {
-                pub a: Int32 = 0
-                pub s: Str = ""
+                pub a: Int32 { 0 }
+                pub s: Str { "" }
             }
             pub WithFx: Struct {
-                pub a: Int32 = 0
-                pub f: Maybe<Fx<T0, Void>> = null
+                pub a: Int32 { 0 }
+                pub f: Maybe<Fx<T0, Void>> { null }
             }
             pub Deep: Mutable<Any> {
-                pub w: List<WithFx> = List<WithFx> { }
+                pub w: List<WithFx> { }
             }
             pub Gen<T>: Struct {
-                pub t: Maybe<T> = null
+                pub t: Maybe<T> { null }
             }
             pub C: Any {
-                pub a: Int32 = 0
+                pub a: Int32 { 0 }
             }
             pub T: Any {
                 pub m: () Int32
@@ -93,7 +93,7 @@ class SharedPredicatesTest {
         val p = snippet(
             callees + """
             pub caller: (h: Handle, s: Slot, xs: List<Int32>) Int32 {
-                ys: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1) }
+                ys: Mutable<List<Int32>> { values = @arrOf(1) }
                 ext(ys.view()) + proto(ys.view()) + h.op(ys.view()) + s.slot(ys.view()) + kira(ys.view()) + xs.get(0)
             }
             """,
@@ -130,7 +130,7 @@ class SharedPredicatesTest {
         val p = snippet(
             """
             pub Box: Any {
-                pub f: Maybe<Fx<T0, Void>> = null
+                pub f: Maybe<Fx<T0, Void>> { null }
             }
             pub @_extern(cpp = "ext::a", header = "ext.hxx") a: (n: Int32, s: Str) Int32
             pub @_extern(cpp = "ext::b", header = "ext.hxx") b: (fs: List<Fx<T0, Void>>) Int32
@@ -140,7 +140,7 @@ class SharedPredicatesTest {
                 0
             }
             pub caller: (bx: Box) Int32 {
-                fs: List<Fx<T0, Void>> = List<Fx<T0, Void>> { }
+                fs: List<Fx<T0, Void>> { }
                 a(1, "s") + b(fs) + c(bx) + d(() Void { }) + k(bx)
             }
             """,
@@ -170,7 +170,7 @@ class SharedPredicatesTest {
         // stays CONFINED.
         val p = snippet(
             """
-            pub G: Mutable<Int32> = 0
+            pub G: Mutable<Int32> { 0 }
             pub pass<T>: (f: Fx<T1<T>, Void>, x: T) Void {
                 f(x)
             }
@@ -184,8 +184,8 @@ class SharedPredicatesTest {
                 }
             }
             pub drive: () Void {
-                fs: Mutable<List<Fx<T0, Void>>> = @listOf()
-                ns: Mutable<List<Int32>> = @listOf()
+                fs: Mutable<List<Fx<T0, Void>>> { @listOf() }
+                ns: Mutable<List<Int32>> { @listOf() }
                 keepG<Fx<T0, Void>>(fs, () Void {
                     G += 1
                 })
@@ -223,25 +223,25 @@ class SharedPredicatesTest {
         // A class construction runs its chain's initially and the defaults it leaves out, which may write anything.
         val p = snippet(
             """
-            pub G: Mutable<Int32> = 0
+            pub G: Mutable<Int32> { 0 }
             pub Init: Any {
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
                 initially {
                     G += 1
                 }
             }
             pub Kid: Init {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
             }
             pub Plain: Any {
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
             pub bumped: () Int32 {
                 G += 1
                 G
             }
             pub Defaulted: Any {
-                pub n: Int32 = bumped()
+                pub n: Int32 { bumped() }
             }
             pub count: (xs: List<Int32>) Void {
                 xs.add(1)
@@ -272,14 +272,14 @@ class SharedPredicatesTest {
             }
             pub Kid: Runner {
                 pub g: Fx<T0, Void>
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
             pub Keeper: Any {
                 pub f: Fx<T0, Void>
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
             pub Counted: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
                 initially {
                     n = 1
                 }
@@ -302,19 +302,19 @@ class SharedPredicatesTest {
         val t = snippet(
             """
             kira.sync as sync
-            pub G: Mutable<Int32> = 0
-            pub hooks: Mutable<List<Fx<T0, Void>>> = @listOf()
+            pub G: Mutable<Int32> { 0 }
+            pub hooks: Mutable<List<Fx<T0, Void>>> { @listOf() }
             pub quiet: () Void {
             }
             pub loud: () Void {
                 G = 1
             }
             pub drive: () Void {
-                a: Thread = Thread { name = "a", body = () Void { } }
-                b: Thread = Thread { name = "b", body = () Void { G = 1 } }
-                c: Thread = Thread { name = "c", body = hooks[0] }
-                d: Thread = Thread { name = "d", body = quiet }
-                e: Thread = Thread { name = "e", body = loud }
+                a: Thread { name = "a", body = () Void { } }
+                b: Thread { name = "b", body = () Void { G = 1 } }
+                c: Thread { name = "c", body = hooks[0] }
+                d: Thread { name = "d", body = quiet }
+                e: Thread { name = "e", body = loud }
             }
             """,
         )

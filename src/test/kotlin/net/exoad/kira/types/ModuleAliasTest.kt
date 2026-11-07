@@ -27,18 +27,18 @@ class ModuleAliasTest {
 
     @Test
     fun aQualifiedTypeNamesTheImportedModulesType() {
-        val shapes = module("probe:b.shapes", "pub Impl: Any {\n    pub tag: Str = \"impl\"\n}\npub Box<T>: Any {\n    pub v: T\n}")
+        val shapes = module("probe:b.shapes", "pub Impl: Any {\n    pub tag: Str { \"impl\" }\n}\npub Box<T>: Any {\n    pub v: T\n}")
         val p = type(
             shapes,
             module(
                 "probe:main",
-                "probe.b.shapes as shapes\n\nHolder: Any {\n    pub item: shapes.Impl = shapes.Impl { tag = \"held\" }\n}\n\n" +
-                    "main: () Void {\n    x: shapes.Impl = shapes.Impl { }\n    xs: Mutable<List<shapes.Impl>> = List<shapes.Impl> { }\n" +
-                    "    xs.add(x)\n    b: shapes.Box<Int32> = shapes.Box<Int32> { 7 }\n    h: Holder = Holder { }\n    println(x.tag + h.item.tag)\n}",
+                "probe.b.shapes as shapes\n\nHolder: Any {\n    pub item: shapes.Impl { shapes.Impl { tag = \"held\" } }\n}\n\n" +
+                    "main: () Void {\n    x: shapes.Impl { }\n    xs: Mutable<List<shapes.Impl>> { }\n" +
+                    "    xs.add(x)\n    b: shapes.Box<Int32> { shapes.Box<Int32> { 7 } }\n    h: Holder { }\n    println(x.tag + h.item.tag)\n}",
             ),
         )
         expectNoErrors(p)
-        val unknown = type(shapes, module("probe:main", "main: () Void {\n    x: shapes.Impl = shapes.Impl { }\n}"))
+        val unknown = type(shapes, module("probe:main", "main: () Void {\n    x: shapes.Impl { shapes.Impl { } }\n}"))
         expectDiagnostic(unknown, "types.type.unknown-module")
     }
 }

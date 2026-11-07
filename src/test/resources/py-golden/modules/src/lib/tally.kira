@@ -3,10 +3,10 @@ golden.py.modules.lib.units.Meter as Meter
 golden.py.modules.lib.units.SCALE as SCALE
 golden.py.modules.lib.units.bump as bump
 
-pub total: Mutable<Int32> = 0
+pub total: Mutable<Int32> { 0 }
 
 // Starts from lib:units' constants, which every module reads as it loads.
-pub start: Mutable<List<Int32>> = @listOf(SCALE, 7)
+pub start: Mutable<List<Int32>> { @listOf(SCALE, 7) }
 
 pub record: (m: Meter, raw: Int32) Int32 {
     total += m.read(raw)

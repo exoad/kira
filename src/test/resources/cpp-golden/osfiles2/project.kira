@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.osfiles2"
     srcDir = "src"
     target = "cpp"

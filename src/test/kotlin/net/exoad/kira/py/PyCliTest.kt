@@ -84,7 +84,7 @@ class PyCliTest {
         File(dir, "src/app/main.kira").writeText(
             """
             main: () Void {
-                x: Float32 = 1.5
+                x: Float32 { 1.5 }
                 trace(x)
             }
             """.trimIndent()

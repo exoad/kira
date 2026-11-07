@@ -24,12 +24,12 @@ pub Circle: Mutable<Any> {
     }
 }
 
-RED: Str = "red"
-GREEN: Str = "green"
-BLUE: Str = "blue"
+RED: Str { "red" }
+GREEN: Str { "green" }
+BLUE: Str { "blue" }
 
 compute: (values: List<Int32>) Int32 {
-    acc: Mutable<Int32> = 0
+    acc: Mutable<Int32> { 0 }
     for i: Size in values.indices() {
         acc = acc + values[i]
     }
@@ -37,12 +37,12 @@ compute: (values: List<Int32>) Int32 {
 }
 
 main: () Void {
-    nums: Mutable<List<Int32>> = @listOf(1, 2, 3, 4, 5)
-    arr: Arr<Int32> = @arrOf( 10, 20, 30 )
-    total: Int32 = compute(nums)
-    p: Point = Point { 3, 4 }
-    c: Circle = Circle { p, 5 }
-    col: Str = RED
+    nums: Mutable<List<Int32>> { @listOf(1, 2, 3, 4, 5) }
+    arr: Arr<Int32> { @arrOf( 10, 20, 30 ) }
+    total: Int32 { compute(nums) }
+    p: Point { 3, 4 }
+    c: Circle { p, 5 }
+    col: Str { RED }
     if total % 2 == 0 {
         // total is even
     } else if total % 3 == 0 {
@@ -50,7 +50,7 @@ main: () Void {
     } else {
         // other
     }
-    i: Mutable<Int32> = 0
+    i: Mutable<Int32> { 0 }
     while i < 3 {
         i = i + 1
     }
@@ -60,7 +60,7 @@ main: () Void {
     for idx: Size in 0.until(arr.size()) {
         // access arr[idx]
     }
-    fxSum: Int32 = ((a: Int32, b: Int32) Int32 { a + b })(1, 2)
+    fxSum: Int32 { ((a: Int32, b: Int32) Int32 { a + b })(1, 2) }
     try {
         throw "boom"
     } on e: Str {
@@ -88,7 +88,7 @@ nestedGenerics: () Map<Map<Map<Str, Str>, List<Int32>>, Arr<Arr<Int32>>> {
     helperCreateMap()
 }
 
-complexVar: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>> = helperCreateMap()
+complexVar: Map<Map<Str, List<Arr<Int32>>>, Arr<Arr<Int32>>> { helperCreateMap() }
 
 identity<T>: (value: T) T {
     value

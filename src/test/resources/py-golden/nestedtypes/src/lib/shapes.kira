@@ -2,13 +2,13 @@
 
 pub Shape: Mutable<Any> {
     pub Corner: Any {
-        pub x: Int32 = 0
-        pub y: Int32 = 0
-        pub mark: Mark = Mark { }
+        pub x: Int32 { 0 }
+        pub y: Int32 { 0 }
+        pub mark: Mark { }
 
         // Inside Corner, Mark is Corner's own; Side is Shape's.
         pub Mark: Any {
-            pub label: Str = "plain"
+            pub label: Str { "plain" }
         }
 
         pub kind: () Str {
@@ -35,12 +35,12 @@ pub Shape: Mutable<Any> {
 
     // A nested value type, edited as a copy.
     pub Size: Struct {
-        pub w: Int32 = 0
-        pub h: Int32 = 0
+        pub w: Int32 { 0 }
+        pub h: Int32 { 0 }
     }
 
-    pub corners: List<Corner> = List<Corner> { }
-    pub size: Size = Size { }
+    pub corners: List<Corner> { }
+    pub size: Size { }
 
     pub first: () Corner {
         corners.size() > 0 ? corners.get(0) : Corner { x = -1, y = -1 }

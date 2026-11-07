@@ -94,7 +94,7 @@ class MaybeValueWarningTest {
         val found = unchecked(
             """
             f: (m: Maybe<Int32>) Int32 {
-                x: Int32 = m.value
+                x: Int32 { m.value }
                 if m.isNull() {
                     trace(0)
                 }
@@ -145,7 +145,7 @@ class MaybeValueWarningTest {
     fun aFieldPathIsMatchedByItsText() {
         val holder = """
             Holder: Any {
-                pub kid: Maybe<Int32> = null
+                pub kid: Maybe<Int32> { null }
             }
 
         """

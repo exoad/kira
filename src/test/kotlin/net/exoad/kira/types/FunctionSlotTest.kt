@@ -18,7 +18,7 @@ class FunctionSlotTest {
     private fun btn(slot: String): String =
         """
         Btn: Any {
-            pub label: Str = "b"
+            pub label: Str { "b" }
             pub onClick: $slot
 
             pub twice: (n: Int32) Int32 {
@@ -27,9 +27,9 @@ class FunctionSlotTest {
         }
 
         main: () Void {
-            b: Btn = Btn { onClick = (n: Int32) Int32 { n + 1 } }
-            c: Btn = Btn { "c", (n: Int32) Int32 { n } }
-            n: Int32 = b.onClick(1) + b.twice(1) + c.onClick(5)
+            b: Btn { onClick = (n: Int32) Int32 { n + 1 } }
+            c: Btn { "c", (n: Int32) Int32 { n } }
+            n: Int32 { b.onClick(1) + b.twice(1) + c.onClick(5) }
         }
         """
 
@@ -44,7 +44,7 @@ class FunctionSlotTest {
             assertTrue(cls.methods.none { it.name == "onClick" }, slot)
         }
         assertEquals(PyTestSupport.emit(btn("(n: Int32) Int32")).python(), PyTestSupport.emit(btn("Fx<T1<Int32>, Int32>")).python())
-        val missing = TyperTestSupport.snippet("Btn: Any {\n    pub label: Str = \"b\"\n    pub onClick: (n: Int32) Int32\n}\n\nmain: () Void {\n    b: Btn = Btn { }\n}")
+        val missing = TyperTestSupport.snippet("Btn: Any {\n    pub label: Str { \"b\" }\n    pub onClick: (n: Int32) Int32\n}\n\nmain: () Void {\n    b: Btn { }\n}")
         assertTrue(expectDiagnostic(missing, "types.init.missing-required").message.contains("'onClick'"))
     }
 
@@ -56,14 +56,14 @@ class FunctionSlotTest {
                 pub area: Fx<T0, Int32>
             }
             Sq: Shape {
-                pub s: Int32 = 3
+                pub s: Int32 { 3 }
 
                 pub override area: () Int32 {
                     s * s
                 }
             }
             Base: Any {
-                pub x: Int32 = 1
+                pub x: Int32 { 1 }
                 pub run: Fx<T1<Int32>, Int32>
             }
             Kid: Base {
@@ -73,9 +73,9 @@ class FunctionSlotTest {
             }
 
             main: () Void {
-                k: Kid = Kid { }
-                sq: Sq = Sq { }
-                n: Int32 = sq.area() + k.run(4)
+                k: Kid { }
+                sq: Sq { }
+                n: Int32 { sq.area() + k.run(4) }
             }
             """,
         )

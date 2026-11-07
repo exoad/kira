@@ -45,7 +45,7 @@ class TyperLayoutAgreementTest {
     @Test
     fun theTyperAndTheLayoutAgreeOnEveryModule() {
         val program = TyperTestSupport.type(
-            *uris.map { module(it, "x: Int32 = 1") }.toTypedArray(),
+            *uris.map { module(it, "x: Int32 { 1 }") }.toTypedArray(),
             options = TyperOptions(freestanding = freestanding, headerOnly = headerOnly, namespaces = namespaces),
         )
         val cpp = CppOptions(namespaces = namespaces, headerOnly = headerOnly, freestanding = freestanding)

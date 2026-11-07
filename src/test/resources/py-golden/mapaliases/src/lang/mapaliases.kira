@@ -1,7 +1,7 @@
 // aliases' probes on a Map, shared as a List is (stage 4).
 
-log: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
-seed: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+log: Mutable<Map<Str, Int32>> { }
+seed: Mutable<Map<Str, Int32>> { }
 
 Holder: Mutable<Any> {
     pub items: Mutable<Map<Str, Int32>>
@@ -37,7 +37,7 @@ count: (xs: Map<Str, Int32>) Size {
 }
 
 fill: (xs: Map<Str, Int32>, n: Int32) Void {
-    i: Mutable<Int32> = 0
+    i: Mutable<Int32> { 0 }
     while i < n {
         xs["f${i}"] = i
         i += 1
@@ -58,7 +58,7 @@ echo: (xs: Map<Str, Int32>) Map<Str, Int32> {
 }
 
 fresh: (n: Int32) Map<Str, Int32> {
-    out: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    out: Mutable<Map<Str, Int32>> { }
     fill(out, n)
     out
 }
@@ -68,9 +68,9 @@ pick: (c: Bool, a: Map<Str, Int32>, b: Map<Str, Int32>) Map<Str, Int32> {
 }
 
 show: (xs: Map<Str, Int32>) Str {
-    ks: Arr<Str> = xs.keys()
-    s: Mutable<Str> = "{"
-    i: Mutable<Size> = 0
+    ks: Arr<Str> { xs.keys() }
+    s: Mutable<Str> { "{" }
+    i: Mutable<Size> { 0 }
     while i < ks.size() {
         if i > 0 {
             s = s + " "
@@ -82,9 +82,9 @@ show: (xs: Map<Str, Int32>) Str {
 }
 
 main: () Void {
-    a: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+    a: Mutable<Map<Str, Int32>> { }
     a["one"] = 1
-    b: Mutable<Map<Str, Int32>> = a
+    b: Mutable<Map<Str, Int32>> { a }
     b["two"] = 2
     trace(show(a))
     trace(show(b))
@@ -93,13 +93,13 @@ main: () Void {
     trace(show(a))
     trace(show(b))
 
-    h: Mutable<Holder> = Holder { a }
+    h: Mutable<Holder> { Holder { a } }
     a["four"] = 4
     trace(show(h.items))
     h.setItems(b)
     b["five"] = 5
     trace(show(h.items))
-    snap: Mutable<Map<Str, Int32>> = h.snapshot()
+    snap: Mutable<Map<Str, Int32>> { h.snapshot() }
     snap["six"] = 6
     trace(show(h.items))
     trace(show(snap))
@@ -126,18 +126,18 @@ main: () Void {
     trace(lenOf(h.items, h.grow()))
     trace(show(h.items))
 
-    e: Mutable<Map<Str, Int32>> = echo(a)
+    e: Mutable<Map<Str, Int32>> { echo(a) }
     e["eight"] = 8
     trace(show(a))
     trace(show(e))
-    f: Mutable<Map<Str, Int32>> = fresh(2)
+    f: Mutable<Map<Str, Int32>> { fresh(2) }
     f["nine"] = 9
     trace(show(f))
-    p: Mutable<Map<Str, Int32>> = pick(true, a, b)
+    p: Mutable<Map<Str, Int32>> { pick(true, a, b) }
     p["ten"] = 10
     trace(show(a))
     trace(show(p))
-    g: Mutable<Map<Str, Int32>> = seed
+    g: Mutable<Map<Str, Int32>> { seed }
     g["eleven"] = 11
     trace(show(seed))
     seed = g
@@ -147,7 +147,7 @@ main: () Void {
 
     h.items = h.items
     trace(show(h.items))
-    k: Mutable<Holder> = Holder { g }
+    k: Mutable<Holder> { Holder { g } }
     k.items["zero"] = 0
     h.items = k.items
     k.items.remove("f0")

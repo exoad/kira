@@ -6,12 +6,12 @@ kira.json as json
 @_extern give: (f: Fx<T1<T2<Json, List<UInt8>>>, Void>) Void
 @_extern scribble: () Void
 
-kept: Mutable<List<Json>> = List<Json> { }
+kept: Mutable<List<Json>> { }
 
 pub main: () Int32 {
     give((t: T2<Json, List<UInt8>>) Void {
         kept.add(t.first)
-        b: Mutable<List<UInt8>> = t.second
+        b: Mutable<List<UInt8>> { t.second }
         b.add(9)
         println("${b.size()} ${b[0]} ${b[2]}")
     })

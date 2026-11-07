@@ -36,7 +36,7 @@ class EffectsPassTest {
     fun expressionsCarryTheirOwnEffect() {
         val p = snippet(
             """
-            pub STATE: Mutable<Int32> = 0
+            pub STATE: Mutable<Int32> { 0 }
             pub bump: () Int32 {
                 STATE += 1
                 STATE
@@ -45,9 +45,9 @@ class EffectsPassTest {
                 v * 2
             }
             pub f: (a: Int32) Int32 {
-                g: Fx<T0, Int32> = () Int32 {
+                g: Fx<T0, Int32> { () Int32 {
                     bump()
-                }
+                } }
                 twice(a) + bump() + a * 2
             }
             """,
@@ -69,7 +69,7 @@ class EffectsPassTest {
         // `p[0] + bump()` is READS beside IMPURE, so it spills both; and READS flows up the call graph like IMPURE.
         val p = snippet(
             """
-            pub STATE: Mutable<Int32> = 0
+            pub STATE: Mutable<Int32> { 0 }
             pub bump: () UInt32 {
                 STATE += 1
                 1
@@ -106,7 +106,7 @@ class EffectsPassTest {
     fun impurityFlowsUpTheCallGraph() {
         val p = snippet(
             """
-            pub STATE: Mutable<Int32> = 0
+            pub STATE: Mutable<Int32> { 0 }
             pub bump: () Int32 {
                 STATE += 1
                 STATE
@@ -118,7 +118,7 @@ class EffectsPassTest {
                 uses(v)
             }
             pub builds: () Size {
-                xs: Mutable<List<Int32>> = List<Int32> {}
+                xs: Mutable<List<Int32>> { }
                 xs.add(1)
                 xs.size()
             }
@@ -139,7 +139,7 @@ class EffectsPassTest {
         val p = snippet(
             """
             pub S: Struct {
-                pub a: Int32 = 0
+                pub a: Int32 { 0 }
             }
             pub st: (p: S) Int32 {
                 p.a
@@ -201,18 +201,18 @@ class EffectsPassTest {
         // (P2f's Maker); and a pure binding that compares a user class's elements runs its operators.
         val p = snippet(
             """
-            GXSS: Mutable<List<List<Int32>>> = List<List<Int32>> {}
-            GD: Mutable<Int32> = 0
+            GXSS: Mutable<List<List<Int32>>> {}
+            GD: Mutable<Int32> { 0 }
             pub @_extern(cpp = "ext::applyAll", header = "ext.hxx") applyAll: (fs: Arr<Fx<T0, Void>>) Int32
             pub proto: () Int32
             pub Maker: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
                 initially {
                     GD = 1
                 }
             }
             pub Id: Any {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
             }
             pub clobber: (mv: MutView<List<Int32>>) Int32 {
                 mv[0] = List<Int32> {}
@@ -250,7 +250,7 @@ class EffectsPassTest {
         // accessor on a local is PURE either way.
         val p = snippet(
             """
-            GL: Mutable<List<Int32>> = List<Int32> { values = @arrOf(1) }
+            GL: Mutable<List<Int32>> { List<Int32> { values = @arrOf(1) } }
             pub g: () Int32 {
                 GL.get(0)
             }
@@ -258,7 +258,7 @@ class EffectsPassTest {
                 GL[0]
             }
             pub l: () Int32 {
-                xs: List<Int32> = List<Int32> { values = @arrOf(1) }
+                xs: List<Int32> { values = @arrOf(1) }
                 xs.get(0) + xs[0]
             }
             """,
@@ -278,11 +278,11 @@ class EffectsPassTest {
             """
             kira.sync as sync
 
-            gs: Mutable<Str> = "old-text-long-enough-to-live-on-the-heap-000000"
-            gi: Mutable<Int32> = 29
+            gs: Mutable<Str> { "old-text-long-enough-to-live-on-the-heap-000000" }
+            gi: Mutable<Int32> { 29 }
 
             bump: () Int32 {
-                t: Thread = Thread { name = "w", body = () Void {
+                t: Thread { name = "w", body = () Void {
                     gs = "new"
                     gi = 30
                 } }
@@ -312,7 +312,7 @@ class EffectsPassTest {
         val c = snippet(
             """
             kira.sync as sync
-            pub G: Mutable<Int32> = 0
+            pub G: Mutable<Int32> { 0 }
             pub Runner: Any {
                 pub f: Fx<T0, Void>
                 initially {
@@ -323,17 +323,17 @@ class EffectsPassTest {
                 pub f: Fx<T0, Void>
             }
             pub idle: () Int32 {
-                t: Thread = Thread { name = "w", body = () Void { } }
+                t: Thread { name = "w", body = () Void { } }
                 0
             }
             pub viaInitially: () Int32 {
-                r: Runner = Runner { f = () Void {
+                r: Runner { f = () Void {
                     G = 30
                 } }
                 0
             }
             pub kept: () Int32 {
-                k: Keeper = Keeper { f = () Void {
+                k: Keeper { f = () Void {
                     G = 30
                 } }
                 0

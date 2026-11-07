@@ -1,4 +1,4 @@
-PROJECT: Project = Project { } with {
+PROJECT: Project { } with {
     name = "golden.py.dashtext"
     srcDir = "src"
     target = "py"

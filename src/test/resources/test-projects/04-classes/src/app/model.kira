@@ -8,8 +8,8 @@ pub Rectangle: Any {
     pub bottomRight: Point
 
     pub perimeter: () Int32 {
-        width: Int32 = bottomRight.x - topLeft.x
-        height: Int32 = topLeft.y - bottomRight.y
+        width: Int32 { bottomRight.x - topLeft.x }
+        height: Int32 { topLeft.y - bottomRight.y }
         (width + height) * 2
     }
 }

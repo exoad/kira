@@ -3,15 +3,15 @@ kira.json as json
 // dbwcodec.py's load() and Spec over dbw.json with kira:json: the tables Spec builds, as one Json in
 // canon()'s order, or what load and Spec raise in their words. The expected output is main's C++ run.
 
-HEADER_BYTES: Int64 = 10
-CRC_BYTES: Int64 = 2
+HEADER_BYTES: Int64 { 10 }
+CRC_BYTES: Int64 { 2 }
 
 crc16: (data: List<UInt8>) Int64 {
-    crc: Mutable<UInt32> = 0xFFFF
-    i: Mutable<Size> = 0
+    crc: Mutable<UInt32> { 0xFFFF }
+    i: Mutable<Size> { 0 }
     while i < data.size() {
         crc = crc ^ ((data[i] as UInt32) << 8)
-        k: Mutable<Int32> = 0
+        k: Mutable<Int32> { 0 }
         while k < 8 {
             if (crc & 0x8000) != 0 {
                 crc = ((crc << 1) ^ 0x1021) & 0xFFFF
@@ -27,19 +27,19 @@ crc16: (data: List<UInt8>) Int64 {
 
 // Python's int(text, 16) of a JSON value: a 0x prefix, hex digits; none where it raises ValueError.
 hex: (v: Json) Maybe<Int64> {
-    t: Str = v.asStr().unwrapOr("").trim()
-    digits: Str = t.startsWith("0x") || t.startsWith("0X") ? t.substring(2, t.size())
-        : t
+    t: Str { v.asStr().unwrapOr("").trim() }
+    digits: Str { t.startsWith("0x") || t.startsWith("0X") ? t.substring(2, t.size())
+        : t }
     if digits.isEmpty() || digits.size() > 15 {
         null
     } else {
-        n: Mutable<Int64> = 0
-        i: Mutable<Size> = 0
-        result: Mutable<Maybe<Int64>> = null
-        found: Mutable<Bool> = false
+        n: Mutable<Int64> { 0 }
+        i: Mutable<Size> { 0 }
+        result: Mutable<Maybe<Int64>> { null }
+        found: Mutable<Bool> { false }
         while i < digits.size() {
-            c: Char = digits[i]
-            d: Mutable<Int64> = -1
+            c: Char { digits[i] }
+            d: Mutable<Int64> { -1 }
             if c >= '0' && c <= '9' {
                 d = (c as Int64) - 48
             } else if c >= 'a' && c <= 'f' {
@@ -62,7 +62,7 @@ hex: (v: Json) Maybe<Int64> {
 // Python's v != n for a JSON value and an integer: a Bool is 0 or 1, a Str never equal.
 differs: (v: Json, n: Int64) Bool {
     if v.isBool() {
-        b: Int64 = v.asBool().unwrap() ? 1 : 0
+        b: Int64 { v.asBool().unwrap() ? 1 : 0 }
         b != n
     } else {
         v.isInt() ? v.asInt64().unwrap() != n
@@ -75,20 +75,20 @@ calcsize: (fmt: Str) Int64 {
     if !fmt.startsWith("<") {
         -1
     } else {
-        size: Mutable<Int64> = 0
-        count: Mutable<Int64> = -1
-        i: Mutable<Size> = 1
-        result: Mutable<Int64> = 0
-        found: Mutable<Bool> = false
+        size: Mutable<Int64> { 0 }
+        count: Mutable<Int64> { -1 }
+        i: Mutable<Size> { 1 }
+        result: Mutable<Int64> { 0 }
+        found: Mutable<Bool> { false }
         while i < fmt.size() {
-            c: Char = fmt[i]
+            c: Char { fmt[i] }
             if c >= '0' && c <= '9' {
                 if count < 0 {
                     count = 0
                 }
                 count = count * 10 + ((c as Int64) - 48)
             } else {
-                width: Mutable<Int64> = 0
+                width: Mutable<Int64> { 0 }
                 if c == 'x' || c == 'c' || c == 'b' || c == 'B' || c == '?' || c == 's' || c == 'p' {
                     width = 1
                 } else if c == 'h' || c == 'H' || c == 'e' {
@@ -102,7 +102,7 @@ calcsize: (fmt: Str) Int64 {
                     found = true
                     break
                 }
-                times: Int64 = count < 0 ? 1 : count
+                times: Int64 { count < 0 ? 1 : count }
                 size += width * times
                 count = -1
             }
@@ -118,8 +118,8 @@ key: (v: Json) Str {
 }
 
 byName: (rows: Json, name: Str, value: Str) Json {
-    out: Json = Json.obj()
-    i: Mutable<Size> = 0
+    out: Json { Json.obj() }
+    i: Mutable<Size> { 0 }
     while i < rows.size() {
         out.put(key(rows.at(i).get(name)), rows.at(i).get(value))
         i += 1
@@ -128,8 +128,8 @@ byName: (rows: Json, name: Str, value: Str) Json {
 }
 
 rowsBy: (rows: Json, name: Str) Json {
-    out: Json = Json.obj()
-    i: Mutable<Size> = 0
+    out: Json { Json.obj() }
+    i: Mutable<Size> { 0 }
     while i < rows.size() {
         out.put(key(rows.at(i).get(name)), rows.at(i))
         i += 1
@@ -138,17 +138,17 @@ rowsBy: (rows: Json, name: Str) Json {
 }
 
 pub tables: (path: Str, text: Str) Str {
-    data: Json = Json.parse(text)
+    data: Json { Json.parse(text) }
     if Json.error() != "" {
         "SpecError: cannot read " + path + ": " + Json.error()
     } else {
-        fr: Json = data.get("framing")
-        magic: Json = Json.arr()
-        i: Mutable<Size> = 0
-        result: Mutable<Str> = ""
-        found: Mutable<Bool> = false
+        fr: Json { data.get("framing") }
+        magic: Json { Json.arr() }
+        i: Mutable<Size> { 0 }
+        result: Mutable<Str> { "" }
+        found: Mutable<Bool> { false }
         while i < fr.get("magic").size() {
-            b: Maybe<Int64> = hex(fr.get("magic").at(i))
+            b: Maybe<Int64> { hex(fr.get("magic").at(i)) }
             if b.isNull() {
                 result = "ValueError: invalid literal for int() with base 16: '" + fr.get("magic").at(i).asStr().unwrapOr("") + "'"
                 found = true
@@ -168,35 +168,35 @@ pub tables: (path: Str, text: Str) Str {
             if differs(fr.get("header_bytes"), HEADER_BYTES) || differs(fr.get("crc_bytes"), CRC_BYTES) {
                 "SpecError: the frame shape in dbw.json is not the one this codec implements"
             } else {
-                check: Maybe<Int64> = hex(fr.get("crc").get("check"))
+                check: Maybe<Int64> { hex(fr.get("crc").get("check")) }
                 if check.isNull() {
                     "ValueError: invalid literal for int() with base 16: '" + fr.get("crc").get("check").asStr().unwrapOr("") + "'"
                 } else if crc16("123456789".bytes()) != check.value {
                     "SpecError: crc16 does not give the spec's check value"
                 } else {
-                    vcu: Json = data.get("timing").get("vcu")
-                    gap: Json = vcu.get("FRAME_GAP_MS")
-                    gapUs: Json = gap.isInt() ? Json.of(gap.asInt64().unwrap() * 1000)
-                        : Json.of(gap.asFloat64().unwrap() * 1000.0)
-                    messages: Json = Json.obj()
-                    byId: Json = Json.obj()
-                    all: Json = data.get("messages")
+                    vcu: Json { data.get("timing").get("vcu") }
+                    gap: Json { vcu.get("FRAME_GAP_MS") }
+                    gapUs: Json { gap.isInt() ? Json.of(gap.asInt64().unwrap() * 1000)
+                        : Json.of(gap.asFloat64().unwrap() * 1000.0) }
+                    messages: Json { Json.obj() }
+                    byId: Json { Json.obj() }
+                    all: Json { data.get("messages") }
                     i = 0
-                    result2: Mutable<Str> = ""
-                    found2: Mutable<Bool> = false
+                    result2: Mutable<Str> { "" }
+                    found2: Mutable<Bool> { false }
                     while i < all.size() {
-                        m: Json = all.at(i)
-                        fields: Mutable<Json> = m.get("fields")
+                        m: Json { all.at(i) }
+                        fields: Mutable<Json> { m.get("fields") }
                         if fields.isStr() {
-                            same: Str = fields.asStr().unwrap()
-                            colon: Maybe<Size> = same.find(":")
+                            same: Str { fields.asStr().unwrap() }
+                            colon: Maybe<Size> { same.find(":") }
                             if colon.isNull() {
                                 result2 = "IndexError: list index out of range"
                                 found2 = true
                                 break
                             }
-                            other: Str = same.substring(colon.value + 1, same.size())
-                            j: Mutable<Size> = 0
+                            other: Str { same.substring(colon.value + 1, same.size()) }
+                            j: Mutable<Size> { 0 }
                             while j < all.size() && all.at(j).get("name").asStr().unwrapOr("") != other {
                                 j += 1
                             }
@@ -207,7 +207,7 @@ pub tables: (path: Str, text: Str) Str {
                             }
                             fields = all.at(j).get("fields")
                         }
-                        entry: Json = Json.obj()
+                        entry: Json { Json.obj() }
                         entry.put("name", m.get("name"))
                         entry.put("id", m.get("id"))
                         entry.put("dir", m.get("dir"))
@@ -227,18 +227,18 @@ pub tables: (path: Str, text: Str) Str {
                     if found2 {
                         result2
                     } else {
-                        enums: Json = Json.obj()
-                        enumNames: Json = Json.obj()
-                        names: List<Str> = data.get("enums").keys()
+                        enums: Json { Json.obj() }
+                        enumNames: Json { Json.obj() }
+                        names: List<Str> { data.get("enums").keys() }
                         i = 0
                         while i < names.size() {
-                            values: Json = data.get("enums").get(names[i]).get("values")
+                            values: Json { data.get("enums").get(names[i]).get("values") }
                             enums.put(names[i], byName(values, "name", "value"))
                             enumNames.put(names[i], byName(values, "value", "name"))
                             i += 1
                         }
-                        p: Json = data.get("protocol")
-                        c: Json = Json.obj()
+                        p: Json { data.get("protocol") }
+                        c: Json { Json.obj() }
                         c.put("magic", magic)
                         c.put("major", p.get("major"))
                         c.put("minor", p.get("minor"))
@@ -269,14 +269,14 @@ pub tables: (path: Str, text: Str) Str {
 }
 
 field: (name: Str, kind: Str) Json {
-    f: Json = Json.obj()
+    f: Json { Json.obj() }
     f.put("name", Json.of(name))
     f.put("type", Json.of(kind))
     f
 }
 
 message: (name: Str, id: Int64, fmt: Str, size: Int64, fields: Json) Json {
-    m: Json = Json.obj()
+    m: Json { Json.obj() }
     m.put("name", Json.of(name))
     m.put("id", Json.of(id))
     m.put("dir", Json.of("host_to_vcu"))
@@ -288,19 +288,19 @@ message: (name: Str, id: Int64, fmt: Str, size: Int64, fields: Json) Json {
 }
 
 row: (a: Str, x: Json, b: Str, y: Json) Json {
-    r: Json = Json.obj()
+    r: Json { Json.obj() }
     r.put(a, x)
     r.put(b, y)
     r
 }
 
 spec: (header: Int64, check: Str, configSize: Int64) Json {
-    d: Json = Json.obj()
+    d: Json { Json.obj() }
     d.put("spec", Json.of("bibo-dbw"))
     d.put("protocol", row("major", Json.of(1), "minor", Json.of(0)))
     d.get("protocol").put("min_vcu_minor", Json.of(0))
-    fr: Json = Json.obj()
-    magic: Json = Json.arr()
+    fr: Json { Json.obj() }
+    magic: Json { Json.arr() }
     magic.add(Json.of("0xFB"))
     magic.add(Json.of("0xB1"))
     fr.put("magic", magic)
@@ -309,24 +309,24 @@ spec: (header: Int64, check: Str, configSize: Int64) Json {
     fr.put("max_payload", Json.of(52))
     fr.put("crc", row("name", Json.of("CRC-16/CCITT-FALSE"), "check", Json.of(check)))
     d.put("framing", fr)
-    timing: Json = Json.obj()
+    timing: Json { Json.obj() }
     timing.put("vcu", row("FRAME_GAP_MS", Json.of(20), "HB_TIMEOUT_MS", Json.of(150)))
     timing.put("host", row("HB_PERIOD_MS", Json.of(50), "LINK_LOST_S", Json.of(1.5)))
     d.put("timing", timing)
-    hb: Json = Json.arr()
+    hb: Json { Json.arr() }
     hb.add(field("host_ms", "u32"))
     hb.add(field("mode", "u8"))
-    cfg: Json = Json.arr()
+    cfg: Json { Json.arr() }
     cfg.add(field("servo_min_us", "u16"))
     cfg.add(field("bumper_filter_ms", "u8"))
-    all: Json = Json.arr()
+    all: Json { Json.arr() }
     all.add(message("HEARTBEAT", 1, "<IB", 5, hb))
     all.add(message("CONFIG_SET", 5, "<HB", configSize, cfg))
     all.add(message("VCU_HELLO", 32768, "<BBBBIBBBB8s24s", 44, Json.arr()))
     all.add(message("CONFIG_REPORT", 32774, "<HB", 3, Json.of("same_as:CONFIG_SET")))
     all.add(message("HEARTBEAT", 2, "<IB", 5, hb))
     d.put("messages", all)
-    bits: Json = Json.arr()
+    bits: Json { Json.arr() }
     bits.add(row("bit", Json.of(0), "name", Json.of("ESTOP")))
     bits.add(row("bit", Json.of(1), "name", Json.of("HEARTBEAT_TIMEOUT")))
     bits.add(row("bit", Json.of(0), "name", Json.of("ESTOP_AGAIN")))
@@ -334,7 +334,7 @@ spec: (header: Int64, check: Str, configSize: Int64) Json {
     d.put("info_bits", Json.arr())
     d.get("info_bits").add(row("bit", Json.of(0), "name", Json.of("SETPOINT_LIVE")))
     d.put("bumper_flag_bits", Json.arr())
-    reasons: Json = Json.arr()
+    reasons: Json { Json.arr() }
     reasons.add(row("value", Json.of(0), "name", Json.of("NONE")))
     reasons.add(row("value", Json.of(257), "name", Json.of("LIDAR_STALE")))
     reasons.at(1).put("recoverable", Json.of(true))
@@ -342,10 +342,10 @@ spec: (header: Int64, check: Str, configSize: Int64) Json {
     d.put("reasons", reasons)
     d.put("nack_codes", Json.arr())
     d.get("nack_codes").add(row("code", Json.of(1), "name", Json.of("UNKNOWN_TYPE")))
-    states: Json = Json.arr()
+    states: Json { Json.arr() }
     states.add(row("name", Json.of("BOOT"), "value", Json.of(0)))
     states.add(row("name", Json.of("ARMED"), "value", Json.of(4)))
-    enums: Json = Json.obj()
+    enums: Json { Json.obj() }
     enums.put("State", row("values", states, "doc", Json.of("the VCU's state")))
     d.put("enums", enums)
     d.put("status_line", row("doc", Json.of("one line"), "format", Json.null()))

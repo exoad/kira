@@ -30,20 +30,20 @@ class EscapePassTest {
                 h
             }
             pub store: (k: Fx<T1<Int32>, Int32>) Int32 {
-                held: Fx<T1<Int32>, Int32> = k
+                held: Fx<T1<Int32>, Int32> { k }
                 held(1)
             }
             pub forward: (m: Fx<T1<Int32>, Int32>) Fx<T1<Int32>, Int32> {
                 keep(m)
             }
             pub capture: (c: Fx<T1<Int32>, Int32>) Int32 {
-                inner: Fx<T0, Int32> = () Int32 {
+                inner: Fx<T0, Int32> { () Int32 {
                     c(1)
-                }
+                } }
                 inner()
             }
             pub collect: (q: Fx<T1<Int32>, Int32>) Void {
-                xs: Mutable<List<Fx<T1<Int32>, Int32>>> = List<Fx<T1<Int32>, Int32>> {}
+                xs: Mutable<List<Fx<T1<Int32>, Int32>>> { }
                 xs.add(q)
             }
             """,
@@ -64,7 +64,7 @@ class EscapePassTest {
         val p = snippet(
             """
             pub Counter: Mutable<Any> {
-                pub k: Mutable<Int32> = 5
+                pub k: Mutable<Int32> { 5 }
                 pub apply: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
                     f(x)
                 }
@@ -75,7 +75,7 @@ class EscapePassTest {
                 }
             }
             pub Leaky: Mutable<Any> {
-                pub k: Mutable<Int32> = 5
+                pub k: Mutable<Int32> { 5 }
                 pub multiplier: () Fx<T1<Int32>, Int32> {
                     (x: Int32) Int32 {
                         x * k
@@ -115,7 +115,7 @@ class EscapePassTest {
                 f(x)
             }
             pub useIt: () Int32 {
-                h: Fx<T2<Fx<T1<Int32>, Int32>, Int32>, Int32> = applyTo
+                h: Fx<T2<Fx<T1<Int32>, Int32>, Int32>, Int32> { applyTo }
                 h((y: Int32) Int32 {
                     y
                 }, 1) + direct((y: Int32) Int32 {
@@ -133,7 +133,7 @@ class EscapePassTest {
     fun escapingIsAFixpointThroughEveryCallee() {
         val p = snippet(
             """
-            KEPT: Mutable<List<Fx<T0, Int32>>> = List<Fx<T0, Int32>> {}
+            KEPT: Mutable<List<Fx<T0, Int32>>> { }
             pub keep: (k: Fx<T0, Int32>) Void {
                 KEPT.add(k)
             }
@@ -185,7 +185,7 @@ class EscapePassTest {
         val p = snippet(
             """
             pub Node: Mutable<Any> {
-                pub n: Mutable<Int32> = 0
+                pub n: Mutable<Int32> { 0 }
                 pub register: () Void {
                     remember(this)
                 }
@@ -193,12 +193,12 @@ class EscapePassTest {
                     n
                 }
             }
-            NODES: Mutable<List<Node>> = List<Node> {}
+            NODES: Mutable<List<Node>> {}
             pub remember: (x: Node) Void {
                 NODES.add(x)
             }
             pub Pt: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
                 pub same: () Pt {
                     this
                 }
@@ -229,16 +229,16 @@ class EscapePassTest {
         // rules.view.capture. passOn hands its g to an overload that only calls it: no escape.
         val p = snippet(
             """
-            GF: Mutable<Maybe<Fx<T0, Int32>>> = null
+            GF: Mutable<Maybe<Fx<T0, Int32>>> { null }
             pub Keeper: Struct {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
                 pub @op_add: (f: Fx<T0, Int32>) Int32 {
                     GF = f
                     0
                 }
             }
             pub Caller: Struct {
-                pub k: Int32 = 0
+                pub k: Int32 { 0 }
                 pub @op_add: (f: Fx<T0, Int32>) Int32 {
                     f()
                 }

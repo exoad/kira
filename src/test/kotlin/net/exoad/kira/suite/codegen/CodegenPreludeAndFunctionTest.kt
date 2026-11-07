@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 class CodegenPreludeAndFunctionTest {
     @Test
     fun emitsPreludeSubstrateAndFacade() {
-        val output = emit("x: Int32 = 1")
+        val output = emit("x: Int32 { 1 }")
         assertTrue(output.contains("KIRA_COMPILER_BUNDLE_H"), output)
         assertTrue(output.contains("KIRA_RUNTIME_H"), output)
         assertTrue(output.contains("#include <stdio.h>"), output)
@@ -21,7 +21,7 @@ class CodegenPreludeAndFunctionTest {
 
     @Test
     fun emitsArcRuntimeHooks() {
-        val output = emit("x: Int32 = 1")
+        val output = emit("x: Int32 { 1 }")
         assertTrue(output.contains("kira_rc_alloc_with"), output)
         assertTrue(output.contains("kira_rc_retain"), output)
         assertTrue(output.contains("kira_rc_release"), output)
@@ -56,8 +56,8 @@ class CodegenPreludeAndFunctionTest {
     fun globalsLowerToFileScopeVariables() {
         val output = emit(
             """
-            x: Int32 = 10
-            y: Str = "hello"
+            x: Int32 { 10 }
+            y: Str { "hello" }
             """
         )
         assertTrue(output.contains("Int32 x = 10;"), output)

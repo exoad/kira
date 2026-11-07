@@ -19,15 +19,15 @@ class CppLineDirectivesTest {
         "lines:app",
         """
         pub scale: (k: Int32) Fx<T1<Int32>, Int32> {
-            base: Int32 = k * 2
+            base: Int32 { k * 2 }
             (x: Int32) Int32 {
-                y: Int32 = x + base
+                y: Int32 { x + base }
                 y
             }
         }
 
         pub count: (n: Int32) Int32 {
-            t: Mutable<Int32> = 0
+            t: Mutable<Int32> { 0 }
             for i: Int32 in 0.until(n) {
                 t += i
             }

@@ -12,13 +12,13 @@ class GenericBoundsPassTest {
             pub area: () Int32
         }
         pub Sq: Struct, Shape {
-            pub s: Int32 = 1
+            pub s: Int32 { 1 }
             override pub area: () Int32 {
                 s * s
             }
         }
         pub Pt: Struct {
-            pub x: Int32 = 0
+            pub x: Int32 { 0 }
         }
         pub Box<T: Shape>: Any {
             pub v: T
@@ -39,7 +39,7 @@ class GenericBoundsPassTest {
             snippet(
                 decls + """
                 pub f: () Int32 {
-                    b: Box<Sq> = Box<Sq> { v = Sq {} }
+                    b: Box<Sq> { v = Sq {} }
                     bigger<Sq>(b.v, Sq {})
                 }
                 pub g: (v: Float32) Float32 {
@@ -76,8 +76,8 @@ class GenericBoundsPassTest {
                     pub v: T
                 }
                 pub f: () Int32 {
-                    a: Any<Str> = Any<Str> { v = "x" }
-                    b: Any<List<Int32>> = Any<List<Int32>> { v = List<Int32> {} }
+                    a: Any<Str> { v = "x" }
+                    b: Any<List<Int32>> { v = List<Int32> {} }
                     1
                 }
                 """,

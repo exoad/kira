@@ -1,7 +1,7 @@
 // Stage 3's expressions: a block's last expression is its value, `if` and `try` give values, `c ? a : b`.
 // py only: C++ does not lower a try used as a value.
 
-calls: Mutable<Int32> = 0
+calls: Mutable<Int32> { 0 }
 
 Box: Struct {
     pub w: Int32
@@ -22,7 +22,7 @@ sign: (x: Int32) Str {
     if x < 0 {
         "neg"
     } else if x == 0 {
-        z: Str = "zero"
+        z: Str { "zero" }
         z
     } else {
         "pos"
@@ -47,24 +47,24 @@ safeSize: (s: Str) Int32 {
 
 // An if value whose arms need statements, writing a local of the function.
 bucket: (x: Int32) Str {
-    seen: Mutable<Int32> = 0
-    label: Str = if x > 10 {
+    seen: Mutable<Int32> { 0 }
+    label: Str { if x > 10 {
         seen = x - 10
         "big+${seen}"
     } else {
         seen = 10 - x
         "small-${seen}"
-    }
+    } }
     "${label} ${seen}"
 }
 
 // Try values inside a larger expression.
 sizes: (a: Str, b: Str) Int32 {
-    n: Int32 = try {
+    n: Int32 { try {
         parse(a)
     } on e: Str {
         0
-    }
+    } }
     n * 10 + (try {
         parse(b)
     } on err: Str {
@@ -90,10 +90,10 @@ order: (c: Bool) Int32 {
 
 // A lambda's last expression is its result.
 twice: (x: Int32) Int32 {
-    f: (n: Int32) Int32 = (n: Int32) Int32 {
-        m: Int32 = n * 2
+    f: Fx<T1<Int32>, Int32> { (n: Int32) Int32 {
+        m: Int32 { n * 2 }
         m
-    }
+    } }
     f(x)
 }
 
@@ -103,26 +103,26 @@ grade: (n: Int32) Str {
 
 // A loop inside an arm; a nested if as an arm's last expression.
 total: (upTo: Int32, enabled: Bool) Int32 {
-    v: Int32 = if enabled {
-        s: Mutable<Int32> = 0
+    v: Int32 { if enabled {
+        s: Mutable<Int32> { 0 }
         for i: Int32 in 0.until(upTo) {
             s += i
         }
         s > 5 ? s * 100 : s
     } else {
         -1
-    }
+    } }
     v
 }
 
 // A module's state written in an arm.
 counted: (x: Int32) Int32 {
-    v: Int32 = if x > 0 {
+    v: Int32 { if x > 0 {
         calls += 1
         x
     } else {
         0
-    }
+    } }
     v
 }
 
@@ -138,14 +138,14 @@ widen: (b: Box, wide: Bool) Box {
 }
 
 taller: (b: Box, tall: Bool) Str {
-    r: Box = if tall {
-        t: Box = b with {
+    r: Box { if tall {
+        t: Box { b with {
             h = h + 5
-        }
+        } }
         t
     } else {
         b
-    }
+    } }
     "${show(r)} ${show(b)}"
 }
 
@@ -160,9 +160,9 @@ main: () Void {
     println("${twice(21)} ${grade(95)}${grade(85)}${grade(10)}")
     println("${total(3, true)} ${total(4, true)} ${total(4, false)}")
     println("${counted(5)} ${counted(-1)} ${counted(2)} ${calls}")
-    b: Box = Box { 2, 3 }
+    b: Box { 2, 3 }
     println("${show(widen(b, true))} ${show(widen(b, false))}")
     println(taller(b, true))
-    mode: Str = calls > 1 ? "many" : "few"
+    mode: Str { calls > 1 ? "many" : "few" }
     println(mode)
 }

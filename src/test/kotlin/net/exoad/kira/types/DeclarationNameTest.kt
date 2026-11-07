@@ -24,14 +24,14 @@ class DeclarationNameTest {
             assertEquals("parse.type.empty", e.tag, empty)
             assertTrue(e.message.contains("adds no member"), e.message)
         }
-        TyperTestSupport.unitOf(module("test:main", "pub @_opaque Handle: Any { }\npub Base: Any {\n    pub x: Int32 = 0\n}\npub Kid: Base { }"))
+        TyperTestSupport.unitOf(module("test:main", "pub @_opaque Handle: Any { }\npub Base: Any {\n    pub x: Int32 { 0 }\n}\npub Kid: Base { }"))
     }
 
     @Test
     fun aValueWrittenAsATypeOrAnImportInABodySaysWhatItIs() {
-        val local = refused("Cfg: Any {\n    pub x: Int32 = 1\n}\nmain: () Void {\n    c: Cfg {\n        pub x: Int32 = 1\n    }\n}")
+        val local = refused("Cfg: Any {\n    pub x: Int32 { 1 }\n}\nmain: () Void {\n    c: Cfg {\n        pub x: Int32 { 1 }\n    }\n}")
         assertEquals("parse.type.name", local.tag)
-        assertTrue(local.message.contains("'c: Cfg { }' declares nothing") && local.message.contains("'c: Cfg = ...'"), local.message)
+        assertTrue(local.message.contains("'c: Cfg { }' declares nothing") && local.message.contains("'c: Cfg { value }'"), local.message)
         val function = refused("f: Int32 {\n    return 1\n}")
         assertEquals("parse.type.name", function.tag)
         assertTrue(function.message.contains("'f: () Int32 { }'"), function.message)
@@ -43,11 +43,11 @@ class DeclarationNameTest {
 
     @Test
     fun aCapitalsNameIsAConstantsAndAPascalCaseOrLoneCapitalATypes() {
-        val url = refused("URL: Any {\n    pub host: Str = \"h\"\n}")
+        val url = refused("URL: Any {\n    pub host: Str { \"h\" }\n}")
         assertEquals("parse.type.name", url.tag)
         assertTrue(url.message.contains("'Url'"), url.message)
         assertEquals("parse.type.name", refused("URL: Any, Base").tag)
-        val ctx = TyperTestSupport.unitOf(module("test:main", "K: Any {\n    pub x: Int32 = 1\n}\nV2: Struct {\n    pub y: Int32 = 0\n}\npub @_extern(c = \"LIMIT\", header = \"l.h\") LIMIT: Int32\nN: Int32 = 4"))
+        val ctx = TyperTestSupport.unitOf(module("test:main", "K: Any {\n    pub x: Int32 { 1 }\n}\nV2: Struct {\n    pub y: Int32 { 0 }\n}\npub @_extern(c = \"LIMIT\", header = \"l.h\") LIMIT: Int32\nN: Int32 { 4 }"))
             .allSources().single { it.moduleName == "test:main" }
         val decls = ctx.ast.statements.mapNotNull { (it as? Statement)?.expr }
         assertEquals(listOf("K", "V2"), decls.mapNotNull { (it as? ClassDecl)?.name?.identifier?.toString()?.trim('\'') } +
@@ -57,7 +57,7 @@ class DeclarationNameTest {
 
     @Test
     fun snakeCaseIsAnImportPathsOnly() {
-        val e = refused("Pt: Struct {\n    pub x: Int32 = 1\n}\nmain: () Void {\n    p: Pt = Pt { }\n    p.my_x as Int32\n}")
+        val e = refused("Pt: Struct {\n    pub x: Int32 { 1 }\n}\nmain: () Void {\n    p: Pt { }\n    p.my_x as Int32\n}")
         assertEquals("KiraLexer::lexIdentifier", e.tag)
         assertTrue(e.message.contains("'my_x'"), e.message)
         assertEquals("KiraLexer::lexIdentifier", refused("kira.math as my_math").tag)

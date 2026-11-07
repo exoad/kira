@@ -16,7 +16,7 @@ class SemanticSymbolTableTest {
     fun resolvesDeclaredTypesAndVariables() {
         val results = analyze(
             """
-            pub Pet: Any { pub name: Str = "" }
+            pub Pet: Any { pub name: Str { "" } }
 
             pub Speaker: Any {
                 pub speak: () Str
@@ -25,8 +25,8 @@ class SemanticSymbolTableTest {
             pub Int32 as Age
 
             main: () Void {
-                count: Mutable<Int32> = 0
-                friend: Pet = Pet { }
+                count: Mutable<Int32> { 0 }
+                friend: Pet { }
             }
             """
         )
@@ -48,11 +48,11 @@ class SemanticSymbolTableTest {
         val results = analyzeMultiSource(
             listOf(
                 "test/semantic/other.kira" to """""" + "\n" + """
-                    pub OtherType: Any { pub n: Int32 = 0 }
+                    pub OtherType: Any { pub n: Int32 { 0 } }
                     """,
                 "test/semantic/basic.kira" to """""" + "\n" + """
                     test.semantic.other as other
-                    x: OtherType = OtherType { }
+                    x: OtherType { }
                     """,
             )
         )
@@ -79,7 +79,7 @@ class SemanticSymbolTableTest {
     fun variableSymbolsAreNotRelativelyVisible() {
         val results = analyze(
             """
-            x: Int32 = 1
+            x: Int32 { 1 }
             """
         )
         assertTrue(results.isHealthy)
@@ -94,7 +94,7 @@ class SemanticSymbolTableTest {
         val results = analyze(
             """
             outer: () Int32 {
-                inner: Int32 = 1
+                inner: Int32 { 1 }
                 inner
             }
             """
@@ -119,7 +119,7 @@ class SemanticSymbolTableTest {
         val results = analyze(
             """
             main: () Void {
-                i: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
                 while i < 3 {
                     i = i + 1
                 }

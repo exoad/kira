@@ -47,7 +47,7 @@ class IntrinsicSlotTest {
             pub @_const square: (x: Int32) Int32 { x * x }
             pub @_extern(cpp = "bibo::Scan", header = "car.hxx") Scan: Struct { }
             pub @_extern(c = "LIMIT", header = "limits.h") LIMIT: Int32
-            pub @_magic @_global true: Bool = Bool { }
+            pub @_magic @_global true: Bool { }
             pub final @_magic Fixed: Any { }
             """
         )
@@ -136,10 +136,10 @@ class IntrinsicSlotTest {
             @_static_assert(1 == 1, "ok")
             f: () Void {
                 @_static_assert(2 == 2, "in a body")
-                n: Int32 = @_infer
+                n: Int32 { @_infer }
             }
             pub V2: Any {
-                pub x: Float32 = 0.0
+                pub x: Float32 { 0.0 }
                 pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
             }
             """

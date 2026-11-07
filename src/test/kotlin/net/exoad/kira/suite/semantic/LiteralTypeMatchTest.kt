@@ -11,7 +11,7 @@ class LiteralTypeMatchTest {
     fun rejectsIntegerLiteralForStringType() {
         val msgs = assertUnhealthy(
             """
-            s: Str = 42
+            s: Str { 42 }
             """
         )
         assertTrue(msgs.any { it.contains("Type mismatch") }, msgs.toString())
@@ -21,7 +21,7 @@ class LiteralTypeMatchTest {
     fun rejectsStringLiteralForIntType() {
         val msgs = assertUnhealthy(
             """
-            n: Int32 = "hello"
+            n: Int32 { "hello" }
             """
         )
         assertTrue(msgs.any { it.contains("Type mismatch") }, msgs.toString())
@@ -31,7 +31,7 @@ class LiteralTypeMatchTest {
     fun rejectsFloatLiteralForIntType() {
         val msgs = assertUnhealthy(
             """
-            n: Int32 = 1.5
+            n: Int32 { 1.5 }
             """
         )
         assertTrue(msgs.any { it.contains("Type mismatch") }, msgs.toString())
@@ -43,15 +43,15 @@ class LiteralTypeMatchTest {
         // corpus initialises them from literals (`MAX_PAYLOAD: Size = 1024`).
         assertHealthy(
             """
-            a: Int8 = 1
-            b: Int16 = 2
-            c: Int32 = 3
-            d: Int64 = 4
-            e: UInt8 = 5
-            f: UInt16 = 6
-            g: UInt32 = 7
-            h: UInt64 = 8
-            i: Size = 9
+            a: Int8 { 1 }
+            b: Int16 { 2 }
+            c: Int32 { 3 }
+            d: Int64 { 4 }
+            e: UInt8 { 5 }
+            f: UInt16 { 6 }
+            g: UInt32 { 7 }
+            h: UInt64 { 8 }
+            i: Size { 9 }
             """
         )
     }
@@ -61,7 +61,7 @@ class LiteralTypeMatchTest {
         for (type in listOf("Float32", "Float64", "Char", "Bool")) {
             val msgs = assertUnhealthy(
                 """
-                x: $type = 1
+                x: $type { 1 }
                 """
             )
             assertTrue(msgs.any { it.contains("Type mismatch") }, "$type: $msgs")

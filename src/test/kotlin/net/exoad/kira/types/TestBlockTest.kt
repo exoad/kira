@@ -24,8 +24,8 @@ import kotlin.test.assertTrue
 class TestBlockTest {
     private val types = """
         Pt: Struct {
-            pub x: Int32 = 0
-            pub y: Int32 = 0
+            pub x: Int32 { 0 }
+            pub y: Int32 { 0 }
         }
 
         Line: Struct {
@@ -34,7 +34,7 @@ class TestBlockTest {
         }
 
         Flags: Struct {
-            pub lit: Bool = false
+            pub lit: Bool { false }
         }
 
         Seg: Struct {
@@ -51,7 +51,7 @@ class TestBlockTest {
 
     /** The initializer of the local `a` in a function with a Pt, a Line, a Maybe and an Int32 at hand. */
     private fun init(test: String): Expr =
-        TyperTestSupport.nodes(parsed("f: (p: Pt, line: Line, m: Maybe<Pt>, k: Int32) Void {\n    a: Bool = $test\n}"))
+        TyperTestSupport.nodes(parsed("f: (p: Pt, line: Line, m: Maybe<Pt>, k: Int32) Void {\n    a: Bool { $test }\n}"))
             .filterIsInstance<VariableDecl>().first { it.name.value == "a" }.value!!
 
     // ---- the parser --------------------------------------------------------------------------
@@ -78,7 +78,7 @@ class TestBlockTest {
             parsed(
                 """
                 f: (p: Pt, k: Int32) Int32 {
-                    r: Mutable<Int32> = 0
+                    r: Mutable<Int32> { 0 }
                     if p == Pt { x > 0 } {
                         r = 1
                     }
@@ -125,7 +125,7 @@ class TestBlockTest {
         assertEquals("parse.build.test", with.tag)
         assertTrue(with.message.contains("A `with` block builds"), with.message)
         // A Bool computed by a comparison goes in parentheses; a member path on the left is no test.
-        expectNoErrors(TyperTestSupport.snippet(text("f: (k: Int32, p: Pt) Flags {\n    a: Flags = Flags { (k == 1) }\n    Flags { p.x == 1 }\n}")))
+        expectNoErrors(TyperTestSupport.snippet(text("f: (k: Int32, p: Pt) Flags {\n    a: Flags { Flags { (k == 1) } }\n    Flags { p.x == 1 }\n}")))
     }
 
     // ---- the typer ---------------------------------------------------------------------------
@@ -156,23 +156,23 @@ class TestBlockTest {
         }
 
         f: (p: Pt, m: Maybe<Pt>, line: Line, k: Int32) Int32 {
-            a: Bool = p == Pt { x == 1, y > k }
-            b: Bool = m == Pt { x == 1 }
-            c: Bool = m != Pt { x == 1 }
-            d: Bool = line == Line { start == Pt { x == 0 }, end.x > 1 }
-            e: Bool = probe() == Pt { y == 2 }
+            a: Bool { p == Pt { x == 1, y > k } }
+            b: Bool { m == Pt { x == 1 } }
+            c: Bool { m != Pt { x == 1 } }
+            d: Bool { line == Line { start == Pt { x == 0 }, end.x > 1 } }
+            e: Bool { probe() == Pt { y == 2 } }
             m == Pt { x > 0 } && a ? m.x : 0
         }
 
         paths: (line: Line, s: Seg) Bool {
-            a: Bool = line.start == Pt { x == 0 }
+            a: Bool { line.start == Pt { x == 0 } }
             a && s.tip == Pt { y == 2 }
         }
 
         hoisted: (k: Int32) Bool {
             probe() == Pt {
                 (if x > k {
-                    t: Int32 = x * 2
+                    t: Int32 { x * 2 }
                     t
                 } else {
                     0
@@ -218,7 +218,7 @@ class TestBlockTest {
             "app:main",
             text(
                 "$shapes\n\npub f: (s: Shape, m: Maybe<Pt>, line: Line, g: Seg) Int32 {\n    if s == Circle { radius > 1 } && m == Pt { x == 2 } {\n        s.radius + m.x\n    } else {\n" +
-                    "        a: Bool = line == Line { start == Pt { x == 0 } }\n        b: Bool = line.end == Pt { y == 3 } && g.tip == Pt { x == 4 }\n        a && b ? 1 : 0\n    }\n}",
+                    "        a: Bool { line == Line { start == Pt { x == 0 } } }\n        b: Bool { line.end == Pt { y == 3 } && g.tip == Pt { x == 4 } }\n        a && b ? 1 : 0\n    }\n}",
             ),
         )
         val emitted = DeclTestSupport.emit(src)

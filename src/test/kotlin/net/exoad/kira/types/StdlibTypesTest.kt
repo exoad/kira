@@ -27,13 +27,13 @@ class StdlibTypesTest {
     fun magicScalarsMapToPrims() {
         val program = TyperTestSupport.snippet(
             """
-            a: Int8 = 1
-            b: UInt16 = 2
-            c: Size = 3
-            d: Char = x
-            e: Float32 = 1.0
-            f: Bool = true
-            g: Int32 = 4
+            a: Int8 { 1 }
+            b: UInt16 { 2 }
+            c: Size { 3 }
+            d: Char { x }
+            e: Float32 { 1.0 }
+            f: Bool { true }
+            g: Int32 { 4 }
             """
         )
         val types = program.workspaceModules.single().declarations.associate { it.name to (it as net.exoad.kira.compiler.analysis.types.GlobalSymbol).type }

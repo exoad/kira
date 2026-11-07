@@ -18,7 +18,7 @@ class BodiedMagicMemberRefusalTest {
         val stdlib = File("kira").absolutePath.replace('\\', '/')
         File(dir, "project.kira").writeText(
             """
-            PROJECT: Project = Project { } with {
+            PROJECT: Project { } with {
                 name = "magicrefusal"
                 srcDir = "src"
                 target = "c"
@@ -37,8 +37,8 @@ class BodiedMagicMemberRefusalTest {
             }
 
             main: () Void {
-                p: Probe = Probe { }
-                n: Int32 = p.twice(3)
+                p: Probe { }
+                n: Int32 { p.twice(3) }
             }
             """.trimIndent() + "\n",
         )

@@ -137,7 +137,7 @@ class OperatorMemberParseTest {
 
     @Test
     fun finalClassModifierParses() {
-        val ast = parse("pub final Reply: Any { pub x: Int32 = 0 }")
+        val ast = parse("pub final Reply: Any { pub x: Int32 { 0 } }")
         val reply = classLike<ClassDecl>(ast)
         assertTrue(Modifier.FINAL in reply.modifiers)
     }
@@ -270,7 +270,7 @@ class OperatorMemberParseTest {
             TestCompileSupport.compileSnippet(
                 """
                 pub V2: Any {
-                    pub x: Float32 = 0.0
+                    pub x: Float32 { 0.0 }
                     pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
                 """.trimIndent(),

@@ -13,7 +13,7 @@ class StdlibMagicTypeTest {
             moduleUri,
             """
             @_magic Int32: Any
-            value: Int32 = 7
+            value: Int32 { 7 }
             """
         )
 
@@ -33,7 +33,7 @@ class StdlibMagicTypeTest {
             moduleUri,
             """
             @_magic Int32: Any
-            value: Int32 = 42
+            value: Int32 { 42 }
             """
         )
 

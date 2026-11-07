@@ -18,7 +18,7 @@ class ConstEligibilityPassTest {
         expectClean(
             snippet(
                 """
-                pub MAGIC: Arr<UInt8, 4> = @arrOf(0x55, 0xAA, 0x05, 0x0A)
+                pub MAGIC: Arr<UInt8, 4> { @arrOf(0x55, 0xAA, 0x05, 0x0A) }
                 pub @_const readU32: (p: View<UInt8>) UInt32 {
                     (p[0] as UInt32) | ((p[1] as UInt32) << 8)
                 }
@@ -26,7 +26,7 @@ class ConstEligibilityPassTest {
                     p[0] = (v & 0xFF) as UInt8
                 }
                 pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
-                    p: Mutable<Arr<UInt8, 8>> = @arrOf(0, 0, 0, 0, 0, 0, 0, 0)
+                    p: Mutable<Arr<UInt8, 8>> { @arrOf(0, 0, 0, 0, 0, 0, 0, 0) }
                     for i: Size in MAGIC.indices() {
                         p[i] = MAGIC[i]
                     }
@@ -54,7 +54,7 @@ class ConstEligibilityPassTest {
             snippet(
                 """
                 pub V2: Struct {
-                    pub x: Int32 = 0
+                    pub x: Int32 { 0 }
                 }
                 pub @_const @op_add: (a: V2, b: V2) V2 {
                     V2 { a.x + b.x }
@@ -62,7 +62,7 @@ class ConstEligibilityPassTest {
                 pub @_const sum: (a: V2, b: V2) V2 {
                     a + b
                 }
-                pub LIMITS: Arr<Int32, 2> = @arrOf(1, 2)
+                pub LIMITS: Arr<Int32, 2> { @arrOf(1, 2) }
                 pub @_const lim: (i: Size) Int32 {
                     LIMITS[i]
                 }
@@ -70,10 +70,10 @@ class ConstEligibilityPassTest {
                     4
                 }
                 pub W: Struct {
-                    pub n: Int32 = seed()
+                    pub n: Int32 { seed() }
                 }
                 pub @_const mk: () Int32 {
-                    w: W = W { }
+                    w: W { }
                     w.n
                 }
                 """,
@@ -107,13 +107,13 @@ class ConstEligibilityPassTest {
         val p = snippet(
             """
             pub Box: Any {
-                pub n: Int32 = 0
+                pub n: Int32 { 0 }
             }
             pub @_const a: (s: Str) Int32 {
                 1
             }
             pub @_const b: () Int32 {
-                xs: List<Int32> = List<Int32> {}
+                xs: List<Int32> {}
                 1
             }
             pub @_const c: () Box {
@@ -171,7 +171,7 @@ class ConstEligibilityPassTest {
         val p = snippet(
             """
             pub V2: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
             pub @op_add: (a: V2, b: V2) V2 {
                 V2 { a.x + b.x }
@@ -185,7 +185,7 @@ class ConstEligibilityPassTest {
             pub @_const same: (a: V2, b: V2) Bool {
                 a == b
             }
-            pub DYN: Arr<Int32> = @arrOf(1, 2, 3)
+            pub DYN: Arr<Int32> { @arrOf(1, 2, 3) }
             pub @_const firstOf: () Int32 {
                 DYN.get(0)
             }
@@ -193,10 +193,10 @@ class ConstEligibilityPassTest {
                 4
             }
             pub W: Struct {
-                pub n: Int32 = seed()
+                pub n: Int32 { seed() }
             }
             pub @_const mk: () Int32 {
-                w: W = W { }
+                w: W { }
                 w.n
             }
             """,
@@ -213,7 +213,7 @@ class ConstEligibilityPassTest {
     fun throwsGlobalsAndLambdas() {
         val p = snippet(
             """
-            pub SEEN: Mutable<Int32> = 0
+            pub SEEN: Mutable<Int32> { 0 }
             pub @_const a: (v: Int32) Int32 {
                 if v < 0 {
                     throw "negative"
@@ -232,9 +232,9 @@ class ConstEligibilityPassTest {
                 }
             }
             pub @_const d: (v: Int32) Int32 {
-                f: Fx<T1<Int32>, Int32> = (x: Int32) Int32 {
+                f: Fx<T1<Int32>, Int32> { (x: Int32) Int32 {
                     x
-                }
+                } }
                 f(v)
             }
             """,

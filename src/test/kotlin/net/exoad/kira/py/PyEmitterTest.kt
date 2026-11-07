@@ -171,8 +171,8 @@ class PyEmitterTest {
         val py = python(
             """
             pub f: (x: Int32) Int32 {
-                r: Range<Int32> = 1..4
-                t: Mutable<Int32> = 0
+                r: Range<Int32> { 1..4 }
+                t: Mutable<Int32> { 0 }
                 for i: Int32 in r {
                     t += i
                 }
@@ -326,7 +326,7 @@ class PyEmitterTest {
         val py = python(
             """
             pub f: (v: Int32, n: Int32) Int32 {
-                x: Mutable<Int32> = v
+                x: Mutable<Int32> { v }
                 x &= 0x0F
                 x |= 0x30
                 x ^= v
@@ -352,8 +352,8 @@ class PyEmitterTest {
     fun anIndexedOrFieldCompoundAssignmentLocatesItsTargetBeforeTheValue() {
         val py = python(
             """
-            at: Mutable<Size> = 0
-            xs: Mutable<List<UInt8>> = List<UInt8> { }
+            at: Mutable<Size> { 0 }
+            xs: Mutable<List<UInt8>> { }
 
             next: () Size {
                 at += 1
@@ -365,7 +365,7 @@ class PyEmitterTest {
             }
 
             Flags: Mutable<Any> {
-                pub bits: Mutable<UInt8> = 0
+                pub bits: Mutable<UInt8> { 0 }
 
                 pub set: (n: Int32) Void {
                     bits |= 1 << n
@@ -392,8 +392,8 @@ class PyEmitterTest {
         val py = python(
             """
             Holder: Mutable<Any> {
-                pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
-                pub xs: Mutable<List<Int32>> = List<Int32> { }
+                pub items: Mutable<Map<Str, Int32>> { }
+                pub xs: Mutable<List<Int32>> { }
             }
 
             holderOf: (h: Holder) Holder {
@@ -561,7 +561,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (s: Str) Size {
-                b: List<UInt8> = s.bytes()
+                b: List<UInt8> { s.bytes() }
                 b.size() + s.bytes().size()
             }
             """
@@ -637,8 +637,8 @@ class PyEmitterTest {
         val py = python(
             """
             Bag: Mutable<Any> {
-                pub fs: Mutable<List<Float64>> = List<Float64> { }
-                pub bs: Mutable<List<UInt8>> = List<UInt8> { }
+                pub fs: Mutable<List<Float64>> { }
+                pub bs: Mutable<List<UInt8>> { }
 
                 pub tidy: () Float64 {
                     fs.sort()
@@ -680,18 +680,18 @@ class PyEmitterTest {
 
             pub Doc: Mutable<Any> {
                 pub body: Json
-                pub items: Mutable<List<Json>> = @listOf()
+                pub items: Mutable<List<Json>> { @listOf() }
             }
 
             pub build: (t: Str, x: Float64, n: Int64, m: Maybe<Float64>, s: Maybe<Str>) Str {
-                d: Doc = Doc { body = Json.parse(t) }
-                o: Json = Json.obj()
+                d: Doc { body = Json.parse(t) }
+                o: Json { Json.obj() }
                 o.put("x", Json.of(x))
                 o.put("n", Json.of(n))
                 o.put("m", Json.of(m))
                 o.put("s", Json.of(s))
                 o.put("z", Json.null())
-                a: Json = Json.arr()
+                a: Json { Json.arr() }
                 a.add(d.body.get("k").at(2))
                 o.put("a", a)
                 d.items.add(o)
@@ -714,11 +714,11 @@ class PyEmitterTest {
     fun aCharIsItsCodePoint() {
         val py = python(
             """
-            SEP: Char = ':'
+            SEP: Char { ':' }
 
             Cursor: Mutable<Any> {
-                pub last: Mutable<Char> = 'x'
-                pub none: Mutable<Char> = '\0'
+                pub last: Mutable<Char> { 'x' }
+                pub none: Mutable<Char> { '\0' }
             }
 
             pub digit: (s: Str, i: Size) Bool {
@@ -797,8 +797,8 @@ class PyEmitterTest {
             pub Meter: Mutable<Any> {
                 pub start: Int32
                 scale: Int32
-                pub reading: Mutable<Int32> = 0
-                ticks: Mutable<Int32> = 0
+                pub reading: Mutable<Int32> { 0 }
+                ticks: Mutable<Int32> { 0 }
 
                 pub tick: () Int32 {
                     ticks += 1
@@ -815,8 +815,8 @@ class PyEmitterTest {
                 1
             }
 
-            LIMIT: Int32 = 3
-            pub TOP: Int32 = 5
+            LIMIT: Int32 { 3 }
+            pub TOP: Int32 { 5 }
             """
         )
         assertTrue(py.contains("class Meter:"), py)
@@ -851,8 +851,8 @@ class PyEmitterTest {
     fun anAssignmentWhoseValueHasAnEffectComputesItsIndexFirst() {
         val py = python(
             """
-            at: Mutable<Size> = 0
-            xs: Mutable<List<Int32>> = List<Int32> { }
+            at: Mutable<Size> { 0 }
+            xs: Mutable<List<Int32>> { }
 
             bump: () Int32 {
                 at += 1
@@ -878,10 +878,10 @@ class PyEmitterTest {
     fun aGlobalAssignedInInitiallyIsDeclaredGlobalInInit() {
         val py = python(
             """
-            made: Mutable<Int32> = 0
+            made: Mutable<Int32> { 0 }
 
             Thing: Mutable<Any> {
-                pub id: Mutable<Int32> = 0
+                pub id: Mutable<Int32> { 0 }
 
                 initially {
                     made += 1
@@ -897,10 +897,10 @@ class PyEmitterTest {
     fun aGlobalStartsAfterTheGlobalsItReadsAndAConstantIsNeverCopiedAsAnArgument() {
         val py = python(
             """
-            A: Arr<Int32, 2> = B
-            B: Arr<Int32, 2> = @arrOf(7, 8)
-            k: Mutable<Arr<UInt8, 2>> = KEY
-            KEY: Arr<UInt8, 2> = @arrOf(0xAB, 0xCD)
+            A: Arr<Int32, 2> { B }
+            B: Arr<Int32, 2> { @arrOf(7, 8) }
+            k: Mutable<Arr<UInt8, 2>> { KEY }
+            KEY: Arr<UInt8, 2> { @arrOf(0xAB, 0xCD) }
 
             total: (xs: Arr<Int32, 2>) Int32 {
                 xs[0] + xs[1]
@@ -920,7 +920,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (x: Float64) Bool {
-                xs: Mutable<List<Float64>> = List<Float64> { }
+                xs: Mutable<List<Float64>> { }
                 xs.add(x)
                 xs.set(0, x + 1.0)
                 xs.contains(x)
@@ -936,7 +936,7 @@ class PyEmitterTest {
     fun aMapIsADictAndItsMethodsBindToItsOwn() {
         val py = python(
             """
-            at: Mutable<Int32> = 0
+            at: Mutable<Int32> { 0 }
 
             key: () Int32 {
                 at += 1
@@ -944,18 +944,18 @@ class PyEmitterTest {
             }
 
             f: (k: Str, x: Float64) Size {
-                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> { }
                 m.put(k, 1)
                 m[k] = 2
-                g: Maybe<Int32> = m.get(k)
-                r: Maybe<Int32> = m.remove(k)
-                ks: Arr<Str> = m.keys()
-                vs: Arr<Int32> = m.valuesArr()
-                t: Mutable<Map<UInt8, UInt8>> = Map<UInt8, UInt8> { }
+                g: Maybe<Int32> { m.get(k) }
+                r: Maybe<Int32> { m.remove(k) }
+                ks: Arr<Str> { m.keys() }
+                vs: Arr<Int32> { m.valuesArr() }
+                t: Mutable<Map<UInt8, UInt8>> { }
                 t[1] = 2
-                tk: Arr<UInt8> = t.keys()
-                tv: Arr<UInt8> = t.valuesArr()
-                f: Mutable<Map<Int32, Float64>> = Map<Int32, Float64> { }
+                tk: Arr<UInt8> { t.keys() }
+                tv: Arr<UInt8> { t.valuesArr() }
+                f: Mutable<Map<Int32, Float64>> { }
                 f[-1] = x
                 f[key()] = x + (at as Float64)
                 if m.containsKey(k) && f.containsValue(x) && !m.isEmpty() {
@@ -978,7 +978,7 @@ class PyEmitterTest {
     fun putAndContainsKeyTakeTheFasterFormOnlyWhereTheirOrderCannotShow() {
         val py = python(
             """
-            at: Mutable<Int32> = 0
+            at: Mutable<Int32> { 0 }
 
             key: () Str {
                 at += 1
@@ -986,7 +986,7 @@ class PyEmitterTest {
             }
 
             Holder: Mutable<Any> {
-                pub items: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+                pub items: Mutable<Map<Str, Int32>> { }
 
                 pub mine: () Holder {
                     this
@@ -1016,7 +1016,7 @@ class PyEmitterTest {
             kira.bytes as bytes
 
             Link: Mutable<Any> {
-                pub buf: Mutable<List<UInt8>> = List<UInt8> { }
+                pub buf: Mutable<List<UInt8>> { }
 
                 pub head: () UInt16 {
                     readU16Le(buf, 0)
@@ -1024,8 +1024,8 @@ class PyEmitterTest {
             }
 
             sum: (v: View<UInt8>) UInt32 {
-                s: Mutable<UInt32> = 0
-                i: Mutable<Size> = 0
+                s: Mutable<UInt32> { 0 }
+                i: Mutable<Size> { 0 }
                 while i < v.size() {
                     s += v[i] as UInt32
                     i += 1
@@ -1041,10 +1041,10 @@ class PyEmitterTest {
             }
 
             g: () UInt32 {
-                xs: Mutable<List<UInt8>> = List<UInt8> { }
+                xs: Mutable<List<UInt8>> { }
                 fill(xs.view(), 1)
                 fill(xs.from(2), 1)
-                ints: List<Int32> = @listOf(1, 2)
+                ints: List<Int32> { @listOf(1, 2) }
                 sum(xs) + sum(xs.slice(0, 2)) + readU32Le(xs, 0) + (readF64Le(xs.from(1), 0) as UInt32)
             }
             """
@@ -1086,11 +1086,11 @@ class PyEmitterTest {
         val py = python(
             """
             f: (v: View<UInt8>, w: View<Int32>) Size {
-                a: List<UInt8> = v.slice(1, 2).toList()
-                b: List<Int32> = w.toList()
-                c: Mutable<List<UInt8>> = List<UInt8> { }
+                a: List<UInt8> { v.slice(1, 2).toList() }
+                b: List<Int32> { w.toList() }
+                c: Mutable<List<UInt8>> { }
                 c.add(1)
-                d: List<UInt8> = c.from(0).toList()
+                d: List<UInt8> { c.from(0).toList() }
                 a.size() + b.size() + d.size()
             }
             """
@@ -1109,7 +1109,7 @@ class PyEmitterTest {
             }
 
             f: () Int32 {
-                xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
+                xs: Mutable<List<Int32>> { @listOf(1, 2, 3) }
                 at(xs.from(1), 0) + at(xs, 2)
             }
             """
@@ -1203,18 +1203,18 @@ class PyEmitterTest {
                 app.other as other
                 app.other.o as o
 
-                pub globals: Int32 = 5
-                pub type: Mutable<Int32> = 3
+                pub globals: Int32 { 5 }
+                pub type: Mutable<Int32> { 3 }
 
                 pub Pt: Struct {
-                    pub x: Int32 = 0
+                    pub x: Int32 { 0 }
                 }
 
                 pub main: () Int32 {
-                    a: Pt = Pt { 1 }
-                    b: Pt = a with {
+                    a: Pt { Pt { 1 } }
+                    b: Pt { a with {
                         x = type
-                    }
+                    } }
                     globals + o() + b.x
                 }
                 """,
@@ -1273,11 +1273,11 @@ class PyEmitterTest {
         refused(
             """
             Base: Mutable<Any> {
-                pub seen: Mutable<Int32> = 0
+                pub seen: Mutable<Int32> { 0 }
             }
 
             Kid: Mutable<Base> {
-                pub k: Int32 = 5
+                pub k: Int32 { 5 }
             }
             """,
             "the subclass Kid (class inheritance)",
@@ -1301,7 +1301,7 @@ class PyEmitterTest {
             kira.json as json
 
             pub f: () Size {
-                m: Map<Str, Json> = Map<Str, Json> { }
+                m: Map<Str, Json> { }
                 m.size()
             }
             """,
@@ -1350,7 +1350,7 @@ class PyEmitterTest {
         refused(
             """
             f: () Void {
-                i: Int32 = 0
+                i: Int32 { 0 }
                 if i == 0 {
                     for i: Int32 in 0..3 {
                         trace(i)
@@ -1367,17 +1367,17 @@ class PyEmitterTest {
         val py = python(
             """
             pub Pt: Struct {
-                pub x: Int32 = 0
-                pub y: Int32 = 0
+                pub x: Int32 { 0 }
+                pub y: Int32 { 0 }
             }
 
             pub Seg: Struct {
-                pub a: Pt = Pt { }
-                pub b: Pt = Pt { }
+                pub a: Pt { }
+                pub b: Pt { }
             }
 
             pub Other: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
 
             f: (xs: List<Pt>, s: Seg, t: Seg, o: Other) Bool {
@@ -1404,7 +1404,7 @@ class PyEmitterTest {
         refused(
             """
             f: () Void {
-                xs: Mutable<List<Int32>> = @listOf(1, 2, 3)
+                xs: Mutable<List<Int32>> { @listOf(1, 2, 3) }
                 xs.from(1).set(0, 5)
             }
             """,
@@ -1433,9 +1433,9 @@ class PyEmitterTest {
         refused(
             """
             f: () Int32 {
-                x: Int32 = 1
+                x: Int32 { 1 }
                 if x > 0 {
-                    x: Int32 = 2
+                    x: Int32 { 2 }
                     x
                 } else {
                     x
@@ -1451,7 +1451,7 @@ class PyEmitterTest {
         val py = python(
             """
             f: (from: Int32) Int32 {
-                len: Int32 = 1
+                len: Int32 { 1 }
                 len + from
             }
             """
@@ -1464,7 +1464,7 @@ class PyEmitterTest {
         refused(
             """
             pub OverflowError: Any {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
             """,
             "the name 'OverflowError', which generated Python uses, is not supported",
@@ -1484,7 +1484,7 @@ class PyEmitterTest {
         refused(
             """
             Box: Any {
-                hidden: Int32 = 0
+                hidden: Int32 { 0 }
 
                 pub again: () Box {
                     Box { hidden = 3 }
@@ -1512,12 +1512,12 @@ class PyEmitterTest {
             }
 
             f: (b: Bank) Int32 {
-                n: Ref<Int32> = Ref<Int32> { value = 1 }
+                n: Ref<Int32> { value = 1 }
                 n.value = n.value + b.onAdd(2)
-                fill: Fx<T1<List<Int32>>, Void> = (out: List<Int32>) Void {
+                fill: Fx<T1<List<Int32>>, Void> { (out: List<Int32>) Void {
                     out.add(n.value)
-                }
-                xs: Mutable<List<Int32>> = List<Int32> { }
+                } }
+                xs: Mutable<List<Int32>> { }
                 fill(xs)
                 Bank { double }.add(n.value)
             }
@@ -1630,7 +1630,7 @@ class PyEmitterTest {
         val py = python(
             """
             parse: (s: Str) Int64 {
-                v: Maybe<Int64> = s.toInt64()
+                v: Maybe<Int64> { s.toInt64() }
                 if v.isNone() {
                     throw "bad ${'$'}{s}"
                 }
@@ -1646,8 +1646,8 @@ class PyEmitterTest {
             }
 
             f: () Int64 {
-                result: Mutable<Int64> = 0
-                found: Mutable<Bool> = false
+                result: Mutable<Int64> { 0 }
+                found: Mutable<Bool> { false }
                 try {
                     result = parse("x")
                     found = true
@@ -1657,7 +1657,7 @@ class PyEmitterTest {
                 if found {
                     result
                 } else {
-                    r: Result<Int32, Str> = check(1)
+                    r: Result<Int32, Str> { check(1) }
                     if r.isOk() && !r.isErr() {
                         (r.unwrap() + r.value) as Int64
                     } else {
@@ -1683,7 +1683,7 @@ class PyEmitterTest {
         refused(
             """
             f: () Size {
-                m: Map<Float64, Int32> = Map<Float64, Int32> { }
+                m: Map<Float64, Int32> { }
                 m.size()
             }
             """,
@@ -1696,7 +1696,7 @@ class PyEmitterTest {
         val e = PyTestSupport.emit(
             """
             Box: Any {
-                pub v: Int32 = 0
+                pub v: Int32 { 0 }
             }
 
             f: (m: Map<Box, Int32>) Size {
@@ -1745,7 +1745,7 @@ class PyEmitterTest {
             }
 
             f: () Int32 {
-                t: T2<Int32, Int32> = T2<Int32, Int32> { second = two(), first = 1 }
+                t: T2<Int32, Int32> { second = two(), first = 1 }
                 t.first
             }
             """,
@@ -1758,7 +1758,7 @@ class PyEmitterTest {
         val e = PyTestSupport.emit(
             """
             f: () Size {
-                m: Mutable<Map<Str, Int32>> = Map<Str, Int32> { }
+                m: Mutable<Map<Str, Int32>> { }
                 m["a"] += 1
                 m.size()
             }
@@ -1786,7 +1786,7 @@ class PyEmitterTest {
     fun aParameterIsNamedByItsOwnModuleAtEveryCall() {
         val (py, errors) = PyTestSupport.emitProgram(
             "lib:span" to """
-                pub LIMIT: List<Int32> = List<Int32> { }
+                pub LIMIT: List<Int32> { }
 
                 pub g: (from: Int32, count: List<Int32> = LIMIT) Int32 {
                     from
@@ -1831,17 +1831,17 @@ class PyEmitterTest {
         val py = python(
             """
             C: Any {
-                pub n: Int32 = 2
+                pub n: Int32 { 2 }
 
                 pub twice: () Int32 {
                     n * 2
                 }
 
                 pub run: () Int32 {
-                    f: Fx<T0, Int32> = () Int32 {
-                        self: Int32 = twice()
+                    f: Fx<T0, Int32> { () Int32 {
+                        self: Int32 { twice() }
                         self
-                    }
+                    } }
                     f()
                 }
             }
@@ -1864,8 +1864,8 @@ class PyEmitterTest {
     fun aUsedModuleIsLoadedByItsPathAndNamedThroughItsModuleObject() {
         val (py, errors) = PyTestSupport.emitProgram(
             "lib:units" to """
-                pub SCALE: Int32 = 10
-                pub calls: Mutable<Int32> = 0
+                pub SCALE: Int32 { 10 }
+                pub calls: Mutable<Int32> { 0 }
 
                 pub Meter: Any {
                     pub label: Str
@@ -1888,7 +1888,7 @@ class PyEmitterTest {
                 lib.units.calls as calls
 
                 f: () Int32 {
-                    m: Meter = Meter { "a" }
+                    m: Meter { Meter { "a" } }
                     calls = 5
                     units.calls = units.calls + 1
                     m.scaled(bump()) + units.bump() + SCALE
@@ -1917,7 +1917,7 @@ class PyEmitterTest {
                 app.odd as odd
                 app.odd.isOdd as isOdd
 
-                pub K: Int32 = 2
+                pub K: Int32 { 2 }
 
                 pub isEven: (n: Int32) Bool {
                     n == 0 || isOdd(n - 1)
@@ -2034,7 +2034,7 @@ class PyEmitterTest {
         val py = besideSidecar(
             """
             Pt: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
 
             @_extern send: (data: View<UInt8>, into: MutView<UInt8>, raw: List<UInt8>, xs: List<Int32>, p: Pt, m: Map<Str, Int32>) Int64
@@ -2061,7 +2061,7 @@ class PyEmitterTest {
             }
 
             f: (s: Sock, socks: List<Sock>, spare: Maybe<Sock>) Size {
-                kept: List<Sock> = socks
+                kept: List<Sock> { socks }
                 s.recv(4).size() + kept.size()
             }
             """,
@@ -2091,7 +2091,7 @@ class PyEmitterTest {
             "@_extern(\"sym\") f: () Int32" to "@_extern's positional symbol on the extern 'f'",
             "@_extern(raises = \"OSError Exception\") f: () Int32" to "raises = \"Exception\" (it would catch Kira's own throw and panic)",
             "@_extern(raises = \"KeyboardInterrupt\") f: () Int32" to "raises = \"KeyboardInterrupt\" (no Exception, it always passes through)",
-            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
+            "Pt: Struct {\n    pub x: Int32 { 0 }\n}\n@_extern f: () Pt" to "the result of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern f: () Arr<Int32, 2>" to "the result of the extern 'f': an Arr<Int32, 2> (a List comes back)",
             "@_extern f: (c: Char) Void" to "the parameter 'c' of the extern 'f': a Char (a one-character Str crosses)",
             "@_extern f: (s: List<Set<Int32>>) Void" to "the parameter 's' of the extern 'f': a Set<Int32> inside a value (a Set crosses as a parameter or a result)",
@@ -2100,17 +2100,17 @@ class PyEmitterTest {
             "@_extern f: () Int32 {\n    1\n}" to "the extern 'f' with a body",
             "pub f: () Int32" to "the body-less function 'f' (a sidecar's function is an @_extern fx)",
             "@_extern f: () Fx<T0, Int32>" to "the result of the extern 'f': an Fx<T0, Int32> (Python hands Kira no function)",
-            "Pt: Struct {\n    pub x: Int32 = 0\n}\n@_extern f: (g: Fx<T1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
+            "Pt: Struct {\n    pub x: Int32 { 0 }\n}\n@_extern f: (g: Fx<T1<Pt>, Void>) Void" to "the parameter 'g' of the extern 'f': Pt, a Kira object Python cannot make",
             "@_extern f: (g: Fx<T1<View<UInt8>>, Void>) Void" to "the parameter 'g' of the extern 'f': a View<UInt8> (Python is lent a view, never gives one)",
             "@_extern f: (gs: List<Fx<T0, Int32>>) Void" to "inside a value (only an Fx parameter is wrapped)",
             "@_extern f: (g: Fx<T0, Fx<T0, Int32>>) Void" to "(an Fx returning an Fx)",
-            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
+            "Holder: Any {\n    pub n: Int32 { 0 }\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (h: Holder) Void" to
                 "the parameter 'h' of the extern 'f': Holder, whose field 'f' is an Fx<T1<Int32>, Void> inside a value (only an Fx parameter is wrapped)",
-            "Holder: Any {\n    pub n: Int32 = 0\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (g: Fx<T0, Holder>) Void" to
+            "Holder: Any {\n    pub n: Int32 { 0 }\n    pub f: Fx<T1<Int32>, Void>\n}\n@_extern f: (g: Fx<T0, Holder>) Void" to
                 "the parameter 'g' of the extern 'f': Holder, whose field 'f' is an Fx<T1<Int32>, Void> inside a value",
-            "In: Mutable<Any> {\n    pub s: Set<Int32> = Set<Int32> { }\n}\nOut: Mutable<Any> {\n    pub i: In = In { }\n}\n@_extern f: (o: Out) Void" to
+            "In: Mutable<Any> {\n    pub s: Set<Int32> { }\n}\nOut: Mutable<Any> {\n    pub i: In { }\n}\n@_extern f: (o: Out) Void" to
                 "the parameter 'o' of the extern 'f': Out, whose field 'i' is In, whose field 's' is a Set<Int32>",
-            "C: Struct {\n    pub c: Char = 'x'\n}\n@_extern f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
+            "C: Struct {\n    pub c: Char { 'x' }\n}\n@_extern f: (c: List<C>) Void" to "C, whose field 'c' is a Char (a one-character Str crosses)",
         ).forEach { (body, construct) -> refused(body, construct, besideSidecar(body, "refused")) }
     }
 
@@ -2119,8 +2119,8 @@ class PyEmitterTest {
         val e = besideSidecar(
             """
             pub Node: Mutable<Any> {
-                pub next: Mutable<Maybe<Node>> = null
-                pub items: Mutable<List<Node>> = List<Node> { }
+                pub next: Mutable<Maybe<Node>> { null }
+                pub items: Mutable<List<Node>> { }
             }
 
             @_extern visit: (n: Node, f: Fx<T0, Node>) Void
@@ -2166,7 +2166,7 @@ class PyEmitterTest {
             kira.time as time
 
             main: () Void {
-                t: Int64 = monoNowNs() + monoNowMs() + wallNowNs()
+                t: Int64 { monoNowNs() + monoNowMs() + wallNowNs() }
                 sleepMs(5)
                 trace(args().size())
             }
@@ -2189,21 +2189,21 @@ class PyEmitterTest {
             kira.sync as sync
 
             Tally: Mutable<Any> {
-                pub count: Mutable<Int32> = 0
+                pub count: Mutable<Int32> { 0 }
             }
 
             f: () Int64 {
-                hits: Atomic<Int32> = Atomic<Int32> { value = 0 }
-                tally: Mutex<Tally> = Mutex<Tally> { value = Tally { } }
-                q: BlockingQueue<List<Int32>> = BlockingQueue<List<Int32>> { }
-                row: Mutable<List<Int32>> = @listOf(1)
-                t: Thread = spawn("w", () Void {
+                hits: Atomic<Int32> { value = 0 }
+                tally: Mutex<Tally> { value = Tally { } }
+                q: BlockingQueue<List<Int32>> { }
+                row: Mutable<List<Int32>> { @listOf(1) }
+                t: Thread { spawn("w", () Void {
                     hits.add(1)
                     q.push(row)
                     tally.lock((s: Tally) Void {
                         s.count += 1
                     })
-                })
+                }) }
                 t.join()
                 q.size() as Int64 + hits.load() as Int64
             }
@@ -2228,7 +2228,7 @@ class PyEmitterTest {
             kira.sync as sync
 
             f: () Bool {
-                stop: Atomic<Bool> = Atomic<Bool> { value = false }
+                stop: Atomic<Bool> { value = false }
                 onSignal(SIGNAL_INT, stop) && onSignal(SIGNAL_TERM, stop)
             }
             """
@@ -2239,9 +2239,9 @@ class PyEmitterTest {
 
     @Test
     fun kiraSyncRefusesWhatPythonCannotHoldAsCDoes() {
-        refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> = Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map, a struct or a class)")
-        refused("kira.sync as sync\nf: () Void {\n    a: Atomic<Str> = Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
-        refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> = Atomic<Bool> { value = false }\n    a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
+        refused("kira.sync as sync\nf: () Void {\n    m: Mutex<Int32> { value = 0 }\n}", "a Mutex<Int32> (a Mutex on py holds a List, a Map, a struct or a class)")
+        refused("kira.sync as sync\nf: () Void {\n    a: Atomic<Str> { value = \"\" }\n}", "an Atomic<Str> (an Atomic holds a Bool, an integer or a Float64)")
+        refused("kira.sync as sync\nf: () Bool {\n    a: Atomic<Bool> { value = false }\n    a.add(true)\n}", "Atomic<Bool>.add (C++'s Atomic has none)")
     }
 
     @Test
@@ -2273,11 +2273,11 @@ class PyEmitterTest {
             }
 
             pub main: () Int32 {
-                name: Str = "suite"
-                t: Suite = Suite { title = name + "!" }
-                r: Runner = Runner { t }
+                name: Str { "suite" }
+                t: Suite { title = name + "!" }
+                r: Runner { Runner { t } }
                 both(r.t, 3)
-                kept: List<Suite> = @listOf(t, Suite { "other" })
+                kept: List<Suite> { @listOf(t, Suite { "other" }) }
                 kept[0].finish()
             }
             """
@@ -2298,10 +2298,10 @@ class PyEmitterTest {
             kira.os as os
 
             f: (path: Str) Bool {
-                s: UdpSocket = UdpSocket {}
-                ok: Bool = s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0
-                out: Maybe<FileOut> = openAppend(path)
-                ran: Maybe<Ran> = runCapture(@listOf(path), null, 0)
+                s: UdpSocket {}
+                ok: Bool { s.bind("127.0.0.1", 0) && exists(path) && readFile(path).value.size() > 0 }
+                out: Maybe<FileOut> { openAppend(path) }
+                ran: Maybe<Ran> { runCapture(@listOf(path), null, 0) }
                 ok && lastErrorKind() == "" && out.isSome() && ran.value.code == 0
             }
             """
@@ -2327,9 +2327,9 @@ class PyEmitterTest {
             kira.csv as csv
 
             f: (p: Str, rx: Regex) Bool {
-                r: Maybe<Regex> = compile("a+", IGNORE_CASE)
-                g: Random = newRandom(7)
-                rows: Maybe<CsvReader> = openCsv(joinPath(p, "x.csv"))
+                r: Maybe<Regex> { compile("a+", IGNORE_CASE) }
+                g: Random { newRandom(7) }
+                rows: Maybe<CsvReader> { openCsv(joinPath(p, "x.csv")) }
                 r.isSome() && pyInt(p).isSome() && g.below(3) >= 0 && rows.isSome() && rx.search(p).isSome() && strRepr(p) != regexError()
             }
             """
@@ -2357,11 +2357,11 @@ class PyEmitterTest {
             }
 
             pub f: (url: Str) Bool {
-                got: Maybe<HttpReply> = httpGet(url, 500)
-                s: Maybe<HttpServer> = httpServer("127.0.0.1", 0, handle)
-                spec: ArgSpec = argSpec("tool", "what it does")
+                got: Maybe<HttpReply> { httpGet(url, 500) }
+                s: Maybe<HttpServer> { httpServer("127.0.0.1", 0, handle) }
+                spec: ArgSpec { argSpec("tool", "what it does") }
                 spec.whole("--n", 3, "how many")
-                b: List<UInt8> = "x".bytes()
+                b: List<UInt8> { "x".bytes() }
                 got.isSome() && httpPost(url, b, "text/plain", 0).isSome() && s.isSome() && spec.parse(@listOf("--n", "4")).isSet("--n")
             }
             """
@@ -2407,11 +2407,11 @@ class PyEmitterTest {
     fun aMagicClassOfAModuleWithoutACppHeaderIsTheRuntimesClassOfItsName() {
         val (py, errors) = PyTestSupport.emitProgram(
             "kira:extra" to "pub @_magic Suite: Any {\n    pub title: Str\n}",
-            "app:main" to "kira.extra as extra\n\nf: () Void {\n    t: Suite = Suite { title = \"x\" }\n}",
+            "app:main" to "kira.extra as extra\n\nf: () Void {\n    t: Suite { title = \"x\" }\n}",
         )
         assertEquals(emptyList(), errors)
         assertTrue(py.getValue("app:main").contains("    t = _k_Suite(\"x\")\n"), py.getValue("app:main"))
-        val ref = python("f: () Int32 {\n    r: Ref<Int32> = Ref<Int32> { value = 1 }\n    r.value\n}")
+        val ref = python("f: () Int32 {\n    r: Ref<Int32> { value = 1 }\n    r.value\n}")
         assertTrue(ref.contains("    r = _k_Ref(1)\n"), "a Ref keeps its own construction:\n$ref")
     }
 

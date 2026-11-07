@@ -1,4 +1,4 @@
-pub SCALE: Int32 = 100
+pub SCALE: Int32 { 100 }
 
 pub percent: (part: Int32, whole: Int32 = SCALE) Int32 {
     part * SCALE / whole            // @type Int32 const=100:Int32 @ SCALE

@@ -99,7 +99,7 @@ class TypedModelContractTest {
 
     @Test
     fun offModeReturnsAnEmptyProgram() {
-        val program = KiraTyper.run(TyperTestSupport.unitOf(TyperTestSupport.module("test:off", "x: Int32 = 1")), TyperMode.OFF)
+        val program = KiraTyper.run(TyperTestSupport.unitOf(TyperTestSupport.module("test:off", "x: Int32 { 1 }")), TyperMode.OFF)
         assertTrue(program.modules.isEmpty())
         assertTrue(program.diagnostics.isEmpty())
         assertEquals(TyperMode.OFF, program.mode)

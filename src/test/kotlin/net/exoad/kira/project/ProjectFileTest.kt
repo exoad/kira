@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 class ProjectFileTest {
     private val stdlib = File("kira").absoluteFile
 
-    private fun project(body: String) = "PROJECT: Project = Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
+    private fun project(body: String) = "PROJECT: Project { } with {\n${body.trimIndent().prependIndent("    ")}\n}\n"
 
     private fun refused(text: String): String = assertThrows<IllegalArgumentException> { ProjectFile.parse(text) }.message!!
 
@@ -84,7 +84,7 @@ class ProjectFileTest {
     fun aFieldNotGivenIsItsDefault() {
         assertEquals(Project("a.b"), ProjectFile.parse(project("name = \"a.b\"")))
         // A named construction says the same as a `with` block.
-        assertEquals(ProjectFile.parse(project("name = \"a.b\"\nsrcDir = \".\"")), ProjectFile.parse("PROJECT: Project = Project { name = \"a.b\", srcDir = \".\" }\n"))
+        assertEquals(ProjectFile.parse(project("name = \"a.b\"\nsrcDir = \".\"")), ProjectFile.parse("PROJECT: Project { name = \"a.b\", srcDir = \".\" }\n"))
     }
 
     /** kira:config is the schema: its fields are the ones read, its defaults Project's. */
@@ -123,9 +123,9 @@ class ProjectFileTest {
         assertTrue(refused(project("name = \"a\"\nnmae = \"b\"")).contains("Project has no field 'nmae'"))
         assertTrue(refused(project("name = \"a\"\nsrcDir = true")).contains("Field 'srcDir' of Project is a Str"))
         assertTrue(refused(project("name = \"a\"\nsrcExclude = @listOf(\"x\", true)")).contains("is a List<Str>"))
-        assertTrue(refused("X: Int32 = 1\n" + project("name = \"a\"")).contains("holds one declaration"))
+        assertTrue(refused("X: Int32 { 1 }\n" + project("name = \"a\"")).contains("holds one declaration"))
         assertTrue(refused(project("name = \"a\" + \"b\"")).contains("plain values"))
-        assertTrue(refused("PROJECT: Project = Project { \"a\" }\n").contains("Name each field"))
+        assertTrue(refused("PROJECT: Project { Project { \"a\" } }\n").contains("Name each field"))
         assertTrue(refused(project("name = \"a\"\ntypes = \"loose\"")).contains("Field 'types' must be one of off, lenient, strict"))
         assertTrue(refused(project("name = \"a\"\ncpp = Cpp { } with {\n    layout = \"flat\"\n}")).contains("Field 'layout' must be one of beside, tree"))
         assertTrue(refused(project("name = \"a\"\ncpp = Cpp { } with {\n    lineDirectivs = false\n}")).contains("Cpp has no field 'lineDirectivs'"))
@@ -181,7 +181,7 @@ class ProjectFileTest {
         assertEquals(listOf("main_kira.py"), generated)
         assertTrue(File(out, "app/main_kira.py").readText().lineSequence().first().endsWith("module net.exoad.tool.app.main."))
         // A file the typer refuses stops the build before anything is written.
-        File(dir, ProjectFile.FILE).writeText("PROJECT: Project = Project { } with {\n    name = \"net.exoad.tool\"\n    srcDir = 3\n}\n")
+        File(dir, ProjectFile.FILE).writeText("PROJECT: Project { } with {\n    name = \"net.exoad.tool\"\n    srcDir = 3\n}\n")
         val bad = PyTestSupport.cli(dir, "--target", "py", "--out", File(dir, "out2").path)
         assertTrue(bad.exitCode != 0 && bad.all.contains("Field 'srcDir' of Project is a Str"), bad.all)
     }

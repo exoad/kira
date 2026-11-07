@@ -18,13 +18,13 @@ class DeclarationRoleTest {
         val p = TyperTestSupport.snippet(
             """
             Hashable: Any {
-                pub seed: Int64 = 0
+                pub seed: Int64 { 0 }
             }
 
             main: () Void {
-                h: Hashable = Hashable { }
-                s: Str = "abc"
-                n: Int64 = h.seed + s.hashCode()
+                h: Hashable { }
+                s: Str { "abc" }
+                n: Int64 { h.seed + s.hashCode() }
             }
             """,
         )
@@ -36,13 +36,13 @@ class DeclarationRoleTest {
     @Test
     fun anUnimportedModulesStatefulTypeLeavesItsNamesakeATrait() {
         val p = type(
-            module("probe:a.model", "pub Handler: Any {\n    pub count: Int32 = 0\n}"),
+            module("probe:a.model", "pub Handler: Any {\n    pub count: Int32 { 0 }\n}"),
             module(
                 "probe:b.shapes",
-                "pub Handler: Any {\n    pub handle: () Str\n}\npub Impl: Handler {\n    pub tag: Str = \"impl\"\n\n" +
+                "pub Handler: Any {\n    pub handle: () Str\n}\npub Impl: Handler {\n    pub tag: Str { \"impl\" }\n\n" +
                     "    pub override handle: () Str {\n        tag\n    }\n}\npub run: (h: Handler) Str {\n    h.handle()\n}",
             ),
-            module("probe:main", "probe.b.shapes as shapes\nprobe.b.shapes.Impl as Impl\n\nmain: () Void {\n    i: Impl = Impl { }\n    println(shapes.run(i))\n}"),
+            module("probe:main", "probe.b.shapes as shapes\nprobe.b.shapes.Impl as Impl\n\nmain: () Void {\n    i: Impl { }\n    println(shapes.run(i))\n}"),
         )
         expectNoErrors(p)
         assertIs<TraitSymbol>(p.module("probe:b.shapes")!!.members["Handler"])
@@ -57,7 +57,7 @@ class DeclarationRoleTest {
                 pub greet: () Str
             }
             pub Kid: Base {
-                pub x: Int32 = 1
+                pub x: Int32 { 1 }
 
                 pub override greet: () Str {
                     "hi"

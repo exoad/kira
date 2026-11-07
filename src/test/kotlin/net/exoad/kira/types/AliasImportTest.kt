@@ -12,9 +12,9 @@ class AliasImportTest {
     private val units = module(
         "app:units",
         """
-        pub SCALE: Int32 = 100
+        pub SCALE: Int32 { 100 }
         pub Meter: Any {
-            pub n: Int32 = 0
+            pub n: Int32 { 0 }
         }
         pub bump: (v: Int32) Int32 {
             v + 1
@@ -26,7 +26,7 @@ class AliasImportTest {
 
     @Test
     fun aBareNameOfAnImportIsRefusedNamingBothFixes() {
-        val p = TyperTestSupport.type(units, main("app.units as units\n\nf: () Int32 {\n    m: Meter = Meter { }\n    bump(SCALE) + m.n\n}"))
+        val p = TyperTestSupport.type(units, main("app.units as units\n\nf: () Int32 {\n    m: Meter { }\n    bump(SCALE) + m.n\n}"))
         val bare = p.diagnostics.filter { it.code == "types.use.bare" }
         // The type (twice), the call and the value.
         assertEquals(4, bare.size, TyperTestSupport.render(p))
@@ -36,7 +36,7 @@ class AliasImportTest {
 
     @Test
     fun aMemberAliasOrTheQualifiedNameReachesIt() {
-        expectNoErrors(TyperTestSupport.type(units, main("app.units as units\napp.units.bump as bump\napp.units.Meter as Meter\n\nf: () Int32 {\n    m: Meter = Meter { }\n    bump(units.SCALE) + m.n\n}")))
+        expectNoErrors(TyperTestSupport.type(units, main("app.units as units\napp.units.bump as bump\napp.units.Meter as Meter\n\nf: () Int32 {\n    m: Meter { }\n    bump(units.SCALE) + m.n\n}")))
         // A member alias may name the thing anew.
         expectNoErrors(TyperTestSupport.type(units, main("app.units.bump as next\n\nf: () Int32 {\n    next(1)\n}")))
     }
@@ -55,7 +55,7 @@ class AliasImportTest {
             42.0
         }
         pub Ran: Any {
-            pub code: Int32 = 7
+            pub code: Int32 { 7 }
         }
         lerp: (a: Float64, b: Float64, t: Float64) Float64 {
             0.0
@@ -65,7 +65,7 @@ class AliasImportTest {
 
     @Test
     fun aBareNameAnImportAndTheStdlibBothHaveIsRefused() {
-        val text = "app.lib as lib\n\nf: () Float64 {\n    r: Ran = Ran { }\n    clamp(5.0, 0.0, 2.0) + r.code as Float64\n}\n"
+        val text = "app.lib as lib\n\nf: () Float64 {\n    r: Ran { }\n    clamp(5.0, 0.0, 2.0) + r.code as Float64\n}\n"
         val p = TyperTestSupport.type(shadows, main(text))
         val bare = p.diagnostics.filter { it.code == "types.use.bare" }
         // The type (twice) and the call: none of them silently the stdlib's.
@@ -110,7 +110,7 @@ class AliasImportTest {
     // A member alias's module counts as imported for its free operators, as a module alias's does.
     @Test
     fun theOperatorsOfAModuleNamedByAMemberAliasApply() {
-        val geo = module("app:geo", "pub V: Struct {\n    pub x: Int32 = 0\n}\n")
+        val geo = module("app:geo", "pub V: Struct {\n    pub x: Int32 { 0 }\n}\n")
         val ops = module("app:ops", "app.geo.V as V\n\npub @op_add: (a: V, b: V) V {\n    V { a.x + b.x }\n}\n\npub zero: () V {\n    V { }\n}\n")
         val p = TyperTestSupport.type(geo, ops, main("app.geo.V as V\napp.ops.zero as zero\n\nf: (a: V) V {\n    a + zero()\n}\n"))
         expectNoErrors(p)

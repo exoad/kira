@@ -110,7 +110,7 @@ class TyperPhaseTest {
 
     @Test
     fun structCannotInheritAClass() {
-        val unit = TyperTestSupport.unitOf(module("test:base", "pub Base: Any { pub n: Int32 = 0 }"))
+        val unit = TyperTestSupport.unitOf(module("test:base", "pub Base: Any { pub n: Int32 { 0 } }"))
         val struct = StructDecl(ty("S"), emptyList(), emptyList(), listOf(ty("Base")), null)
         val src = astModule(unit, "test:s", struct)
         src.ast = net.exoad.kira.compiler.frontend.parser.ast.RootASTNode(
@@ -180,7 +180,7 @@ class TyperPhaseTest {
 
     @Test
     fun aConstantNameInTypeArgumentPositionIsAConst() {
-        val p = snippet("pub LEN: Size = 2\npub Arr<UInt8, LEN> as Frame\nf: Frame = @arrOf(1, 2)")
+        val p = snippet("pub LEN: Size { 2 }\npub Arr<UInt8, LEN> as Frame\nf: Frame { @arrOf(1, 2) }")
         expectNoErrors(p)
         val frame = p.workspaceModules.single().members["f"] as GlobalSymbol
         assertEquals("Arr<UInt8, 2>", frame.type.display())
@@ -424,7 +424,7 @@ class TyperPhaseTest {
     @Test
     fun builtinNamesResolveWhetherOrNotTheStdlibDeclaresThem() {
         // Phases A and B alone: these initializers only carry the types; phase C would refuse them.
-        val absent = TyperTestSupport.phasesAAndB { snippet("v: View<UInt8> = 1\nr: Ref<Int32> = 1\nw: Weak<Str> = 1\nu: Unsafe<Int32> = 1\nm: MutView<Char> = 1") }
+        val absent = TyperTestSupport.phasesAAndB { snippet("v: View<UInt8> { 1 }\nr: Ref<Int32> { 1 }\nw: Weak<Str> { 1 }\nu: Unsafe<Int32> { 1 }\nm: MutView<Char> { 1 }") }
         expectNoErrors(absent)
         val view = (absent.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals("View<UInt8>", view.display())
@@ -433,7 +433,7 @@ class TyperPhaseTest {
         val declared = TyperTestSupport.phasesAAndB {
             TyperTestSupport.type(
                 module("kira:aaa", "pub @_magic View<T>: Any {\n    pub size: () Size\n}"),
-                module("test:main", "v: View<UInt8> = 1"),
+                module("test:main", "v: View<UInt8> { 1 }"),
             )
         }
         expectNoErrors(declared)
@@ -446,7 +446,7 @@ class TyperPhaseTest {
     @Test
     fun aUserTypeShadowsABuiltinName() {
         // Phases A and B alone: a class constant is not a compile-time value, which phase C reports.
-        val p = TyperTestSupport.phasesAAndB { snippet("pub View: Any { pub n: Int32 = 0 }\nv: View = View { }") }
+        val p = TyperTestSupport.phasesAAndB { snippet("pub View: Any { pub n: Int32 { 0 } }\nv: View { }") }
         expectNoErrors(p)
         val t = (p.member("test:main", "v") as GlobalSymbol).type as KType.Nominal
         assertEquals(ClassKind.CLASS, (t.sym as ClassSymbol).kind)
@@ -460,11 +460,11 @@ class TyperPhaseTest {
             namespaces = mapOf("firmware:lib.text" to "bibo::text", "firmware:pilot.src.bibowire.*" to "bibowire"),
         )
         val p = TyperTestSupport.type(
-            module("firmware:lib.text", "x: Int32 = 1"),
-            module("firmware:lib.chassis.cal", "x: Int32 = 1"),
-            module("firmware:pilot.src.scan", "x: Int32 = 1"),
-            module("firmware:pilot.src.bibowire.control", "x: Int32 = 1"),
-            module("firmware:pilot.src.proto", "x: Int32 = 1"),
+            module("firmware:lib.text", "x: Int32 { 1 }"),
+            module("firmware:lib.chassis.cal", "x: Int32 { 1 }"),
+            module("firmware:pilot.src.scan", "x: Int32 { 1 }"),
+            module("firmware:pilot.src.bibowire.control", "x: Int32 { 1 }"),
+            module("firmware:pilot.src.proto", "x: Int32 { 1 }"),
             options = options,
         )
         val text = p.module("firmware:lib.text")!!
@@ -501,7 +501,7 @@ class TyperPhaseTest {
             override fun type(program: TypedProgram) = throw IllegalStateException("boom")
         }
         try {
-            val p = snippet("x: Int32 = 1")
+            val p = snippet("x: Int32 { 1 }")
             val d = expectDiagnostic(p, "types.internal")
             assertTrue(d.message.contains("boom") && d.message.contains("body typing"), d.message)
             assertEquals(KType.INT32, (p.member("test:main", "x") as GlobalSymbol).type, "phases A and B still ran")
@@ -522,7 +522,7 @@ class TyperPhaseTest {
         }
         KiraTyper.rulePasses.add(pass)
         try {
-            val p = snippet("x: Int32 = 1")
+            val p = snippet("x: Int32 { 1 }")
             assertEquals(listOf("test:main"), seen)
             expectDiagnostic(p, "rules.probe.seen")
         } finally {
@@ -533,7 +533,7 @@ class TyperPhaseTest {
     @Test
     fun theExpressionDumpShowsFoldedConstants() {
         // Phases A and B alone: the type column stays `?` until phase C types the initializers.
-        val p = TyperTestSupport.phasesAAndB { snippet("pub LIMIT: Int32 = 2 + 3\npub NAME: Str = \"a\" + \"b\"") }
+        val p = TyperTestSupport.phasesAAndB { snippet("pub LIMIT: Int32 { 2 + 3 }\npub NAME: Str { \"a\" + \"b\" }") }
         val source = p.module("test:main")!!.source
         val dump = TypedModelDumper.dump(p, source)
         val lines = dump.lines()
@@ -590,7 +590,7 @@ class TyperPhaseTest {
 
     @Test
     fun fieldsKnowTheirOwnerAndIndex() {
-        val p = snippet("pub P: Mutable<Any> {\n    pub x: Int32\n    pub y: Mutable<Int32> = 2\n}")
+        val p = snippet("pub P: Mutable<Any> {\n    pub x: Int32\n    pub y: Mutable<Int32> { 2 }\n}")
         val cls = p.member("test:main", "P") as ClassSymbol
         val y: FieldSymbol = cls.field("y")!!
         assertSame(cls, y.owner)

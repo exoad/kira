@@ -29,7 +29,7 @@ class FunctionSyntaxTest {
                 a + b
             }
 
-            answer: Int32 = add(1, 2)
+            answer: Int32 { add(1, 2) }
             """,
             "test:fxsyntax.basic"
         )

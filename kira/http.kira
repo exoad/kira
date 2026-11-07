@@ -2,8 +2,8 @@
 
 // What a server answered: any status, a 404 or a 500 too, and its body.
 pub HttpReply: Struct {
-    pub status: Int32 = 0
-    pub body: List<UInt8> = @listOf()
+    pub status: Int32 { 0 }
+    pub body: List<UInt8> { @listOf() }
 }
 
 // urlopen(url) of an http or https URL, a redirect to any other scheme its 3xx reply: none when no reply came (no
@@ -23,19 +23,19 @@ pub @_magic queryFirst: (query: Str, key: Str) Maybe<Str>
 
 // One request to a server: path is the target as sent, its query included; host the Host header, "" without one.
 pub HttpRequest: Struct {
-    pub method: Str = ""
-    pub path: Str = ""
-    pub host: Str = ""
-    pub body: List<UInt8> = @listOf()
+    pub method: Str { "" }
+    pub path: Str { "" }
+    pub host: Str { "" }
+    pub body: List<UInt8> { @listOf() }
 }
 
 // What a handler answers: status 0 closes the connection unanswered, and 400 or more with no body is Python's error
 // page; else Content-Type, Content-Length, then headers in order. A program error: a status past 100..999, a header
 // that sets either of those two, and header text with a line break or past latin-1.
 pub HttpAnswer: Struct {
-    pub status: Int32 = 200
-    pub contentType: Str = "application/json"
-    pub body: List<UInt8> = @listOf()
+    pub status: Int32 { 200 }
+    pub contentType: Str { "application/json" }
+    pub body: List<UInt8> { @listOf() }
     pub headers: Map<Str, Str> { }
 }
 

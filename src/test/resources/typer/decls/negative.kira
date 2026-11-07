@@ -1,7 +1,7 @@
 // Each declaration below must give a diagnostic; the golden records code, place and message.
 
 // An unknown type.
-pub value: Missing = 1
+pub value: Missing { 1 }
 
 // An alias cycle, and an alias that only reaches one.
 pub Pong as Ping
@@ -14,10 +14,10 @@ pub twice: () Void { }
 
 // A type with two parents that hold state.
 pub First: Any {
-    pub a: Int32 = 0
+    pub a: Int32 { 0 }
 }
 pub Second: Any {
-    pub b: Int32 = 0
+    pub b: Int32 { 0 }
 }
 pub Both: First, Second { }
 

@@ -15,7 +15,7 @@ halves: (t: Suite, n: Int32, want: Int32) Void {
 }
 
 pub main: () Int32 {
-    t: Suite = Suite { title = "suite - kira:test on py" }
+    t: Suite { title = "suite - kira:test on py" }
     halves(t, 6, 3)
     halves(t, -7, -3)
     if args().size() > 1 {

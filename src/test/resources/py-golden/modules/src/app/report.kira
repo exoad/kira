@@ -21,10 +21,10 @@ golden.py.modules.app.ring as ring
 golden.py.modules.app.ring.HOPS as HOPS
 golden.py.modules.app.ring.isOdd as isOdd
 
-pub steps: Mutable<Int32> = 0
+pub steps: Mutable<Int32> { 0 }
 
 // app:ring's constant, read while this module loads, inside the cycle.
-WIDE: Int32 = HOPS * 10
+WIDE: Int32 { HOPS * 10 }
 
 pub isEven: (n: Int32) Bool {
     steps += 1
@@ -32,8 +32,8 @@ pub isEven: (n: Int32) Bool {
 }
 
 show: (xs: List<Int32>) Str {
-    s: Mutable<Str> = "["
-    i: Mutable<Size> = 0
+    s: Mutable<Str> { "[" }
+    i: Mutable<Size> { 0 }
     while i < xs.size() {
         if i > 0 {
             s = s + " "
@@ -56,13 +56,13 @@ main: () Void {
     trace(shown())
 
     // a class of another module, built here and there, its method writing both modules' globals
-    m: Mutable<Meter> = Meter { "here" }
+    m: Mutable<Meter> { Meter { "here" } }
     trace(m.read(3))
     trace(record(m, 4))
     trace(m.reads)
     trace(total)
     trace(calls)
-    f: Mutable<Meter> = fresh("there")
+    f: Mutable<Meter> { fresh("there") }
     trace(f.label)
     trace(record(f, 1))
     trace(f.reads)
@@ -74,11 +74,11 @@ main: () Void {
     trace(units.calls)
     seen.add(42)
     trace(show(seen))
-    mine: Mutable<List<Int32>> = List<Int32> { values = seen.toArr() }
+    mine: Mutable<List<Int32>> { values = seen.toArr() }
     mine.add(0)
     trace(show(seen))
     trace(show(mine))
-    t: Mutable<List<Int32>> = TABLE.view().toList()
+    t: Mutable<List<Int32>> { TABLE.view().toList() }
     t.add(9)
     trace(show(TABLE))
     trace(show(t))

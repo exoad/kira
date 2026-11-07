@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class MutableAcrossModulesTest {
     private val counter = """
         pub Counter: Mutable<Any> {
-            pub n: Mutable<Int32> = 0
+            pub n: Mutable<Int32> { 0 }
 
             pub bump: () Void {
                 n += 1
@@ -42,7 +42,7 @@ class MutableAcrossModulesTest {
     private fun shapes(tool: String) = tool + "\n\n" + """
         pub Shape: Any {
             pub Pen: Mutable<Tool> {
-                pub ink: Mutable<Int32> = 100
+                pub ink: Mutable<Int32> { 100 }
 
                 pub draw: (cost: Int32) Void {
                     ink -= cost
@@ -59,7 +59,7 @@ class MutableAcrossModulesTest {
                 }
             }
 
-            pub name: Str = "shape"
+            pub name: Str { "shape" }
         }
     """.trimIndent()
 
@@ -67,7 +67,7 @@ class MutableAcrossModulesTest {
     private val plainShapes = """
         pub Shape: Any {
             pub Pen: Mutable<Any> {
-                pub ink: Mutable<Int32> = 100
+                pub ink: Mutable<Int32> { 100 }
 
                 pub draw: (cost: Int32) Void {
                     ink -= cost
@@ -78,25 +78,25 @@ class MutableAcrossModulesTest {
                 }
             }
 
-            pub name: Str = "shape"
+            pub name: Str { "shape" }
         }
     """.trimIndent() + "\n"
 
     @Test
     fun aMutableTypeThroughAMemberAliasIsOneWhoseHoldersAndSubtypesSaySo() {
         val lib = module("app:counter", counter)
-        val held = TyperTestSupport.type(lib, module("app:main", "app.counter.Counter as Counter\n\nHolder: Any {\n    pub c: Counter = Counter { }\n}\n"))
+        val held = TyperTestSupport.type(lib, module("app:main", "app.counter.Counter as Counter\n\nHolder: Any {\n    pub c: Counter { }\n}\n"))
         assertContains(expectDiagnostic(held, "types.mutable.contagion").message, "'Holder' holds 'c', a Counter whose value changes")
-        val sub = TyperTestSupport.type(lib, module("app:main", "app.counter.Counter as Counter\n\nFancy: Counter {\n    pub tag: Str = \"x\"\n}\n"))
+        val sub = TyperTestSupport.type(lib, module("app:main", "app.counter.Counter as Counter\n\nFancy: Counter {\n    pub tag: Str { \"x\" }\n}\n"))
         assertContains(expectDiagnostic(sub, "types.mutable.restate").message, "'Fancy: Mutable<Counter>'")
         // Said so, both type; a function from the member alias changes the shared value it is given.
         val ok = TyperTestSupport.type(
             lib,
             module(
                 "app:main",
-                "app.counter.Counter as Counter\napp.counter.fill as fill\n\nHolder: Mutable<Any> {\n    pub c: Counter = Counter { }\n}\n\n" +
-                    "Fancy: Mutable<Counter> {\n    pub tag: Str = \"x\"\n}\n\nf: () Int32 {\n    h: Holder = Holder { }\n    h.c.bump()\n" +
-                    "    xs: List<Int32> = List<Int32> { }\n    fill(xs)\n    h.c.read() + (xs.size() as Int32)\n}\n",
+                "app.counter.Counter as Counter\napp.counter.fill as fill\n\nHolder: Mutable<Any> {\n    pub c: Counter { }\n}\n\n" +
+                    "Fancy: Mutable<Counter> {\n    pub tag: Str { \"x\" }\n}\n\nf: () Int32 {\n    h: Holder { }\n    h.c.bump()\n" +
+                    "    xs: List<Int32> { }\n    fill(xs)\n    h.c.read() + (xs.size() as Int32)\n}\n",
             ),
         )
         expectNoErrors(ok)
@@ -112,22 +112,22 @@ class MutableAcrossModulesTest {
             lib,
             module(
                 "app:main",
-                "app.shapes.Shape as Shape\n\nKit: Any {\n    pub pen: Shape.Pen = Shape.Pen { }\n}\n\nFine: Shape.Pen {\n    pub tip: Int32 = 1\n}\n",
+                "app.shapes.Shape as Shape\n\nKit: Any {\n    pub pen: Shape.Pen { Shape.Pen { } }\n}\n\nFine: Shape.Pen {\n    pub tip: Int32 { 1 }\n}\n",
             ),
         )
         assertContains(expectDiagnostic(p, "types.mutable.contagion").message, "'Kit' holds 'pen', a Shape.Pen whose value changes")
         assertContains(expectDiagnostic(p, "types.mutable.restate").message, "'Fine: Mutable<Shape.Pen>'")
         // Inside its outer type: the nested type by its program name, its declaration by its own.
-        val inner = TyperTestSupport.snippet("pub Shape: Any {\n    pub Bag: Any {\n        pub items: List<Int32> = List<Int32> { }\n    }\n}\n")
+        val inner = TyperTestSupport.snippet("pub Shape: Any {\n    pub Bag: Any {\n        pub items: List<Int32> { }\n    }\n}\n")
         val bag = expectDiagnostic(inner, "types.mutable.contagion").message
         assertContains(bag, "'Shape.Bag' holds 'items'")
         assertContains(bag, "declare 'Bag: Mutable<Any>'")
         assertFalse("Shape_" in bag, bag)
-        val sub = TyperTestSupport.snippet(shapes(tools) + "\n\npub Box: Any {\n    pub Wide: Shape.Pen {\n        pub w: Int32 = 2\n    }\n}\n")
+        val sub = TyperTestSupport.snippet(shapes(tools) + "\n\npub Box: Any {\n    pub Wide: Shape.Pen {\n        pub w: Int32 { 2 }\n    }\n}\n")
         val wide = expectDiagnostic(sub, "types.mutable.restate").message
         assertContains(wide, "'Box.Wide' is a subtype of the Mutable Shape.Pen")
         assertContains(wide, "'Wide: Mutable<Shape.Pen>'")
-        expectNoErrors(TyperTestSupport.type(lib, module("app:main", "app.shapes.Shape as Shape\n\nKit: Mutable<Any> {\n    pub pen: Shape.Pen = Shape.Pen { }\n}\n")))
+        expectNoErrors(TyperTestSupport.type(lib, module("app:main", "app.shapes.Shape as Shape\n\nKit: Mutable<Any> {\n    pub pen: Shape.Pen { Shape.Pen { } }\n}\n")))
         // A run-time test of Mutable<Tool> in a module that reaches Shape by a member alias: the nested Pen is what it asks.
         val asked = TyperTestSupport.type(module("app:tools", tools), module("app:shapes", shapes("app.tools.Tool as Tool")), module("app:main", changesMain))
         expectNoErrors(asked)
@@ -144,18 +144,18 @@ class MutableAcrossModulesTest {
             app.lib.shapes.Shape as Shape
 
             pub main: () Void {
-                c: Counter = Counter { }
-                d: Counter = c
+                c: Counter { }
+                d: Counter { c }
                 d.bump()
-                xs: List<Int32> = List<Int32> { }
+                xs: List<Int32> { }
                 fill(xs)
                 println("${'$'}{c.read()} ${'$'}{xs.size()}")
-                p: Shape.Pen = Shape.Pen { }
-                q: shapes.Shape.Pen = p
+                p: Shape.Pen { Shape.Pen { } }
+                q: shapes.Shape.Pen { p }
                 q.draw(30)
-                r: Shape.Pen = p with {
+                r: Shape.Pen { p with {
                     ink = ink - 5
-                }
+                } }
                 println("${'$'}{p.ink} ${'$'}{r.left()}")
             }
         """.trimIndent() + "\n"
@@ -176,11 +176,11 @@ class MutableAcrossModulesTest {
             val e = DeclTestSupport.emit(lib, DeclTestSupport.module("test:main", "test.lib.fill as fill\n\npub f: () Int32 {\n$body\n}\n"))
             e.diagnostics("test:main").filter { it.code == "cpp.unsupported" }.map { it.message }
         }
-        val plain = refused("    a: List<Int32> = @listOf(1, 2)\n    fill(a)\n    a.size() as Int32")
+        val plain = refused("    a: List<Int32> { @listOf(1, 2) }\n    fill(a)\n    a.size() as Int32")
         assertTrue(plain.any { it.contains("'a' passed to 'fill', which changes it, from a binding that is not Mutable") }, plain.toString())
-        val copied = refused("    a: Mutable<List<Int32>> = @listOf(1, 2)\n    b: Mutable<List<Int32>> = a\n    fill(b)\n    total: Size = a.size() + b.size()\n    total as Int32")
+        val copied = refused("    a: Mutable<List<Int32>> { @listOf(1, 2) }\n    b: Mutable<List<Int32>> { a }\n    fill(b)\n    total: Size { a.size() + b.size() }\n    total as Int32")
         assertTrue(copied.any { it.contains("copied from 'a' into 'b'") }, copied.toString())
-        assertEquals(emptyList(), refused("    a: Mutable<List<Int32>> = @listOf(1, 2)\n    fill(a)\n    a.size() as Int32"))
+        assertEquals(emptyList(), refused("    a: Mutable<List<Int32>> { @listOf(1, 2) }\n    fill(a)\n    a.size() as Int32"))
         // The nested Mutable type is a top-level class whose changing function is not const and whose reader is;
         // a run-time `== Mutable<Tool>` is lowered on py only, and C++ says so.
         val nested = DeclTestSupport.emit(
@@ -205,7 +205,7 @@ class MutableAcrossModulesTest {
     private fun project(files: Map<String, String>): File {
         val root = Files.createTempDirectory("mutable_modules").toFile()
         File(root, "project.kira").writeText(
-            "PROJECT: Project = Project { } with {\n    name = \"app\"\n    srcDir = \"src\"\n    target = \"py\"\n    types = \"strict\"\n" +
+            "PROJECT: Project { } with {\n    name = \"app\"\n    srcDir = \"src\"\n    target = \"py\"\n    types = \"strict\"\n" +
                 "    dependencies = @mapOf(\"kira_stdlib\", \"${File("kira").absoluteFile.path.replace('\\', '/')}\")\n}\n",
         )
         write(root, files)

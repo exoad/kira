@@ -19,12 +19,12 @@ class SemanticDeclarationTest {
     fun healthyVariablesWithBuiltinTypes() {
         assertHealthy(
             """
-            a: Int32 = 1
-            b: Int64 = 2
-            c: Float32 = 1.5
-            d: Float64 = 2.5
-            e: Bool = true
-            f: Str = "hello"
+            a: Int32 { 1 }
+            b: Int64 { 2 }
+            c: Float32 { 1.5 }
+            d: Float64 { 2.5 }
+            e: Bool { true }
+            f: Str { "hello" }
             g: Int32
             """
         )
@@ -89,11 +89,11 @@ class SemanticDeclarationTest {
         val results = analyzeMultiSource(
             listOf(
                 "test/semantic/other.kira" to """""" + "\n" + """
-                    pub OtherType: Any { pub n: Int32 = 0 }
+                    pub OtherType: Any { pub n: Int32 { 0 } }
                     """,
                 "test/semantic/basic.kira" to """""" + "\n" + """
                     test.semantic.other as other
-                    x: OtherType = OtherType { }
+                    x: OtherType { }
                     """,
             )
         )
@@ -107,8 +107,8 @@ class SemanticDeclarationTest {
     fun rejectsDuplicateVariableInSameScope() {
         val msgs = assertUnhealthy(
             """
-            x: Int32 = 1
-            x: Int32 = 2
+            x: Int32 { 1 }
+            x: Int32 { 2 }
             """
         )
         assertTrue(msgs.any { it.contains("already declared in this scope") }, msgs.toString())
@@ -134,8 +134,8 @@ class SemanticDeclarationTest {
         // class passes without a diagnostic.
         assertHealthy(
             """
-            pub Dup: Any { pub n: Int32 = 0 }
-            pub Dup: Any { pub n: Int32 = 0 }
+            pub Dup: Any { pub n: Int32 { 0 } }
+            pub Dup: Any { pub n: Int32 { 0 } }
             """
         )
     }
@@ -144,7 +144,7 @@ class SemanticDeclarationTest {
     fun rejectsClassAndTraitSharingAName() {
         val msgs = assertUnhealthy(
             """
-            pub Shared: Any { pub n: Int32 = 0 }
+            pub Shared: Any { pub n: Int32 { 0 } }
             pub Shared: Any { pub a: () Int32 }
             pub Impl: Shared { }
             """
@@ -156,7 +156,7 @@ class SemanticDeclarationTest {
     fun allowsSameVariableNameInNestedFunctionScope() {
         assertHealthy(
             """
-            x: Int32 = 1
+            x: Int32 { 1 }
 
             f: (x: Int32) Int32 {
                 x
@@ -169,7 +169,7 @@ class SemanticDeclarationTest {
     fun rejectsUnknownType() {
         val msgs = assertUnhealthy(
             """
-            x: MissingType = 1
+            x: MissingType { 1 }
             """
         )
         assertTrue(msgs.any { it.contains("The type 'MissingType' was not found") }, msgs.toString())
@@ -182,7 +182,7 @@ class SemanticDeclarationTest {
         // still return a healthy result rather than crashing.
         val results = analyze(
             """
-            x: Int32 = notDefined(1)
+            x: Int32 { notDefined(1) }
             """
         )
         assertNotNull(results)

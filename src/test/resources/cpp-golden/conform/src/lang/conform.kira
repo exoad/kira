@@ -38,14 +38,14 @@ pub Animal: Any {
 }
 
 pub Dog: Animal {
-    pub tricks: Int32 = 2
+    pub tricks: Int32 { 2 }
 
     override pub sound: () Str {
         "woof"
     }
 }
 
-pub made: Mutable<Int32> = 0
+pub made: Mutable<Int32> { 0 }
 
 pub make: (r: Int32) Shape {
     made += 1
@@ -84,7 +84,7 @@ pub smallOrNot: (s: Shape) Bool {
 
 // An if-expression's arms.
 pub radiusOr: (s: Shape) Int32 {
-    r: Int32 = s == Circle ? s.radius + 0 : 0
+    r: Int32 { s == Circle ? s.radius + 0 : 0 }
     r
 }
 
@@ -95,7 +95,7 @@ pub tricks: (a: Maybe<Animal>) Int32 {
 
 // In a loop, after a `continue`.
 pub radii: (xs: List<Shape>) Int32 {
-    total: Mutable<Int32> = 0
+    total: Mutable<Int32> { 0 }
     for s: Shape in xs {
         if s != Circle {
             continue

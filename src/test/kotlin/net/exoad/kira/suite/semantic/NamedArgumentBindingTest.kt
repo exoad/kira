@@ -19,9 +19,9 @@ class NamedArgumentBindingTest {
             }
 
             main: () Void {
-                x: Int32 = sub(b = 3, a = 10)
-                y: Int32 = sub(10, b = 3)
-                e: Esc = Esc { 0 }
+                x: Int32 { sub(b = 3, a = 10) }
+                y: Int32 { sub(10, b = 3) }
+                e: Esc { Esc { 0 } }
                 e.set(scale = 2, v = 1)
             }
             """
@@ -35,7 +35,7 @@ class NamedArgumentBindingTest {
             sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
-                x: Int32 = sub(a = 10, c = 3)
+                x: Int32 { sub(a = 10, c = 3) }
             }
             """
         )
@@ -49,7 +49,7 @@ class NamedArgumentBindingTest {
             sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
-                x: Int32 = sub(10, a = 3)
+                x: Int32 { sub(10, a = 3) }
             }
             """
         )
@@ -59,7 +59,7 @@ class NamedArgumentBindingTest {
             sub: (a: Int32, b: Int32) Int32 { a - b }
 
             main: () Void {
-                x: Int32 = sub(b = 3)
+                x: Int32 { sub(b = 3) }
             }
             """
         )
@@ -72,17 +72,17 @@ class NamedArgumentBindingTest {
         assertHealthy(
             """
             main: () Void {
-                v: List<UInt8> = @listOf(104, 105)
+                v: List<UInt8> { @listOf(104, 105) }
                 trace(Str.of(bytes = v))
-                r: Result<Int32, Str> = Result.success(value = 5)
-                e: Result<Int32, Str> = Result.error(value = "no")
+                r: Result<Int32, Str> { Result.success(value = 5) }
+                e: Result<Int32, Str> { Result.error(value = "no") }
             }
             """
         )
         val msgs = assertUnhealthy(
             """
             main: () Void {
-                v: List<UInt8> = @listOf(104, 105)
+                v: List<UInt8> { @listOf(104, 105) }
                 trace(Str.of(text = v))
             }
             """
@@ -98,7 +98,7 @@ class NamedArgumentBindingTest {
         val msgs = assertUnhealthy(
             """
             main: () Void {
-                x: Int32 = mystery(a = 1)
+                x: Int32 { mystery(a = 1) }
             }
             """
         )

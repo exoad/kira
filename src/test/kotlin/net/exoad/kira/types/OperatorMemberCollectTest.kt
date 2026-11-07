@@ -37,11 +37,11 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub V2: Any {
-                    pub x: Float32 = 0.0
+                    pub x: Float32 { 0.0 }
                     pub @_op_add_: (other: V2) V2 { V2 { x + other.x } }
                 }
                 apply: (a: V2, b: V2) Void {
-                    c: V2 = a.@_op_add_(b)
+                    c: V2 { a.@_op_add_(b) }
                 }
                 """
             )
@@ -55,7 +55,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub V2: Any {
-                    pub x: Float32 = 0.0
+                    pub x: Float32 { 0.0 }
                     pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
                 """
@@ -98,7 +98,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub V2: Any {
-                    pub x: Float32 = 0.0
+                    pub x: Float32 { 0.0 }
                     pub @_op_add_: (other: V2) V2 { V2 { x } }
                     pub @_op_add_: (other: V2) V2 { V2 { x } }
                 }
@@ -129,7 +129,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub n: Int32 = 0
+                    pub n: Int32 { 0 }
                     pub @_op_eq_: (other: Base) Bool { true }
                 }
                 pub Leaf: Base {
@@ -187,7 +187,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub V2: Any {
-                    pub x: Float32 = 0.0
+                    pub x: Float32 { 0.0 }
                 }
                 pub @_op_add_: (a: V2, b: V2) V2 {
                     V2 { a.x + b.x }
@@ -1038,7 +1038,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub final Base: Any {
-                    pub x: Int32 = 0
+                    pub x: Int32 { 0 }
                 }
                 pub Leaf: Base {
                 }
@@ -1054,7 +1054,7 @@ class OperatorMemberCollectTest {
             snippet(
                 """
                 pub Base: Any {
-                    pub x: Int32 = 0
+                    pub x: Int32 { 0 }
                 }
                 pub Leaf: Base {
                 }

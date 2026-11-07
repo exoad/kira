@@ -11,25 +11,25 @@ kira.sync as sync
 @_extern stopServing: () Void
 
 pub main: () Void {
-    a: List<Str> = args()
-    served: Atomic<Int32> = Atomic<Int32> { value = 0 }
-    port: Int32 = serveLines((line: Str) Str {
+    a: List<Str> { args() }
+    served: Atomic<Int32> { value = 0 }
+    port: Int32 { serveLines((line: Str) Str {
         if line == "boom" {
             throw "a handler threw on ${line}"
         }
         served.add(1)
         line.toUpper()
-    })
+    }) }
     if a.size() > 1 {
-        line: Str = a[1]
+        line: Str { a[1] }
         println("talking")
         println(talk(port, @listOf(line)).joinToString(" "))
     }
-    replies: Mutex<List<Str>> = Mutex<List<Str>> { value = List<Str> { } }
-    clients: Mutable<List<Thread>> = List<Thread> { }
+    replies: Mutex<List<Str>> { value = List<Str> { } }
+    clients: Mutable<List<Thread>> { }
     for c: Int32 in 0.until(3) {
         clients.add(spawn("client ${c}", () Void {
-            got: List<Str> = talk(port, @listOf("c${c} one", "c${c} two"))
+            got: List<Str> { talk(port, @listOf("c${c} one", "c${c} two")) }
             replies.lock((all: List<Str>) Void {
                 all.add(got.joinToString(" | "))
             })

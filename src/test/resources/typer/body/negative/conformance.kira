@@ -29,7 +29,7 @@ pub Box<T>: Shape {
 }
 
 pub Pt: Struct {
-    pub x: Int32 = 0
+    pub x: Int32 { 0 }
 }
 
 pub same<T>: (v: T) Bool {
@@ -37,13 +37,13 @@ pub same<T>: (v: T) Bool {
 }
 
 pub never: (s: Shape, c: Circle, i: Int32, p: Pt, f: (x: Int32) Int32) Void {
-    a: Bool = i == Str                     // @error types.conform.never
-    b: Bool = c == Square                  // @error types.conform.never
-    d: Bool = s == Pt                      // @error types.conform.never
-    e: Bool = p == Shape                   // @error types.conform.never
-    g: Bool = f == (Int32) Str             // @error types.conform.never
-    h: Bool = s == Box<Int32>              // @error types.conform.args
-    k: Bool = i == Void                    // @error types.conform.unsupported
+    a: Bool { i == Str }                     // @error types.conform.never
+    b: Bool { c == Square }                  // @error types.conform.never
+    d: Bool { s == Pt }                      // @error types.conform.never
+    e: Bool { p == Shape }                   // @error types.conform.never
+    g: Bool { f == (Int32) Str }             // @error types.conform.never
+    h: Bool { s == Box<Int32> }              // @error types.conform.args
+    k: Bool { i == Void }                    // @error types.conform.unsupported
 }
 
 // An if whose block can end without leaving proves nothing after it, nor does one that leaves on one path.
@@ -51,9 +51,9 @@ pub notAfter: (s: Shape, m: Maybe<Int32>, k: Int32) Int32 {
     if m != Int32 {
         trace(0)
     }
-    v: Int32 = m                           // @error types.assign.mismatch
-    result: Mutable<Int32> = 0
-    found: Mutable<Bool> = false
+    v: Int32 { m }                           // @error types.assign.mismatch
+    result: Mutable<Int32> { 0 }
+    found: Mutable<Bool> { false }
     if s != Circle {
         if k > 0 {
             result = 0

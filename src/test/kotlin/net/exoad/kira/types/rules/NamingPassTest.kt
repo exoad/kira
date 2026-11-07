@@ -18,16 +18,16 @@ class NamingPassTest {
         expectClean(
             snippet(
                 """
-                pub MAX_SIZE: Int32 = 3
-                pub counter: Mutable<Int32> = 0
-                pub BUF: Mutable<Arr<UInt8, 2>> = @arrOf(0, 0)
+                pub MAX_SIZE: Int32 { 3 }
+                pub counter: Mutable<Int32> { 0 }
+                pub BUF: Mutable<Arr<UInt8, 2>> { @arrOf(0, 0) }
                 pub Comparable<T>: Any {
                     pub compareTo: (other: T) Int32
                 }
                 pub HttpClient: Mutable<Any> {
-                    pub retryCount: Mutable<Int32> = 0
+                    pub retryCount: Mutable<Int32> { 0 }
                     pub fetchAll: (maxItems: Int32) Int32 {
-                        totalCount: Int32 = maxItems
+                        totalCount: Int32 { maxItems }
                         for i: Int32 in 0..totalCount {
                         }
                         totalCount
@@ -46,7 +46,7 @@ class NamingPassTest {
                 """
                 pub @_extern(cpp = "ext::ReadBytes", header = "ext.hxx") ReadBytes: () Int32
                 pub V2: Struct {
-                    pub x: Int32 = 0
+                    pub x: Int32 { 0 }
                 }
                 pub @op_add: (a: V2, b: V2) V2 {
                     V2 { a.x + b.x }
@@ -70,13 +70,13 @@ class NamingPassTest {
         val p = snippet(
             """
             pub Point: Any {
-                pub Xpos: Int32 = 0
+                pub Xpos: Int32 { 0 }
             }
             pub Comparable<t>: Any {
                 pub CompareTo: (Other: t) Int32
             }
             pub DoThing: (Value: Int32) Int32 {
-                MyVar: Int32 = Value
+                MyVar: Int32 { Value }
                 for Idx: Int32 in 0..MyVar {
                 }
                 MyVar
@@ -96,7 +96,7 @@ class NamingPassTest {
         )
         assertTrue(p.diagnostics.any { it.message.contains("did you mean 'doThing'") }, p.diagnostics.joinToString("\n") { it.render() })
         // A type's name is PascalCase or it declares no type: `point: Any { }` is refused as it parses.
-        val e = assertThrows<net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException> { snippet("pub point: Any {\n    pub x: Int32 = 0\n}") }
+        val e = assertThrows<net.exoad.kira.compiler.analysis.diagnostics.DiagnosticsException> { snippet("pub point: Any {\n    pub x: Int32 { 0 }\n}") }
         assertEquals("parse.type.name", e.tag)
         assertTrue(p.diagnostics.any { it.message.contains("did you mean 'myVar'") })
     }
@@ -105,8 +105,8 @@ class NamingPassTest {
     fun constantsAreUpperSnake() {
         val p = snippet(
             """
-            pub maxSize: Int32 = 3
-            pub Limit: Int32 = 4
+            pub maxSize: Int32 { 3 }
+            pub Limit: Int32 { 4 }
             """,
         )
         assertEquals(listOf("rules.naming.constant", "rules.naming.constant"), warnings(p))

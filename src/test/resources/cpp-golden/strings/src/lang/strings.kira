@@ -2,8 +2,8 @@
 // number's text is locale-free, so a process that set a comma-decimal locale
 // still prints 2.5 and parses "2.50".
 
-pub MOOD_CALM: Int32 = 0
-pub MOOD_BUSY: Int32 = 1
+pub MOOD_CALM: Int32 { 0 }
+pub MOOD_BUSY: Int32 { 1 }
 
 pub greet: (name: Str, n: Int32) Str {
     "hello ${name}, you are ${n}"

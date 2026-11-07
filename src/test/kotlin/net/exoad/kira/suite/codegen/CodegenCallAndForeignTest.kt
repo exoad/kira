@@ -52,7 +52,7 @@ class CodegenCallAndForeignTest {
             @_extern("fopen") openFile: (path: Str) FileHandle
 
             main: () Int32 {
-                h: FileHandle = openFile("x")
+                h: FileHandle { openFile("x") }
                 0
             }
             """
@@ -65,7 +65,7 @@ class CodegenCallAndForeignTest {
 
     @Test
     fun magicClassesAreNotEmittedAsUserStructs() {
-        val output = emit("x: Int32 = 1")
+        val output = emit("x: Int32 { 1 }")
         // The stdlib declares @_magic classes; they must not appear as structs.
         assertFalse(output.contains("struct Int32"), output)
         assertFalse(output.contains("struct Str"), output)

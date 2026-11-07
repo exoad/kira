@@ -29,9 +29,9 @@ pub main: () Int32 {
 
 // Infinity and NaN from a zero no compiler sees, as MSVC refuses a constant 0.0 / 0.0.
 checks: (zero: Float64) Int32 {
-    t: Suite = Suite { title = "mathplus - kira:math hypot, atan2, exp and floorMod" }
-    inf: Float64 = 1.0 / zero
-    nan: Float64 = zero / zero
+    t: Suite { title = "mathplus - kira:math hypot, atan2, exp and floorMod" }
+    inf: Float64 { 1.0 / zero }
+    nan: Float64 { zero / zero }
     t.checkStr(shown(hypot(3.0, 4.0)), "5", "hypot(3, 4)")
     t.checkStr(shown(hypot(-5.0, 12.0)), "13", "hypot(-5, 12)")
     t.checkStr(shown(hypot(0.0, -0.0)), "0", "hypot of zeros")

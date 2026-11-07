@@ -21,8 +21,8 @@ class NamespaceCollisionTest {
     private val util = DeclTestSupport.module(
         "test:util",
         """
-        pub LIMIT: Int32 = 1
-        pub Pt: Struct { pub x: Int32 = 0 }
+        pub LIMIT: Int32 { 1 }
+        pub Pt: Struct { pub x: Int32 { 0 } }
         """,
     )
 
@@ -30,10 +30,10 @@ class NamespaceCollisionTest {
         "test:other",
         """
         $uses
-        LIMIT: Int32 = 2
-        counter: Mutable<Int32> = LIMIT
-        Pt: Struct { pub y: Int32 = 0 }
-        p: Mutable<Pt> = Pt {}
+        LIMIT: Int32 { 2 }
+        counter: Mutable<Int32> { LIMIT }
+        Pt: Struct { pub y: Int32 { 0 } }
+        p: Mutable<Pt> {}
         pub get: () Int32
         """,
     )
@@ -45,18 +45,18 @@ class NamespaceCollisionTest {
         val util = DeclTestSupport.module(
             "test:util",
             """
-            pub LIMIT: Int32 = 1
-            pub Pt: Struct { pub x: Int32 = 0 }
-            pub ONLY_HERE: Int32 = 3
-            hidden: Int32 = 4
+            pub LIMIT: Int32 { 1 }
+            pub Pt: Struct { pub x: Int32 { 0 } }
+            pub ONLY_HERE: Int32 { 3 }
+            hidden: Int32 { 4 }
             """,
         )
         val other = DeclTestSupport.module(
             "test:other",
             """
-            pub LIMIT: Int32 = 2
+            pub LIMIT: Int32 { 2 }
             pub Pt: () Int32
-            hidden: Int32 = 5
+            hidden: Int32 { 5 }
             """,
         )
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:util" to "shared", "test:other" to "shared"))
@@ -77,7 +77,7 @@ class NamespaceCollisionTest {
     @Test
     fun aNestedNamespaceCollidesWithADeclarationOfItsName() {
         val a = DeclTestSupport.module("test:a", "pub text: () Int32 {\n    1\n}")
-        val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 = 1")
+        val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 { 1 }")
         val options = CppOptions(lineDirectives = false, namespaces = mapOf("test:a" to "bibo", "test:b" to "bibo::text"))
         val emitted = DeclTestSupport.emit(a, b, options = options)
         val inA = emitted.diagnostics("test:a").filter { it.code == CppNamespaceCollisions.CODE }
@@ -91,9 +91,9 @@ class NamespaceCollisionTest {
         val util = DeclTestSupport.module(
             "test:util",
             """
-            pub LIMIT: Int32 = 1
-            pub Pt: Struct { pub x: Int32 = 0 }
-            hidden: Int32 = 4
+            pub LIMIT: Int32 { 1 }
+            pub Pt: Struct { pub x: Int32 { 0 } }
+            hidden: Int32 { 4 }
             """,
         )
         val other = DeclTestSupport.module(
@@ -102,9 +102,9 @@ class NamespaceCollisionTest {
             test.util as util
             test.util.Pt as Pt
 
-            LIMIT: Int32 = 2
-            counter: Mutable<Int32> = LIMIT
-            hidden: Int32 = 5
+            LIMIT: Int32 { 2 }
+            counter: Mutable<Int32> { LIMIT }
+            hidden: Int32 { 5 }
             pub get: (p: Pt) Int32
             """,
         )
@@ -169,7 +169,7 @@ class NamespaceCollisionTest {
     // A member alias's line includes its module's header as a module alias's does.
     @Test
     fun aPrivateNameMeetsAnExportedOneReachedOnlyThroughAMemberAlias() {
-        val viaMember = DeclTestSupport.module("test:other", "test.util.Pt as Point\nLIMIT: Int32 = 2\ncounter: Mutable<Int32> = LIMIT\nat: Mutable<Point> = Point {}\npub get: () Int32")
+        val viaMember = DeclTestSupport.module("test:other", "test.util.Pt as Point\nLIMIT: Int32 { 2 }\ncounter: Mutable<Int32> { LIMIT }\nat: Mutable<Point> {}\npub get: () Int32")
         val emitted = DeclTestSupport.emit(util, viaMember, options = CppOptions(lineDirectives = false, namespaces = shared))
         val inOther = emitted.diagnostics("test:other").filter { it.code == CppNamespaceCollisions.CODE }
         val inUtil = emitted.diagnostics("test:util").filter { it.code == CppNamespaceCollisions.CODE }
@@ -185,7 +185,7 @@ class NamespaceCollisionTest {
             """
             test.util as util
             test.util.Pt as Pt
-            pub Wrap: Struct { pub at: Pt = Pt {} }
+            pub Wrap: Struct { pub at: Pt {} }
             """,
         )
         val emitted = DeclTestSupport.emit(util, mid, other("test.mid as mid"), options = CppOptions(lineDirectives = false, namespaces = shared))
@@ -196,8 +196,8 @@ class NamespaceCollisionTest {
         assertTrue(emitted.diagnostics("test:mid").none { it.code == CppNamespaceCollisions.CODE }, emitted.render(emitted.diagnostics("test:mid")))
         // the reverse direction reaches nothing: util uses nobody, so its exported names meet no private one of mid
         val reversed = DeclTestSupport.emit(
-            DeclTestSupport.module("test:util", "pub LIMIT: Int32 = 1\nhelper: Int32 = 3\npub Pt: Struct { pub x: Int32 = 0 }"),
-            DeclTestSupport.module("test:mid", "test.util as util\ntest.util.Pt as Pt\npub Wrap: Struct { pub at: Pt = Pt {} }\nhelper: Mutable<Int32> = 4\npub go: () Void"),
+            DeclTestSupport.module("test:util", "pub LIMIT: Int32 { 1 }\nhelper: Int32 { 3 }\npub Pt: Struct { pub x: Int32 { 0 } }"),
+            DeclTestSupport.module("test:mid", "test.util as util\ntest.util.Pt as Pt\npub Wrap: Struct { pub at: Pt {} }\nhelper: Mutable<Int32> { 4 }\npub go: () Void"),
             options = CppOptions(lineDirectives = false, namespaces = shared),
         )
         // util's private helper and mid's private helper are two anonymous namespaces
@@ -207,9 +207,9 @@ class NamespaceCollisionTest {
 
     @Test
     fun aPrivateNameBesideANestedNamespaceSegmentMeetsItOnlyWhenReached() {
-        val inner = DeclTestSupport.module("test:inner", "pub DEPTH: Int32 = 1")
+        val inner = DeclTestSupport.module("test:inner", "pub DEPTH: Int32 { 1 }")
         val outer = { uses: String ->
-            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 = 2\nn: Mutable<Int32> = util\npub go: () Void")
+            DeclTestSupport.module("test:outer", "$uses\nutil: Int32 { 2 }\nn: Mutable<Int32> { util }\npub go: () Void")
         }
         val ns = mapOf("test:inner" to "shared::util", "test:outer" to "shared")
         val apart = DeclTestSupport.emit(inner, outer(""), options = CppOptions(lineDirectives = false, namespaces = ns))
@@ -222,8 +222,8 @@ class NamespaceCollisionTest {
 
     @Test
     fun twoExportedNamesInOneNamespaceCollideWithoutAnyUse() {
-        val a = DeclTestSupport.module("test:a", "pub LIMIT: Int32 = 1")
-        val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 = 2")
+        val a = DeclTestSupport.module("test:a", "pub LIMIT: Int32 { 1 }")
+        val b = DeclTestSupport.module("test:b", "pub LIMIT: Int32 { 2 }")
         val emitted = DeclTestSupport.emit(a, b, options = CppOptions(lineDirectives = false, namespaces = mapOf("test:a" to "shared", "test:b" to "shared")))
         assertEquals(listOf("LIMIT"), emitted.diagnostics("test:a").filter { it.code == CppNamespaceCollisions.CODE }.map(::named))
         assertEquals(listOf("LIMIT"), emitted.diagnostics("test:b").filter { it.code == CppNamespaceCollisions.CODE }.map(::named))

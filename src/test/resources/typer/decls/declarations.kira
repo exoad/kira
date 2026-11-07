@@ -2,21 +2,21 @@
 // with bounds, aliases (generic and nested), constant
 // folding, trait flattening with default bodies, and overrides through a superclass and a trait.
 
-pub LIMIT: Int32 = 10
-pub MASK: UInt32 = 4294967295
-pub SHIFTED: Int64 = 1 << 40
-pub HALF: Float32 = 0.5
-pub SCALE: Float64 = HALF_D * 4.0
-HALF_D: Float64 = 0.25
-pub GREETING: Str = "hello, " + "kira"
-pub READY: Bool = LIMIT > 5 && !false
-pub WIDTH: Size = 32
-pub SMALL: Int8 = -128
-pub PRIMES: Arr<Int32> = @arrOf(2, 3, 5, 7)
-pub FIXED: Arr<UInt8, LEN> = @arrOf(1, 2, 3, 4)
-LEN: Size = 4
-pub counter: Mutable<Int32> = 0
-pub nowhere: Maybe<Int32> = null
+pub LIMIT: Int32 { 10 }
+pub MASK: UInt32 { 4294967295 }
+pub SHIFTED: Int64 { 1 << 40 }
+pub HALF: Float32 { 0.5 }
+pub SCALE: Float64 { HALF_D * 4.0 }
+HALF_D: Float64 { 0.25 }
+pub GREETING: Str { "hello, " + "kira" }
+pub READY: Bool { LIMIT > 5 && !false }
+pub WIDTH: Size { 32 }
+pub SMALL: Int8 { -128 }
+pub PRIMES: Arr<Int32> { @arrOf(2, 3, 5, 7) }
+pub FIXED: Arr<UInt8, LEN> { @arrOf(1, 2, 3, 4) }
+LEN: Size { 4 }
+pub counter: Mutable<Int32> { 0 }
+pub nowhere: Maybe<Int32> { null }
 
 pub Int64 as Id
 pub T2<A, B> as Pair<A, B>
@@ -44,7 +44,7 @@ pub Keyed<K>: Any {
 
 pub Animal: Mutable<Any> {
     pub name: Str
-    pub age: Mutable<Int32> = 0
+    pub age: Mutable<Int32> { 0 }
 
     pub describe: () Str {
         name

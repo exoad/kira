@@ -3,11 +3,11 @@
 // and takes NaN to 0 (R13); / and % by a value that is not a constant are
 // checked (R11). Only the paths that do not fail can be golden.
 
-pub BIG: Int64 = 5000000000
-pub MASK: UInt32 = 0xFFFFFFFF
-pub HALF: Float32 = 0.5
-pub TICK: Size = 1000
-pub BYTE: UInt8 = 200
+pub BIG: Int64 { 5000000000 }
+pub MASK: UInt32 { 0xFFFFFFFF }
+pub HALF: Float32 { 0.5 }
+pub TICK: Size { 1000 }
+pub BYTE: UInt8 { 200 }
 
 pub wrapAdd: (a: UInt8, b: UInt8) UInt8 {
     a + b
@@ -45,12 +45,12 @@ pub ticksIn: (n: Size) Size {
 
 // bibo's fixed3: the literals take v's type, so this is Float32 arithmetic.
 pub fixed3: (value: Float32) Str {
-    neg: Bool = value < 0.0
-    v: Float32 = neg ? -value : value
-    scaled: Int32 = (v * 1000.0 + 0.5) as Int32
-    whole: Int32 = scaled / 1000
-    frac: Int32 = scaled % 1000
-    sign: Str = neg ? "-" : ""
+    neg: Bool { value < 0.0 }
+    v: Float32 { neg ? -value : value }
+    scaled: Int32 { (v * 1000.0 + 0.5) as Int32 }
+    whole: Int32 { scaled / 1000 }
+    frac: Int32 { scaled % 1000 }
+    sign: Str { neg ? "-" : "" }
     "${sign}${whole}.${(frac as Str).padStart(3, '0')}"
 }
 

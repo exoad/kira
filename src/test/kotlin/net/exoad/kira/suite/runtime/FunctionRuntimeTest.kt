@@ -21,7 +21,7 @@ class FunctionRuntimeTest {
         assertStdout("5\n") {
             """
             main: () Void {
-                a: Int32 = 1 + 2 * 3 - 4 / 2
+                a: Int32 { 1 + 2 * 3 - 4 / 2 }
                 trace(a)
             }
             """

@@ -121,12 +121,12 @@ class CppCliTest {
         val dir = tempProject("decl-only", target = "cpp")
         File(dir, "src/app/main.kira").writeText(
             """
-            pub LIMIT: Int32 = 5
-            pub MODE_A: Int32 = 0
+            pub LIMIT: Int32 { 5 }
+            pub MODE_A: Int32 { 0 }
             pub Cfg: Struct {
-                pub mode: Int32 = MODE_A
-                pub limit: Int32 = LIMIT
-                pub hint: Maybe<Int32> = null
+                pub mode: Int32 { MODE_A }
+                pub limit: Int32 { LIMIT }
+                pub hint: Maybe<Int32> { null }
             }
             pub apply: (c: Cfg, by: Int32 = LIMIT) Int32
             """.trimIndent()

@@ -51,21 +51,21 @@ pub namedOf: (m: Match, name: Str) Maybe<Str> {
 }
 
 pub span: (m: Match) List<Size> {
-    out: Mutable<List<Size>> = @listOf()
+    out: Mutable<List<Size>> { @listOf() }
     out.add(m.start())
     out.add(m.end())
     out
 }
 
 pub main: () Int32 {
-    t: Suite = Suite { title = "regexes - kira:regex on py" }
-    r: Regex = compile("(?P<word>[a-z]+)(\\d)?", IGNORE_CASE).value
-    hit: Match = r.search("-- Abc7 x").value
+    t: Suite { title = "regexes - kira:regex on py" }
+    r: Regex { compile("(?P<word>[a-z]+)(\\d)?", IGNORE_CASE).value }
+    hit: Match { r.search("-- Abc7 x").value }
     t.checkStr(hit.group(0).unwrapOr("none") + " " + hit.groupNamed("word").unwrapOr("none") + " " + hit.group(2).unwrapOr("none"), "Abc7 Abc 7", "search finds a match and its groups")
     t.check(hit.start() == 3 && hit.end() == 7, "at its offsets")
     t.check(r.search("xy").value.group(2).isNone(), "a group that took no part is none")
     t.check(r.matchStart("-- a").isNone() && r.matchAt("-- a", 3).isSome() && r.fullMatch("ab1").isSome() && r.fullMatch("ab1 ").isNone(), "matchStart, matchAt and fullMatch anchor")
-    lines: Regex = compile("^\\w+$", MULTILINE).value
+    lines: Regex { compile("^\\w+$", MULTILINE).value }
     t.check(lines.findIter("one\ntwo\n3 x").size() == 2, "MULTILINE: ^ and $ at each line")
     t.check(compile("^b", 0).value.matchAt("ab", 1).isNone(), "^ in matchAt is still the text's start")
     t.checkStr(compile("<(\\w+)>", 0).value.findAll("<a> <bc> <>").joinToString(","), "a,bc", "findAll gives the one group")

@@ -13,7 +13,7 @@ class CodegenControlFlowTest {
         val output = emit(
             """
             main: () Void {
-                x: Int32 = 2
+                x: Int32 { 2 }
                 if x == 1 {
                     trace("one")
                 } else {
@@ -33,7 +33,7 @@ class CodegenControlFlowTest {
         val output = emit(
             """
             main: () Void {
-                i: Mutable<Int32> = 0
+                i: Mutable<Int32> { 0 }
                 while i < 3 {
                     i = i + 1
                 }
@@ -66,7 +66,7 @@ class CodegenControlFlowTest {
         val output = emit(
             """
             main: () Void {
-                a: Mutable<Int32> = 1
+                a: Mutable<Int32> { 1 }
                 a += 2
             }
             """

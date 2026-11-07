@@ -6,12 +6,12 @@
 // of these against the hand-written ones.
 
 pub Link: Mutable<Any> {
-    pub connected: Mutable<Bool> = false
-    pub ssid: Mutable<Str> = ""
-    pub freqMhz: Mutable<Maybe<Int64>> = null
-    pub dbm: Mutable<Maybe<Int64>> = null
-    pub txMbps: Mutable<Maybe<Float64>> = null
-    pub rxMbps: Mutable<Maybe<Float64>> = null
+    pub connected: Mutable<Bool> { false }
+    pub ssid: Mutable<Str> { "" }
+    pub freqMhz: Mutable<Maybe<Int64>> { null }
+    pub dbm: Mutable<Maybe<Int64>> { null }
+    pub txMbps: Mutable<Maybe<Float64>> { null }
+    pub rxMbps: Mutable<Maybe<Float64>> { null }
 }
 
 space: (c: Char) Bool {
@@ -24,7 +24,7 @@ digit: (c: Char) Bool {
 
 // Where s stops being whitespace from `at` on.
 skipSpace: (s: Str, at: Size) Size {
-    i: Mutable<Size> = at
+    i: Mutable<Size> { at }
     while i < s.length() && space(s[i]) {
         i += 1
     }
@@ -36,7 +36,7 @@ lstrip: (s: Str) Str {
 }
 
 rstrip: (s: Str) Str {
-    n: Mutable<Size> = s.length()
+    n: Mutable<Size> { s.length() }
     while n > 0 && space(s[n - 1]) {
         n -= 1
     }
@@ -53,7 +53,7 @@ allSpace: (s: Str) Bool {
 
 // The digits at the start of s (\d+ over ASCII), "" for none.
 digitsAt: (s: Str) Str {
-    n: Mutable<Size> = 0
+    n: Mutable<Size> { 0 }
     while n < s.length() && digit(s[n]) {
         n += 1
     }
@@ -63,8 +63,8 @@ digitsAt: (s: Str) Str {
 // The rest of the first line whose start, after whitespace, is `key` and whose rest `value`
 // takes: "^\s*<key><value>" with re.M, and the line's rest after the key for `value` to read.
 after: (lines: List<Str>, key: Str, at: Size) Maybe<Size> {
-    i: Mutable<Size> = at
-    result: Mutable<Maybe<Size>> = null
+    i: Mutable<Size> { at }
+    result: Mutable<Maybe<Size>> { null }
     while i < lines.size() {
         if lstrip(lines[i]).startsWith(key) {
             result = i
@@ -81,11 +81,11 @@ rest: (line: Str, key: Str) Str {
 
 // ^\s*Not connected\.?\s*$
 notConnected: (line: Str) Bool {
-    s: Str = lstrip(line)
+    s: Str { lstrip(line) }
     if !s.startsWith("Not connected") {
         false
     } else {
-        tail: Mutable<Str> = s.substring(13, s.length())
+        tail: Mutable<Str> { s.substring(13, s.length()) }
         if tail.startsWith(".") {
             tail = tail.substring(1, tail.length())
         }
@@ -95,17 +95,17 @@ notConnected: (line: Str) Bool {
 
 // The first int a "^\s*<key>(-?\d+)" line gives, signed when `signed`.
 intAfter: (lines: List<Str>, key: Str, signed: Bool) Maybe<Int64> {
-    at: Mutable<Size> = 0
-    result: Mutable<Maybe<Int64>> = null
+    at: Mutable<Size> { 0 }
+    result: Mutable<Maybe<Int64>> { null }
     while at < lines.size() {
-        i: Maybe<Size> = after(lines, key, at)
+        i: Maybe<Size> { after(lines, key, at) }
         if i.isNone() {
             result = null
             break
         }
-        r: Str = rest(lines[i.value], key)
-        sign: Str = signed && r.startsWith("-") ? "-" : ""
-        d: Str = digitsAt(r.substring(sign.length(), r.length()))
+        r: Str { rest(lines[i.value], key) }
+        sign: Str { signed && r.startsWith("-") ? "-" : "" }
+        d: Str { digitsAt(r.substring(sign.length(), r.length())) }
         if !d.isEmpty() {
             result = (sign + d).toInt64()
             break
@@ -117,16 +117,16 @@ intAfter: (lines: List<Str>, key: Str, signed: Bool) Maybe<Int64> {
 
 // The first float a "^\s*<key>([\d.]+) MBit/s" line gives.
 rateAfter: (lines: List<Str>, key: Str) Maybe<Float64> {
-    at: Mutable<Size> = 0
-    result: Mutable<Maybe<Float64>> = null
+    at: Mutable<Size> { 0 }
+    result: Mutable<Maybe<Float64>> { null }
     while at < lines.size() {
-        i: Maybe<Size> = after(lines, key, at)
+        i: Maybe<Size> { after(lines, key, at) }
         if i.isNone() {
             result = null
             break
         }
-        r: Str = rest(lines[i.value], key)
-        n: Mutable<Size> = 0
+        r: Str { rest(lines[i.value], key) }
+        n: Mutable<Size> { 0 }
         while n < r.length() && (digit(r[n]) || r[n] == '.') {
             n += 1
         }
@@ -141,11 +141,11 @@ rateAfter: (lines: List<Str>, key: Str) Maybe<Float64> {
 
 // parse_link: none when the text is neither "Not connected" nor "Connected to ...".
 pub parseLink: (text: Str) Maybe<Link> {
-    out: Link = Link { }
-    lines: List<Str> = text.split("\n")
-    i: Mutable<Size> = 0
-    result: Mutable<Maybe<Link>> = null
-    found: Mutable<Bool> = false
+    out: Link { }
+    lines: List<Str> { text.split("\n") }
+    i: Mutable<Size> { 0 }
+    result: Mutable<Maybe<Link>> { null }
+    found: Mutable<Bool> { false }
     while i < lines.size() {
         if notConnected(lines[i]) {
             result = out
@@ -161,9 +161,9 @@ pub parseLink: (text: Str) Maybe<Link> {
             null
         } else {
             out.connected = true
-            s: Maybe<Size> = after(lines, "SSID:", 0)
+            s: Maybe<Size> { after(lines, "SSID:", 0) }
             if s.isSome() {
-                r: Mutable<Str> = rest(lines[s.value], "SSID:")
+                r: Mutable<Str> { rest(lines[s.value], "SSID:") }
                 if r.startsWith(" ") {
                     r = r.substring(1, r.length())
                 }
@@ -186,9 +186,9 @@ lineBreak: (c: Char) Bool {
 // text.splitlines(): \r\n is one break, and the text after the last break is a line only
 // when it is not empty.
 pub splitLines: (text: Str) List<Str> {
-    out: Mutable<List<Str>> = List<Str> { }
-    start: Mutable<Size> = 0
-    i: Mutable<Size> = 0
+    out: Mutable<List<Str>> { }
+    start: Mutable<Size> { 0 }
+    i: Mutable<Size> { 0 }
     while i < text.length() {
         if lineBreak(text[i]) {
             out.add(text.substring(start, i))
@@ -207,10 +207,10 @@ pub splitLines: (text: Str) List<Str> {
 
 // s.split(): the words between runs of whitespace.
 pub words: (s: Str) List<Str> {
-    out: Mutable<List<Str>> = List<Str> { }
-    i: Mutable<Size> = skipSpace(s, 0)
+    out: Mutable<List<Str>> { }
+    i: Mutable<Size> { skipSpace(s, 0) }
     while i < s.length() {
-        j: Mutable<Size> = i
+        j: Mutable<Size> { i }
         while j < s.length() && !space(s[j]) {
             j += 1
         }
@@ -223,24 +223,24 @@ pub words: (s: Str) List<Str> {
 // parse_wireless: the link level of iface in dBm, a positive reading less 256, and none for a
 // level that is no finite number (int() raises on an infinity there).
 pub parseWireless: (text: Str, iface: Str) Maybe<Int64> {
-    lines: List<Str> = splitLines(text)
-    i: Mutable<Size> = 0
-    result: Mutable<Maybe<Int64>> = null
+    lines: List<Str> { splitLines(text) }
+    i: Mutable<Size> { 0 }
+    result: Mutable<Maybe<Int64>> { null }
     while i < lines.size() {
-        line: Str = lines[i]
+        line: Str { lines[i] }
         if strip(line).startsWith(iface + ":") {
-            colon: Size = line.find(":").unwrapOr(0)
-            f: List<Str> = words(line.substring(colon + 1, line.length()))
+            colon: Size { line.find(":").unwrapOr(0) }
+            f: List<Str> { words(line.substring(colon + 1, line.length())) }
             if f.size() < 3 {
                 result = null
                 break
             }
-            level: Maybe<Float64> = f[2].toFloat64()
+            level: Maybe<Float64> { f[2].toFloat64() }
             if level.isNone() || level.value - level.value != 0.0 {
                 result = null
                 break
             }
-            v: Int64 = level.value as Int64
+            v: Int64 { level.value as Int64 }
             result = v > 0 ? v - 256 : v
             break
         }
@@ -251,12 +251,12 @@ pub parseWireless: (text: Str, iface: Str) Maybe<Int64> {
 
 // first_managed: the interface named on the line before the first "type managed".
 pub firstManaged: (text: Str) Maybe<Str> {
-    lines: List<Str> = splitLines(text)
-    name: Mutable<Str> = ""
-    i: Mutable<Size> = 0
-    result: Mutable<Maybe<Str>> = null
+    lines: List<Str> { splitLines(text) }
+    name: Mutable<Str> { "" }
+    i: Mutable<Size> { 0 }
+    result: Mutable<Maybe<Str>> { null }
     while i < lines.size() {
-        s: Str = strip(lines[i])
+        s: Str { strip(lines[i]) }
         if s.startsWith("Interface ") {
             name = words(s)[1]
         } else if s == "type managed" && !name.isEmpty() {
@@ -277,18 +277,18 @@ floatText: (m: Maybe<Float64>) Str {
 }
 
 linkText: (text: Str) Str {
-    p: Maybe<Link> = parseLink(text)
+    p: Maybe<Link> { parseLink(text) }
     if p.isNone() {
         "None"
     } else {
-        l: Link = p.unwrap()
+        l: Link { p.unwrap() }
         "connected=${l.connected} ssid=[${l.ssid}] freq=${intText(l.freqMhz)} dbm=${intText(l.dbm)} tx=${floatText(l.txMbps)} rx=${floatText(l.rxMbps)}"
     }
 }
 
 main: () Void {
-    five: Str = "Connected to b8:f8:53:f8:ce:84 (on wlan0)\n\tSSID: Fios-2CTx6\n\tfreq: 5280\n\tRX: 34530416 bytes (202326 packets)\n\tTX: 113467223 bytes (111939 packets)\n\tsignal: -45 dBm\n\trx bitrate: 600.4 MBit/s 80MHz HE-MCS 11 HE-NSS 1 HE-GI 0 HE-DCM 0\n\ttx bitrate: 540.3 MBit/s 80MHz HE-MCS 10 HE-NSS 1 HE-GI 0 HE-DCM 0\n"
-    two: Str = "Connected to 3c:84:6a:11:22:33 (on wlan0)\n\tSSID: WhoopWhoop\n\tfreq: 2437.0\n\tsignal: -71 dBm\n\trx bitrate: 65.0 MBit/s MCS 7\n\ttx bitrate: 72.2 MBit/s MCS 7 short GI\n"
+    five: Str { "Connected to b8:f8:53:f8:ce:84 (on wlan0)\n\tSSID: Fios-2CTx6\n\tfreq: 5280\n\tRX: 34530416 bytes (202326 packets)\n\tTX: 113467223 bytes (111939 packets)\n\tsignal: -45 dBm\n\trx bitrate: 600.4 MBit/s 80MHz HE-MCS 11 HE-NSS 1 HE-GI 0 HE-DCM 0\n\ttx bitrate: 540.3 MBit/s 80MHz HE-MCS 10 HE-NSS 1 HE-GI 0 HE-DCM 0\n" }
+    two: Str { "Connected to 3c:84:6a:11:22:33 (on wlan0)\n\tSSID: WhoopWhoop\n\tfreq: 2437.0\n\tsignal: -71 dBm\n\trx bitrate: 65.0 MBit/s MCS 7\n\ttx bitrate: 72.2 MBit/s MCS 7 short GI\n" }
     trace(linkText(five))
     trace(linkText(two))
     trace(linkText("Not connected.\n"))
@@ -299,7 +299,7 @@ main: () Void {
     trace(linkText("\n Connected to x\n\tfreq: \n freq: 12abc\n\trx bitrate: 1. MBit/s\n\ttx bitrate: .5 MBit/\n\ttx bitrate: 3 MBit/s"))
     trace(linkText("Connected to x\nNot connected.."))
     trace(linkText("Connected to x\n  \n Not connected. \t"))
-    wireless: Str = "Inter-| sta\n face | tus | link level noise\n wlan0: 0000   70.  -40.  -256\n"
+    wireless: Str { "Inter-| sta\n face | tus | link level noise\n wlan0: 0000   70.  -40.  -256\n" }
     trace(intText(parseWireless(wireless, "wlan0")))
     trace(intText(parseWireless(" wlan0: 0000   70.  200.  -256\n", "wlan0")))
     trace(intText(parseWireless(" wlan0: 0000   70.\n", "wlan0")))
@@ -307,7 +307,7 @@ main: () Void {
     trace(intText(parseWireless(" eth0: 1 2 3\r wlan0:\t1\t2\t-9.75", "wlan0")))
     trace(intText(parseWireless(" wlan0: 1 2 nan", "wlan0")))
     trace(intText(parseWireless("", "wlan0")))
-    managed: Maybe<Str> = firstManaged("phy#0\n\tInterface p2p0\n\t\ttype P2P-device\n\tInterface wlan0\n\t\ttype managed\n")
+    managed: Maybe<Str> { firstManaged("phy#0\n\tInterface p2p0\n\t\ttype P2P-device\n\tInterface wlan0\n\t\ttype managed\n") }
     trace(managed.unwrapOr("None"))
     trace(firstManaged("").unwrapOr("None"))
     trace(firstManaged("type managed\nInterface  wlan1  x\r\n type managed ").unwrapOr("None"))

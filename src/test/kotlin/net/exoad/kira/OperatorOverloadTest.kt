@@ -48,10 +48,10 @@ class OperatorOverloadTest {
         }
 
         main: () Void {
-            p1: Point = Point { 1, 2 }
-            p2: Point = Point { 3, 4 }
-            p3: Point = p1 + p2
-            n: Point = -p1
+            p1: Point { 1, 2 }
+            p2: Point { 3, 4 }
+            p3: Point { p1 + p2 }
+            n: Point { -p1 }
             p1 += p2
             trace(p3.x)
             trace(p3.y)
@@ -221,7 +221,7 @@ class OperatorOverloadTest {
         // each calling a function named `op_add` that this declaration never defines.
         val badModule = """
             pub V2: Any {
-                pub x: Float32 = 0.0
+                pub x: Float32 { 0.0 }
             }
             pub @_op_add_: (a: V2, b: V2) V2 {
                 V2 { a.x + b.x }
@@ -252,7 +252,7 @@ class OperatorOverloadTest {
         // the version with a body.
         val badStubModule = """
             pub V2: Any {
-                pub x: Float32 = 0.0
+                pub x: Float32 { 0.0 }
             }
             pub @_op_add_: (a: V2, b: V2) V2
         """

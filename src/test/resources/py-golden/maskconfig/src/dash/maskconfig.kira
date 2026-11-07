@@ -4,10 +4,10 @@ kira.math as math
 // lidarmask.py's lidar-mask.json with kira:json: reload's json.load, set_config's _clean_box and
 // _clean_wedges, _build's NaN refusal and save's json.dump(indent=1). The expected output is main's C++ run.
 
-BOX_LIMIT_M: Float64 = 1.5
+BOX_LIMIT_M: Float64 { 1.5 }
 
 defaultBox: () Json {
-    b: Json = Json.obj()
+    b: Json { Json.obj() }
     b.put("front", Json.of(0.2))
     b.put("back", Json.of(0.2))
     b.put("left", Json.of(0.1))
@@ -33,7 +33,7 @@ truthy: (v: Json) Bool {
 
 // Python's x % 360.0, exact while 360 * floor(x / 360) is: |x| below 2^44.
 mod360: (x: Float64) Float64 {
-    r: Float64 = x - 360.0 * floor(x / 360.0)
+    r: Float64 { x - 360.0 * floor(x / 360.0) }
     r < 0.0 ? r + 360.0 : r
 }
 
@@ -43,14 +43,14 @@ roundTo: (x: Float64, places: Int32) Float64 {
 }
 
 pub cleanBox: (box: Json) Json {
-    out: Json = defaultBox()
+    out: Json { defaultBox() }
     if !box.isObj() {
         out
     } else {
-        sides: List<Str> = @listOf("front", "back", "left", "right")
-        i: Mutable<Size> = 0
+        sides: List<Str> { @listOf("front", "back", "left", "right") }
+        i: Mutable<Size> { 0 }
         while i < sides.size() {
-            f: Maybe<Float64> = pyFloat(box.get(sides[i]))
+            f: Maybe<Float64> { pyFloat(box.get(sides[i])) }
             if box.has(sides[i]) && f.isSome() {
                 out.put(sides[i], Json.of(roundTo(min(max(f.value, 0.0), BOX_LIMIT_M), 3)))
             }
@@ -61,16 +61,16 @@ pub cleanBox: (box: Json) Json {
 }
 
 pub cleanWedges: (wedges: Json) Json {
-    out: Json = Json.arr()
-    i: Mutable<Size> = 0
+    out: Json { Json.arr() }
+    i: Mutable<Size> { 0 }
     while wedges.isArr() && i < wedges.size() {
-        w: Json = wedges.at(i)
-        a0: Maybe<Float64> = pyFloat(w.get("a0"))
-        a1: Maybe<Float64> = pyFloat(w.get("a1"))
-        r: Maybe<Float64> = pyFloat(w.get("r_max_mm"))
-        complete: Bool = w.has("a0") && w.has("a1") && w.has("r_max_mm")
+        w: Json { wedges.at(i) }
+        a0: Maybe<Float64> { pyFloat(w.get("a0")) }
+        a1: Maybe<Float64> { pyFloat(w.get("a1")) }
+        r: Maybe<Float64> { pyFloat(w.get("r_max_mm")) }
+        complete: Bool { w.has("a0") && w.has("a1") && w.has("r_max_mm") }
         if complete && a0.isSome() && a1.isSome() && r.isSome() && r.value == r.value {
-            e: Json = Json.obj()
+            e: Json { Json.obj() }
             e.put("a0", Json.of(roundTo(mod360(a0.value), 2)))
             e.put("a1", Json.of(roundTo(mod360(a1.value), 2)))
             e.put("r_max_mm", Json.of(min(max(r.value, 0.0), 65535.0) as Int64))
@@ -89,20 +89,20 @@ pub cleanWedges: (wedges: Json) Json {
 
 // A Mask on lidar-mask.json holding text: save()'s text, or what its constructor raises.
 pub reload: (text: Str) Str {
-    enabled: Mutable<Bool> = true
-    box: Mutable<Json> = defaultBox()
-    wedges: Mutable<Json> = Json.arr()
-    cfg: Json = Json.parse(text)
-    result: Mutable<Str> = ""
-    found: Mutable<Bool> = false
+    enabled: Mutable<Bool> { true }
+    box: Mutable<Json> { defaultBox() }
+    wedges: Mutable<Json> { Json.arr() }
+    cfg: Json { Json.parse(text) }
+    result: Mutable<Str> { "" }
+    found: Mutable<Bool> { false }
     if Json.error() == "" && cfg.isObj() {
         enabled = !cfg.has("on") || truthy(cfg.get("on"))
         box = cleanBox(cfg.get("box"))
         wedges = cleanWedges(cfg.get("wedges"))
-        i: Mutable<Size> = 0
+        i: Mutable<Size> { 0 }
         while i < wedges.size() {
-            a0: Float64 = wedges.at(i).get("a0").asFloat64().unwrap()
-            a1: Float64 = wedges.at(i).get("a1").asFloat64().unwrap()
+            a0: Float64 { wedges.at(i).get("a0").asFloat64().unwrap() }
+            a1: Float64 { wedges.at(i).get("a1").asFloat64().unwrap() }
             if a0 != a0 || a1 != a1 {
                 result = "ValueError: cannot convert float NaN to integer"
                 found = true
@@ -114,7 +114,7 @@ pub reload: (text: Str) Str {
     if found {
         result
     } else {
-        c: Json = Json.obj()
+        c: Json { Json.obj() }
         c.put("on", Json.of(enabled))
         c.put("box", box)
         c.put("wedges", wedges)

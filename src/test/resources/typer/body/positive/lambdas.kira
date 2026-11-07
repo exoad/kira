@@ -8,7 +8,7 @@ pub scaleBy: (k: Int32) Fx<T1<Int32>, Int32> {
 }
 
 pub shared: () Fx<T0, Int32> {
-    counter: Ref<Int32> = Ref<Int32> { value = 0 } // @type Ref<Int32>
+    counter: Ref<Int32> { value = 0 } // @type Ref<Int32>
     () Int32 {                    // @type Fx<T0, Int32>
         counter.value = counter.value + 1  // @type Void
         counter.value               // @type Int32 member=Field(Ref.value: Int32)
@@ -16,8 +16,8 @@ pub shared: () Fx<T0, Int32> {
 }
 
 pub store: () Int32 {
-    add: Fx<T2<Int32, Int32>, Int32> = (a: Int32, b: Int32) Int32 { a + b } // @type Fx<T2<Int32, Int32>, Int32>
-    three: Int32 = add(1, 2)               // @type Int32 call=FN_VALUE
+    add: Fx<T2<Int32, Int32>, Int32> { (a: Int32, b: Int32) Int32 { a + b } } // @type Fx<T2<Int32, Int32>, Int32>
+    three: Int32 { add(1, 2) }               // @type Int32 call=FN_VALUE
     three
 }
 
@@ -30,7 +30,7 @@ pub nested: (base: Int32) Fx<T1<Int32>, Fx<T1<Int32>, Int32>> {
 }
 
 pub Gain: Struct {
-    pub k: Int32 = 3
+    pub k: Int32 { 3 }
 
     pub scaler: () Fx<T1<Int32>, Int32> {
         (x: Int32) Int32 {

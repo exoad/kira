@@ -1,12 +1,12 @@
 golden.py.builtinnames.app.other as other
 golden.py.builtinnames.app.other.twice as twice
 
-pub globals: Int32 = 5
-pub type: Mutable<Int32> = 3
+pub globals: Int32 { 5 }
+pub type: Mutable<Int32> { 3 }
 
 pub Pt: Mutable<Any> {
-    pub x: Mutable<Int32> = 0
-    pub tags: List<Int32> = List<Int32> { }
+    pub x: Mutable<Int32> { 0 }
+    pub tags: List<Int32> { }
 }
 
 check: (n: Int32) Int32 {
@@ -17,8 +17,8 @@ check: (n: Int32) Int32 {
 }
 
 pub main: () Int32 {
-    a: Mutable<Pt> = Pt { 1 }
-    b: Mutable<Pt> = a
+    a: Mutable<Pt> { Pt { 1 } }
+    b: Mutable<Pt> { a }
     b.x = 2
     b.tags.add(type)
     trace("${a.x} ${a.tags.size()} ${b.x} ${b.tags.size()}")

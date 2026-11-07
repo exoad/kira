@@ -11,19 +11,19 @@ golden.decls.lib.shapes.TAG as TAG
 // inline variable in the header, and it has no source file to write, since
 // nothing here has a body.
 
-pub LEVEL_LOW: Int32 = 0
-pub LEVEL_HIGH: Int32 = 1
+pub LEVEL_LOW: Int32 { 0 }
+pub LEVEL_HIGH: Int32 { 1 }
 
 pub Cell: Struct {
-    pub at: Point = Point {}
-    pub level: Int32 = LEVEL_LOW
-    pub weight: Float32 = 0.25
-    pub tag: Char = TAG
+    pub at: Point {}
+    pub level: Int32 { LEVEL_LOW }
+    pub weight: Float32 { 0.25 }
+    pub tag: Char { TAG }
 }
 
-pub LIMIT: Int32 = SCALE
-pub CELLS: Size = MAX_POINTS
-pub drawn: Mutable<Int32> = 0
+pub LIMIT: Int32 { SCALE }
+pub CELLS: Size { MAX_POINTS }
+pub drawn: Mutable<Int32> { 0 }
 
 pub place: (c: Cell, x: Int32 = LIMIT, kind: Int32 = KIND_DOT) Cell
 pub render: (cells: List<Cell>, sep: Str = ", ") Str

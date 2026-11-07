@@ -1,4 +1,4 @@
-pub SCALE: Int32 = 100
+pub SCALE: Int32 { 100 }
 
 pub percent: (part: Int32) Int32 {
     part * SCALE

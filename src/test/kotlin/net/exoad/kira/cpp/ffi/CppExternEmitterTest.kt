@@ -127,7 +127,7 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "ImGui::Button", header = "imgui.h") button: (label: Str, width: Float32 = 10.0) Bool
 
             main: () Void {
-                pressed: Bool = button("go")
+                pressed: Bool { button("go") }
             }
             """
         )
@@ -189,9 +189,9 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "&probe::port", header = "probe.hxx") PORT: Buffer
 
             main: () Int32 {
-                s: Str = name()
-                m: Maybe<Int32> = find()
-                p: Buffer = buffer()
+                s: Str { name() }
+                m: Maybe<Int32> { find() }
+                p: Buffer { buffer() }
                 count()
             }
             """
@@ -234,8 +234,8 @@ class CppExternEmitterTest {
             pub @_extern(cpp = "probe::find", header = "probe.hxx") find: () Maybe<Int32>
 
             pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
-                pub x: Float32 = 0.0
-                pub y: Float32 = 0.0
+                pub x: Float32 { 0.0 }
+                pub y: Float32 { 0.0 }
             }
 
             pub @_extern(cpp = "ImGui::Dummy", header = "imgui.h") dummy: (size: Vec2) Void
@@ -330,7 +330,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::after", header = "probe.hxx") after: (s: CStr, c: Int32) Int32
             cat: () Void {
-                r: Int32 = after("literal", 1)
+                r: Int32 { after("literal", 1) }
             }
             """,
             "after", null, "\"literal\"", "1",
@@ -341,7 +341,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::after", header = "probe.hxx") after: (s: CStr, c: Int32) Int32
             cat: (a: Str) Void {
-                r: Int32 = after(a, 1)
+                r: Int32 { after(a, 1) }
             }
             """,
             "after", null, "a", "1",
@@ -351,9 +351,9 @@ class CppExternEmitterTest {
         val constantCStr = diagsOf(
             """
             pub @_extern(cpp = "probe::after", header = "probe.hxx") after: (s: CStr, c: Int32) Int32
-            pub GREETING: Str = "hi"
+            pub GREETING: Str { "hi" }
             cat: () Void {
-                r: Int32 = after(GREETING, 1)
+                r: Int32 { after(GREETING, 1) }
             }
             """,
             "after", null, "::ext::GREETING", "1",
@@ -364,7 +364,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::afterS", header = "probe.hxx") afterS: (s: Str, c: Int32) Int32
             cat: (a: Str) Void {
-                r: Int32 = afterS(a, 1)
+                r: Int32 { afterS(a, 1) }
             }
             """,
             "afterS", null, "a", "1",
@@ -376,7 +376,7 @@ class CppExternEmitterTest {
             """
             pub @_extern(cpp = "probe::lengthOfS", header = "probe.hxx") lengthOfS: (s: Str) Int32
             cat: () Void {
-                n: Int32 = lengthOfS("harmless")
+                n: Int32 { lengthOfS("harmless") }
             }
             """,
             "lengthOfS", null, "\"harmless\"",
@@ -476,8 +476,8 @@ class CppExternEmitterTest {
             }
 
             all: () Int32 {
-                car: Car = openCar()
-                h: Handle = openHandle()
+                car: Car { openCar() }
+                h: Handle { openHandle() }
                 ext() + car.speed() + proto() + h.size() + kira()
             }
             """
@@ -510,8 +510,8 @@ class CppExternEmitterTest {
             }
 
             pub @_extern(cpp = "ImVec2", header = "imgui.h") Vec2: Struct {
-                pub x: Float32 = 0.0
-                pub y: Float32 = 0.0
+                pub x: Float32 { 0.0 }
+                pub y: Float32 { 0.0 }
             }
 
             made: () Int32 {
@@ -543,7 +543,7 @@ class CppExternEmitterTest {
 
             main: () Int32 {
                 setMode(2)
-                mode: Int32 = 1
+                mode: Int32 { 1 }
                 applyMode(mode)
                 setCount(2)
                 0

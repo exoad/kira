@@ -104,7 +104,7 @@ class TyperBodyModelTest {
             """
             pub f: () Fx<T1<Int32>, Int32> {
                 (x: Int32) Int32 {
-                    y: Int32 = x + 1
+                    y: Int32 { x + 1 }
                     y
                 }
             }
@@ -122,7 +122,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub tally: () Fx<T0, Int32> {
-                counter: Ref<Int32> = Ref<Int32> { value = 0 }
+                counter: Ref<Int32> { value = 0 }
                 () Int32 {
                     counter.value = counter.value + 1
                     counter.value
@@ -172,14 +172,14 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (c: Bool, a: Int32) Int32 {
-                x: Int32 = c ? 1 : 2
-                y: Int32 = c ? 1 : a > 0 ? 2 : 3
-                z: Int32 = if c {
-                    t: Int32 = a * 2
+                x: Int32 { c ? 1 : 2 }
+                y: Int32 { c ? 1 : a > 0 ? 2 : 3 }
+                z: Int32 { if c {
+                    t: Int32 { a * 2 }
                     t
                 } else {
                     0
-                }
+                } }
                 x + y + z
             }
             """
@@ -192,7 +192,7 @@ class TyperBodyModelTest {
     // ---- bindings (R6, D4, D33) --------------------------------------------------------------
 
     private val calls = """
-        pub LIMIT: Int32 = 3
+        pub LIMIT: Int32 { 3 }
         pub sub: (a: Int32, b: Int32) Int32 {
             a - b
         }
@@ -203,10 +203,10 @@ class TyperBodyModelTest {
             values.add(by)
         }
         pub caller: () Void {
-            r1: Int32 = sub(b = 3, a = 10)
-            r2: Str = command("go")
-            r3: Str = command("go", retries = 5)
-            n: List<Int32> = List<Int32> { }
+            r1: Int32 { sub(b = 3, a = 10) }
+            r2: Str { command("go") }
+            r3: Str { command("go", retries = 5) }
+            n: List<Int32> { }
             bump(n)
         }
     """
@@ -255,10 +255,10 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (x: Float32) Float32 {
-                a: Float32 = sqrt(x)
-                b: Float64 = sin(1.0)
-                c: Float32 = floor(0.5)
-                d: Float32 = min(x, 2.0)
+                a: Float32 { sqrt(x) }
+                b: Float64 { sin(1.0) }
+                c: Float32 { floor(0.5) }
+                d: Float32 { min(x, 2.0) }
                 a + c + d
             }
             """
@@ -351,7 +351,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub V: Struct {
-                pub x: Int32 = 0
+                pub x: Int32 { 0 }
             }
             @op_add: (a: V, b: V) V {
                 V { a.x + b.x }
@@ -421,7 +421,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: (b: Bool, i: Int64, d: Float64, s: Str, m: Maybe<Float64>, t: Str) Json {
-                o: Json = Json.obj()
+                o: Json { Json.obj() }
                 o.put("a", Json.of(5))
                 o.put("b", Json.of(-2.5))
                 o.put("c", Json.of(b))
@@ -430,7 +430,7 @@ class TyperBodyModelTest {
                 o.put("f", Json.of(s))
                 o.put("g", Json.of(m))
                 o.put("h", Json.of(value = i))
-                a: Json = Json.arr()
+                a: Json { Json.arr() }
                 a.add(Json.null())
                 o.put("i", a)
                 o.put("j", Json.parse(text = t))
@@ -463,12 +463,12 @@ class TyperBodyModelTest {
         val wrong = snippet(
             """
             pub g: (n: Int32, x: Float32) Void {
-                a: Json = Json.of(n)
-                b: Json = Json.of(x)
-                c: Json = Json.of(null)
-                d: Json = Json.of(@listOf(1, 2))
-                e: Json = Json { }
-                f: Json = Json.make()
+                a: Json { Json.of(n) }
+                b: Json { Json.of(x) }
+                c: Json { Json.of(null) }
+                d: Json { Json.of(@listOf(1, 2)) }
+                e: Json { }
+                f: Json { Json.make() }
             }
             """
         )
@@ -480,7 +480,7 @@ class TyperBodyModelTest {
         val values = snippet(
             """
             pub h: (xs: List<Json>, m: Map<Str, Json>, j: Json) Bool {
-                f: Fx<T1<Str>, Json> = Json.parse
+                f: Fx<T1<Str>, Json> { Json.parse }
                 xs.contains(j) || m.containsValue(j)
             }
             """
@@ -546,10 +546,10 @@ class TyperBodyModelTest {
             """
             pub Animal: Mutable<Any> {
                 pub name: Str
-                pub age: Mutable<Int32> = 0
+                pub age: Mutable<Int32> { 0 }
             }
             pub Dog: Mutable<Animal> {
-                pub tricks: Mutable<Int32> = 0
+                pub tricks: Mutable<Int32> { 0 }
             }
             pub f: () Dog {
                 Dog { "Rex", tricks = 2 }
@@ -577,7 +577,7 @@ class TyperBodyModelTest {
                 pub value: T
             }
             pub f: () Box<Int32> {
-                xs: List<Str> = List<Str> { }
+                xs: List<Str> { }
                 Box<Int32> { value = 5 }
             }
             """
@@ -594,7 +594,7 @@ class TyperBodyModelTest {
 
     @Test
     fun aConstantPhaseBCouldNotFoldGetsItsValueFromPhaseC() {
-        val p = snippet("pub ONE: Float32 = 1\npub TWO: Float32 = ONE + 1")
+        val p = snippet("pub ONE: Float32 { 1 }\npub TWO: Float32 { ONE + 1 }")
         expectNoErrors(p)
         val one = p.workspaceModules.single().members["ONE"] as GlobalSymbol
         assertEquals(ConstValue.FloatConst(1.0, Prim.FLOAT32), one.constValue)
@@ -602,7 +602,7 @@ class TyperBodyModelTest {
 
     @Test
     fun aStrConstantOfLiteralsFolds() {
-        val p = snippet("pub A: Str = \"a\"\npub AB: Str = A + \"b\"")
+        val p = snippet("pub A: Str { \"a\" }\npub AB: Str { A + \"b\" }")
         expectNoErrors(p)
         assertEquals(ConstValue.StrConst("ab"), (p.workspaceModules.single().members["AB"] as GlobalSymbol).constValue)
     }
@@ -621,7 +621,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub f: () Void {
-                a: Mutable<Int32> = 1
+                a: Mutable<Int32> { 1 }
                 try {
                     a += 1
                 } on e: Str {
@@ -643,7 +643,7 @@ class TyperBodyModelTest {
         val p = snippet(
             """
             pub P: Mutable<Any> {
-                pub x: Mutable<Int32> = 0
+                pub x: Mutable<Int32> { 0 }
                 pub bump: () Void {
                     x += 1
                 }

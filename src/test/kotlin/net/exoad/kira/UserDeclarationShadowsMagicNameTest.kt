@@ -81,7 +81,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         main: () Void {
-            r: Ref = Ref { 4 }
+            r: Ref { Ref { 4 } }
             trace(r.id)
             trace(parseInt64(3))
             trace(parseInt64(9))
@@ -114,7 +114,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         main: () Void {
-            v: Int32 = min(7, 2)
+            v: Int32 { min(7, 2) }
             trace(v)
         }
         """
@@ -134,7 +134,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         main: () Void {
-            v: Float64 = clamp(5.0, 0.0, 1.0)
+            v: Float64 { clamp(5.0, 0.0, 1.0) }
             trace(v)
         }
         """
@@ -156,7 +156,7 @@ class UserDeclarationShadowsMagicNameTest {
             twoModuleMainUri to """
                 $use
                 main: () Void {
-                    v: Float64 = min(1.0, 2.0)
+                    v: Float64 { min(1.0, 2.0) }
                     trace(v)
                 }
             """.trimIndent(),
@@ -218,7 +218,7 @@ class UserDeclarationShadowsMagicNameTest {
             libcMainUri to """
                 $use
                 main: () Void {
-                    v: Float64 = floor(2.7)
+                    v: Float64 { floor(2.7) }
                     trace(v)
                 }
             """.trimIndent(),
@@ -260,7 +260,7 @@ class UserDeclarationShadowsMagicNameTest {
                 }
             }
         """.trimIndent()
-        val classUse = if (!withClass) "" else "a: Alpha = Alpha { 1 }\n    trace(a.run())"
+        val classUse = if (!withClass) "" else "a: Alpha { Alpha { 1 } }\n    trace(a.run())"
         return unitOf(
             scopeUtilUri to """
                 max: (a: Float64, b: Float64) Float64 {
@@ -281,9 +281,9 @@ class UserDeclarationShadowsMagicNameTest {
                 $classDecl
 
                 main: () Void {
-                    picked: Float64 = pick<Int32>(1.0, 2.0)
+                    picked: Float64 { pick<Int32>(1.0, 2.0) }
                     trace(picked)
-                    larger: Float64 = max(1.0, 2.0)
+                    larger: Float64 { max(1.0, 2.0) }
                     trace(larger)
                     $classUse
                 }
@@ -315,7 +315,7 @@ class UserDeclarationShadowsMagicNameTest {
             constMainUri to """
                 ${constUtilUri.replace(':', '.')} as constutil
 
-                LOWEST: Float64 = min(1.0, 2.0)
+                LOWEST: Float64 { min(1.0, 2.0) }
 
                 main: () Void {
                     trace(LOWEST)
@@ -339,7 +339,7 @@ class UserDeclarationShadowsMagicNameTest {
                 }
             """.trimIndent(),
             constMainUri to """
-                LOWEST: Float64 = min(1.0, 2.0)
+                LOWEST: Float64 { min(1.0, 2.0) }
 
                 main: () Void {
                     trace(LOWEST)
@@ -363,7 +363,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         main: () Void {
-            v: Int32 = abs(-5)
+            v: Int32 { abs(-5) }
             trace(v)
         }
         """
@@ -378,7 +378,7 @@ class UserDeclarationShadowsMagicNameTest {
         }
 
         main: () Void {
-            v: Float64 = abs(-2.5)
+            v: Float64 { abs(-2.5) }
             trace(v)
         }
         """
