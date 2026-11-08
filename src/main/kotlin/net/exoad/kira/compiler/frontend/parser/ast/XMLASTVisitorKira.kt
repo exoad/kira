@@ -136,15 +136,6 @@ object XMLASTVisitorKira :
         }
     }
 
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
-        node("ForIterationStatement") {
-            forIterationStatement.expr.accept(this)
-            node("Body") {
-                forIterationStatement.body.forEach { it.accept(this) }
-            }
-        }
-    }
-
     override fun visitUseStatement(useStatement: UseStatement) {
         node("UseStatement") {
             node("URI") {
@@ -423,20 +414,6 @@ object XMLASTVisitorKira :
             node("Member")
             {
                 memberAccessExpr.member.accept(this)
-            }
-        }
-    }
-
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
-        node("ForIterationExpr")
-        {
-            node("Initializer")
-            {
-                forIterationExpr.initializer.accept(this)
-            }
-            node("Target")
-            {
-                forIterationExpr.target.accept(this)
             }
         }
     }

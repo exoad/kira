@@ -15,7 +15,6 @@ import net.exoad.kira.compiler.analysis.types.TypeParamSymbol
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.frontend.parser.ast.ASTNode
 import net.exoad.kira.compiler.frontend.parser.ast.declarations.VariableDecl
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr
 
 /**
@@ -42,7 +41,6 @@ internal class NamingPass : RulePass {
             AstTree.walk(m.source.ast) { n ->
                 when (n) {
                     is VariableDecl -> (r.model.declSyms[n] as? LocalSymbol)?.let { variable(r, it.name, "Local", n.name) }
-                    is ForIterationExpr -> (r.model.declSyms[n] as? LocalSymbol)?.let { variable(r, it.name, "Loop variable", n.initializer) }
                     is FunctionDeclParameterExpr -> (r.model.declSyms[n] as? ParamSymbol)?.let { p -> if (p.fn == null) variable(r, p.name, "Parameter", n.name) }
                     else -> {}
                 }

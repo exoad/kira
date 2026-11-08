@@ -994,10 +994,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 walkExprs(node.condition, visit)
                 node.statements.forEach { walkExprs(it, visit) }
             }
-            is ForIterationStatement -> {
-                walkExprs(node.forIterationExpr, visit)
-                node.body.forEach { walkExprs(it, visit) }
-            }
             is ReturnStatement -> walkExprs(node.expr, visit)
             is TypeCheckExpr -> {
                 walkExprs(node.value, visit)
@@ -1560,7 +1556,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
      * Serial number for container for-in loops: each loop's view and index
      * locals get a fresh name, so sibling loops in one C scope never clash.
      */
-    private var forInSerial = 0
 
     private fun isStrType(kiraType: String?): Boolean {
         return kiraType == "Str"
@@ -2315,98 +2310,6 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(";")
     }
 
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
-        val iterExpr = forIterationStatement.forIterationExpr
-        val target = iterExpr.target
-        if (HalfOpenSyntax.isIndices(target)) {
-            throw UnsupportedConstruct(target, "xs.indices() (write 0.until(xs.size()))", TARGET_NAME)
-        }
-        val until = HalfOpenSyntax.until(target)
-        if (target is RangeExpr || until != null) {
-            val name = cName(iterExpr.initializer.value)
-            val declared = iterExpr.declaredType?.let { typeNameOf(it) }
-            val cType = declared?.let { mapTypeName(it) } ?: "Int32"
-            if (target is RangeExpr) {
-                // `for i: T in a..b` holds b: the end is read once, and the step stops there before `++`
-                // could pass the type's last value; `continue` takes the step too.
-                appendIndentedLine("{")
-                indentLevel++
-                appendIndentedLine("_Bool ${name}_more = 1;")
-                appendIndented("for($cType $name = ")
-                target.begin.accept(this)
-                buffer.append(", ${name}_last = ")
-                target.end.accept(this)
-                buffer.appendLine("; ${name}_more && $name <= ${name}_last; ${name}_more = $name != ${name}_last && (++$name, 1))")
-            } else {
-                // `a.until(b)`: the end left out.
-                appendIndented("for($cType $name = ")
-                until!!.first.accept(this)
-                buffer.append("; $name < ")
-                until.second.accept(this)
-                buffer.appendLine("; ++$name)")
-            }
-            appendIndentedLine("{")
-            indentLevel++
-            pushArcScope()
-            if (declared != null) {
-                knownValueTypes[iterExpr.initializer.value] = declared
-            }
-            forIterationStatement.body.forEach { it.accept(this) }
-            popArcScope(terminated = endsWithReturn(forIterationStatement.body))
-            indentLevel--
-            appendIndentedLine("}")
-            if (target is RangeExpr) {
-                indentLevel--
-                appendIndentedLine("}")
-            }
-            return
-        }
-        // Iteration over a container. The target is evaluated once into a
-        // view local (a shallow struct copy: the original keeps ownership),
-        // each element is unslotted into a loop variable of the declared
-        // element type, and that read is borrowed: it is never registered
-        // as an ARC local of the body. (This path used to be a stub that ran
-        // the body exactly once.)
-        val targetName = (target as? Identifier)?.value ?: target.toString()
-        val recvType = receiverTypeOf(target)
-        val (seqType, sizeOf, getAt) = when (recvType) {
-            "Arr" -> Triple("Arr", "Arr_size(&SEQ)", "Arr_get(SEQ, IDX)")
-            "List" -> Triple("List", "List_size(&SEQ)", "List_get(&SEQ, IDX)")
-            "Set" -> Triple("Set", "Set_size(&SEQ)", "KiraVec_get(&SEQ.items, IDX)")
-            else -> throw IllegalStateException(
-                "for-in over '$targetName': the C backend needs it to be an Arr, List or Set with a declared element type" +
-                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
-            )
-        }
-        val elem = receiverTypeArgs(target).firstOrNull()
-            ?: throw IllegalStateException(
-                "for-in over '$targetName': its element type is unknown; declare it as $recvType<T>"
-            )
-        val serial = forInSerial++
-        val seq = "kira_seq$serial"
-        val idx = "kira_idx$serial"
-        val name = cName(iterExpr.initializer.value)
-        appendIndented("$seqType $seq = ")
-        target.accept(this)
-        buffer.appendLine(";")
-        appendIndentedLine("for(Int32 $idx = 0; $idx < ${sizeOf.replace("SEQ", seq)}; ++$idx)")
-        appendIndentedLine("{")
-        indentLevel++
-        appendIndented("")
-        buffer.append(mapTypeName(elem))
-        buffer.append(" ")
-        buffer.append(name)
-        buffer.append(" = ")
-        emitSlotOut(elem) { buffer.append(getAt.replace("SEQ", seq).replace("IDX", idx)) }
-        buffer.appendLine(";")
-        knownValueTypes[iterExpr.initializer.value] = elem
-        pushArcScope()
-        forIterationStatement.body.forEach { it.accept(this) }
-        popArcScope(terminated = endsWithReturn(forIterationStatement.body))
-        indentLevel--
-        appendIndentedLine("}")
-    }
-
     override fun visitUseStatement(useStatement: UseStatement) {
         appendIndentedLine("/* use ${useStatement.moduleUri} */")
     }
@@ -2422,7 +2325,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         // `x in r` and a range as a value need the typed model, which this backend does not read.
         if (binaryExpr.operator == BinaryOp.IN) {
-            throw UnsupportedConstruct(binaryExpr, "`in` outside a for loop (x in a..b, x in r)", TARGET_NAME)
+            throw UnsupportedConstruct(binaryExpr, "`in` (x in a..b, x in r)", TARGET_NAME)
         }
         val opName = OperatorIntrinsics.binaryName(binaryExpr.operator)
         // Non-primitive operands desugar to the op_* overload. When a side's
@@ -2703,7 +2606,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         if (HalfOpenSyntax.isEither(functionCallExpr)) {
-            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices` outside a for loop's head", TARGET_NAME)
+            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices`", TARGET_NAME)
         }
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
@@ -2919,17 +2822,8 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append(cName(name))
     }
 
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
-        buffer.append("/* for ")
-        buffer.append(forIterationExpr.initializer.value)
-        buffer.append(" in ")
-        forIterationExpr.target.accept(this)
-        buffer.append(" */")
-    }
-
     override fun visitRangeExpr(rangeExpr: RangeExpr) {
-        // A for loop's own range never reaches here; any other is a Range value.
-        throw UnsupportedConstruct(rangeExpr, "a range as a value (a..b outside a for loop's head)", TARGET_NAME)
+        throw UnsupportedConstruct(rangeExpr, "a range as a value", TARGET_NAME)
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {

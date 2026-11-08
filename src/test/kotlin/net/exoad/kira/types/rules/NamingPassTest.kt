@@ -28,7 +28,9 @@ class NamingPassTest {
                     pub retryCount: Mutable<Int32> { 0 }
                     pub fetchAll: (maxItems: Int32) Int32 {
                         totalCount: Int32 { maxItems }
-                        for i: Int32 in 0..totalCount {
+                        i: Mutable<Int32> { 0 }
+                        while i <= totalCount {
+                            i += 1
                         }
                         totalCount
                     }
@@ -77,7 +79,9 @@ class NamingPassTest {
             }
             pub DoThing: (Value: Int32) Int32 {
                 MyVar: Int32 { Value }
-                for Idx: Int32 in 0..MyVar {
+                Idx: Mutable<Int32> { 0 }
+                while Idx <= MyVar {
+                    Idx += 1
                 }
                 MyVar
             }

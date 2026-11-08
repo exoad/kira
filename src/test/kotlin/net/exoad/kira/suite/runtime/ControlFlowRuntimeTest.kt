@@ -41,8 +41,10 @@ class ControlFlowRuntimeTest {
         assertStdout("0\n1\n2\n3\n") {
             """
             main: () Void {
-                for i: Int32 in 0.until(4) {
+                i: Mutable<Int32> { 0 }
+                while i < 4 {
                     trace(i)
+                    i += 1
                 }
             }
             """
@@ -54,14 +56,17 @@ class ControlFlowRuntimeTest {
         assertStdout("1\n2\n3\n") {
             """
             main: () Void {
-                for i: Int32 in 0.until(11) {
+                i: Mutable<Int32> { 0 }
+                while i < 11 {
                     if i == 0 {
+                        i += 1
                         continue
                     }
                     if i == 4 {
                         break
                     }
                     trace(i)
+                    i += 1
                 }
             }
             """

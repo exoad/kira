@@ -13,7 +13,6 @@ import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
-import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.Prim
@@ -23,7 +22,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.IfExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.types.TyperTestSupport
@@ -136,33 +134,45 @@ class TyperBodyModelTest {
     // ---- loops (design 5.4) ------------------------------------------------------------------
 
     @Test
-    fun everyIterableGetsItsLoopPlan() {
+    fun everyContainerIsWalkedByAnIndexUnderWhile() {
         val p = snippet(
             """
             pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, v: View<Char>, m: Map<Str, Int32>, s: Set<Int64>, n: Int32) Void {
-                for i: Size in 0..4 { }
-                for x: Int32 in xs { }
-                for b: UInt8 in arr { }
-                for c: Char in v { }
-                for e: T2<Str, Int32> in m { }
-                for k: Int64 in s { }
+                i: Mutable<Size> { 0 }
+                while i <= 4 {
+                    i += 1
+                }
+                xi: Mutable<Size> { 0 }
+                while xi < xs.size() {
+                    x: Int32 { xs.get(xi) }
+                    xi += 1
+                }
+                bi: Mutable<Size> { 0 }
+                while bi < arr.size() {
+                    b: UInt8 { arr.get(bi) }
+                    bi += 1
+                }
+                ci: Mutable<Size> { 0 }
+                while ci < v.size() {
+                    c: Char { v.get(ci) }
+                    ci += 1
+                }
+                es: Arr<T2<Str, Int32>> { m.entries() }
+                ei: Mutable<Size> { 0 }
+                while ei < es.size() {
+                    e: T2<Str, Int32> { es.get(ei) }
+                    ei += 1
+                }
+                ks: Arr<Int64> { s.toArr() }
+                ki: Mutable<Size> { 0 }
+                while ki < ks.size() {
+                    k: Int64 { ks.get(ki) }
+                    ki += 1
+                }
             }
             """
         )
         assertEquals(emptyList<String>(), p.diagnostics.map { it.code })
-        val plans = BodyTestSupport.every<ForIterationStatement>(p).map { p.model.loops[it]!! }
-        assertEquals(
-            listOf(LoopKind.RANGE, LoopKind.LIST, LoopKind.ARR, LoopKind.VIEW, LoopKind.MAP, LoopKind.SET),
-            plans.map { it.kind },
-        )
-        assertEquals(listOf("Size", "Int32", "UInt8", "Char", "T2<Str, Int32>", "Int64"), plans.map { it.element.display() })
-        val vars = plans.map { it.variable as LocalSymbol }
-        assertEquals(listOf("i", "x", "b", "c", "e", "k"), vars.map { it.name })
-        assertEquals(listOf(false, false, false, false, false, false), vars.map { it.isMut }, "a loop variable is not mut")
-        BodyTestSupport.every<ForIterationStatement>(p).forEachIndexed { i, s ->
-            assertSame(vars[i], p.model.declSyms[s.forIterationExpr])
-            assertSame(vars[i], p.model.refs[s.forIterationExpr.initializer])
-        }
     }
 
     // ---- if-expressions (R18) ----------------------------------------------------------------

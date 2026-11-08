@@ -17,7 +17,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -32,7 +31,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStat
  * branch (else included) ends, a `try` whose block and handler both end, a `do`/`while` whose
  * body ends with no `break` or `continue` of its own to leave the body before its end, or a
  * `while true` or `do`/`while true` with no `break` of its own (a `continue` only re-enters
- * it). Any other loop (a `for`, a `while` over a condition that is not the constant `true`)
+ * it). Any other loop (a `while` over a condition that is not the constant `true`)
  * may run its body zero times or leave, so it ends no path. Statements after an end are
  * unreachable and change nothing.
  */
@@ -87,7 +86,6 @@ internal class ReturnPathPass : RulePass {
             hasElse && all
         }
         is WhileIterationStatement -> isTrue(r, s.condition) && !breaks(s.statements)
-        is ForIterationStatement -> false
         else -> endsExpr(r, s.expr)
     }
 
@@ -105,7 +103,7 @@ internal class ReturnPathPass : RulePass {
 
     private fun breaks(n: ASTNode): Boolean = when (n) {
         is BreakStatement -> true
-        is WhileIterationStatement, is ForIterationStatement -> false
+        is WhileIterationStatement -> false
         is LambdaExpr -> false
         else -> AstTree.children(n).any { breaks(it) }
     }
@@ -115,7 +113,7 @@ internal class ReturnPathPass : RulePass {
 
     private fun continues(n: ASTNode): Boolean = when (n) {
         is ContinueStatement -> true
-        is WhileIterationStatement, is ForIterationStatement -> false
+        is WhileIterationStatement -> false
         is LambdaExpr -> false
         else -> AstTree.children(n).any { continues(it) }
     }

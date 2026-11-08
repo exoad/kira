@@ -13,7 +13,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
-import net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallNamedParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallPositionalParameterExpr
@@ -45,7 +44,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -105,7 +103,7 @@ object TypedModelDumper {
     private fun isDumpable(node: Expr): Boolean = when (node) {
         is Decl, is Type, is FunctionDefExpr, is FunctionDeclParameterExpr, is ModuleDecl,
         is FunctionCallPositionalParameterExpr, is FunctionCallNamedParameterExpr,
-        is ForIterationExpr, is NoExpr -> false
+        is NoExpr -> false
         else -> true
     }
 
@@ -165,7 +163,6 @@ object TypedModelDumper {
                 is UseStatement -> names[node.uri] = true
                 is Decl -> names[node.name] = true
                 is FunctionDeclParameterExpr -> names[node.name] = true
-                is ForIterationExpr -> names[node.initializer] = true
                 is FunctionCallNamedParameterExpr -> names[node.name] = true
                 is TryExpr -> node.exceptionName?.let { names[it] = true }
                 is ObjectInitExpr -> {}
@@ -417,7 +414,6 @@ object KiraUnparser {
         is UseStatement -> "${s.uri.value} as ${s.alias?.value}"
         is IfSelectionStatement -> "if ${expr(s.expr, 0)} { ... }"
         is WhileIterationStatement -> "while ${expr(s.condition, 0)} { ... }"
-        is ForIterationStatement -> "for ${expr(s.forIterationExpr, 0)} { ... }"
         else -> expr(s.expr, 0)
     }
 
@@ -571,10 +567,6 @@ object KiraUnparser {
         is ThrowExpr -> "throw ${expr(e.value, 0)}"
         is TryExpr -> "try { ... }"
         is WithExpr -> "${expr(e.receiver, 0)} with { ... }"
-        is ForIterationExpr -> {
-            val declared = e.declaredType?.let { ": ${type(it)}" } ?: ""
-            "${e.initializer.value}$declared in ${expr(e.target, 0)}"
-        }
         is FunctionCallPositionalParameterExpr -> (if (e.isMut) "mut " else "") + expr(e.value, parent)
         is FunctionCallNamedParameterExpr -> "${e.name.value} = " + (if (e.isMut) "mut " else "") + expr(e.value, 0)
         is ModuleDecl -> "module \"${e.uri.value}\""

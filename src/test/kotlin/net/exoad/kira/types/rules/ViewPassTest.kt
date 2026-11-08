@@ -55,8 +55,11 @@ class ViewPassTest {
             }
             pub sum: (buf: View<UInt8>) UInt32 {
                 s: Mutable<UInt32> { 0 }
-                for b: UInt8 in buf {
+                bIndex: Mutable<Size> { 0 }
+                while bIndex < buf.size() {
+                    b: UInt8 { buf.get(bIndex) }
                     s += b as UInt32
+                    bIndex += 1
                 }
                 s
             }
@@ -121,8 +124,11 @@ class ViewPassTest {
             }
             pub total: (v: View<Int32>) Int32 {
                 t: Mutable<Int32> { 0 }
-                for x: Int32 in v {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < v.size() {
+                    x: Int32 { v.get(xIndex) }
                     t += x
+                    xIndex += 1
                 }
                 t
             }
@@ -637,8 +643,7 @@ class ViewPassTest {
 
     @Test
     fun aViewIsOnlyAnArgumentAReceiverOrAReturn() {
-        // R5 of section 9 (a for over a temporary's view), a for over a local's view, an if-expression with statements,
-        // and a view whose value is dropped.
+        // An if-expression with statements, and a view whose value is dropped.
         val p = snippet(
             """
             pub mk: () List<Int32> {
@@ -646,21 +651,6 @@ class ViewPassTest {
             }
             pub total: (v: View<Int32>) Int32 {
                 v.size() as Int32
-            }
-            pub r5: () Int32 {
-                t: Mutable<Int32> { 0 }
-                for x: Int32 in mk().view() {
-                    t += x
-                }
-                t
-            }
-            pub local: () Int32 {
-                xs: Mutable<List<Int32>> {}
-                t: Mutable<Int32> { 0 }
-                for x: Int32 in xs.view() {
-                    t += x
-                }
-                t
             }
             pub branches: (a: View<Int32>, xs: List<Int32>, c: Bool) Int32 {
                 total(if c {
@@ -675,8 +665,7 @@ class ViewPassTest {
             }
             """,
         )
-        expectView(p, *Array(5) { "rules.view.position" })
-        assertTrue(messages(p, "rules.view.position").any { it.contains("Iterate the owner, for x in xs") }, messages(p, "rules.view.position").joinToString("\n"))
+        expectView(p, *Array(3) { "rules.view.position" })
     }
 
     // ---- rules.view.capture -------------------------------------------------------------------
@@ -1087,8 +1076,11 @@ class ViewPassTest {
             }
             pub total: (v: View<Int32>) Int32 {
                 s: Mutable<Int32> { 0 }
-                for x: Int32 in v {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < v.size() {
+                    x: Int32 { v.get(xIndex) }
                     s += x
+                    xIndex += 1
                 }
                 s
             }
@@ -1156,8 +1148,11 @@ class ViewPassTest {
 
             sumView: (v: View<Int32>, n: Int32) Int32 {
                 t: Mutable<Int32> { n }
-                for x: Int32 in v {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < v.size() {
+                    x: Int32 { v.get(xIndex) }
                     t += x
+                    xIndex += 1
                 }
                 t
             }

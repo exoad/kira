@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
+import net.exoad.kira.compiler.fix.ForFix
 import net.exoad.kira.core.IntrinsicRegistry
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.core.OperatorIntrinsics
@@ -143,6 +144,7 @@ class KiraParser private constructor(
         nestedOf = foundNested.mapValues { it.value.toMap() }
         nestedTypeNames += nestedOf.values.flatMap { it.values }
         foundNested.clear()
+        context.astFors.clear()
         buffer = TokenBuffer(tokens)
         context.astOrigins = IdentityHashMap()
         context.astIntrinsicMarked = IdentityHashMap()
@@ -1347,27 +1349,58 @@ class KiraParser private constructor(
         return putOrigin(ContinueStatement(), origin)
     }
 
+    /**
+     * The removed `for`: refused with the `while` it becomes (parse.for.removed), or, for the rewrite tool
+     * ([SourceContext.lenientFor]), noted in [SourceContext.astFors] while its body is parsed as a loop's.
+     */
     fun parseForIterationStatement(): Statement {
         val origin = here()
-        expectThenAdvance(Token.Type.K_FOR)
-        // `for x: T in e {}`, or `for (x: T in e) {}`
-        val hasParens = at(Token.Type.S_OPEN_PARENTHESIS)
-        if (hasParens) expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
-        if (at(Token.Type.K_MODIFIER_MUTABLE)) {
-            // The old `for mut i: a..b { }`, an untyped variable over an inclusive range (design 2.2).
-            refuseMut(here(), "a loop variable is never Mutable: 'for i: Int32 in a..(b + 1)' is this loop, whose range excludes its end")
+        val forToken = peek()
+        // The head runs to the body's `{`: the first brace outside parentheses and brackets.
+        var depth = 0
+        var k = 1
+        while (peek(k).type != Token.Type.S_EOF) {
+            val t = peek(k).type
+            if (t == Token.Type.S_OPEN_PARENTHESIS || t == Token.Type.S_OPEN_BRACKET) depth++
+            else if (t == Token.Type.S_CLOSE_PARENTHESIS || t == Token.Type.S_CLOSE_BRACKET) depth--
+            else if (t == Token.Type.S_OPEN_BRACE && depth <= 0) break
+            k++
         }
-        // Spec `for i: T in e { }`: a typed variable; a range is exclusive
-        // (design D37). The iterable is a condition head (D36).
-        val identifier = parseIdentifier()
-        expectThenAdvance(Token.Type.S_COLON)
-        val declaredType = parseType()
-        expectThenAdvance(Token.Type.K_IN)
-        val target = withNoObjectInit(!hasParens) { parseExpr() }
-        val forExpr = ForIterationExpr(identifier, target, emptyList(), declaredType)
-        if (hasParens) expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
-        val body = parseStatementBlock()
-        return putOrigin(ForIterationStatement(putOrigin(forExpr, origin), body), origin)
+        val open = peek(k)
+        val head = if (open.type == Token.Type.S_OPEN_BRACE) {
+            context.content.substring(forToken.pointerPosition + forToken.content.length, minOf(open.pointerPosition, context.content.length))
+        } else ""
+        if (!context.lenientFor || open.type != Token.Type.S_OPEN_BRACE) {
+            Diagnostics.panic(
+                "parse.for.removed",
+                ForFix.message(head),
+                location = origin,
+                selectorLength = forToken.content.length,
+                context = context
+            )
+        }
+        advancePointer(k)
+        val close = matchingClose(open)
+        val stand = putOrigin(WhileIterationStatement(IntegerLiteral(1), parseStatementBlock()), origin)
+        context.astFors.add(net.exoad.kira.source.ForLoopRecord(stand, forToken.canonicalLocation, open.canonicalLocation, close?.canonicalLocation ?: open.canonicalLocation, head))
+        return stand
+    }
+
+    /** The `}` that closes [open] (a `{` of the file's tokens), or null when it never closes. */
+    private fun matchingClose(open: Token): Token? {
+        val tokens = context.tokens
+        var i = tokens.indexOfFirst { it.pointerPosition == open.pointerPosition }
+        if (i < 0) return null
+        var depth = 0
+        while (i < tokens.size) {
+            when (tokens[i].type) {
+                Token.Type.S_OPEN_BRACE -> depth++
+                Token.Type.S_CLOSE_BRACE -> if (--depth == 0) return tokens[i]
+                else -> {}
+            }
+            i++
+        }
+        return null
     }
 
     /**

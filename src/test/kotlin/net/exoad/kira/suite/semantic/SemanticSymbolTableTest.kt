@@ -128,8 +128,10 @@ class SemanticSymbolTableTest {
                 } else {
                     trace("other")
                 }
-                for j: Int32 in 0..6 {
+                j: Mutable<Int32> { 0 }
+                while j <= 6 {
                     trace(j)
+                    j += 1
                 }
             }
             """

@@ -119,8 +119,11 @@ class ReturnPathPassTest {
                 }
             }
             pub first: (xs: Arr<Int32>) Int32 {
-                for x: Int32 in xs {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < xs.size() {
+                    x: Int32 { xs.get(xIndex) }
                     trace(x)
+                    xIndex += 1
                 }
             }
             pub broken: () Int32 {

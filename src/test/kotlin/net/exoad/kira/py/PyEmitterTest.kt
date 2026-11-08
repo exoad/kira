@@ -167,25 +167,23 @@ class PyEmitterTest {
     }
 
     @Test
-    fun aRangeValueIsTheRuntimesRangeAndBothLoopsIncludeTheirEnd() {
+    fun aRangeValueIsTheRuntimesRangeAndACounterIncludesItsEnd() {
         val py = python(
             """
             pub f: (x: Int32) Int32 {
                 r: Range<Int32> { 1..4 }
                 t: Mutable<Int32> { 0 }
-                for i: Int32 in r {
-                    t += i
-                }
-                for j: Int32 in 1..4 {
+                j: Mutable<Int32> { 1 }
+                while j <= 4 {
                     t += j
+                    j += 1
                 }
                 x in r && r.contains(x) ? t + r.end : 0
             }
             """
         )
         assertTrue(py.contains("r = _k_Range(1, 4)"), py)
-        assertTrue(py.contains("for i in r._k_steps():"), py)
-        assertTrue(py.contains("for j in range(1, 5):"), "a literal range's loop holds its end too:\n$py")
+        assertTrue(py.contains("while j <= 4:"), "a counter up to a literal end holds it too:\n$py")
         assertTrue(py.contains("r._op_in_(x) and r.contains(x)"), py)
         assertTrue(py.contains("class _k_Range:"), py)
     }
@@ -1342,23 +1340,6 @@ class PyEmitterTest {
             }
             """,
             "the generic class Box",
-        )
-    }
-
-    @Test
-    fun aLoopVariableThatShadowsALocalIsRefused() {
-        refused(
-            """
-            f: () Void {
-                i: Int32 { 0 }
-                if i == 0 {
-                    for i: Int32 in 0..3 {
-                        trace(i)
-                    }
-                }
-            }
-            """,
-            "a loop variable 'i' that shadows a local of its name",
         )
     }
 

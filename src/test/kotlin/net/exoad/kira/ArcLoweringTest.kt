@@ -79,9 +79,11 @@ class ArcLoweringTest {
             $pet
 
             main: () Void {
-                for i: Int32 in 0.until(4) {
+                i: Mutable<Int32> { 0 }
+                while i < 4 {
                     p: Pet { Pet { "m" } }
                     trace(p.name)
+                    i += 1
                 }
             }
             """,

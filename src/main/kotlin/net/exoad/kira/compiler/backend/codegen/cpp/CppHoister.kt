@@ -156,7 +156,7 @@ import java.util.IdentityHashMap
  *   refusing any. A second-class value in a position the rule never allows reaching the
  *   emitter is a checker's bug, `cpp.internal` ([internalView]). That includes a view of a
  *   temporary in an if-expression's branch (KI-13), which ViewPass refuses as
- *   `rules.view.position`, as it refuses a `for` range with a TEMP origin (40-round3 F3): the
+ *   `rules.view.position`: the
  *   branch's owner cannot be spilled unconditionally.
  * - Where storage lives and what an operand reads are the model's facts, never re-derived from
  *   syntax (40-round3 R-E): a place is `TypedModel.readPlace`, however it is spelled (a
@@ -820,16 +820,6 @@ class CppHoister(private val lower: CppLowering) {
 
     /** Adds to [out] what [root] writes ([writtenBy]). */
     private fun writes(root: Expr, out: MutableSet<Place>) = eachWrite(root) { e -> placeRoot(e)?.let { out += it } }
-
-    /**
-     * Every place [roots] write by name, outside any lambda (the NAMED writes of 50-round4 2.0,
-     * whole places rather than roots): what a `for` range must not overlap to be lent (W6).
-     */
-    fun writtenPlaces(roots: List<ASTNode>): List<Place> {
-        val out = mutableListOf<Place>()
-        roots.forEach { r -> eachWrite(r) { e -> lower.model.readPlace(e)?.let { out += it } } }
-        return out
-    }
 
     /**
      * Calls [visit] with each expression [root] writes by name, outside any lambda: a call's

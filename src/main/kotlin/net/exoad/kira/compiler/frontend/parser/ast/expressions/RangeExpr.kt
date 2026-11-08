@@ -5,7 +5,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 /**
  * An inclusive range where [begin] and [end] are both included aka [begin, end] not [begin, end)
  */
-open class RangeExpr(val begin: Expr, val end: Expr) : ForIterationTargetExpr() {
+open class RangeExpr(val begin: Expr, val end: Expr) : Expr() {
     override fun accept(visitor: KiraASTVisitor) {
         visitor.visitRangeExpr(this)
     }

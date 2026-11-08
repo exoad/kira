@@ -27,7 +27,7 @@ Facts that trip up new writers.
 
 ## Backend truth
 
-- `for` ranges, `if/else`, and `while` lower today. Variants and generic
+- `if/else` and `while` (the only loop; `for` is refused, `kira --fix-for` rewrites it) lower today. Variants and generic
   traits are not lowered; trait inheritance and dispatch are.
 - Classes are heap ARC (scope-end release). Field-embedded objects are
   borrowed; release on explicit return paths is skipped (leak, not crash).

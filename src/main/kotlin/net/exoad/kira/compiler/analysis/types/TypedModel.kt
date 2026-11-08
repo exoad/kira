@@ -12,7 +12,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import java.util.IdentityHashMap
 
 /**
@@ -33,40 +32,6 @@ sealed interface Capture {
     /** The receiver itself: a method call or `this` inside the lambda (`[*this]`, `[this]`, `[self = ...]`). */
     data class This(val owner: TypeSymbol) : Capture
 }
-
-enum class LoopKind {
-    /** `for i: T in a..b`: both ends included (owner, 2026-11-01; D37's half-open loop is gone). */
-    RANGE,
-
-    /** `for i: T in r` over a `Range<T>` value: both ends included, as `i in r` says. */
-    RANGE_VALUE,
-
-    /** `for i: T in a.until(b)`, `xs.indices()` or an `Until<T>` value: the end left out. */
-    UNTIL,
-    ARR,
-    LIST,
-    SET,
-
-    /** A `View<T>` or `MutView<T>`. */
-    VIEW,
-
-    /** A `Map<K, V>`, iterated as `T2<K, V>` in insertion order (D27). */
-    MAP,
-}
-
-/**
- * How a `for` loop iterates (TypedModel.loops, keyed by the ForIterationStatement).
- *
- * @property element the loop variable's type (the range's integer type, or the element type).
- * @property variable the loop variable.
- */
-data class LoopPlan(
-    val kind: LoopKind,
-    val element: KType,
-    val variable: Symbol?,
-    /** An [LoopKind.UNTIL] loop's written start and end (`a.until(b)`, `xs.indices()`); null over an Until value. */
-    val bounds: HalfOpen? = null,
-)
 
 /**
  * `a.until(b)` or `xs.indices()` (typer-made, lane RANGE): [begin] up to [end], [end] left out. For
@@ -246,7 +211,6 @@ class TypedModel {
     val consts: IdentityHashMap<Expr, ConstValue> = IdentityHashMap()
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
     val captures: IdentityHashMap<LambdaExpr, List<Capture>> = IdentityHashMap()
-    val loops: IdentityHashMap<ForIterationStatement, LoopPlan> = IdentityHashMap()
 
     /** Every `a.until(b)` and `xs.indices()`, keyed by its member access: what the backends lower it to. */
     val halfOpens: IdentityHashMap<Expr, HalfOpen> = IdentityHashMap()
@@ -357,8 +321,6 @@ class TypedModel {
     fun conversion(c: TypeCastExpr): ConversionKind? = conversions[c]
 
     fun captures(l: LambdaExpr): List<Capture>? = captures[l]
-
-    fun loop(f: ForIterationStatement): LoopPlan? = loops[f]
 
     fun ifShape(e: IfExpr): Boolean? = ifShape[e]
 

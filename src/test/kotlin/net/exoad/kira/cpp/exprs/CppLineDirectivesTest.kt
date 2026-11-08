@@ -28,8 +28,10 @@ class CppLineDirectivesTest {
 
         pub count: (n: Int32) Int32 {
             t: Mutable<Int32> { 0 }
-            for i: Int32 in 0.until(n) {
+            i: Mutable<Int32> { 0 }
+            while i < n {
                 t += i
+                i += 1
             }
             t
         }
@@ -47,8 +49,9 @@ class CppLineDirectivesTest {
             "      #line 3 \"$file\"\n      return [base](std::int32_t x) -> std::int32_t",
             "          #line 4 \"$file\"\n          const std::int32_t y{x + base};",
             "          #line 5 \"$file\"\n          return y;",
-            "      #line 11 \"$file\"\n      for(std::int32_t i = 0, i_end = n; i < i_end; ++i)",
-            "          #line 12 \"$file\"\n          t += i;",
+            "      #line 11 \"$file\"\n      std::int32_t i{0};",
+            "      #line 12 \"$file\"\n      while(i < n)",
+            "          #line 13 \"$file\"\n          t += i;",
         ).forEach { assertTrue(s.contains(it), "missing:\n$it\n--- emitted ---\n$s") }
     }
 

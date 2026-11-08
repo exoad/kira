@@ -27,15 +27,20 @@ class ConstEligibilityPassTest {
                 }
                 pub @_const frame: (kind: UInt32) Maybe<Arr<UInt8, 8>> {
                     p: Mutable<Arr<UInt8, 8>> { @arrOf(0, 0, 0, 0, 0, 0, 0, 0) }
-                    for i: Size in MAGIC.indices() {
+                    i: Mutable<Size> { 0 }
+                    while i < MAGIC.size() {
                         p[i] = MAGIC[i]
+                        i += 1
                     }
                     writeU32(p.from(4), kind)
                     readU32(p.slice(4, 4)) != kind ? null : p
                 }
                 pub @_const each: (buf: View<UInt8>, f: Fx<T1<UInt8>, Void>) Size {
-                    for b: UInt8 in buf {
+                    bIndex: Mutable<Size> { 0 }
+                    while bIndex < buf.size() {
+                        b: UInt8 { buf.get(bIndex) }
                         f(b)
+                        bIndex += 1
                     }
                     buf.size()
                 }

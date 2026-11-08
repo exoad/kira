@@ -353,10 +353,13 @@ class CppExprRowsTest {
 
             pub addAll: (xs: List<Int32>, k: Int32) Int32 {
                 total: Mutable<Int32> { 0 }
-                for x: Int32 in xs {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < xs.size() {
+                    x: Int32 { xs.get(xIndex) }
                     total += applyTo((v: Int32) Int32 {
                         v + k
                     }, x)
+                    xIndex += 1
                 }
                 total
             }
@@ -785,46 +788,59 @@ class CppExprRowsTest {
 
             pub sumTo: (n: Size) Size {
                 t: Mutable<Size> { 0 }
-                for i: Size in 0.until(n) {
+                i: Mutable<Size> { 0 }
+                while i < n {
                     t += i
+                    i += 1
                 }
                 t
             }
 
             pub constBound: () Int32 {
                 t: Mutable<Int32> { 0 }
-                for i: Int32 in 0.until(LIMIT) {
+                i: Mutable<Int32> { 0 }
+                while i < LIMIT {
                     t += i
+                    i += 1
                 }
-                for j: Int32 in 0.until(3) {
+                j: Mutable<Int32> { 0 }
+                while j < 3 {
                     t += j
+                    j += 1
                 }
                 t
             }
 
             pub each: (xs: List<Int32>, names: List<Str>) Int32 {
                 t: Mutable<Int32> { 0 }
-                for x: Int32 in xs {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < xs.size() {
+                    x: Int32 { xs.get(xIndex) }
                     t += x
+                    xIndex += 1
                 }
-                for s: Str in names {
+                sIndex: Mutable<Size> { 0 }
+                while sIndex < names.size() {
+                    s: Str { names.get(sIndex) }
                     t += s.length() as Int32
+                    sIndex += 1
                 }
                 t
             }
 
             """,
             listOf(
-                "for(kira::Size i = 0, i_end = n; i < i_end; ++i)",
-                "for(std::int32_t i = 0; i < LIMIT; ++i)",
-                "for(std::int32_t j = 0; j < 3; ++j)",
-                "for(const std::int32_t x : xs)",
-                "for(const kira::Str& s : names)",
+                "while(i < n)",
+                "while(i < LIMIT)",
+                "while(j < 3)",
+                "while(xIndex < xs.size())",
+                "const std::int32_t x{kira::at(xs, xIndex)};",
+                "const kira::Str s = kira::at(names, sIndex);",
             ),
             listOf(
-                """check(s2::sumTo(4) == 6u, "5.4: a range's bound is evaluated once, i_end");""",
-                """check(s2::constBound() == 9, "5.4: a constant or literal bound needs no temporary");""",
-                """check(s2::each(kira::List<std::int32_t>{1, 2}, kira::List<kira::Str>{"ab", "c"}) == 6, "5.4: range-for, by value for a scalar, by const& otherwise");""",
+                """check(s2::sumTo(4) == 6u, "5.4: a counter loop");""",
+                """check(s2::constBound() == 9, "5.4: a constant or literal bound");""",
+                """check(s2::each(kira::List<std::int32_t>{1, 2}, kira::List<kira::Str>{"ab", "c"}) == 6, "5.4: an index walk, a scalar by value and the rest copied");""",
             ),
         ),
         row(
@@ -1414,8 +1430,11 @@ class CppExprRowsTest {
 
             sumV: (v: View<Int32>) Int32 {
                 s: Mutable<Int32> { 0 }
-                for x: Int32 in v {
+                xIndex: Mutable<Size> { 0 }
+                while xIndex < v.size() {
+                    x: Int32 { v.get(xIndex) }
                     s += x
+                    xIndex += 1
                 }
                 s
             }

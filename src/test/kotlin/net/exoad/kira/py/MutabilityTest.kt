@@ -105,7 +105,6 @@ class MutabilityTest {
         for ((text, help) in listOf(
             call.format("f(xs = mut ys)") to "pass the value itself",
             call.format("f(mut xs = ys)") to "pass the value itself",
-            "f: () Void {\n    for mut i: 0..3 {\n    }\n}\n" to "a loop variable is never Mutable",
             "f: (cb: (mut n: Int32) Void) Void {\n}\n" to "a parameter is never Mutable",
             "f: () Void {\n    g: (n: Int32) Void = (mut n: Int32) Void {\n    }\n}\n" to "a parameter is never Mutable",
             "mut C: Any {\n    pub n: Int32 { 0 }\n}\n" to "a type whose values change is 'Name: Mutable<Parent>'",

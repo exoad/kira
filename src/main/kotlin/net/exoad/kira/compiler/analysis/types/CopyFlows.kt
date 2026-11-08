@@ -14,7 +14,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
@@ -53,9 +52,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
 
     /** Each loop's span: a use inside one happens again after any point of it. */
     private val loops = mutableListOf<Pair<Pos, Pos>>()
-
-    /** A `for` variable over a collection's elements, by the place it iterates: each value is that place's element. */
-    private val loopOf = IdentityHashMap<Symbol, Place>()
 
     /** Functions whose result is (or may be) a place another name holds: a call to one is no fresh value. */
     private val aliasing: MutableSet<FnSymbol> = Collections.newSetFromMap(IdentityHashMap())
@@ -118,12 +114,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
             }
             is Identifier -> (p.model.refs[n] as? LocalSymbol)?.let { s -> pos(n)?.let { readsOf.getOrPut(s) { mutableListOf() } += it } }
             is WhileIterationStatement -> span(n)?.let { loops += it }
-            is ForIterationStatement -> {
-                span(n)?.let { loops += it }
-                val plan = p.model.loops[n]
-                val v = plan?.variable
-                if (v != null && turns(plan.element)) iterated(n.forIterationExpr.target)?.let { loopOf[v] = it }
-            }
             else -> {}
         }
     }
@@ -209,15 +199,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
         if (pl == null) return false
         val last = pl.path().lastOrNull()
         return if (last is PathStep.FieldStep) last.sym in inPlaceElements else rootSymbol(pl)?.let { it in inPlaceElements } == true
-    }
-
-    /** The place a loop's [target] iterates the elements of: a collection's place, or the place a view, `entries()` or `toArr()` reads. */
-    private fun iterated(target: Expr): Place? {
-        place(target)?.let { return it }
-        val c = target as? FunctionCallExpr ?: (target as? MemberAccessExpr)?.member as? FunctionCallExpr ?: return null
-        val rc = p.model.calls[c] ?: return null
-        if (rc.fn?.name !in ITERATED || (rc.fn?.owner as? ClassSymbol)?.kind != ClassKind.MAGIC) return null
-        return rc.receiver?.let { place(it) ?: iterated(it) }
     }
 
     /**
@@ -328,8 +309,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
         val at = pos(v) ?: return
         val root = src?.let { rootSymbol(it) }
         val srcParam = (src?.root() as? Place.Param)?.sym?.takeIf { src.path().isEmpty() }
-        // A `for` variable is an element of what the loop iterates, which still holds it.
-        val element = src?.takeIf { it.path().isEmpty() }?.let { root?.let { r -> loopOf[r] } }
         // What keeps the value: does it change later?
         val destChanged = when (dest) {
             is Dest.Local -> changedAfter(dest.sym, at)
@@ -345,7 +324,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
         if (!reporting) return
         val srcChanged = when {
             src == null -> callArgsChange(v, at)
-            element != null -> elementsChange(element)
             root is LocalSymbol -> {
                 // Nothing reads or changes the local after it went on: moved, not shared.
                 if (!usedAfter(root, at)) return
@@ -357,7 +335,7 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
         }
         if (!srcChanged && !destChanged) return
         // A change to the copy matters only while the source is still read.
-        if (!srcChanged && element == null && root is LocalSymbol && !usedAfter(root, at)) return
+        if (!srcChanged && root is LocalSymbol && !usedAfter(root, at)) return
         val into = when (dest) {
             is Dest.Local -> dest.what
             is Dest.Held -> dest.what
@@ -434,9 +412,6 @@ abstract class CopyFlows(protected val p: TypedProgram, private val reportedIn: 
 
     companion object {
         private val LENDERS = setOf("from", "slice", "view")
-
-        /** Calls whose result iterates the receiver's own elements. */
-        private val ITERATED = setOf("view", "from", "slice", "toArr", "entries", "valuesArr")
 
         private val UNWRAPS = setOf("unwrap", "unwrapOr")
 

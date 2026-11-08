@@ -62,13 +62,16 @@ fun main(args: Array<String>) {
         }
         return
     }
-    // `kira --fix-range-loops <file.kira>...` rewrites each `for i: T in a..b` that left b out (before ranges held
-    // their end) to `xs.indices()` or `a.until(b)` in place, and names any loop it left alone.
-    if (args.firstOrNull() == "--fix-range-loops") {
+    // `kira --fix-for <file.kira>...` rewrites each `for` to the `while` it becomes, in place, and names any loop it left alone.
+    if (args.firstOrNull() == "--fix-for") {
         for (f in args.drop(1)) {
-            val r = net.exoad.kira.compiler.fix.RangeLoopFix.rewriteFile(File(f))
-            println("$f: indices ${r.indices}, until ${r.until}, left ${r.skipped.size}")
-            r.skipped.forEach { println("  left: $it") }
+            try {
+                val r = net.exoad.kira.compiler.fix.ForFix.rewriteFile(File(f))
+                println("$f: fixed ${r.fixed}, left ${r.skipped.size}")
+                r.skipped.forEach { println("  left: $it") }
+            } catch (e: Throwable) {
+                println("$f: refused (${e.message?.lineSequence()?.firstOrNull()})")
+            }
         }
         return
     }

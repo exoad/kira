@@ -888,64 +888,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         buffer.appendLine(";")
     }
 
-    override fun visitForIterationStatement(forIterationStatement: ForIterationStatement) {
-        val iterExpr = forIterationStatement.forIterationExpr
-        val target = iterExpr.target
-        if (HalfOpenSyntax.isIndices(target)) {
-            throw UnsupportedConstruct(target, "xs.indices() (write 0.until(xs.size()))", TARGET_NAME)
-        }
-        val until = HalfOpenSyntax.until(target)
-        if (target is RangeExpr || until != null) {
-            val name = iterExpr.initializer.value
-            appendIndented("for (let ")
-            buffer.append(name)
-            buffer.append(" = ")
-            if (target is RangeExpr) {
-                // `for i: T in a..b` holds b, read once.
-                target.begin.accept(this)
-                buffer.append(", ${name}_last = ")
-                target.end.accept(this)
-                buffer.append("; $name <= ${name}_last; ++$name")
-            } else {
-                // `a.until(b)`: the end left out.
-                until!!.first.accept(this)
-                buffer.append("; $name < ")
-                until.second.accept(this)
-                buffer.append("; ++$name")
-            }
-            buffer.appendLine(") {")
-            iterExpr.declaredType?.let { knownValueTypes[name] = typeNameOf(it) }
-            indentLevel++
-            forIterationStatement.body.forEach { it.accept(this) }
-            indentLevel--
-            appendIndentedLine("}")
-            return
-        }
-        // Iteration over a container: an Arr is a native array; KiraList and
-        // KiraSet keep their elements in `.values`. (This used to be a stub
-        // that ran the body exactly once.)
-        val targetName = (target as? Identifier)?.value ?: target.toString()
-        val name = iterExpr.initializer.value
-        appendIndented("for (let $name of ")
-        when (val recvType = receiverTypeOf(target)) {
-            "Arr" -> target.accept(this)
-            "List", "Set" -> {
-                target.accept(this)
-                buffer.append(".values")
-            }
-            else -> throw IllegalStateException(
-                "for-in over '$targetName': the JS backend needs it to be an Arr, List or Set" +
-                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
-            )
-        }
-        buffer.appendLine(") {")
-        elementTypeOf(target)?.let { knownValueTypes[name] = it }
-        indentLevel++
-        forIterationStatement.body.forEach { it.accept(this) }
-        indentLevel--
-        appendIndentedLine("}")
-    }
-
     override fun visitUseStatement(useStatement: UseStatement) {
         appendIndentedLine("// use \"${useStatement.moduleUri}\"")
     }
@@ -961,7 +903,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         // `x in r` and a range as a value need the typed model, which this backend does not read.
         if (binaryExpr.operator == BinaryOp.IN) {
-            throw UnsupportedConstruct(binaryExpr, "`in` outside a for loop (x in a..b, x in r)", TARGET_NAME)
+            throw UnsupportedConstruct(binaryExpr, "`in` (x in a..b, x in r)", TARGET_NAME)
         }
         val op = binaryExpr.operator
         // Non-primitive operands desugar to the op_* overload.
@@ -1206,7 +1148,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         if (HalfOpenSyntax.isEither(functionCallExpr)) {
-            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices` outside a for loop's head", TARGET_NAME)
+            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices`", TARGET_NAME)
         }
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name
@@ -1384,17 +1326,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         buffer.append(name)
     }
 
-    override fun visitForIterationExpr(forIterationExpr: ForIterationExpr) {
-        buffer.append("/* for ")
-        buffer.append(forIterationExpr.initializer.value)
-        buffer.append(" in ")
-        forIterationExpr.target.accept(this)
-        buffer.append(" */")
-    }
-
     override fun visitRangeExpr(rangeExpr: RangeExpr) {
         // A for loop's own range never reaches here; any other is a Range value.
-        throw UnsupportedConstruct(rangeExpr, "a range as a value (a..b outside a for loop's head)", TARGET_NAME)
+        throw UnsupportedConstruct(rangeExpr, "a range as a value", TARGET_NAME)
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {

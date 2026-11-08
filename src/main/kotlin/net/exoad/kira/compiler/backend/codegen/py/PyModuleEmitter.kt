@@ -19,7 +19,6 @@ import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
-import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
@@ -79,7 +78,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -750,7 +748,6 @@ class PyModuleEmitter(
             out
         }
         is WhileIterationStatement -> listOf("while ${expr(s.condition, f).text}:") + indent(block(s.statements, f))
-        is ForIterationStatement -> forLoop(s, f)
         is BreakStatement -> listOf("break")
         is ContinueStatement -> listOf("continue")
         else -> {
@@ -765,50 +762,6 @@ class PyModuleEmitter(
                 exprStatement(s, s.expr, f)
             }
         }
-    }
-
-    private fun forLoop(s: ForIterationStatement, f: Frame): List<String> {
-        val fe = s.forIterationExpr
-        val plan = model.loop(s) ?: return refuse(fe, "a for loop the typer did not resolve").let { emptyList() }
-        val v = plan.variable as? LocalSymbol ?: return refuse(fe, "a for loop without its variable").let { emptyList() }
-        checkLocal(v.name, fe)
-        checkType(v.type, fe, "the loop variable '${v.name}'")
-        if (f.scopes.any { v.name in it }) {
-            refuse(fe, "a loop variable '${v.name}' that shadows a local of its name (Python has one scope per function; rename it)")
-        }
-        val target = fe.target
-        val over = when (plan.kind) {
-            LoopKind.RANGE -> {
-                // Both ends included: Python's range stops before its second argument.
-                val r = target as? RangeExpr ?: return refuse(fe, "a range loop without a range").let { emptyList() }
-                val last = (model.const(r.end) as? ConstValue.IntConst)?.let { (it.value + java.math.BigInteger.ONE).toString() }
-                    ?: "${wrap(expr(r.end, f), PyPrec.ADD)} + 1"
-                call("range", wrap(expr(r.begin, f), PyPrec.TERNARY), last).text
-            }
-            LoopKind.UNTIL -> plan.bounds?.let { b -> call("range", wrap(expr(b.begin, f), PyPrec.TERNARY), wrap(expr(b.end, f), PyPrec.TERNARY)).text }
-                ?: "${wrap(expr(target, f), PyPrec.POSTFIX)}._k_steps()"
-            LoopKind.LIST, LoopKind.ARR -> {
-                val t = typeOf(target) ?: return emptyList()
-                val it = wrap(expr(target, f), PyPrec.POSTFIX)
-                if (walksUnwritten(target, s.body)) it else copyOf(Py(it, PyPrec.POSTFIX), t).text
-            }
-            LoopKind.RANGE_VALUE -> "${wrap(expr(target, f), PyPrec.POSTFIX)}._k_steps()"
-            LoopKind.VIEW -> wrap(expr(target, f), PyPrec.TERNARY)
-            LoopKind.MAP -> {
-                val items = "${wrap(expr(target, f), PyPrec.POSTFIX)}.items()"
-                if (walksUnwritten(target, s.body)) items else call("list", items).text
-            }
-            LoopKind.SET -> {
-                val it = wrap(expr(target, f), PyPrec.POSTFIX)
-                if (walksUnwritten(target, s.body)) it else call("list", it).text
-            }
-            else -> return refuse(target, "a for loop over a ${typeOf(target)?.display()}").let { emptyList() }
-        }
-        elementBound.add(v)
-        f.scopes.addLast(hashSetOf(v.name))
-        val body = block(s.body, f)
-        f.scopes.removeLast()
-        return listOf("for ${local(v.name)} in $over:") + indent(body)
     }
 
     /** C++ walks a copy of a List the body may write: so does Python, unless nothing but the body could write it. */
@@ -2250,7 +2203,6 @@ class PyModuleEmitter(
             when (n) {
                 is VariableDecl -> model.declSymbol(n)?.let { declared.add(it) }
                 is TryExpr -> n.exceptionName?.let { name -> model.declSymbol(name)?.let { declared.add(it) } }
-                is ForIterationStatement -> model.loop(n)?.variable?.let { declared.add(it) }
                 else -> {}
             }
         }
@@ -2278,7 +2230,6 @@ class PyModuleEmitter(
                     is ReturnStatement -> s
                     is BreakStatement, is ContinueStatement -> if (inLoop) null else s
                     is WhileIterationStatement -> scan(s.statements, true)
-                    is ForIterationStatement -> scan(s.body, true)
                     is IfSelectionStatement -> scan(s.thenStatements, inLoop) ?: s.elseBranches.firstNotNullOfOrNull { b ->
                         when (b) {
                             is ElseIfBranchStatement -> scan(b.statements, inLoop)

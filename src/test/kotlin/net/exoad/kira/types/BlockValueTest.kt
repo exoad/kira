@@ -269,7 +269,7 @@ class BlockValueTest {
     @Test
     fun onPyALoopVariableInAnArmIsTheDefsOwn() {
         val py = PyTestSupport.emit(
-            "f: (c: Bool) Int32 {\n    v: Int32 { if c {\n        s: Mutable<Int32> { 0 }\n        for i: Int32 in 0..3 {\n            s += i\n        }\n        s\n    } else {\n        0\n    } }\n    v\n}",
+            "f: (c: Bool) Int32 {\n    v: Int32 { if c {\n        s: Mutable<Int32> { 0 }\n        i: Mutable<Int32> { 0 }\n        while i <= 3 {\n            s += i\n            i += 1\n        }\n        s\n    } else {\n        0\n    } }\n    v\n}",
         ).python()
         assertFalse(py.contains("nonlocal"), py)
     }
@@ -287,7 +287,7 @@ class BlockValueTest {
     @Test
     fun onPyAJumpOutOfAValueArmIsRefused() {
         val breaks = PyTestSupport.emit(
-            "f: (d: Bool) Int32 {\n    s: Mutable<Int32> { 0 }\n    for i: Int32 in 0..3 {\n        s += try {\n            if d {\n                break\n            }\n            i\n        } on e: Str {\n            0\n        }\n    }\n    s\n}",
+            "f: (d: Bool) Int32 {\n    s: Mutable<Int32> { 0 }\n    i: Mutable<Int32> { 0 }\n    while i <= 3 {\n        s += try {\n            if d {\n                break\n            }\n            i\n        } on e: Str {\n            0\n        }\n        i += 1\n    }\n    s\n}",
         )
         assertTrue(breaks.errors.any { it.contains("a break inside an arm of an if or try used as a value") }, breaks.errors.joinToString("\n"))
         // A loop inside the arm keeps its own break.

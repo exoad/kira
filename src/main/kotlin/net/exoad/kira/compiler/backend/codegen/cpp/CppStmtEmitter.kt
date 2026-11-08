@@ -10,7 +10,6 @@ import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
 import net.exoad.kira.compiler.analysis.types.ConstValue
-import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.Symbol
 import net.exoad.kira.compiler.analysis.types.TypeSymbol
@@ -36,7 +35,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -52,8 +50,6 @@ import java.util.IdentityHashMap
  *   mistake is a hard error on every compiler [A-M5]; anything else is copy-initialized
  *   (`const Reply r = e;`), which avoids the `initializer_list` trap. A local without `mut` is
  *   `const`.
- * - `for i: T in a..b` evaluates its bound once (`i_end`), unless the bound is a literal or a
- *   constant; `for x: T in xs` is a range-for (by value for a scalar, by `const&` otherwise).
  * - A place assignment writes the lvalue (`kira::at(p, 30) = ...`); a discarded non-Void
  *   result is `static_cast<void>(...)` (R8: every non-Void function is `[[nodiscard]]`).
  * - `throw` is `throw kira::Error{...}` hosted and `kira::panic(...)` freestanding (D41);
@@ -109,7 +105,6 @@ class CppStmtEmitter : CppStmtPart {
             is ReturnStatement -> returnStatement(ctx, s)
             is IfSelectionStatement -> ifStatement(ctx, s)
             is WhileIterationStatement -> listOf(CppWriter.whileHead(cond(ctx, s.condition))) + block(ctx, s.statements)
-            is ForIterationStatement -> forStatement(ctx, s)
             is BreakStatement -> listOf("break;")
             is ContinueStatement -> listOf("continue;")
             is UseStatement -> {
@@ -172,104 +167,6 @@ class CppStmtEmitter : CppStmtPart {
             }
         }
         return out
-    }
-
-    private fun forStatement(ctx: CppEmitContextImpl, s: ForIterationStatement): List<String> {
-        val lower = CppLowering.of(ctx)
-        val state = lower.state
-        val model = ctx.model
-        val plan = model.loop(s) ?: return listOf(lower.internal(s.forIterationExpr, "no loop plan was recorded").text + ";")
-        val fe = s.forIterationExpr
-        val variable = plan.variable ?: return listOf(lower.internal(fe, "a loop without its variable").text + ";")
-        val declared = fe.declaredType?.takeIf { model.typeOf(it) != null }
-        val typeText = if (declared != null) ctx.spell(declared, Pos.VALUE) else ctx.spell(plan.element, Pos.VALUE, fe)
-        return state.block {
-            val name = state.declare(variable, ctx.names.escape(fe.initializer.value)) { taken(ctx, it) }
-            if (plan.kind == LoopKind.RANGE_VALUE) {
-                // Both ends included: the Range is read once, and the step stops at its end before
-                // `++` could pass the type's last value. `continue` in the body takes the step too.
-                val r = state.fresh("${name.lowercase()}_r")
-                val more = state.fresh("${name.lowercase()}_more")
-                val rangeType = ctx.spell(model.require(fe.target), Pos.VALUE, fe.target)
-                val head = "$typeText $name = $r.begin; $more; $more = $name != $r.end && (++$name, true)"
-                val inner = listOf(
-                    "const $rangeType $r = ${lower.emit(fe.target, CppPrec.ASSIGN)};",
-                    "bool $more = $r.begin <= $r.end;",
-                    CppWriter.forHead(head),
-                ) + block(ctx, s.body)
-                return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
-            }
-            if (plan.kind == LoopKind.UNTIL && plan.bounds == null) {
-                // An Until value: read once, counted while below its end.
-                val r = state.fresh("${name.lowercase()}_r")
-                val untilType = ctx.spell(model.require(fe.target), Pos.VALUE, fe.target)
-                val inner = listOf(
-                    "const $untilType $r = ${lower.emit(fe.target, CppPrec.ASSIGN)};",
-                    CppWriter.forHead("$typeText $name = $r.begin; $name < $r.end; ++$name"),
-                ) + block(ctx, s.body)
-                return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
-            }
-            val range = fe.target as? RangeExpr
-            if (plan.kind == LoopKind.RANGE && range != null) {
-                val start = lower.emit(range.begin, CppPrec.ASSIGN)
-                val last = model.const(range.end) as? ConstValue.IntConst
-                if (last == null || last.value == last.prim.maxValue) {
-                    // Both ends included: the end is read once, and the step stops there before `++`
-                    // could pass the type's last value. `continue` in the body takes the step too.
-                    val end = state.fresh("${name.lowercase()}_last")
-                    val more = state.fresh("${name.lowercase()}_more")
-                    val head = "$typeText $name = $start, $end = ${lower.emit(range.end, CppPrec.ASSIGN)}; $more && $name <= $end; " +
-                        "$more = $name != $end && (++$name, true)"
-                    val inner = listOf("bool $more = true;", CppWriter.forHead(head)) + block(ctx, s.body)
-                    return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
-                }
-            }
-            val head = when (plan.kind) {
-                LoopKind.RANGE -> {
-                    range ?: return@block listOf(lower.internal(fe, "a range loop without a range").text + ";")
-                    // A constant end below the type's last value: `<=` it, with no temporary.
-                    "$typeText $name = ${lower.emit(range.begin, CppPrec.ASSIGN)}; $name <= ${lower.emit(range.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
-                }
-                LoopKind.UNTIL -> {
-                    val bounds = plan.bounds ?: return@block listOf(lower.internal(fe, "an until loop without its bounds").text + ";")
-                    val start = lower.emit(bounds.begin, CppPrec.ASSIGN)
-                    if (model.const(bounds.end) != null) {
-                        // A literal or constant bound needs no temporary.
-                        "$typeText $name = $start; $name < ${lower.emit(bounds.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
-                    } else {
-                        val end = state.fresh("${name.lowercase()}_end")
-                        "$typeText $name = $start, $end = ${lower.emit(bounds.end, CppPrec.ASSIGN)}; $name < $end; ++$name"
-                    }
-                }
-                else -> {
-                    // `for(x : range)` binds the range to a reference, which keeps the outermost
-                    // temporary alive and no other: a view into one dies before the first step
-                    // (design 30, E5: a view range is a view parameter's or a literal's).
-                    if (CppHoister.isSecondClass(model.typeOrNull(fe.target)) && lower.hoister.viewsTemporary(fe.target)) {
-                        lower.hoister.internalView(fe.target, "this loop ranges over a view into a temporary, which C++ destroys before the first step", "position")
-                    }
-                    val unused = if (isRead(ctx, variable)) "" else "[[maybe_unused]] "
-                    val decl = when {
-                        (variable as? LocalSymbol)?.isMut == true -> "$typeText $name"
-                        ctx.speller.byValue(plan.element) -> "const $typeText $name"
-                        else -> "const $typeText& $name"
-                    }
-                    val range = lower.coerced(fe.target)
-                    val rangeType = model.typeOrNull(fe.target)
-                    // Copy by default (50-round4 L5): the range-for keeps `begin`/`end` into its range
-                    // for the whole loop, so a range W6 does not keep still (a range the body may
-                    // write, move or free, a place rooted at a temporary, anything that is no
-                    // prvalue) is iterated as a copy, `T(r)`, which the loop's reference keeps alive.
-                    // A view is lent (W4: a view parameter's or a literal's storage, design 30 E5),
-                    // and so is a converted range (ToView).
-                    val lends = rangeType == null || model.coercion(fe.target) != null || CppHoister.isSecondClass(rangeType) ||
-                        lower.policy.rangeLends(fe.target, s.body, plan.element)
-                    val text = if (lends || rangeType == null) lower.wrap(range, CppPrec.NONE) else lower.policy.copy(range, rangeType, fe.target).text
-                    "$unused$decl : $text"
-                }
-            }
-            listOf(CppWriter.forHead(head)) + block(ctx, s.body)
-        }
     }
 
     private fun expressionStatement(ctx: CppEmitContextImpl, s: Statement, e: Expr): List<String> {
@@ -417,7 +314,6 @@ class CppStmtEmitter : CppStmtPart {
                     is ReturnStatement -> s
                     is BreakStatement, is ContinueStatement -> if (inLoop) null else s
                     is WhileIterationStatement -> scan(s.statements, true)
-                    is ForIterationStatement -> scan(s.body, true)
                     is IfSelectionStatement -> scan(s.thenStatements, inLoop) ?: s.elseBranches.firstNotNullOfOrNull { b ->
                         when (b) {
                             is ElseIfBranchStatement -> scan(b.statements, inLoop)
@@ -529,7 +425,6 @@ class CppStmtEmitter : CppStmtPart {
                     is AssignmentExpr -> written.add(node.target)
                     is CompoundAssignmentExpr -> (node.left as? Identifier)?.let { written.add(it) }
                     is VariableDecl -> declaring.add(node.name)
-                    is net.exoad.kira.compiler.frontend.parser.ast.expressions.ForIterationExpr -> declaring.add(node.initializer)
                     is net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionDeclParameterExpr -> declaring.add(node.name)
                     is TryExpr -> node.exceptionName?.let { declaring.add(it) }
                     else -> {}

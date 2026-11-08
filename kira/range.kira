@@ -1,5 +1,5 @@
 // Ranges of numbers. `a..b` is a Range: it holds a, b and every number between, in `x in a..b`, in
-// `contains` and in a for loop alike (owner 2026-11-01). `x in a..b` with a written range builds no
+// `contains` alike (owner 2026-11-01). `x in a..b` with a written range builds no
 // Range: the backends lower it to two comparisons.
 
 pub Range<T: Num>: Struct {
@@ -18,7 +18,6 @@ pub Range<T: Num>: Struct {
 // `a.until(b)` and `xs.indices()`: begin up to end with the end left out, so it is empty when end <= begin
 // and `xs.indices()` is empty for an empty xs. The typer makes the two calls (as it makes Str.of): `until`
 // on any integer, `indices` on a Str, List, Arr, View or MutView (0.until(xs.size()), length() on a Str).
-// In a for loop's head neither builds an Until: the loop counts from begin while it is below end.
 pub Until<T: IntNum>: Struct {
     pub begin: T
     pub end: T

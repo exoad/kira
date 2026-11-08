@@ -36,7 +36,6 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
-import net.exoad.kira.compiler.frontend.parser.ast.statements.ForIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.Consumer
@@ -49,7 +48,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.Use
  * value; the C++ lowering keeps its signatures (`const T&`, and `T&` for `mut`) and decides at
  * the use. Wherever C++ binds a reference to a first-class expression (a [Use]: an argument, a
  * receiver, an operator's or `kira::cat`'s operand, a `trace` argument, an `Fx` value's callee,
- * an extern's argument, an assignment's value; and a `for` range, [rangeLends]), the expression
+ * an extern's argument, an assignment's value), the expression
  * is a temporary or it is copied, `T(e)`, unless a shape of the whitelist proves that nothing
  * writes, moves or frees the storage while the reference lives. A callee never guards: every
  * caller keeps invariant I (each `const&` parameter is bound to storage nothing changes until
@@ -64,7 +63,7 @@ import net.exoad.kira.compiler.backend.codegen.cpp.CppHoister.Use
  * 4. an operand D33 spilled is its typed temporary, which is the copy (W1);
  * 5. W2 ([isPrivate], a place only this body names, unwritten by the call) or W3 (any place,
  *    when the consumer is CONFINED, no operand is IMPURE and no own `mut` operand may hold the
- *    place or lie in it) lends; a `for` range lends under W6 ([rangeLends]);
+ *    place or lie in it) lends;
  * 6. anything else is copied ([copy]): `T(e)`, which is `kira::Rc<C>(h)->m(...)` for a class
  *    handle receiver (it holds the object for the call, W5) and `kira::Fn<...>(f)(...)` for an
  *    `Fx` value's callee.
@@ -345,55 +344,5 @@ class CppCopyPolicy(private val lower: CppLowering) {
             f = f.overrides ?: break
         }
         return f
-    }
-
-    // ---- W6: a range-for --------------------------------------------------------------------------
-
-    /**
-     * W6 (2.6): whether `for x in [target]` may iterate [target]'s storage in place (the
-     * range-for keeps `begin`/`end` into it for the whole loop), else it iterates `T(r)`, a
-     * prvalue the loop's reference keeps alive. A range that is no place lends only as a
-     * prvalue. A place lends when no named write of the loop (range and [body], outside
-     * lambdas) overlaps it or a prefix of it, its root is no temporary (which dies with the
-     * range-init), and either it is PRIVATE (written only by name) or EffectsPass ranks the body
-     * at most READS (it writes only locals).
-     */
-    fun rangeLends(target: Expr, body: List<Statement>, element: KType): Boolean {
-        val p = model.readPlace(target) ?: return isPrvalue(target)
-        val root = p.root()
-        if (root is Place.Field && root.receiver == null) {
-            return false
-        }
-        if (lower.hoister.writtenPlaces(listOf<ASTNode>(target) + body).any { it.overlaps(p) }) {
-            return false
-        }
-        return isPrivate(p) || atMostReads(body)
-    }
-
-    /** Whether EffectsPass ranks every expression of [body] at most READS. */
-    private fun atMostReads(body: List<Statement>): Boolean {
-        val stack = ArrayDeque<ASTNode>()
-        body.forEach { stack.addLast(it) }
-        while (stack.isNotEmpty()) {
-            val n = stack.removeLast()
-            when (n) {
-                is Type -> {}
-                is VariableDecl -> {
-                    val local = model.declSymbol(n) as? LocalSymbol
-                    if (local == null) {
-                        return false
-                    }
-                    n.value?.let { stack.addLast(it) }
-                }
-                // An expression's entry is the join of its nodes' (its lambdas' bodies aside, which run only when called).
-                is Expr -> if ((model.effects[n] ?: Effect.IMPURE) == Effect.IMPURE) {
-                    return false
-                }
-                else -> {
-                    AstTree.children(n).forEach { stack.addLast(it) }
-                }
-            }
-        }
-        return true
     }
 }
