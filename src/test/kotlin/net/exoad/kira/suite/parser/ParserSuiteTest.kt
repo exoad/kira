@@ -1480,6 +1480,8 @@ class ParserSuiteTest {
         "an 'initially' block",
         "named construction",
         "omits a default-valued parameter ('b')",
+        "if-expression",
+        "lambda expression",
     )
 
     @Test

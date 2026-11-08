@@ -1715,6 +1715,74 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         appendIndented("}")
     }
 
+    override fun visitIfExpr(ifExpr: IfExpr) {
+        // An arrow IIFE keeps `this` and gives each branch a place to run
+        // statements before returning its last value.
+        buffer.appendLine("(() => {")
+        indentLevel++
+        appendIndented("if (")
+        ifExpr.condition.accept(this)
+        buffer.appendLine(") {")
+        indentLevel++
+        emitBranchValue(ifExpr, ifExpr.thenBranch)
+        indentLevel--
+        appendIndentedLine("} else {")
+        indentLevel++
+        emitBranchValue(ifExpr, ifExpr.elseBranch)
+        indentLevel--
+        appendIndentedLine("}")
+        indentLevel--
+        appendIndented("})()")
+    }
+
+    private fun emitBranchValue(ifExpr: IfExpr, branch: List<Statement>) {
+        val last = branch.lastOrNull()
+            ?: throw UnsupportedConstruct(ifExpr, "an if-expression with an empty branch", TARGET_NAME)
+        branch.dropLast(1).forEach { it.accept(this) }
+        appendIndented("return ")
+        last.expr.accept(this)
+        buffer.appendLine(";")
+    }
+
+    override fun visitLambdaExpr(lambdaExpr: LambdaExpr) {
+        val def = lambdaExpr.def
+        def.parameters.forEach { param ->
+            knownValueTypes[param.name.value] = typeNameOf(param.typeSpecifier)
+            recordContainerTypeArgs(param.name.value, param.typeSpecifier)
+        }
+        buffer.append("(")
+        def.parameters.forEachIndexed { index, param ->
+            if (index > 0) buffer.append(", ")
+            buffer.append(param.name.value)
+            param.defaultValue?.let { value ->
+                buffer.append(" = ")
+                value.accept(this)
+            }
+        }
+        buffer.append(") => ")
+        val body = def.body
+        if (body == null) {
+            buffer.append("{ /* noimpl */ }")
+        } else {
+            val last = body.last()
+            if (body.size == 1) {
+                buffer.append("(")
+                last.expr.accept(this)
+                buffer.append(")")
+            } else {
+                buffer.appendLine("{")
+                indentLevel++
+                body.dropLast(1).forEach { it.accept(this) }
+                appendIndented("return ")
+                last.expr.accept(this)
+                buffer.appendLine(";")
+                indentLevel--
+                appendIndented("}")
+            }
+        }
+        def.parameters.forEach { param -> knownValueTypes.remove(param.name.value) }
+    }
+
     override fun visitBuilderExpr(builderExpr: BuilderExpr) {
         if (builderExpr.kind == Builder.SET || builderExpr.kind == Builder.MAP) {
             throw UnsupportedConstruct(builderExpr, "@${builderExpr.kind.intrinsic}", TARGET_NAME)
