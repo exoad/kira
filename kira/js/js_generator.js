@@ -67,6 +67,12 @@ function kira_cat() {
   return s;
 }
 
+/* Named construction `T { field = value }`: construct, then set fields. */
+function kira_object_init(obj, fields) {
+  for (const key of Object.keys(fields)) obj[key] = fields[key];
+  return obj;
+}
+
 /* ---- Str (JS primitive strings) ----------------------------------------- */
 function kira_str_length(s) { return s == null ? 0 : s.length; }
 

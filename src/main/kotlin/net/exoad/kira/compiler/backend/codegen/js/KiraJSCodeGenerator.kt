@@ -115,6 +115,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val fieldTypes = mutableMapOf<String, String>()
     /** User class method return types: "Class.method" -> Kira type name. */
     private val methodReturnTypes = mutableMapOf<String, String>()
+    /** User class name -> field names in declaration order, and those without a default. */
+    private val classFieldNames = mutableMapOf<String, List<String>>()
+    private val classRequiredFieldNames = mutableMapOf<String, List<String>>()
     /** User class name -> method names (for bare `method(args)` calls in bodies). */
     private val methodsByClass = mutableMapOf<String, MutableSet<String>>()
     /** Free function name -> Kira parameter names, for binding named arguments. */
@@ -214,7 +217,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                         val base = baseTypeNameOf(expr.name)
                         if (isOpaqueTypeName(base)) return@forEach
                         userClassNames.add(base)
-                        expr.members.filterIsInstance<VariableDecl>().forEach { field ->
+                        val classFields = expr.members.filterIsInstance<VariableDecl>()
+                        classFieldNames[base] = classFields.map { it.name.value }
+                        classRequiredFieldNames[base] = classFields.filter { it.value == null }.map { it.name.value }
+                        classFields.forEach { field ->
                             fieldTypes[field.name.value] = typeNameOf(field.type)
                             recordContainerTypeArgs(field.name.value, field.type)
                         }
@@ -623,6 +629,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 }
                 null
             }
+            is ThisExpr -> currentMethodClass
             is StringLiteral -> "Str"
             is CharLiteral -> "Char"
             is InterpolatedStringLiteral -> "Str"
@@ -1033,6 +1040,42 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         assignmentExpr.target.accept(this)
         buffer.append(" = ")
         assignmentExpr.value.accept(this)
+    }
+
+    override fun visitThisExpr(thisExpr: ThisExpr) {
+        buffer.append("this")
+    }
+
+    override fun visitPlaceAssignmentExpr(placeAssignmentExpr: PlaceAssignmentExpr) {
+        val target = placeAssignmentExpr.target
+        val value = placeAssignmentExpr.value
+        val op = placeAssignmentExpr.operator
+        if (op == null) {
+            target.accept(this)
+            buffer.append(" = ")
+            value.accept(this)
+            return
+        }
+        // Same integer-division rule as the identifier compound form.
+        if (op == BinaryOp.DIV && !isFloatTyped(target) && !isFloatTyped(value)) {
+            target.accept(this)
+            buffer.append(" = Math.trunc((")
+            target.accept(this)
+            buffer.append(" / ")
+            value.accept(this)
+            buffer.append("))")
+            return
+        }
+        val opName = OperatorIntrinsics.binaryName(op)
+        if (opName != null && isKnownNonPrimitive(target)) {
+            target.accept(this)
+            buffer.append(" = ")
+            emitOperatorCall(opName, listOf(target, value))
+            return
+        }
+        target.accept(this)
+        buffer.append(" ${binaryOpSymbol(op)}= ")
+        value.accept(this)
     }
 
     /**
@@ -1488,10 +1531,33 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             objectInitExpr.value.accept(this)
             return
         }
-        if (objectInitExpr.namedArgs.isNotEmpty()) {
-            throw UnsupportedConstruct(objectInitExpr, "named construction 'T { field = value }'", TARGET_NAME)
-        }
         val baseName = baseTypeNameOf(objectInitExpr.typeName)
+        val named = objectInitExpr.namedArgs
+        if (named.isNotEmpty()) {
+            // `List { values = ... }` and `Arr { values = ... }` are the container spellings.
+            val valuesArg = named.singleOrNull()?.takeIf { it.name.value == "values" }
+            if (valuesArg != null) {
+                when (baseName) {
+                    "Arr" -> {
+                        valuesArg.value.accept(this)
+                        return
+                    }
+                    "List" -> {
+                        buffer.append("new KiraList(")
+                        valuesArg.value.accept(this)
+                        buffer.append(")")
+                        return
+                    }
+                }
+            }
+            val ctorBase = when (baseName) {
+                "T0", "T1", "T2", "Pair", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "Exception" -> true
+                else -> userClassNames.contains(baseName)
+            }
+            if (!ctorBase) {
+                throw UnsupportedConstruct(objectInitExpr, "named construction 'T { field = value }'", TARGET_NAME)
+            }
+        }
         if (objectInitExpr.positionalArgs.isEmpty()) {
             when (baseName) {
                 "Map", "List", "Set", "Stack", "Queue", "Deque" -> {
@@ -1527,14 +1593,40 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             "Exception" -> "KiraException"
             else -> baseName
         }
+        // Required fields are positional constructor parameters; a named
+        // argument fills the one it names. Defaulted fields keep the
+        // constructor's value and are overwritten by the named assignment.
+        val ctorArgs: List<Expr?> = if (named.isEmpty()) {
+            objectInitExpr.positionalArgs
+        } else {
+            val required = classRequiredFieldNames[baseName] ?: emptyList()
+            val filled = ArrayList<Expr?>()
+            filled.addAll(objectInitExpr.positionalArgs)
+            for (index in filled.size until required.size) {
+                filled.add(named.firstOrNull { it.name.value == required[index] }?.value)
+            }
+            filled
+        }
+        if (named.isNotEmpty()) buffer.append("kira_object_init(")
         buffer.append("new ")
         buffer.append(ctorName)
         buffer.append("(")
-        objectInitExpr.positionalArgs.forEachIndexed { i, arg ->
+        ctorArgs.forEachIndexed { i, arg ->
             if (i > 0) buffer.append(", ")
-            arg.accept(this)
+            if (arg == null) buffer.append("undefined") else arg.accept(this)
         }
         buffer.append(")")
+        if (named.isNotEmpty()) {
+            buffer.append(", { ")
+            named.forEachIndexed { i, arg ->
+                if (i > 0) buffer.append(", ")
+                buffer.append("\"")
+                buffer.append(escapeJsString(arg.name.value))
+                buffer.append("\": ")
+                arg.value.accept(this)
+            }
+            buffer.append(" })")
+        }
     }
 
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {
@@ -1779,9 +1871,6 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     }
 
     override fun visitClassDecl(classDecl: ClassDecl) {
-        if (classDecl.initially != null) {
-            throw UnsupportedConstruct(classDecl, "a class with an 'initially' block", TARGET_NAME)
-        }
         if (isMagicDecl(classDecl)) {
             return
         }
@@ -1812,7 +1901,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             if (i > 0) buffer.append(", ")
             buffer.append(field.name.value)
         }
-        if (requireFields.isEmpty() && defaultFields.isEmpty()) {
+        if (requireFields.isEmpty() && defaultFields.isEmpty() && classDecl.initially == null) {
             buffer.appendLine(") {}")
         } else {
             buffer.appendLine(") {")
@@ -1830,6 +1919,12 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 buffer.append(" = ")
                 field.value!!.accept(this)
                 buffer.appendLine(";")
+            }
+            classDecl.initially?.let { body ->
+                val savedClass = currentMethodClass
+                currentMethodClass = className
+                body.forEach { it.accept(this) }
+                currentMethodClass = savedClass
             }
             indentLevel--
             appendIndentedLine("}")

@@ -76,6 +76,26 @@ class JSBackendClosedLoopTest {
     }
 
     @Test
+    fun namedConstructionMutationIsCaught() {
+        assertMutantDies(
+            """
+            P: Mutable<Any> {
+                x: Mutable<Int32> = 1
+                y: Mutable<Int32> = 2
+                pub sum: () Int32 { this.x + this.y }
+            }
+            main: () Void {
+                p: P = P { y = 5 }
+                trace(p.sum())
+            }
+            """,
+            "named construction field assignment",
+            "for (const key of Object.keys(fields)) obj[key] = fields[key];" to
+                "for (const key of Object.keys(fields)) { }"
+        )
+    }
+
+    @Test
     fun whitespaceSplitMutationIsCaught() {
         assertMutantDies(
             """

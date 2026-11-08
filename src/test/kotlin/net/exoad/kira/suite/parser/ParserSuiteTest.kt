@@ -1471,8 +1471,15 @@ class ParserSuiteTest {
         assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
     }
 
-    /** Lowered by the JS backend; JSStdlibSurfaceTest covers both. */
-    private val jsSupportedConstructs = setOf("char literal", "interpolated string literal")
+    /** Lowered by the JS backend; the JS surface and class tests cover them. */
+    private val jsSupportedConstructs = setOf(
+        "char literal",
+        "interpolated string literal",
+        "member or index place",
+        "'this' expression",
+        "an 'initially' block",
+        "named construction",
+    )
 
     @Test
     fun eachNewConstructFailsLoudlyOnTheJSTarget() {
