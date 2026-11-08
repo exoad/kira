@@ -95,7 +95,19 @@ object ForFix {
     )
     private val NARROW = setOf("UInt8", "Int8", "UInt16", "Int16")
 
-    fun rewrite(source: String, file: String = "fix.kira"): Result {
+    /** A loop whose iterable's type the file does not write: its `for` line, and the expression the typer is asked about. */
+    class Need(val line: Int, val expr: String)
+
+    /** A range loop: its two ends as text, and whether the end is in. */
+    private class Ends(val begin: String, val end: String, val inclusive: Boolean)
+
+    private val CHAIN = Regex("^$NAME(\\.$NAME)+$")
+
+    /**
+     * [source] without its `for`s. [typed] answers the loops whose iterable is not written in the file (by `for` line, the
+     * type the typer gave it); [needs], when given, collects those loops, so a caller can ask the typer first.
+     */
+    fun rewrite(source: String, file: String = "fix.kira", typed: Map<Int, String>? = null, needs: MutableList<Need>? = null): Result {
         val processed = KiraPreprocessor(source).process().processedContent
         val tokens = KiraLexer(SourceContext(processed, file, emptyList())).tokenize()
         val ctx = SourceContext(processed, file, tokens)
@@ -147,7 +159,6 @@ object ForFix {
             if (!rawFor.startsWith(pl.substring(0, oc))) { skip("a comment moves the head's columns"); continue }
             val h = head(r.head) ?: run { skip("the head is not `x: T in e`: `${r.head.trim()}`"); null } ?: continue
             val v = h.variable
-            val bodyOffsetFrom = tokens.first { it.canonicalLocation.lineNumber == ol && it.canonicalLocation.column == oc }.pointerPosition
             val bodyOffsetTo = tokens.first { it.canonicalLocation.lineNumber == cl && it.canonicalLocation.column == cc }.pointerPosition
             val forOffset = tokens.first { it.canonicalLocation.lineNumber == fl && it.canonicalLocation.column == fc }.pointerPosition
             val region = regions.indexOfFirst { forOffset >= it.first && forOffset <= it.last }
@@ -163,120 +174,158 @@ object ForFix {
             val ind = rawFor.takeWhile { it == ' ' || it == '\t' }
             val first = (ol + 1..cl - 1).map { rawLines[it - 1] }.firstOrNull { it.isNotBlank() }
             val inner = first?.takeWhile { it == ' ' || it == '\t' } ?: (ind + "    ")
+            val unit = if (inner.length > ind.length && inner.startsWith(ind)) inner.substring(ind.length) else "    "
             val last = body.lastOrNull()
             val ends = last is ReturnStatement && !last.implicit || last is BreakStatement || last is ContinueStatement || (last != null && last.expr is ThrowExpr)
 
             val pre = ArrayList<String>()   // lines before the `for`
             val open = ArrayList<String>()  // lines at the top of the body
-            var literalHeld: String? = null
             var cond: String
-            var step: String
+            var step: List<String>
+            var range: Ends? = null
+
+            /** The kind of [target]'s type, with the type text when the typer gave it: from what the file writes of [name], else the typer; null with the loop left. */
+            fun kindOfTarget(target: String, name: String?): Pair<String, String?>? {
+                val kinds = if (name != null) kindsOf(ctx, regionRange, regions.indexOf(regionRange), name) else emptySet()
+                kinds.singleOrNull()?.let { return it to null }
+                val answer = typed?.get(fl)
+                if (answer != null) return answer.substringBefore('<').trim() to answer
+                needs?.add(Need(fl, target))
+                skip(
+                    when {
+                        typed != null -> "the typer gave no type for `$target`"
+                        name == null -> "iterates `$target`, whose kind is not written in the file"
+                        kinds.isEmpty() -> "the type of `$name` is not written in the file"
+                        else -> "the type of `$name` is written two ways: $kinds"
+                    }
+                )
+                return null
+            }
 
             when (val s = h.shape) {
                 is Shape.Items -> {
                     val literal = Regex("^@(arrOf|listOf|setOf)\\(").find(s.target)?.groupValues?.get(1)
                     val name = Regex("^(this\\.)?($NAME)$").matchEntire(s.target)?.groupValues?.get(2)
-                    if (name == null && literal == null) { skip("iterates `${s.target}`, whose kind is not written in the file"); continue@loops }
-                    val kinds = if (literal != null) setOf(literal.removeSuffix("Of").replaceFirstChar { it.uppercase() }) else kindsOf(ctx, regionRange, regions.indexOf(regionRange), name!!)
-                    val kind = kinds.singleOrNull()
-                    if (kind == null) { skip("the type of `$name` is " + (if (kinds.isEmpty()) "not written in the file" else "written two ways: $kinds")); continue@loops }
-                    if (name != null && hasMutation(bodyText, name, MUTATING)) { skip("the body changes `$name`"); continue@loops }
+                    val chain = name == null && literal == null && CHAIN.matches(s.target)
+                    val kind: String
+                    var written: String? = null
                     if (literal != null) {
-                        // A literal is read once, into a local of its own.
-                        val held = fresh(v + "Items")
-                        pre += "$held: $kind<${h.type}> { ${s.target} }"
-                        literalHeld = held
-                    }
-                    // The index: a counter of this name declared by a loop before, in a block that holds this one, is set again.
-                    val want = v + "Index"
-                    val again = counters.any { c -> c.name == want && c.region == region && c.type == "Mutable<Size>" && forOffset > c.from && forOffset in c.blockOpen..c.blockClose }
-                    val idx = if (again || (want in mine && want !in userNames)) want else fresh(want).also { mine += it }
-                    val src = when (kind) {
-                        "List", "Arr", "View", "MutView" -> literalHeld ?: s.target
-                        "Set", "Map" -> {
-                            val items = fresh(v + "Items")
-                            pre += "$items: Arr<${h.type}> { ${literalHeld ?: s.target}.${if (kind == "Set") "toArr" else "entries"}() }"
-                            items
-                        }
-                        else -> { skip("`$name` is a $kind, not a collection"); continue@loops }
-                    }
-                    if (again) {
-                        pre += "$idx = 0"
+                        kind = literal.removeSuffix("Of").replaceFirstChar { it.uppercase() }
                     } else {
-                        pre += "$idx: Mutable<Size> { 0 }"
-                        val blk = blocks.filter { forOffset > it.first && forOffset < it.last }.minByOrNull { it.last - it.first }
-                        counters += Counter(idx, "Mutable<Size>", forOffset, blk?.first ?: Int.MIN_VALUE, blk?.last ?: Int.MAX_VALUE, region)
+                        val k = kindOfTarget(s.target, name) ?: continue@loops
+                        kind = k.first
+                        written = k.second
                     }
-                    cond = "$idx < $src.size()"
-                    open += "$v: ${h.type} { $src.get($idx) }"
-                    step = "$idx += 1"
+                    if (written != null && kind != "Map") {
+                        val element = elementOf(written)
+                        if (element != null && !sameType(element, h.type)) {
+                            skip("`${s.target}` is a $written, whose elements are $element, not ${h.type}")
+                            continue@loops
+                        }
+                    }
+                    if (name != null && hasMutation(bodyText, name, MUTATING)) { skip("the body changes `$name`"); continue@loops }
+                    if (chain && hasMutationOf(bodyText, s.target, MUTATING)) { skip("the body changes `${s.target}`"); continue@loops }
+                    // What is walked: a name or a field chain as it stands, anything else (a call, a literal) read once into a local of its own.
+                    var walked = s.target
+                    if (kind == "Range") {
+                        if (name == null && !chain) {
+                            walked = fresh(v + "Range")
+                            pre += "$walked: ${written ?: "Range<${h.type}>"} { ${s.target} }"
+                        }
+                        range = Ends("$walked.begin", "$walked.end", true)
+                    } else {
+                        if (kind in setOf("List", "Arr", "View", "MutView") && name == null && !chain) {
+                            walked = fresh(v + "Items")
+                            pre += "$walked: ${written ?: "$kind<${h.type}>"} { ${s.target} }"
+                        }
+                        // The index: a counter of this name declared by a loop before, in a block that holds this one, is set again.
+                        val want = v + "Index"
+                        val again = counters.any { c -> c.name == want && c.region == region && c.type == "Mutable<Size>" && forOffset > c.from && forOffset in c.blockOpen..c.blockClose }
+                        val idx = if (again || (want in mine && want !in userNames)) want else fresh(want).also { mine += it }
+                        val src = when (kind) {
+                            "List", "Arr", "View", "MutView" -> walked
+                            "Set", "Map" -> {
+                                val items = fresh(v + "Items")
+                                pre += "$items: Arr<${h.type}> { $walked.${if (kind == "Set") "toArr" else "entries"}() }"
+                                items
+                            }
+                            else -> { skip("`${s.target}` is a ${written ?: kind}, not a collection"); continue@loops }
+                        }
+                        if (again) {
+                            pre += "$idx = 0"
+                        } else {
+                            pre += "$idx: Mutable<Size> { 0 }"
+                            val blk = blocks.filter { forOffset > it.first && forOffset < it.last }.minByOrNull { it.last - it.first }
+                            counters += Counter(idx, "Mutable<Size>", forOffset, blk?.first ?: Int.MIN_VALUE, blk?.last ?: Int.MAX_VALUE, region)
+                        }
+                        cond = "$idx < $src.size()"
+                        open += "$v: ${h.type} { $src.get($idx) }"
+                        step = listOf("$idx += 1")
+                        edits(inserts, spans, continues, ctx, rawLines, ol, cl, fl, fc, oc, ends, inner, ind, eol, pre, open, step, cond)
+                        fixed++
+                        continue@loops
+                    }
                 }
-                is Shape.Inclusive, is Shape.Until, is Shape.Indices -> {
-                    val begin: String
-                    var end: String
-                    val inclusive = s is Shape.Inclusive
-                    when (s) {
-                        is Shape.Inclusive -> { begin = s.begin; end = s.end }
-                        is Shape.Until -> { begin = s.begin; end = s.end }
-                        is Shape.Indices -> {
-                            val name = Regex("^(this\\.)?($NAME)$").matchEntire(s.receiver)?.groupValues?.get(2)
-                            val kinds = name?.let { kindsOf(ctx, regionRange, regions.indexOf(regionRange), it) } ?: emptySet()
-                            val kind = kinds.singleOrNull()
-                            if (kind == null) { skip("the type of `${s.receiver}` is not written in the file"); continue@loops }
-                            begin = "0"
-                            end = if (kind == "Str") "${s.receiver}.length()" else "${s.receiver}.size()"
-                        }
-                        else -> error("unreachable")
-                    }
-                    if (inclusive) {
-                        val literal = end.toLongOrNull() ?: end.removePrefix("0x").toLongOrNull(16)?.takeIf { end.startsWith("0x") }
-                        val max = MAXES[h.type]
-                        if (literal != null && max != null && literal >= max) { skip("the end ${end} is ${h.type}'s maximum, which a counter cannot step past"); continue@loops }
-                        if (literal == null && h.type in NARROW) { skip("the end may be ${h.type}'s maximum, which a counter cannot step past"); continue@loops }
-                    }
-                    val volatile = unstable(end) || endRoots(end).any { hasMutation(bodyText, it, RESIZING) }
-                    val limitName = if (volatile) fresh(v + "Limit") else null
-                    val limit = limitName ?: end
-                    // The counter: this loop's own variable; one a loop before declared in an enclosing block is set again.
-                    val own = forOffset..bodyOffsetTo
-                    val clash = tokens.indices.any { i ->
-                        val t = tokens[i]
-                        t.type == Token.Type.IDENTIFIER && t.content == v && t.pointerPosition in regionRange &&
-                            t.pointerPosition !in own && !(i > 0 && tokens[i - 1].content == ".") &&
-                            forVars.none { (rec, name) -> name == v && t.pointerPosition in offsetsOf(tokens, rec) }
-                    }
-                    if (clash) { skip("`$v` is also a name outside its loops in this item"); continue@loops }
-                    val earlier = counters.firstOrNull { c ->
-                        c.name == v && c.region == region && forOffset > c.from && forOffset in c.blockOpen..c.blockClose
-                    }
-                    val nested = records.any { o -> o !== r && head(o.head)?.variable == v && forOffset in offsetsOf(tokens, o) }
-                    if (nested) { skip("an enclosing loop also counts with `$v`"); continue@loops }
-                    if (earlier != null && earlier.type != "Mutable<${h.type}>") { skip("`$v` was declared as ${earlier.type} by a loop before"); continue@loops }
-                    val begin2 = begin
-                    if (earlier != null) {
-                        pre += "$v = $begin2"
-                    } else {
-                        pre += "$v: Mutable<${h.type}> { $begin2 }"
-                        val blk = blocks.filter { forOffset > it.first && forOffset < it.last }.minByOrNull { it.last - it.first }
-                        counters += Counter(v, "Mutable<${h.type}>", forOffset, blk?.first ?: Int.MIN_VALUE, blk?.last ?: Int.MAX_VALUE, region)
-                    }
-                    // The start is read before the end, as the loop read them.
-                    if (limitName != null) pre += "$limitName: ${h.type} { $end }"
-                    cond = "$v ${if (inclusive) "<=" else "<"} ${paren(limit)}"
-                    step = "$v += 1"
+                is Shape.Inclusive -> range = Ends(s.begin, s.end, true)
+                is Shape.Until -> range = Ends(s.begin, s.end, false)
+                is Shape.Indices -> {
+                    val name = Regex("^(this\\.)?($NAME)$").matchEntire(s.receiver)?.groupValues?.get(2)
+                    val kind = kindOfTarget(s.receiver, name)?.first ?: continue@loops
+                    range = Ends("0", if (kind == "Str") "${s.receiver}.length()" else "${s.receiver}.size()", false)
                 }
             }
 
-            // Everything checked: make the edits.
-            for (c in continues) {
-                val at = ctx.astOrigins[c]!!
-                val line = rawLines[at.lineNumber - 1].takeWhile { it == ' ' || it == '\t' }
-                inserts += Ins(at.lineNumber, 2, line + step + eol)
+            val e = range ?: error("unreachable")
+            val begin = e.begin
+            val end = e.end
+            val inclusive = e.inclusive
+            // An end at the type's maximum cannot be stepped past: the loop tests before it steps.
+            var safe = false
+            var atMax = false
+            if (inclusive) {
+                val literal = end.toLongOrNull() ?: end.removePrefix("0x").toLongOrNull(16)?.takeIf { end.startsWith("0x") }
+                val max = MAXES[h.type]
+                if (literal != null && max != null && literal > max) { skip("the end $end is past ${h.type}'s maximum"); continue@loops }
+                if (literal != null && max != null && literal == max) { safe = true; atMax = true }
+                if (literal == null && h.type in NARROW) safe = true
             }
-            if (!ends) inserts += Ins(cl, 2, inner + step + eol)
-            for (l in open) inserts += Ins(ol + 1, 0, inner + l + eol)
-            for (l in pre) inserts += Ins(fl, 1, ind + l + eol)
-            spans += Span(fl, fc, oc, "while $cond ")
+            val volatile = unstable(end) || endRoots(end).any { hasMutation(bodyText, it, RESIZING) } || (safe && !atMax && !isPlain(end))
+            val limitName = if (volatile) fresh(v + "Limit") else null
+            val limit = limitName ?: end
+            // The counter: this loop's own variable; one a loop before declared in an enclosing block is set again.
+            val own = forOffset..bodyOffsetTo
+            val clash = tokens.indices.any { i ->
+                val t = tokens[i]
+                t.type == Token.Type.IDENTIFIER && t.content == v && t.pointerPosition in regionRange &&
+                    t.pointerPosition !in own && !(i > 0 && tokens[i - 1].content == ".") &&
+                    forVars.none { (rec, name) -> name == v && t.pointerPosition in offsetsOf(tokens, rec) }
+            }
+            if (clash) { skip("`$v` is also a name outside its loops in this item"); continue@loops }
+            val earlier = counters.firstOrNull { c ->
+                c.name == v && c.region == region && forOffset > c.from && forOffset in c.blockOpen..c.blockClose
+            }
+            val nested = records.any { o -> o !== r && head(o.head)?.variable == v && forOffset in offsetsOf(tokens, o) }
+            if (nested) { skip("an enclosing loop also counts with `$v`"); continue@loops }
+            if (earlier != null && earlier.type != "Mutable<${h.type}>") { skip("`$v` was declared as ${earlier.type} by a loop before"); continue@loops }
+            if (earlier != null) {
+                pre += "$v = $begin"
+            } else {
+                pre += "$v: Mutable<${h.type}> { $begin }"
+                val blk = blocks.filter { forOffset > it.first && forOffset < it.last }.minByOrNull { it.last - it.first }
+                counters += Counter(v, "Mutable<${h.type}>", forOffset, blk?.first ?: Int.MIN_VALUE, blk?.last ?: Int.MAX_VALUE, region)
+            }
+            // The start is read before the end, as the loop read them.
+            if (limitName != null) pre += "$limitName: ${h.type} { $end }"
+            if (safe) {
+                val more = fresh(v + "More")
+                pre += "$more: Mutable<Bool> { ${if (atMax) "true" else "$v <= ${paren(limit)}"} }"
+                cond = more
+                step = listOf("if $v == ${paren(limit)} {", "$unit$more = false", "} else {", "$unit$v += 1", "}")
+            } else {
+                cond = "$v ${if (inclusive) "<=" else "<"} ${paren(limit)}"
+                step = listOf("$v += 1")
+            }
+            edits(inserts, spans, continues, ctx, rawLines, ol, cl, fl, fc, oc, ends, inner, ind, eol, pre, open, step, cond)
             fixed++
         }
 
@@ -294,16 +343,108 @@ object ForFix {
         return Result(out.toString(), fixed, skipped)
     }
 
+    /** Everything checked: the loop's edits, the step before each own `continue` and at the body's end, the lines before and inside. */
+    private fun edits(
+        inserts: MutableList<Ins>, spans: MutableList<Span>, continues: List<ContinueStatement>, ctx: SourceContext, rawLines: List<String>,
+        ol: Int, cl: Int, fl: Int, fc: Int, oc: Int, ends: Boolean, inner: String, ind: String, eol: String,
+        pre: List<String>, open: List<String>, step: List<String>, cond: String,
+    ) {
+        for (c in continues) {
+            val at = ctx.astOrigins[c]!!
+            val line = rawLines[at.lineNumber - 1].takeWhile { it == ' ' || it == '\t' }
+            step.forEach { inserts += Ins(at.lineNumber, 2, line + it + eol) }
+        }
+        if (!ends) step.forEach { inserts += Ins(cl, 2, inner + it + eol) }
+        for (l in open) inserts += Ins(ol + 1, 0, inner + l + eol)
+        for (l in pre) inserts += Ins(fl, 1, ind + l + eol)
+        spans += Span(fl, fc, oc, "while $cond ")
+    }
+
+    /** Whether two spellings are one type: spaces aside, and the old `Tuple2` is the `T2` it was renamed to. */
+    private fun sameType(a: String, b: String): Boolean = norm(a) == norm(b)
+
+    private fun norm(t: String): String = t.replace(" ", "").replace(Regex("Tuple(\\d)"), "T$1")
+
+    /** The first type argument of [type] (`List<Str>` gives `Str`, `Arr<UInt8, 4>` gives `UInt8`), or null when it has none. */
+    private fun elementOf(type: String): String? {
+        val open = type.indexOf('<')
+        if (open < 0 || !type.endsWith(">")) return null
+        val inner = type.substring(open + 1, type.length - 1)
+        var depth = 0
+        for ((i, ch) in inner.withIndex()) {
+            when (ch) {
+                '<', '(' -> depth++
+                '>', ')' -> depth--
+                ',' -> if (depth == 0) return inner.substring(0, i).trim()
+            }
+        }
+        return inner.trim()
+    }
+
+    /** Whether [end] is a name, a field chain or a number: read twice with no harm unless the body changes it. */
+    private fun isPlain(end: String): Boolean = NAME.matches(end) || CHAIN.matches(end) || end.toLongOrNull() != null
+
+    /** Whether [text] changes the field chain [chain]: assigns to it, or calls one of [methods] on it. */
+    private fun hasMutationOf(text: String, chain: String, methods: Set<String>): Boolean {
+        val n = Regex.escape(chain)
+        val assign = Regex("(^|[^A-Za-z0-9_.])$n(\\[[^\\]]*\\])?\\s*([-+*/%&|^]|<<)?=(?!=)")
+        val call = Regex("(^|[^A-Za-z0-9_.])$n\\.(${methods.joinToString("|")})\\(")
+        return assign.containsMatchIn(text) || call.containsMatchIn(text)
+    }
+
+    /**
+     * [source] for the typer: each `for` that can be rewritten becomes `while kprobeN(iterable) {` (N its line; `true` for a
+     * loop that asks nothing) with its variable declared from the head on the next line, so a loop inside sees it.
+     */
+    fun probeText(source: String, file: String, needs: List<Need>): String {
+        val processed = KiraPreprocessor(source).process().processedContent
+        val tokens = KiraLexer(SourceContext(processed, file, emptyList())).tokenize()
+        val ctx = SourceContext(processed, file, tokens)
+        ctx.lenientFor = true
+        ctx.lenientDeclEquals = true
+        KiraParser.parse(ctx)
+        val rawLines = source.split(Regex("(?<=\n)")).toMutableList()
+        val procLines = processed.split("\n")
+        val byLine = needs.associateBy { it.line }
+        val eol = rawLines.firstOrNull { it.endsWith("\n") }?.let { if (it.endsWith("\r\n")) "\r\n" else "\n" } ?: "\n"
+        val after = HashMap<Int, String>()
+        for (r in ctx.astFors) {
+            val fl = r.forAt.lineNumber
+            val fc = r.forAt.column
+            val oc = r.openAt.column
+            val pl = procLines.getOrNull(fl - 1) ?: continue
+            if (pl.substring(0, fc - 1).isNotBlank() || r.openAt.lineNumber != fl || r.closeAt.lineNumber <= fl) continue
+            if (procLines[fl - 1].substring(minOf(oc, procLines[fl - 1].length)).isNotBlank()) continue
+            val raw = rawLines[fl - 1]
+            if (!raw.trimEnd('\r', '\n').startsWith(pl.substring(0, oc))) continue
+            val h = head(r.head) ?: continue
+            val callee = byLine[fl]?.let { "kprobe$fl(${it.expr})" } ?: "true"
+            rawLines[fl - 1] = raw.substring(0, fc - 1) + "while $callee {" + raw.substring(oc)
+            val ind = raw.takeWhile { it == ' ' || it == '\t' }
+            after[fl] = ind + "    " + h.variable + ": " + h.type + eol
+        }
+        val out = StringBuilder()
+        for ((i, line) in rawLines.withIndex()) {
+            out.append(line)
+            after[i + 1]?.let { out.append(it) }
+        }
+        return out.toString()
+    }
+
     /** Rewrites [file] in place (written beside, synced, renamed over). */
     fun rewriteFile(file: File): Result {
         val r = rewrite(file.readText(), file.path)
-        if (r.fixed == 0) return r
+        if (r.fixed != 0) writeFile(file, r.text)
+        return r
+    }
+
+    /** [text] over [file]: written beside, synced, renamed over. */
+    fun writeFile(file: File, text: String) {
         val beside = File(file.path + ".fix")
         Files.newByteChannel(beside.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).use { ch ->
-            (ch as java.nio.channels.FileChannel).write(java.nio.ByteBuffer.wrap(r.text.toByteArray())); ch.force(true)
+            (ch as java.nio.channels.FileChannel).write(java.nio.ByteBuffer.wrap(text.toByteArray())); ch.force(true)
         }
         Files.move(beside.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        return r
     }
 
     // ---- reading the tree ----------------------------------------------------------------------
@@ -372,6 +513,11 @@ object ForFix {
                 if (n is VariableDecl && (inRegion || (st as? Statement)?.expr === n)) note(n.name.value, KiraUnparser.type(n.type))
                 if (n is FunctionDeclParameterExpr && inRegion) note(n.name.value, KiraUnparser.type(n.typeSpecifier))
             }
+        }
+        // A loop's own variable is written in its head: `row: List<Int32> in grid`.
+        for (r in ctx.astFors) {
+            val offset = tokens.firstOrNull { it.canonicalLocation.lineNumber == r.forAt.lineNumber && it.canonicalLocation.column == r.forAt.column }?.pointerPosition ?: continue
+            if (offset in region) head(r.head)?.let { note(it.variable, it.type) }
         }
         return kinds
     }

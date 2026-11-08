@@ -53,6 +53,11 @@ class CompilationUnit(bootstrap: Boolean = true) {
         return ctx
     }
 
+    /** Drops [file]: a source the caller could not parse. */
+    fun removeSource(file: String) {
+        sources.remove(file)
+    }
+
     fun getSource(file: String): SourceContext? {
         return sources[file]
     }

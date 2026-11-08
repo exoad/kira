@@ -62,11 +62,27 @@ fun main(args: Array<String>) {
         }
         return
     }
-    // `kira --fix-for <file.kira>...` rewrites each `for` to the `while` it becomes, in place, and names any loop it left alone.
+    // `kira --fix-for [--typed] <file.kira>...` rewrites each `for` to the `while` it becomes, in place, and names any loop it left alone.
+    // --typed asks the typer, in the project above each file, for the type of an iterable the file does not write.
     if (args.firstOrNull() == "--fix-for") {
-        for (f in args.drop(1)) {
+        val typed = "--typed" in args
+        val files = args.drop(1).filter { it != "--typed" }.map { File(it) }
+        if (typed) {
+            for ((f, o) in net.exoad.kira.compiler.fix.TypedFix.rewrite(files)) {
+                val r = o.result
+                if (r == null) {
+                    println("$f: ${o.refused}")
+                    continue
+                }
+                if (r.fixed != 0) net.exoad.kira.compiler.fix.ForFix.writeFile(f, r.text)
+                println("$f: fixed ${r.fixed}, left ${r.skipped.size}")
+                r.skipped.forEach { println("  left: $it") }
+            }
+            return
+        }
+        for (f in files) {
             try {
-                val r = net.exoad.kira.compiler.fix.ForFix.rewriteFile(File(f))
+                val r = net.exoad.kira.compiler.fix.ForFix.rewriteFile(f)
                 println("$f: fixed ${r.fixed}, left ${r.skipped.size}")
                 r.skipped.forEach { println("  left: $it") }
             } catch (e: Throwable) {

@@ -357,12 +357,11 @@ class ForRemovedTest {
             }
             """
         val r = fix(src)
-        assertEquals(0, r.fixed)
-        assertEquals(4, r.skipped.size, r.skipped.toString())
-        assertTrue(r.skipped[0].contains("UInt8's maximum"), r.skipped[0])
-        assertTrue(r.skipped[1].contains("things()"), r.skipped[1])
-        assertTrue(r.skipped[2].contains("body starts on the head's line"), r.skipped[2])
-        assertEquals(src.trimIndent() + "\n", r.text, "a loop it leaves is not touched")
+        assertEquals(1, r.fixed)
+        assertEquals(3, r.skipped.size, r.skipped.toString())
+        assertTrue(r.skipped[0].contains("things()"), r.skipped[0])
+        assertTrue(r.skipped[1].contains("body starts on the head's line"), r.skipped[1])
+        assertTrue(r.text.contains("for b: Int32 in things() {") && r.text.contains("for c: Int32 in xs { trace(c) }"), "a loop it leaves is not touched")
     }
 
     @Test
@@ -530,5 +529,244 @@ class ForRemovedTest {
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(held, "test/main.kira") },
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToJS(held, "test/main.kira") },
         ).forEach { assertTrue(it.message.orEmpty().contains("`until` or `indices` (removed"), it.message) }
+    }
+
+    // ---- an end at the type's maximum -------------------------------------------------------------
+
+    @Test
+    fun anEndAtTheTypesMaximumTestsBeforeItStepsAndOneBelowKeepsThePlainForm() {
+        val r = fix(
+            """
+            f: () Int32 {
+                t: Mutable<Int32> { 0 }
+                for a: UInt8 in 250..255 {
+                    t += a as Int32
+                }
+                for b: Int8 in 125..126 {
+                    t += b as Int32
+                }
+                for c: Int8 in 126..127 {
+                    t += c as Int32
+                }
+                t
+            }
+            """
+        )
+        assertEquals(3, r.fixed, r.text)
+        assertEquals(emptyList(), r.skipped)
+        assertEquals(
+            """
+            f: () Int32 {
+                t: Mutable<Int32> { 0 }
+                a: Mutable<UInt8> { 250 }
+                aMore: Mutable<Bool> { true }
+                while aMore {
+                    t += a as Int32
+                    if a == 255 {
+                        aMore = false
+                    } else {
+                        a += 1
+                    }
+                }
+                b: Mutable<Int8> { 125 }
+                while b <= 126 {
+                    t += b as Int32
+                    b += 1
+                }
+                c: Mutable<Int8> { 126 }
+                cMore: Mutable<Bool> { true }
+                while cMore {
+                    t += c as Int32
+                    if c == 127 {
+                        cMore = false
+                    } else {
+                        c += 1
+                    }
+                }
+                t
+            }
+
+            """.trimIndent(),
+            r.text,
+        )
+        expectNoErrors(typed(r.text.replace("f: () Int32", "pub f: () Int32")))
+        // One past the maximum is no UInt8: the fixer leaves it, naming why.
+        val past = fix("f: () Void {\n    for a: UInt8 in 250..256 {\n        trace(a)\n    }\n}")
+        assertEquals(0, past.fixed)
+        assertTrue(past.skipped.single().contains("past UInt8's maximum"), past.skipped.toString())
+    }
+
+    @Test
+    fun aNarrowEndThatIsNotWrittenAsANumberTestsBeforeItStepsToo() {
+        val r = fix(
+            """
+            f: (lo: UInt8, hi: UInt8) Int32 {
+                t: Mutable<Int32> { 0 }
+                for a: UInt8 in lo..hi {
+                    if a == 3 {
+                        continue
+                    }
+                    t += 1
+                }
+                t
+            }
+            """
+        )
+        assertEquals(
+            """
+            f: (lo: UInt8, hi: UInt8) Int32 {
+                t: Mutable<Int32> { 0 }
+                a: Mutable<UInt8> { lo }
+                aMore: Mutable<Bool> { a <= hi }
+                while aMore {
+                    if a == 3 {
+                        if a == hi {
+                            aMore = false
+                        } else {
+                            a += 1
+                        }
+                        continue
+                    }
+                    t += 1
+                    if a == hi {
+                        aMore = false
+                    } else {
+                        a += 1
+                    }
+                }
+                t
+            }
+
+            """.trimIndent(),
+            r.text,
+        )
+        expectNoErrors(typed(r.text.replace("f: (lo", "pub f: (lo")))
+    }
+
+    // ---- the typer's help --------------------------------------------------------------------------
+
+    private fun typedFix(src: String): ForFix.Result = net.exoad.kira.compiler.fix.TypedFix.rewriteSnippet(src.trimIndent() + "\n")
+
+    @Test
+    fun aCallAFieldChainAndALoopsOwnVariableAreTypedByTheTyper() {
+        val r = typedFix(
+            """
+            Box: Mutable<Any> {
+                pub names: List<Str>
+            }
+
+            names: () List<Str> {
+                @listOf("a", "b")
+            }
+
+            f: (b: Box, grid: List<List<Int32>>) Int32 {
+                t: Mutable<Int32> { 0 }
+                for s: Str in names() {
+                    t += s.length() as Int32
+                }
+                for s: Str in b.names {
+                    t += s.length() as Int32
+                }
+                for row: List<Int32> in grid {
+                    for x: Int32 in row {
+                        t += x
+                    }
+                }
+                t
+            }
+            """
+        )
+        assertEquals(4, r.fixed, r.text + r.skipped)
+        assertEquals(emptyList(), r.skipped)
+        assertTrue(r.text.contains("sItems: List<Str> { names() }"), r.text)
+        assertTrue(r.text.contains("while sIndex < sItems.size() {"), r.text)
+        assertTrue(r.text.contains("while sIndex < b.names.size() {"), r.text)
+        assertTrue(r.text.contains("while xIndex < row.size() {"), r.text)
+        assertFalse(Regex("(?m)^\\s*for ").containsMatchIn(r.text), r.text)
+        expectNoErrors(typed(r.text.replace("f: (b", "pub f: (b").replace("names: ()", "pub names: ()")))
+    }
+
+    @Test
+    fun aRangeValueIsWalkedFromItsBeginToItsEndAndATypeThatIsNoCollectionIsLeft() {
+        val r = typedFix(
+            """
+            span: () Range<Int32> {
+                1..3
+            }
+
+            f: (r: Range<Int32>, n: Int32) Int32 {
+                t: Mutable<Int32> { 0 }
+                for i: Int32 in r {
+                    t += i
+                }
+                for j: Int32 in span() {
+                    t += j
+                }
+                for k: Int32 in n {
+                    t += k
+                }
+                t
+            }
+            """
+        )
+        assertEquals(2, r.fixed, r.text)
+        assertEquals(1, r.skipped.size, r.skipped.toString())
+        assertTrue(r.skipped[0].contains("`n` is a Int32, not a collection") || r.skipped[0].contains("Int32, not a collection"), r.skipped[0])
+        assertTrue(r.text.contains("i: Mutable<Int32> { r.begin }") && r.text.contains("while i <= r.end {"), r.text)
+        assertTrue(r.text.contains("jRange: Range<Int32> { span() }") && r.text.contains("j: Mutable<Int32> { jRange.begin }") && r.text.contains("while j <= jRange.end {"), r.text)
+    }
+
+    @Test
+    fun aNameWrittenTwoWaysIsTypedWhereTheTyperKnowsWhichOneIsInScope() {
+        val src = """
+            f: (xs: List<Int32>) Int32 {
+                t: Mutable<Int32> { 0 }
+                for x: Int32 in xs {
+                    t += x
+                }
+                t
+            }
+
+            g: (xs: Set<Int32>) Int32 {
+                t: Mutable<Int32> { 0 }
+                for x: Int32 in xs {
+                    t += x
+                }
+                t
+            }
+
+            h: (n: Int32) Int32 {
+                xs: List<Int32> { @listOf(n) }
+                t: Mutable<Int32> { 0 }
+                for x: Int32 in xs {
+                    t += x
+                }
+                xs2: Set<Int32> { @setOf(n) }
+                for x: Int32 in xs2 {
+                    t += x
+                }
+                t
+            }
+            """
+        val r = typedFix(src)
+        assertEquals(4, r.fixed, r.text)
+        assertEquals(emptyList(), r.skipped)
+    }
+
+    @Test
+    fun theTypedModeWritesWhatTheUntypedOneDoesWhereBothCanReadTheFile() {
+        val src = "f: (xs: List<Int32>, n: Int32) Int32 {\n    t: Mutable<Int32> { 0 }\n    for x: Int32 in xs {\n        t += x\n    }\n    for i: Int32 in 0..n {\n        t += i\n    }\n    t\n}\n"
+        assertEquals(ForFix.rewrite(src).text, typedFix(src).text)
+    }
+
+    @Test
+    fun theTypedModeIsIdempotentAndKeepsCrlf() {
+        val src = "names: () List<Str> {\r\n    @listOf(\"a\")\r\n}\r\n\r\nf: () Int32 {\r\n    t: Mutable<Int32> { 0 }\r\n    for s: Str in names() { // each\r\n        t += 1\r\n    }\r\n    t\r\n}\r\n"
+        val r = net.exoad.kira.compiler.fix.TypedFix.rewriteSnippet(src)
+        assertEquals(1, r.fixed, r.skipped.toString())
+        assertFalse(Regex("(?<!\r)\n").containsMatchIn(r.text), "every line break stays CRLF")
+        val again = net.exoad.kira.compiler.fix.TypedFix.rewriteSnippet(r.text)
+        assertEquals(r.text, again.text)
+        assertEquals(0, again.fixed)
     }
 }
