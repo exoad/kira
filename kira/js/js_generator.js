@@ -298,7 +298,7 @@ function kira_num_toFloat64(v) { return v; }
  * magnitude's digits ("-ff"), as Python's %x writes them. */
 function kira_num_toHex(v) {
   const n = Math.trunc(v);
-  return n < 0 ? "-" + Math.abs(n).toString(16) : n.toString(16);
+  return n < 0 ? "-" + (-n).toString(16) : n.toString(16);
 }
 
 /* A finite double as sign * mantissa * 2^exponent, exactly. */

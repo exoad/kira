@@ -1471,9 +1471,13 @@ class ParserSuiteTest {
         assertThrows<UnsupportedConstruct> { emitC("f: (c: Bool) Int32 { x: Int32 = c ? 1 : 2\n x }") }
     }
 
+    /** Lowered by the JS backend; JSStdlibSurfaceTest covers both. */
+    private val jsSupportedConstructs = setOf("char literal", "interpolated string literal")
+
     @Test
     fun eachNewConstructFailsLoudlyOnTheJSTarget() {
         for ((construct, program) in newConstructs) {
+            if (construct in jsSupportedConstructs) continue
             val e = assertThrows<UnsupportedConstruct>("the JS backend should refuse:\n$program") { emitJS(program) }
             val message = assertNotNull(e.message)
             assertTrue(message.contains(construct), "'$message' should name $construct")
@@ -1554,9 +1558,10 @@ class ParserSuiteTest {
         "const type argument" to "main: () Int32 { xs: Arr<Int32, 4> = @arrOf(1, 2, 3, 4)\n 0 }",
     )
 
-    private fun assertRefusedByTheBackend(target: String, backend: String) {
+    private fun assertRefusedByTheBackend(target: String, backend: String, skip: Set<String> = emptySet()) {
         for ((index, entry) in cliConstructs.withIndex()) {
             val (construct, program) = entry
+            if (construct in skip) continue
             val run = runCli("construct-$index", target, program)
             val all = run.output
             assertEquals(1, run.exitCode, "exit 1 for:\n$program\n$all")
@@ -1575,7 +1580,7 @@ class ParserSuiteTest {
 
     @Test
     fun eachNewConstructIsADiagnosticNotAStackTraceAtTheCliOnTheJSTarget() {
-        assertRefusedByTheBackend("js", "JS")
+        assertRefusedByTheBackend("js", "JS", jsSupportedConstructs)
     }
 
     @Test
