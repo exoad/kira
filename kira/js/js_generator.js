@@ -354,6 +354,7 @@ class KiraMaybe {
   }
   isSome() { return this.present; }
   isNone() { return !this.present; }
+  isNull() { return !this.present; }
   unwrap() {
     if (!this.present) throw new Error("kira: unwrap() on a None Maybe");
     return this.value;

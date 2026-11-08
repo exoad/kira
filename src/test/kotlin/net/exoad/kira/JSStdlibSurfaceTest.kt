@@ -166,6 +166,25 @@ class JSStdlibSurfaceTest {
     }
 
     @Test
+    fun maybeIsNullIsTheAliasForNone() {
+        assertEquals(
+            "1\n1\n0\n",
+            run(
+                """
+                main: () Void {
+                    absent: Maybe<Size> = "ab".find("z")
+                    present: Maybe<Size> = "ab".find("a")
+                    trace(absent.isNull())
+                    trace(absent.isNone())
+                    trace(present.isNull())
+                }
+                """,
+                "test:js.maybe"
+            ) ?: return
+        )
+    }
+
+    @Test
     fun listSurfaceJoinsSortsAndAggregates() {
         assertEquals(
             "3,1,2\n6\n1\n3\n123\n",

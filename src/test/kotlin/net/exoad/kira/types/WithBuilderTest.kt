@@ -247,7 +247,9 @@ class WithBuilderTest {
     @Test
     fun theWithsPyGoldenIsConvertedText() {
         // The golden is written in the new form; nothing in it is old.
+        // A Windows checkout writes CRLF; the golden's content is what is asserted.
         val src = File("src/test/resources/py-golden/withs/src/lang/withs.kira").readText()
+            .replace("\r\n", "\n")
         assertTrue(src.contains(" with {\n") && !src.contains(".copy("))
         val parsed = TyperTestSupport.unitOf(TyperTestSupport.Src("lang/withs.kira", src, "golden.py.withs:lang.withs"))
         val withs = parsed.allSources().first { it.file == "lang/withs.kira" }.let { ctx -> TyperTestSupport.nodes(ctx.ast).filterIsInstance<WithExpr>() }

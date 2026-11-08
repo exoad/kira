@@ -1665,6 +1665,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
 
     /** Stdlib methods that already hand back a `Maybe`, keyed by receiver type. */
     private val maybeReturningMethods = mapOf(
+        "Str" to setOf("find", "toInt64", "toInt64Radix", "toFloat64"),
         "Map" to setOf("get", "remove"),
         "Stack" to setOf("pop", "peek"),
         "Queue" to setOf("dequeue", "peek"),
