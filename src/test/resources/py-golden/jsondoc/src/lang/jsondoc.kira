@@ -327,11 +327,13 @@ main: () Void {
     while n < 2500 {
         v: Json { value(r, 0) }
         d: Str { v.dump() }
-        forms.add(d)
-        forms.add(v.pretty(0, true))
-        forms.add(v.pretty(1, false))
-        forms.add(v.pretty(2, true))
-        forms.add(v.pretty(4, false))
+        forms with {
+            add(d)
+            add(v.pretty(0, true))
+            add(v.pretty(1, false))
+            add(v.pretty(2, true))
+            add(v.pretty(4, false))
+        }
         if Json.parse(d).dump() == d && Json.error() == "" {
             roundTrips += 1
         }

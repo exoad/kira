@@ -30,6 +30,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.RangeExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
@@ -101,7 +102,25 @@ class CppStmtEmitter : CppStmtPart {
     fun render(ctx: CppEmitContextImpl, s: Statement): List<String> {
         val out = mutableListOf<String>()
         ctx.lineDirective(s)?.let { out += it }
-        out += when (s) {
+        val (lines, withs) = collectingWiths(ctx) { renderBody(ctx, s) }
+        return out + withs + lines
+    }
+
+    /** [body]'s result, with the lines of the `with`s it spelled (they run before what holds them). */
+    private fun <T> collectingWiths(ctx: CppEmitContextImpl, body: () -> T): Pair<T, List<String>> {
+        val state = CppLowering.of(ctx).state
+        val before = state.withLines
+        val mine = CppBodyState.WithLines()
+        state.withLines = mine
+        try {
+            return body() to mine.lines
+        } finally {
+            state.withLines = before
+        }
+    }
+
+    private fun renderBody(ctx: CppEmitContextImpl, s: Statement): List<String> {
+        return when (s) {
             is ReturnStatement -> returnStatement(ctx, s)
             is IfSelectionStatement -> ifStatement(ctx, s)
             is WhileIterationStatement -> listOf(CppWriter.whileHead(cond(ctx, s.condition))) + block(ctx, s.statements)
@@ -113,7 +132,6 @@ class CppStmtEmitter : CppStmtPart {
             }
             else -> expressionStatement(ctx, s, s.expr)
         }
-        return out
     }
 
     /** A braced block of [statements] in a nested scope: `{`, the body indented, `}`. */
@@ -180,6 +198,11 @@ class CppStmtEmitter : CppStmtPart {
             NoExpr -> emptyList()
             is AssignmentExpr, is CompoundAssignmentExpr, is PlaceAssignmentExpr, is ThrowExpr -> listOf("${lower.emit(e, CppPrec.NONE)};")
             is TryExpr -> tryStatement(ctx, e)
+            // A `with` alone is its lines; its value is dropped.
+            is WithExpr -> {
+                lower.emit(e, CppPrec.NONE)
+                emptyList()
+            }
             else -> {
                 strBufStatement(ctx, e)?.let { return it }
                 val t = ctx.model.require(e)
@@ -365,7 +388,11 @@ class CppStmtEmitter : CppStmtPart {
             val tail = when {
                 last == null -> emptyList()
                 value == null || value is ThrowExpr || ctx.model.typeOrNull(value) == KType.Never -> render(ctx, last)
-                else -> listOf("return ${lower.emit(value, CppPrec.NONE)};")
+                else -> {
+                    // A `with` in the branch's value runs before the `return` that holds it.
+                    val (ret, withs) = collectingWiths(ctx) { "return ${lower.emit(value, CppPrec.NONE)};" }
+                    withs + ret
+                }
             }
             body + tail
         }

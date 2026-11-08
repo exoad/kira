@@ -1,0 +1,111 @@
+// `with` on a Mutable class: the block edits the receiver in place, a bare call resolves on it,
+// and the value of the `with` is the receiver itself.
+
+pub Tally: Mutable<Any> {
+    pub count: Mutable<Int32> { 0 }
+    pub label: Mutable<Str> { "" }
+    trail: Mutable<Str> { "" }
+
+    pub bump: (by: Int32) Void {
+        count += by
+        trail = "${trail}b"
+    }
+
+    pub tag: (s: Str) Void {
+        label = s
+    }
+
+    pub total: () Int32 {
+        count
+    }
+
+    pub name: () Str {
+        label
+    }
+
+    pub marks: () Str {
+        trail
+    }
+}
+
+// A construction with a block: the new object, edited before it is bound.
+pub built: () Tally {
+    t: Tally { } with {
+        bump(2)
+        bump(3)
+        tag("built")
+    }
+    t
+}
+
+// A statement of its own: calls and assignments on one receiver.
+pub touch: (t: Tally) Void {
+    t with {
+        bump(10)
+        count += 1
+        tag("touched")
+    }
+}
+
+// The value of a `with`, in an argument and as the last expression.
+pub count: (t: Tally) Int32 {
+    t.total()
+}
+
+pub inArgument: () Int32 {
+    count(Tally { } with {
+        bump(4)
+        bump(5)
+    })
+}
+
+pub edited: (t: Tally, by: Int32) Tally {
+    t with {
+        bump(by)
+        tag("edited")
+    }
+}
+
+// break and continue inside a block act on the loop around it.
+pub loops: () Int32 {
+    t: Tally { }
+    i: Mutable<Int32> { 0 }
+    while i < 10 {
+        i += 1
+        if i == 3 {
+            continue
+        }
+        t with {
+            bump(i)
+            if i == 6 {
+                break
+            }
+        }
+    }
+    t.total()
+}
+
+// A block nested in another receiver's, and one that declares a local.
+pub Dial: Mutable<Any> {
+    pub pos: Mutable<Int32> { 0 }
+
+    pub turn: (by: Int32) Void {
+        pos += by
+    }
+
+    pub at: () Int32 {
+        pos
+    }
+}
+
+pub nested: (a: Tally, d: Dial) Int32 {
+    a with {
+        bump(1)
+        n: Int32 { 7 }
+        d with {
+            turn(n)
+        }
+        bump(n)
+    }
+    a.total() * 100 + d.at()
+}

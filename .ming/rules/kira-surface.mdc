@@ -19,7 +19,8 @@ Facts that trip up new writers.
 - `with` scopes calls and assignments on one value: `x: Clazz { ... } with { f(...)  field = v }` or `x with { ... }`, never
   `with x { }`. A bare `x with { }` statement on a value type is an error (assign it, `x = x with { }`, or make the type a Mutable
   class, whose `with` edits in place). `rules.with.fold` hints a run of statements on one Mutable class value;
-  `kira --fix-with [--dry-run] FILE...` folds them (py-target projects only: other targets do not lower a `with`).
+  `kira --fix-with [--dry-run] FILE...` folds them (py and cpp projects: C and JS do not lower a `with`; C++ lowers a Mutable class's, edited in place, and refuses a value type's).
+- A statement ends at its newline: `;` is refused; `kira --fix-semicolons FILE...` drops them (never one in a string or a comment).
 - Class fields: `require pub name: Type` (constructor parameter + public field).
   Construction is positional: `Point { 0, 1 }`, nested `Rect { Point { 0, 1 }, Point { 1, 0 } }`.
 - Methods: `pub fx name: (args) ReturnType { ... }`. The C backend lowers

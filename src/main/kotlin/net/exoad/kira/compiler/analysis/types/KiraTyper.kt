@@ -18,7 +18,7 @@ enum class TyperMode { OFF, LENIENT, STRICT }
  *
  * @property freestanding `cpp.freestanding`: modules typed against the Pico subset.
  * @property headerOnly `cpp.headerOnly`: modules that emit an inline-only header.
- * @property withFold the target lowers `with` (py): the `rules.with.fold` hint runs.
+ * @property withFold the target lowers `with` (py, cpp): the `rules.with.fold` hint runs.
  * @property namespaces `cpp.namespaces`: URI (or glob) to C++ namespace, resolved as
  *   CppModuleLayout.namespaceOf resolves it: an exact URI first, then the glob with the most
  *   literal text, then the longer glob.

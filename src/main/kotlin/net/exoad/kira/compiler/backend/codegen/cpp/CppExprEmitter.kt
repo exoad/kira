@@ -167,6 +167,17 @@ class CppBodyState private constructor() {
     var frame: Frame? = null
         private set
 
+    /** The lines a statement's `with`s lowered to, written before the statement; null outside a statement. */
+    class WithLines {
+        val lines = mutableListOf<String>()
+
+        /** The temporary each `with` of the statement was lowered to, so a second spelling of it reuses the first. */
+        val names: IdentityHashMap<WithExpr, String> = IdentityHashMap()
+    }
+
+    /** The lines of the statement being written (CppStmtEmitter.render), or null where no statement runs. */
+    var withLines: WithLines? = null
+
     /** Inside a function or lambda body: an IIFE there captures by reference (`[&]`). */
     val inBody: Boolean get() = frame != null
 
@@ -387,8 +398,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
                 compound(e.target, e.operator, e.value, e)
             }
             is ThrowExpr -> throwExpr(e)
-            // A module constant's `with` folds into a construction; any other is lowered on the py target only.
-            is WithExpr -> unsupported(e, "a `with` outside a module constant (it is lowered on the py target)")
+            // A module constant's `with` folds into a construction; any other is lines before its statement.
+            is WithExpr -> withValue(e)
             is TryExpr -> unsupported(e, "a try used as a value (it is lowered on the py target)")
             NoExpr -> CppEx("", CppPrec.PRIMARY)
             else -> unsupported(e, "the expression ${CppEmitContextImpl.describe(e)}")
@@ -486,6 +497,8 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val sym = model.symbolOf(id) ?: return internal(id, "no symbol was recorded for '${id.value}'")
         (sym as? LocalSymbol)?.let { testSubjects[it] }?.let { return it }
         if (sym is FieldSymbol) model.testMembers[id]?.let { model.tests[it] }?.let { return field(it.self, sym) }
+        // A field of a `with`'s receiver named bare in its block: through the receiver's temporary.
+        if (sym is FieldSymbol) model.withMembers[id]?.let { model.withs[it] }?.let { return field(it.self, sym) }
         val name = nameOfSymbol(sym, id) ?: return internal(id, "'${id.value}' names ${sym.javaClass.simpleName}, which is not a value")
         return model.narrowings[id]?.let { narrowedRead(name, it) } ?: CppEx(name, CppPrec.PRIMARY)
     }
@@ -498,6 +511,31 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
         val sym = (n.to as KType.Nominal).sym as Symbol
         return CppEx("std::dynamic_pointer_cast<${ctx.qualified(sym)}>($name)", CppPrec.POSTFIX)
+    }
+
+    /**
+     * `receiver with { ... }` on a Mutable class: the receiver into a temporary, then the block, each written before the
+     * statement the `with` is in (the typer placed it where that keeps Kira's order); the value is the temporary, the receiver itself,
+     * edited in place. A value type's `with` builds a copy, which only the py target lowers.
+     */
+    private fun withValue(e: WithExpr): CppEx {
+        val info = model.withs[e] ?: return internal(e, "a `with` the typer did not resolve")
+        val sink = state.withLines ?: return unsupported(e, "a `with` outside a statement")
+        sink.names[e]?.let { return CppEx(it, CppPrec.PRIMARY) }
+        if (info.copy) {
+            return unsupported(e, "a `with` on ${typeOf(e).display()}, a value type (C++ lowers the `with` of a Mutable class, which edits it in place; the py target builds the copy)")
+        }
+        val stmts = ctx.parts.stmts as? CppStmtEmitter ?: return internal(e, "a `with` without W2.3's statement part")
+        val receiver = emit(e.receiver, CppPrec.ASSIGN)
+        val name = state.fresh("w")
+        val unused = if (e.body.isEmpty()) "[[maybe_unused]] " else ""
+        sink.lines += "$unused" + "const ${ctx.spell(typeOf(e), Pos.VALUE, e)} $name = $receiver;"
+        state.bind(info.temp, name)
+        sink.names[e] = name
+        if (e.body.isNotEmpty()) {
+            sink.lines += stmts.block(ctx, e.body)
+        }
+        return CppEx(name, CppPrec.PRIMARY)
     }
 
     /** `value == Identity` (stage 3): a constant the types decided, kira::isSome of a Maybe, or a dynamic_cast. */

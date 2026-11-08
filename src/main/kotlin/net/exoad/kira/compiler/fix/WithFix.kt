@@ -8,10 +8,13 @@ import java.io.File
 /**
  * `kira --fix-with FILE...`: each run of statements in a row that act on one Mutable class value (`x.f()`, `x.field = v`,
  * what the `rules.with.fold` hint names) becomes `x with { ... }`, the receiver's prefix dropped from each statement and the
- * statements indented a step. Only in a project whose target lowers a `with` (py). Lines keep their comments, their line
+ * statements indented a step. Only in a project whose target lowers a `with` (py, cpp). Lines keep their comments, their line
  * ends and their tabs; a second run finds nothing, as a `with` body is never folded again.
  */
 object WithFix {
+    /** The targets that lower a `with`: py, and cpp for a Mutable class (edited in place). */
+    private val LOWERS_WITH = setOf("py", "cpp")
+
     /** What one file's fold came to: its new text and the runs folded, or why the file was refused. */
     class Outcome(val text: String?, val folded: Int, val refused: String?)
 
@@ -54,8 +57,8 @@ object WithFix {
             }
             try {
                 out += TypedFix.withProject(dir) { project, srcs ->
-                    if (project.target.lowercase() != "py") {
-                        group.associateWith { Outcome(null, 0, "the project's target is ${project.target}, which does not lower a `with` (py only)") }
+                    if (project.target.lowercase() !in LOWERS_WITH) {
+                        group.associateWith { Outcome(null, 0, "the project's target is ${project.target}, which does not lower a `with` (py and cpp do)") }
                     } else {
                         val keys = group.map { it.canonicalPath }.toSet()
                         val (_, program) = TypedFix.typeSources(srcs, options = TyperOptions(withFold = true))

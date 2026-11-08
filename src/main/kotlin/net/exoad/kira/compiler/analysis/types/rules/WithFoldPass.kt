@@ -37,7 +37,7 @@ internal class FoldRun(
 
 /**
  * The runs `x with { ... }` could hold ([WithFold.runs]), as the `rules.with.fold` hint. Only where the target lowers a
- * `with` (the py backend sets [net.exoad.kira.compiler.analysis.types.TyperOptions.withFold]); only the project's own modules.
+ * `with` (the py and cpp backends set [net.exoad.kira.compiler.analysis.types.TyperOptions.withFold]); only the project's own modules.
  */
 internal class WithFoldPass : RulePass {
     override val name: String = "withfold"

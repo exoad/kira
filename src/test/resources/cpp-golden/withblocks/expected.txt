@@ -1,0 +1,15 @@
+withblocks - with on a Mutable class edits in place
+
+  ok    a construction with a block: two bumps
+  ok    and the assignment through the receiver
+  ok    and each call ran once
+  ok    a statement block edits the object the caller holds
+  ok    its field assignment too
+  ok    and its call
+  ok    a with as an argument is the edited receiver
+  ok    the value of a with is the receiver itself
+  ok    edited in place
+  ok    break and continue act on the loop around the block
+  ok    a nested block and a local of its own
+
+11 checks, 0 failed

@@ -51,9 +51,19 @@ class FixCliTest {
         assertTrue(file.readText().contains("    c with {\n        count()\n        reset(3)\n    }\n"), file.readText())
         assertTrue(PyTestSupport.cli(dir, "--fix-with", file.absolutePath).stdout.contains("folded 0"))
 
-        project(other, "cpp", "main.kira" to runs)
+        project(other, "c", "main.kira" to runs)
         val refused = PyTestSupport.cli(other, "--fix-with", File(other, "src/main.kira").absolutePath)
-        assertTrue(refused.stdout.contains("does not lower a `with` (py only)"), refused.all)
+        assertTrue(refused.stdout.contains("does not lower a `with` (py and cpp do)"), refused.all)
         assertEquals(runs, File(other, "src/main.kira").readText())
+    }
+
+    @Test
+    fun theWithFixFoldsInACppProjectToo(@TempDir dir: File) {
+        project(dir, "cpp", "main.kira" to runs)
+        val file = File(dir, "src/main.kira")
+        val ran = PyTestSupport.cli(dir, "--fix-with", file.absolutePath)
+        assertTrue(ran.stdout.contains("folded 1"), ran.all)
+        assertTrue(file.readText().contains("    c with {\n        count()\n        reset(3)\n    }\n"), file.readText())
+        assertTrue(PyTestSupport.cli(dir, "--fix-with", file.absolutePath).stdout.contains("folded 0"))
     }
 }
