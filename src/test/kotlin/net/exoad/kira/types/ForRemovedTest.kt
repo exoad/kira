@@ -64,6 +64,22 @@ class ForRemovedTest {
     }
 
     @Test
+    fun aStringLiteralInTheHeadKeepsItsSpacesAndTabs() {
+        val r = fix(
+            """
+            f: () Void {
+                for s: Str in @arrOf("a  b", "  tok  ", "x	y", "q \" z", '"') {
+                    trace(s)
+                }
+            }
+            """
+        )
+        assertEquals(1, r.fixed)
+        assertTrue(r.text.contains("sItems: Arr<Str> { @arrOf(\"a  b\", \"  tok  \", \"x\ty\", \"q \\\" z\", '\"') }"), r.text)
+        assertEquals(ForFix.rewrite(r.text).text, r.text)
+    }
+
+    @Test
     fun untilAndIndicesLeaveTheEndOut() {
         val r = fix(
             """

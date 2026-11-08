@@ -48,9 +48,43 @@ object ForFix {
 
     /** The head [text] (what stands between `for` and the body's `{`), read; null when it is not `x: T in e`. */
     fun head(text: String): Head? {
-        val one = unwrap(text.trim()).trim().replace(Regex("\\s+"), " ")
+        val one = squeeze(unwrap(text.trim()).trim())
         val m = HEAD.matchEntire(one) ?: return null
         return Head(m.groupValues[1], m.groupValues[2].trim(), shape(m.groupValues[3].trim()))
+    }
+
+    /** [text] with each run of white space outside a string or char literal one space: a literal's own spaces and tabs are its value. */
+    private fun squeeze(text: String): String {
+        val out = StringBuilder()
+        var i = 0
+        var quote = ' '
+        var inLiteral = false
+        var space = false
+        while (i < text.length) {
+            val c = text[i]
+            if (inLiteral) {
+                out.append(c)
+                if (c == '\\' && i + 1 < text.length) {
+                    i++
+                    out.append(text[i])
+                } else if (c == quote) {
+                    inLiteral = false
+                }
+            } else if (c == '"' || c == '\'') {
+                space = false
+                inLiteral = true
+                quote = c
+                out.append(c)
+            } else if (c.isWhitespace()) {
+                if (!space) out.append(' ')
+                space = true
+            } else {
+                space = false
+                out.append(c)
+            }
+            i++
+        }
+        return out.toString()
     }
 
     private fun shape(t: String): Shape {
