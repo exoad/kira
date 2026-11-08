@@ -1,4 +1,4 @@
-// Statements (design 5.4): locals, loops (TyperBodyModelTest checks each LoopPlan),
+// Statements (design 5.4): locals, loops (counters and indexes over while),
 // if-expressions (R18), assignments to places, throw and try.
 
 pub Cell: Mutable<Any> {
@@ -7,28 +7,49 @@ pub Cell: Mutable<Any> {
 
 pub loops: (xs: List<Int32>, arr: Arr<UInt8, 4>, view: View<Char>, names: Map<Str, Int32>, set: Set<Int32>) Int32 {
     total: Mutable<Int32> { 0 }
-    for i: Size in 0..4 {                  // @type Size const=0:Size @ 0
+    i: Mutable<Size> { 0 }                 // @type Size const=0:Size @ 0
+    while i <= 4 {
         total += 1
+        i += 1
     }
-    for x: Int32 in xs {                   // @type List<Int32> place=Param(xs) @ xs
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }        // @type List<Int32> place=Param(xs) @ xs
         total += x                         // @type Int32 place=Local(x) @ x
+        xIndex += 1
     }
-    for b: UInt8 in arr {
+    bIndex: Mutable<Size> { 0 }
+    while bIndex < arr.size() {
+        b: UInt8 { arr.get(bIndex) }
         total += b as Int32                // @type Int32 conv=INT_WRAP @ b as Int32
+        bIndex += 1
     }
-    for c: Char in view {
+    cIndex: Mutable<Size> { 0 }
+    while cIndex < view.size() {
+        c: Char { view.get(cIndex) }
         if c == ' ' {                      // @type Bool
             break
         }
+        cIndex += 1
     }
-    for e: T2<Str, Int32> in names {
+    eItems: Arr<T2<Str, Int32>> { names.entries() }
+    eIndex: Mutable<Size> { 0 }
+    while eIndex < eItems.size() {
+        e: T2<Str, Int32> { eItems.get(eIndex) }
         total += e.second                  // @type Int32 member=Field(T2.second: Int32) @ e.second
+        eIndex += 1
     }
-    for s: Int32 in set {
+    sItems: Arr<Int32> { set.toArr() }
+    sIndex: Mutable<Size> { 0 }
+    while sIndex < sItems.size() {
+        sIndex += 1
         continue
     }
-    for k: Int32 in 0..total {             // @type Int32 place=Local(total) @ total
+    k: Mutable<Int32> { 0 }
+    kLimit: Int32 { total }                // @type Int32 place=Local(total) @ total
+    while k <= kLimit {
         total -= 1
+        k += 1
     }
     j: Mutable<Int32> { 0 }
     while j < 3 {                          // @type Bool
@@ -85,8 +106,10 @@ pub throwing: (ok: Bool) Int32 {
 
 pub legacyLoop: (n: Int32) Int32 {
     t: Mutable<Int32> { 0 }
-    for i: Int32 in 0..(n + 1) {           // @type Int32 const=0:Int32 @ 0
+    i: Mutable<Int32> { 0 }                // @type Int32 const=0:Int32 @ 0
+    while i <= n + 1 {
         t += i                             // @type Int32 place=Local(i) @ i
+        i += 1
     }
     t
 }

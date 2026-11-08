@@ -30,8 +30,10 @@ BLUE: Str { "blue" }
 
 compute: (values: List<Int32>) Int32 {
     acc: Mutable<Int32> { 0 }
-    for i: Size in values.indices() {
+    i: Mutable<Size> { 0 }
+    while i < values.size() {
         acc = acc + values[i]
+        i += 1
     }
     acc
 }
@@ -54,11 +56,15 @@ main: () Void {
     while i < 3 {
         i = i + 1
     }
-    for k: Int32 in 0.until(3) {
+    k: Mutable<Int32> { 0 }
+    while k < 3 {
         // loop k
+        k += 1
     }
-    for idx: Size in 0.until(arr.size()) {
+    idx: Mutable<Size> { 0 }
+    while idx < arr.size() {
         // access arr[idx]
+        idx += 1
     }
     fxSum: Int32 { ((a: Int32, b: Int32) Int32 { a + b })(1, 2) }
     try {

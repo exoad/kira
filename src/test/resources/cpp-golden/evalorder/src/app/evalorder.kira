@@ -107,8 +107,11 @@ tail: (xs: View<Int32>, at: Size) View<Int32> {
 
 total: (v: View<Int32>) Int32 {
     s: Mutable<Int32> { 0 }
-    for x: Int32 in v {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < v.size() {
+        x: Int32 { v.get(xIndex) }
         s += x
+        xIndex += 1
     }
     s
 }
@@ -274,18 +277,30 @@ main: () Void {
     // keeps only a temporary it is bound to itself, and the loop read freed storage (gcc
     // -Werror=dangling-reference, MSVC's ASan a heap-use-after-free). 60, three times.
     rl: Mutable<Int32> { 0 }
-    for el: Int32 in freshLists()[0] {
+    elItems: List<Int32> { freshLists()[0] }
+    elIndex: Mutable<Size> { 0 }
+    while elIndex < elItems.size() {
+        el: Int32 { elItems.get(elIndex) }
         rl += el
+        elIndex += 1
     }
     trace(rl)
     rr: Mutable<Int32> { 0 }
-    for er: Int32 in freshRef().value {
+    erItems: List<Int32> { freshRef().value }
+    erIndex: Mutable<Size> { 0 }
+    while erIndex < erItems.size() {
+        er: Int32 { erItems.get(erIndex) }
         rr += er
+        erIndex += 1
     }
     trace(rr)
     rm: Mutable<Int32> { 0 }
-    for em: Int32 in freshMaybe().value {
+    emItems: List<Int32> { freshMaybe().value }
+    emIndex: Mutable<Size> { 0 }
+    while emIndex < emItems.size() {
+        em: Int32 { emItems.get(emIndex) }
         rm += em
+        emIndex += 1
     }
     trace(rm)
 }

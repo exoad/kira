@@ -2,11 +2,13 @@
 
 show: (xs: Arr<Int32>) Str {
     s: Mutable<Str> { "[" }
-    for i: Size in xs.indices() {
+    i: Mutable<Size> { 0 }
+    while i < xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
+        i += 1
     }
     s + "]"
 }
@@ -36,8 +38,12 @@ main: () Void {
     other: Mutable<Set<Int32>> { seen }
     other.add(7)
     trace("${seen.size()} ${other.size()}")
-    for v: Int32 in seen {
+    vItems: Arr<Int32> { seen.toArr() }
+    vIndex: Mutable<Size> { 0 }
+    while vIndex < vItems.size() {
+        v: Int32 { vItems.get(vIndex) }
         trace(v)
+        vIndex += 1
     }
     names: Mutable<Set<Str>> { }
     names.add("b")

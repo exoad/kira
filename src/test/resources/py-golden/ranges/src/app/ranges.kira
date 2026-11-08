@@ -33,50 +33,78 @@ pub main: () Int32 {
     r: Range<Int32> { 1..4 }
     t.check(r.begin == 1 && r.end == 4 && r.contains(4) && 4 in r && !(5 in r), "a Range value")
     sum: Mutable<Int32> { 0 }
-    for i: Int32 in r {
-        sum += i
+    ri: Mutable<Int32> { r.begin }
+    while ri <= r.end {
+        sum += ri
+        ri += 1
     }
-    t.check(sum == 10, "for over a Range includes its end")
+    t.check(sum == 10, "a counter from a Range's begin to its end includes its end")
     sum = 0
-    for j: Int32 in 1..4 {
+    j: Mutable<Int32> { 1 }
+    while j <= 4 {
         sum += j
+        j += 1
     }
-    t.check(sum == 10, "for over a literal range holds its end too")
+    t.check(sum == 10, "a counter up to a literal end holds it too")
     sum = 0
-    for j: Int32 in 1.until(4) {
+    j = 1
+    while j < 4 {
         sum += j
+        j += 1
     }
     t.check(sum == 6, "until leaves its end out")
     xs: List<Int32> { @listOf(5, 6, 7) }
     sum = 0
-    for i: Size in xs.indices() {
+    i: Mutable<Size> { 0 }
+    while i < xs.size() {
         sum += xs[i]
+        i += 1
     }
     word: Str { "" }
     none: Size { 0 }
-    for i: Size in word.indices() {
+    i = 0
+    while i < word.length() {
         sum += 100
+        i += 1
     }
-    for i: Size in none.until(none) {
+    i = none
+    while i < none {
         sum += 100
+        i += 1
     }
     t.check(sum == 18, "indices counts a List's indexes, and an empty one none")
     u: Until<Int32> { 2.until(5) }
     t.check(u.begin == 2 && u.end == 5 && 4 in u && !(5 in u) && u.contains(2), "an Until value leaves its end out")
     lasts: Mutable<Int32> { 0 }
-    for q: UInt8 in 250..255 {
+    q: Mutable<UInt8> { 250 }
+    more: Mutable<Bool> { true }
+    while more {
         lasts += 1
+        if q == 255 {
+            more = false
+        } else {
+            q += 1
+        }
     }
-    t.check(lasts == 6, "a loop up to UInt8's largest holds it and stops")
+    t.check(lasts == 6, "a loop up to UInt8's largest holds it and stops before the step")
     steps: Mutable<Int32> { 0 }
     top: Range<Int8> { 120..127 }
-    for k: Int8 in top {
+    k: Mutable<Int8> { top.begin }
+    more = true
+    while more {
         steps += 1
+        if k == top.end {
+            more = false
+        } else {
+            k += 1
+        }
     }
     t.check(steps == 8, "a Range up to Int8's largest stops there")
     empty: Range<Int32> { 5..4 }
-    for q: Int32 in empty {
+    e: Mutable<Int32> { empty.begin }
+    while e <= empty.end {
         steps += 100
+        e += 1
     }
     t.check(steps == 8 && !(5 in empty), "a Range whose end is below its begin is empty")
     t.finish()

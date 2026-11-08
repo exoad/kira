@@ -98,13 +98,17 @@ namespace conform
   std::int32_t radii(const kira::List<kira::Rc<Shape>>& xs)
   {
       std::int32_t total{0};
-      for(const kira::Rc<Shape>& s : xs)
+      kira::Size sIndex{0};
+      while(sIndex < xs.size())
       {
+          const kira::Rc<Shape> s = kira::at(xs, sIndex);
           if(!(dynamic_cast<const Circle*>(s.get()) != nullptr))
           {
+              sIndex += 1;
               continue;
           }
           total += std::dynamic_pointer_cast<Circle>(s)->radius;
+          sIndex += 1;
       }
       return total;
   }

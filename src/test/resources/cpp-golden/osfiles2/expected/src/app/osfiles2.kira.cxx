@@ -17,9 +17,11 @@ namespace osfiles2
         const kira::List<kira::Str> parts = kira::str::split(kira::Str(kira::str::replace(path, "\\", "/")), "/");
         const kira::Size last{parts.size() - 1};
         kira::List<kira::Str> kept = {};
-        for(kira::Size i = 0, i_end = last; i < i_end; ++i)
+        kira::Size i{0};
+        while(i < last)
         {
             kept.push_back(kira::at(parts, i));
+            i += 1;
         }
         return kept.empty() ? kira::Str(".") : kira::list::joinToString(kept, "/");
     }
@@ -37,13 +39,17 @@ namespace osfiles2
     bool temporaryIn(const kira::Str& dir)
     {
         bool result{false};
-        for(const kira::Str& name : kira::List<kira::Str>(kira::os::listDir(dir)))
+        const kira::List<kira::Str> nameItems = kira::os::listDir(dir);
+        kira::Size nameIndex{0};
+        while(nameIndex < nameItems.size())
         {
+            const kira::Str name = kira::at(nameItems, nameIndex);
             if(kira::str::endsWith(name, ".tmp"))
             {
                 result = true;
                 break;
             }
+            nameIndex += 1;
         }
         return result;
     }
@@ -73,9 +79,13 @@ namespace osfiles2
   {
       const kira::Rc<kira::test::Suite> t = std::make_shared<kira::test::Suite>("osfiles2 - kira:os files on C++ and py");
       const kira::Str dir = dirOf(kira::Str(kira::at(kira::rt::args(), 0))) + "/osfiles2.d";
-      for(const kira::Str& name : kira::List<kira::Str>(kira::os::listDir(dir)))
+      const kira::List<kira::Str> nameItems = kira::os::listDir(dir);
+      kira::Size nameIndex{0};
+      while(nameIndex < nameItems.size())
       {
+          const kira::Str name = kira::at(nameItems, nameIndex);
           static_cast<void>(kira::os::removeFile(dir + "/" + name));
+          nameIndex += 1;
       }
       t->check(kira::os::makeDirs(dir), "makeDirs makes the case's directory");
       const kira::Str a = dir + "/a.txt";

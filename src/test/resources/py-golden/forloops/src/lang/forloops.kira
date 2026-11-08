@@ -11,9 +11,12 @@ Bag: Mutable<Any> {
 
     pub walk: () Int32 {
         n: Mutable<Int32> { 0 }
-        for x: Int32 in items {
+        xIndex: Mutable<Size> { 0 }
+        while xIndex < items.size() {
+            x: Int32 { items.get(xIndex) }
             note(x * 10)
             n += x
+            xIndex += 1
         }
         n
     }
@@ -40,32 +43,44 @@ elsewhere: () Int32 {
 
 sumView: (xs: View<Int32>) Int32 {
     t: Mutable<Int32> { 0 }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         t += x
+        xIndex += 1
     }
     t
 }
 
 sumBytes: (bs: View<UInt8>) UInt32 {
     t: Mutable<UInt32> { 0 }
-    for b: UInt8 in bs {
+    bIndex: Mutable<Size> { 0 }
+    while bIndex < bs.size() {
+        b: UInt8 { bs.get(bIndex) }
         t += b as UInt32
+        bIndex += 1
     }
     t
 }
 
 walkParam: (xs: List<Int32>) Int32 {
     t: Mutable<Int32> { 0 }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         t += x
+        xIndex += 1
     }
     t
 }
 
 walkMut: (xs: List<Int32>) Int32 {
     t: Mutable<Int32> { 0 }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         t += x
+        xIndex += 1
     }
     xs.add(t)
     t
@@ -77,75 +92,112 @@ made: () List<Int32> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> { "[" }
-    for i: Size in xs.indices() {
+    i: Mutable<Size> { 0 }
+    while i < xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
+        i += 1
     }
     s + "]"
 }
 
 main: () Void {
     // ranges: the start, then the end, each once; empty and backwards ranges
-    for i: Int32 in startAt(1).until(endAt(4)) {
+    i: Mutable<Int32> { startAt(1) }
+    iLimit: Int32 { endAt(4) }
+    while i < iLimit {
         trace(i)
+        i += 1
     }
-    for i: Int32 in 5.until(5) {
+    i = 5
+    while i < 5 {
         trace(i)
+        i += 1
     }
-    for i: Int32 in 5.until(2) {
+    i = 5
+    while i < 2 {
         trace(i)
+        i += 1
     }
     n: Mutable<Int32> { 3 }
-    for i: Int32 in 0.until(n) {
+    i = 0
+    iLimit2: Int32 { n }
+    while i < iLimit2 {
         n += 10
         trace(i)
+        i += 1
     }
     trace(n)
-    for u: UInt8 in 250.until(255) {
+    u: Mutable<UInt8> { 250 }
+    while u < 255 {
         trace(u)
+        u += 1
     }
     lo: Int64 { -2 }
-    for i: Int64 in lo.until(1) {
-        trace(i)
+    l: Mutable<Int64> { lo }
+    while l < 1 {
+        trace(l)
+        l += 1
     }
 
     // break and continue, nested
-    for i: Int32 in 0.until(4) {
+    i = 0
+    while i < 4 {
         if i == 1 {
+            i += 1
             continue
         }
-        for j: Int32 in 0.until(10) {
+        j: Mutable<Int32> { 0 }
+        while j < 10 {
             if j == 2 {
                 break
             }
             trace(i * 10 + j)
+            j += 1
         }
+        i += 1
     }
 
     xs: Mutable<List<Int32>> { @listOf(1, 2, 3) }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         trace(x)
+        xIndex += 1
     }
-    for x: Int32 in xs {
-        for y: Int32 in xs {
+    xIndex = 0
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
+        yIndex: Mutable<Size> { 0 }
+        while yIndex < xs.size() {
+            y: Int32 { xs.get(yIndex) }
             trace(x * y)
+            yIndex += 1
         }
+        xIndex += 1
     }
 
     // a field, while a method writes another field of the object
     bag: Mutable<Bag> { Bag { @listOf(1, 2) } }
     trace(bag.walk())
     trace(show(bag.seen))
-    for x: Int32 in bag.items {
+    heldItems: List<Int32> { bag.items }
+    xIndex = 0
+    while xIndex < heldItems.size() {
+        x: Int32 { heldItems.get(xIndex) }
         bag.note(x)
+        xIndex += 1
     }
     trace(show(bag.seen))
 
     // a global, while a call writes another global
-    for x: Int32 in log {
+    xIndex = 0
+    while xIndex < log.size() {
+        x: Int32 { log.get(xIndex) }
         trace(x + elsewhere())
+        xIndex += 1
     }
     trace(show(other))
 
@@ -154,30 +206,46 @@ main: () Void {
     zs: Mutable<List<Int32>> { @listOf(1, 2) }
     trace(walkMut(zs))
     trace(show(zs))
-    for x: Int32 in made() {
+    madeItems: List<Int32> { made() }
+    xIndex = 0
+    while xIndex < madeItems.size() {
+        x: Int32 { madeItems.get(xIndex) }
         trace(x)
+        xIndex += 1
     }
     trace(sumView(xs))
     trace(sumView(xs.from(2)))
     octets: List<UInt8> { @listOf(200, 100, 7) }
     trace(sumBytes(octets))
     trace(sumBytes(octets.slice(1, 2)))
-    for b: UInt8 in octets {
+    bIndex: Mutable<Size> { 0 }
+    while bIndex < octets.size() {
+        b: UInt8 { octets.get(bIndex) }
         trace(b)
+        bIndex += 1
     }
     fixed: Arr<Int32, 3> { }
-    for x: Int32 in fixed {
+    xIndex = 0
+    while xIndex < fixed.size() {
+        x: Int32 { fixed.get(xIndex) }
         trace(x)
+        xIndex += 1
     }
 
     // a List of objects: the loop writes the objects, not the List
     cells: Mutable<List<Cell>> { }
     cells.add(Cell { 1 })
     cells.add(Cell { 2 })
-    for c: Cell in cells {
+    cIndex: Mutable<Size> { 0 }
+    while cIndex < cells.size() {
+        c: Cell { cells.get(cIndex) }
         c.v = c.v * 5
+        cIndex += 1
     }
-    for c: Cell in cells {
+    cIndex = 0
+    while cIndex < cells.size() {
+        c: Cell { cells.get(cIndex) }
         trace(c.v)
+        cIndex += 1
     }
 }

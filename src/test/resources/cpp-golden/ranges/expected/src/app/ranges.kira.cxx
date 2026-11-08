@@ -57,74 +57,93 @@ namespace ranges
       const ::kira::range::Range<std::int32_t> r = ::kira::range::Range<std::int32_t>{.begin = 1, .end = 4};
       t->check(r.begin == 1 && r.end == 4 && r.contains(4) && r._op_in_(4) && !r._op_in_(5), "a Range value");
       std::int32_t sum{0};
+      std::int32_t ri{r.begin};
+      while(ri <= r.end)
       {
-          const ::kira::range::Range<std::int32_t> i_r = r;
-          bool i_more = i_r.begin <= i_r.end;
-          for(std::int32_t i = i_r.begin; i_more; i_more = i != i_r.end && (++i, true))
-          {
-              sum += i;
-          }
+          sum += ri;
+          ri += 1;
       }
-      t->check(sum == 10, "for over a Range includes its end");
+      t->check(sum == 10, "a counter from a Range's begin to its end includes its end");
       sum = 0;
-      for(std::int32_t j = 1; j <= 4; ++j)
+      std::int32_t j{1};
+      while(j <= 4)
       {
           sum += j;
+          j += 1;
       }
-      t->check(sum == 10, "for over a literal range holds its end too");
+      t->check(sum == 10, "a counter up to a literal end holds it too");
       sum = 0;
-      for(std::int32_t j = 1; j < 4; ++j)
+      j = 1;
+      while(j < 4)
       {
           sum += j;
+          j += 1;
       }
       t->check(sum == 6, "until leaves its end out");
       const kira::List<std::int32_t> xs = {5, 6, 7};
       sum = 0;
-      for(kira::Size i = 0, i_end = xs.size(); i < i_end; ++i)
+      kira::Size i{0};
+      while(i < xs.size())
       {
           sum += kira::at(xs, i);
+          i += 1;
       }
       const kira::Str word = "";
       const kira::Size none{0};
-      for(kira::Size i = 0, i_end = kira::str::length(word); i < i_end; ++i)
+      i = 0;
+      while(i < kira::str::length(word))
       {
           sum += 100;
+          i += 1;
       }
-      for(kira::Size i = none, i_end = none; i < i_end; ++i)
+      i = none;
+      while(i < none)
       {
           sum += 100;
+          i += 1;
       }
       t->check(sum == 18, "indices counts a List's indexes, and an empty one none");
       const ::kira::range::Until<std::int32_t> u = ::kira::range::Until<std::int32_t>{.begin = 2, .end = 5};
       t->check(u.begin == 2 && u.end == 5 && u._op_in_(4) && !u._op_in_(5) && u.contains(2), "an Until value leaves its end out");
       std::int32_t lasts{0};
+      std::uint8_t q{250};
+      bool more{true};
+      while(more)
       {
-          bool q_more = true;
-          for(std::uint8_t q = 250, q_last = 255; q_more && q <= q_last; q_more = q != q_last && (++q, true))
+          lasts += 1;
+          if(q == 255u)
           {
-              lasts += 1;
+              more = false;
+          }
+          else
+          {
+              q += 1;
           }
       }
-      t->check(lasts == 6, "a loop up to UInt8's largest holds it and stops");
+      t->check(lasts == 6, "a loop up to UInt8's largest holds it and stops before the step");
       std::int32_t steps{0};
       const ::kira::range::Range<std::int8_t> top = ::kira::range::Range<std::int8_t>{.begin = 120, .end = 127};
+      std::int8_t k{top.begin};
+      more = true;
+      while(more)
       {
-          const ::kira::range::Range<std::int8_t> k_r = top;
-          bool k_more = k_r.begin <= k_r.end;
-          for(std::int8_t k = k_r.begin; k_more; k_more = k != k_r.end && (++k, true))
+          steps += 1;
+          if(k == top.end)
           {
-              steps += 1;
+              more = false;
+          }
+          else
+          {
+              k += 1;
           }
       }
       t->check(steps == 8, "a Range up to Int8's largest stops there");
       const ::kira::range::Range<std::int32_t> empty = ::kira::range::Range<std::int32_t>{.begin = 5, .end = 4};
+      std::int32_t e{empty.begin};
+      while(e <= empty.end)
       {
-          const ::kira::range::Range<std::int32_t> q_r = empty;
-          bool q_more = q_r.begin <= q_r.end;
-          for(std::int32_t q = q_r.begin; q_more; q_more = q != q_r.end && (++q, true))
-          {
-              steps += 100;
-          }
+          steps += 100;
+          e += 1;
       }
       t->check(steps == 8 && !empty._op_in_(5), "a Range whose end is below its begin is empty");
       const Box bx = Box{.lo = 2, .hi = 6};

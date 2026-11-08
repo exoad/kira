@@ -30,11 +30,16 @@ pub Arr<UInt8, USER_CMD_BYTES> as Frame
 // The SDK's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
 pub @_const crc32: (buf: View<UInt8>) UInt32 {
     crc: Mutable<UInt32> { 0xFFFFFFFF }
-    for b: UInt8 in buf {
+    bIndex: Mutable<Size> { 0 }
+    while bIndex < buf.size() {
+        b: UInt8 { buf.get(bIndex) }
         crc ^= b as UInt32
-        for bit: Int32 in 0.until(8) {
+        bit: Mutable<Int32> { 0 }
+        while bit < 8 {
             crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
+            bit += 1
         }
+        bIndex += 1
     }
     ~crc
 }
@@ -53,8 +58,10 @@ pub @_const writeU32: (p: MutView<UInt8>, v: UInt32) Void {
 // A 32-byte command of either family, little-endian, byte by byte.
 pub @_const command: (kind: UInt32, cmdType: UInt32, cmdValue: UInt32) Frame {
     p: Mutable<Frame> {}
-    for i: Size in MAGIC.indices() {
+    i: Mutable<Size> { 0 }
+    while i < MAGIC.size() {
         p[i] = MAGIC[i]
+        i += 1
     }
     writeU32(p.from(4), kind)
     writeU32(p.from(8), USER_CMD_BYTES as UInt32)
@@ -98,11 +105,13 @@ pub @_const readHeader: (buf: View<UInt8>) Maybe<Header> {
         null
     } else {
         found: Mutable<Bool> { false }
-        for i: Size in MAGIC.indices() {
+        i: Mutable<Size> { 0 }
+        while i < MAGIC.size() {
             if buf[i] != MAGIC[i] {
                 found = true
                 break
             }
+            i += 1
         }
         h: Header { readU32(buf.from(4)), readU32(buf.from(8)) }
         found || (h.size as Size) != buf.size() ? null : h
@@ -121,12 +130,14 @@ pub @_const packetAt: (buf: View<UInt8>) Size {
     } else {
         result: Mutable<Size> { 0 }
         found: Mutable<Bool> { false }
-        for i: Size in MAGIC.indices() {
+        i: Mutable<Size> { 0 }
+        while i < MAGIC.size() {
             if buf[i] != MAGIC[i] {
                 result = 0
                 found = true
                 break
             }
+            i += 1
         }
         if found {
             result

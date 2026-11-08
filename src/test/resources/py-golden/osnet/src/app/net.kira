@@ -69,12 +69,16 @@ pub closedBeside: () Str {
     p.add(gone.handle(), POLL_READ)
     p.add(b.handle(), POLL_READ)
     seen: Mutable<List<Str>> { @listOf() }
-    for r: Ready in p.wait(2000) {
+    rItems: List<Ready> { p.wait(2000) }
+    rIndex: Mutable<Size> { 0 }
+    while rIndex < rItems.size() {
+        r: Ready { rItems.get(rIndex) }
         if r.handle == b.handle() {
             seen.add("live ${r.events}")
         } else {
             seen.add("closed ${r.events}")
         }
+        rIndex += 1
     }
     "bound ${bound} sent ${sent}: ${seen.joinToString(", ")}, kind '${lastErrorKind()}'"
 }

@@ -14,22 +14,29 @@ counting: () Void {
     hits: Atomic<Int64> { value = 0 }
     tally: Mutex<Tally> { value = Tally { } }
     workers: Mutable<List<Thread>> { }
-    for w: Int32 in 0.until(4) {
+    w: Mutable<Int32> { 0 }
+    while w < 4 {
         workers.add(spawn("worker ${w}", () Void {
-            for i: Int32 in 0.until(500) {
+            i: Mutable<Int32> { 0 }
+            while i < 500 {
                 hits.add(1)
                 tally.lock((t: Tally) Void {
                     t.count += 1
                 })
+                i += 1
             }
             tally.lock((t: Tally) Void {
                 t.names.add("w${w}")
             })
         }))
+        w += 1
     }
-    for t: Thread in workers {
+    tIndex: Mutable<Size> { 0 }
+    while tIndex < workers.size() {
+        t: Thread { workers.get(tIndex) }
         t.join()
         t.join()
+        tIndex += 1
     }
     tally.lock((t: Tally) Void {
         t.names.sort()
@@ -40,9 +47,11 @@ counting: () Void {
 queueing: () Void {
     q: BlockingQueue<List<Int32>> { }
     producer: Thread { spawn("producer", () Void {
-        for i: Int32 in 0.until(3) {
+        i: Mutable<Int32> { 0 }
+        while i < 3 {
             tens: Int32 { i * 10 }
             q.push(@listOf(i, tens))
+            i += 1
         }
         q.close()
     }) }

@@ -44,8 +44,11 @@ pub Hooks: Mutable<Any> {
 
     pub run: (v: Int32) Int32 {
         t: Mutable<Int32> { 0 }
-        for h: Fx<T1<Int32>, Int32> in hooks {
+        hIndex: Mutable<Size> { 0 }
+        while hIndex < hooks.size() {
+            h: Fx<T1<Int32>, Int32> { hooks.get(hIndex) }
             t += h(v)
+            hIndex += 1
         }
         t
     }
@@ -85,14 +88,19 @@ pub main: () Void {
     println("named ${applyTwice(double, 3)}")
 
     fs: Mutable<List<Fx<T0, Int32>>> { }
-    for i: Int32 in 0.until(3) {
+    i: Mutable<Int32> { 0 }
+    while i < 3 {
         fs.add(() Int32 {
             i * 10
         })
+        i += 1
     }
     seen: Mutable<Str> { "" }
-    for f: Fx<T0, Int32> in fs {
+    fIndex: Mutable<Size> { 0 }
+    while fIndex < fs.size() {
+        f: Fx<T0, Int32> { fs.get(fIndex) }
         seen = seen + " ${f()}"
+        fIndex += 1
     }
     println("loop variable copied:${seen}")
 

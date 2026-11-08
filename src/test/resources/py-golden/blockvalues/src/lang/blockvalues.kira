@@ -105,8 +105,10 @@ grade: (n: Int32) Str {
 total: (upTo: Int32, enabled: Bool) Int32 {
     v: Int32 { if enabled {
         s: Mutable<Int32> { 0 }
-        for i: Int32 in 0.until(upTo) {
+        i: Mutable<Int32> { 0 }
+        while i < upTo {
             s += i
+            i += 1
         }
         s > 5 ? s * 100 : s
     } else {

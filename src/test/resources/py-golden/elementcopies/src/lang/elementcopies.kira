@@ -13,20 +13,26 @@ World: Mutable<Any> {
     pub above: (n: Int32) Pt {
         result: Mutable<Maybe<Pt>> { null }
         found: Mutable<Bool> { false }
-        for p: Pt in pts {
+        pIndex: Mutable<Size> { 0 }
+        while pIndex < pts.size() {
+            p: Pt { pts.get(pIndex) }
             if p.x > n {
                 result = p
                 found = true
                 break
             }
+            pIndex += 1
         }
         found ? result.value : Pt { }
     }
 
     pub sum: () Int32 {
         t: Mutable<Int32> { 0 }
-        for p: Pt in pts {
+        pIndex: Mutable<Size> { 0 }
+        while pIndex < pts.size() {
+            p: Pt { pts.get(pIndex) }
             t += p.x
+            pIndex += 1
         }
         t
     }
@@ -37,7 +43,9 @@ GRID: List<List<Int32>> { @listOf(@listOf(1, 2), @listOf(3)) }
 first: (xs: List<Pt>) Pt {
     result: Mutable<Maybe<Pt>> { null }
     found: Mutable<Bool> { false }
-    for p: Pt in xs {
+    pIndex: Mutable<Size> { 0 }
+    while pIndex < xs.size() {
+        p: Pt { xs.get(pIndex) }
         result = p
         found = true
         break
@@ -48,7 +56,9 @@ first: (xs: List<Pt>) Pt {
 firstOf: (v: View<Pt>) Pt {
     result: Mutable<Maybe<Pt>> { null }
     found: Mutable<Bool> { false }
-    for p: Pt in v {
+    pIndex: Mutable<Size> { 0 }
+    while pIndex < v.size() {
+        p: Pt { v.get(pIndex) }
         result = p
         found = true
         break
@@ -59,12 +69,15 @@ firstOf: (v: View<Pt>) Pt {
 pick: (xs: List<Pt>, want: Int32) Pt {
     result: Mutable<Maybe<Pt>> { null }
     found: Mutable<Bool> { false }
-    for p: Pt in xs {
+    pIndex: Mutable<Size> { 0 }
+    while pIndex < xs.size() {
+        p: Pt { xs.get(pIndex) }
         if p.x == want {
             result = want > 0 ? p : Pt { }
             found = true
             break
         }
+        pIndex += 1
     }
     found ? result.value : Pt { }
 }
@@ -72,7 +85,9 @@ pick: (xs: List<Pt>, want: Int32) Pt {
 firstRow: (g: List<List<Int32>>) List<Int32> {
     result: Mutable<List<Int32>> { }
     found: Mutable<Bool> { false }
-    for r: List<Int32> in g {
+    rIndex: Mutable<Size> { 0 }
+    while rIndex < g.size() {
+        r: List<Int32> { g.get(rIndex) }
         result = r
         found = true
         break
@@ -83,7 +98,9 @@ firstRow: (g: List<List<Int32>>) List<Int32> {
 gridRow: () List<Int32> {
     result: Mutable<List<Int32>> { }
     found: Mutable<Bool> { false }
-    for r: List<Int32> in GRID {
+    rIndex: Mutable<Size> { 0 }
+    while rIndex < GRID.size() {
+        r: List<Int32> { GRID.get(rIndex) }
         result = r
         found = true
         break

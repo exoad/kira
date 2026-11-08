@@ -27,22 +27,30 @@ pub main: () Void {
     }
     replies: Mutex<List<Str>> { value = List<Str> { } }
     clients: Mutable<List<Thread>> { }
-    for c: Int32 in 0.until(3) {
+    c: Mutable<Int32> { 0 }
+    while c < 3 {
         clients.add(spawn("client ${c}", () Void {
             got: List<Str> { talk(port, @listOf("c${c} one", "c${c} two")) }
             replies.lock((all: List<Str>) Void {
                 all.add(got.joinToString(" | "))
             })
         }))
+        c += 1
     }
-    for t: Thread in clients {
+    tIndex: Mutable<Size> { 0 }
+    while tIndex < clients.size() {
+        t: Thread { clients.get(tIndex) }
         t.join()
+        tIndex += 1
     }
     stopServing()
     replies.lock((all: List<Str>) Void {
         all.sort()
-        for r: Str in all {
+        rIndex: Mutable<Size> { 0 }
+        while rIndex < all.size() {
+            r: Str { all.get(rIndex) }
             println(r)
+            rIndex += 1
         }
     })
     println("served ${served.load()} lines")

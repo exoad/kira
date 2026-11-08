@@ -100,9 +100,12 @@ pub speed: (windowTicks: Int32, d: Decoder, nowUs: UInt64) Speed {
 pub @_const settle: (steps: Arr<UInt8, 6>, t0: UInt64) Decoder {
     d: Mutable<Decoder> {}
     t: Mutable<UInt64> { t0 }
-    for s: UInt8 in steps {
+    sIndex: Mutable<Size> { 0 }
+    while sIndex < steps.size() {
+        s: UInt8 { steps.get(sIndex) }
         d = d.fed(s, t)
         t += 1000
+        sIndex += 1
     }
     d
 }

@@ -16,10 +16,13 @@ pub applyTo: (f: Fx<T1<Int32>, Int32>, x: Int32) Int32 {
 // A free function passing a capturing lambda to a template parameter.
 pub addAll: (xs: List<Int32>, k: Int32) Int32 {
     total: Mutable<Int32> { 0 }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         total += applyTo((v: Int32) Int32 {
             v + k
         }, x)
+        xIndex += 1
     }
     total
 }

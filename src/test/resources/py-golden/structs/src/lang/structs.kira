@@ -109,7 +109,10 @@ main: () Void {
     // the zero value, and a walk
     z: Pt { }
     trace(z.sum())
-    for p: Pt in pts {
+    pIndex: Mutable<Size> { 0 }
+    while pIndex < pts.size() {
+        p: Pt { pts.get(pIndex) }
         trace(p.sum())
+        pIndex += 1
     }
 }

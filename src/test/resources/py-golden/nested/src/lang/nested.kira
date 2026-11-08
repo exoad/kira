@@ -17,34 +17,46 @@ Book: Mutable<Any> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> { "[" }
-    for i: Size in xs.indices() {
+    i: Mutable<Size> { 0 }
+    while i < xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
+        i += 1
     }
     s + "]"
 }
 
 grid: (rows: Size, cols: Size) List<List<Int32>> {
     out: Mutable<List<List<Int32>>> { }
-    for r: Size in 0.until(rows) {
+    r: Mutable<Size> { 0 }
+    while r < rows {
         row: Mutable<List<Int32>> { }
-        for c: Size in 0.until(cols) {
+        c: Mutable<Size> { 0 }
+        while c < cols {
             row.add((r * 10 + c) as Int32)
+            c += 1
         }
         out.add(row)
         row.add(-1)
+        r += 1
     }
     out
 }
 
 total: (g: List<List<Int32>>) Int32 {
     t: Mutable<Int32> { 0 }
-    for row: List<Int32> in g {
-        for v: Int32 in row {
+    rowIndex: Mutable<Size> { 0 }
+    while rowIndex < g.size() {
+        row: List<Int32> { g.get(rowIndex) }
+        vIndex: Mutable<Size> { 0 }
+        while vIndex < row.size() {
+            v: Int32 { row.get(vIndex) }
             t += v
+            vIndex += 1
         }
+        rowIndex += 1
     }
     t
 }

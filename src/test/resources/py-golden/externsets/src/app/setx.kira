@@ -16,8 +16,13 @@ pub main: () Int32 {
     w: Set<Str> { words("a b a c") }
     trace("${w.size()} ${w.contains("b")}")
     order: Mutable<Str> { "" }
-    for x: Str in words("b c a b") {
+    xSet: Set<Str> { words("b c a b") }
+    xItems: Arr<Str> { xSet.toArr() }
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xItems.size() {
+        x: Str { xItems.get(xIndex) }
         order = order + x
+        xIndex += 1
     }
     trace(order)
     0

@@ -57,13 +57,18 @@ namespace unilidar
   constexpr std::uint32_t crc32(kira::View<std::uint8_t> buf)
   {
       std::uint32_t crc{0xFFFFFFFFu};
-      for(const std::uint8_t b : buf)
+      kira::Size bIndex{0};
+      while(bIndex < buf.size())
       {
+          const std::uint8_t b{buf[bIndex]};
           crc ^= static_cast<std::uint32_t>(b);
-          for(std::int32_t bit = 0; bit < 8; ++bit)
+          std::int32_t bit{0};
+          while(bit < 8)
           {
               crc = (crc & 1u) != 0u ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+              bit += 1;
           }
+          bIndex += 1;
       }
       return ~crc;
   }
@@ -84,9 +89,11 @@ namespace unilidar
   constexpr Frame command(std::uint32_t kind, std::uint32_t cmdType, std::uint32_t cmdValue)
   {
       Frame p = Frame{};
-      for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
+      kira::Size i{0};
+      while(i < MAGIC.size())
       {
           kira::at(p, i) = kira::at(MAGIC, i);
+          i += 1;
       }
       writeU32(kira::mutView(p).from(4), kind);
       writeU32(kira::mutView(p).from(8), static_cast<std::uint32_t>(USER_CMD_BYTES));
@@ -132,13 +139,15 @@ namespace unilidar
       else
       {
           bool found{false};
-          for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
+          kira::Size i{0};
+          while(i < MAGIC.size())
           {
               if(kira::at(buf, i) != kira::at(MAGIC, i))
               {
                   found = true;
                   break;
               }
+              i += 1;
           }
           const Header h = Header{.type = readU32(buf.from(4)), .size = readU32(buf.from(8))};
           return found || static_cast<kira::Size>(h.size) != buf.size() ? kira::Maybe<Header>(kira::none) : kira::Maybe<Header>(h);
@@ -161,7 +170,8 @@ namespace unilidar
       {
           kira::Size result{0};
           bool found{false};
-          for(kira::Size i = 0, i_end = MAGIC.size(); i < i_end; ++i)
+          kira::Size i{0};
+          while(i < MAGIC.size())
           {
               if(kira::at(buf, i) != kira::at(MAGIC, i))
               {
@@ -169,6 +179,7 @@ namespace unilidar
                   found = true;
                   break;
               }
+              i += 1;
           }
           if(found)
           {

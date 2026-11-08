@@ -36,7 +36,11 @@ pub caught: (what: Str) Str {
 
 pub main: () Void {
     trace(parse("42"))
-    for what: Str in @arrOf("missing", "key", "empty", "decode", "timeout", "gone", "denied", "fine") {
+    whatItems: Arr<Str> { @arrOf("missing", "key", "empty", "decode", "timeout", "gone", "denied", "fine") }
+    whatIndex: Mutable<Size> { 0 }
+    while whatIndex < whatItems.size() {
+        what: Str { whatItems.get(whatIndex) }
         trace(caught(what))
+        whatIndex += 1
     }
 }

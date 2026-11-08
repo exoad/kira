@@ -32,8 +32,11 @@ pub main: () Int32 {
         }))
         k += 1
     }
-    for t: Thread in workers {
+    tIndex: Mutable<Size> { 0 }
+    while tIndex < workers.size() {
+        t: Thread { workers.get(tIndex) }
         t.join()
+        tIndex += 1
     }
     m.lock((b: Box) Void {
         trace("${b.n} ${b.seen.size()} ${b.seen[0]}")

@@ -28,8 +28,11 @@ words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, 
 
 total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
     t: Mutable<Int32> { extra }
-    for x: Int32 in xs {
+    xIndex: Mutable<Size> { 0 }
+    while xIndex < xs.size() {
+        x: Int32 { xs.get(xIndex) }
         t += x
+        xIndex += 1
     }
     t
 }
@@ -53,11 +56,13 @@ Knob: Mutable<Any> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> { "[" }
-    for i: Size in xs.indices() {
+    i: Mutable<Size> { 0 }
+    while i < xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
+        i += 1
     }
     s + "]"
 }

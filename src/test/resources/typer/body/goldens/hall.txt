@@ -237,14 +237,24 @@ hall.kira:95:90  d  Decoder  place=Param(d)  sym=golden.hall:pico.hall.speed(d)
 hall.kira:95:103  0  UInt32  const=0:UInt32
 hall.kira:101:16  Decoder { }  Decoder
 hall.kira:102:26  t0  UInt64  place=Param(t0)  sym=golden.hall:pico.hall.settle(t0)
-hall.kira:103:21  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
-hall.kira:104:9  d = d.fed(s, t)  Void
-hall.kira:104:9  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
-hall.kira:104:13  d.fed(s, t)  Decoder  call=METHOD(Decoder.fed)
-hall.kira:104:13  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
-hall.kira:104:19  s  UInt8  place=Local(s)  sym=golden.hall:pico.hall.settle::s
-hall.kira:104:22  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
-hall.kira:105:9  t += 1000  Void
-hall.kira:105:9  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
-hall.kira:105:14  1000  UInt64  const=1000:UInt64
-hall.kira:107:5  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:103:29  0  Size  const=0:Size
+hall.kira:104:11  sIndex < steps.size()  Bool
+hall.kira:104:11  sIndex  Size  place=Local(sIndex)  sym=golden.hall:pico.hall.settle::sIndex
+hall.kira:104:20  steps.size()  Size  call=MAGIC(Arr.size)
+hall.kira:104:20  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
+hall.kira:105:20  steps.get(sIndex)  UInt8  call=MAGIC(Arr.get)
+hall.kira:105:20  steps  Arr<UInt8, 6>  place=Param(steps)  sym=golden.hall:pico.hall.settle(steps)
+hall.kira:105:30  sIndex  Size  place=Local(sIndex)  sym=golden.hall:pico.hall.settle::sIndex
+hall.kira:106:9  d = d.fed(s, t)  Void
+hall.kira:106:9  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:106:13  d.fed(s, t)  Decoder  call=METHOD(Decoder.fed)
+hall.kira:106:13  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
+hall.kira:106:19  s  UInt8  place=Local(s)  sym=golden.hall:pico.hall.settle::s
+hall.kira:106:22  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
+hall.kira:107:9  t += 1000  Void
+hall.kira:107:9  t  UInt64  place=Local(t)  sym=golden.hall:pico.hall.settle::t
+hall.kira:107:14  1000  UInt64  const=1000:UInt64
+hall.kira:108:9  sIndex += 1  Void
+hall.kira:108:9  sIndex  Size  place=Local(sIndex)  sym=golden.hall:pico.hall.settle::sIndex
+hall.kira:108:19  1  Size  const=1:Size
+hall.kira:110:5  d  Decoder  place=Local(d)  sym=golden.hall:pico.hall.settle::d
