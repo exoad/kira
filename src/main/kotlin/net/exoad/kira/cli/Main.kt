@@ -91,6 +91,19 @@ fun main(args: Array<String>) {
         }
         return
     }
+    // `kira --fix-semicolons <file.kira>...` drops each statement-ending `;` in place (a `;` in a string or a comment is never touched).
+    if (args.firstOrNull() == "--fix-semicolons") {
+        for (f in args.drop(1)) {
+            val (r, why) = net.exoad.kira.compiler.fix.SemicolonFix.rewriteFile(File(f))
+            if (r == null) {
+                println("$f: $why")
+                continue
+            }
+            println("$f: dropped ${r.dropped}, left ${r.left.size}")
+            r.left.forEach { println("  left: $it") }
+        }
+        return
+    }
     // `kira --fix-with [--dry-run] <file.kira>...` folds each run of statements on one Mutable class value into `x with { ... }`.
     if (args.firstOrNull() == "--fix-with") {
         val dry = "--dry-run" in args
