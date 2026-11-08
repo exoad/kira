@@ -225,8 +225,7 @@ internal class Effects(val r: Rules, private val fns: Map<FnSymbol, Effect>) {
             out = maxOf(out, Effect.READS)
         }
         val own = when (n) {
-            // `a.until(b)` and `xs.indices()` build an Until of their parts and call nothing.
-            is FunctionCallExpr -> if (model.halfOpens.containsKey(n)) Effect.PURE else call(model.calls[n], model.types[n])
+            is FunctionCallExpr -> call(model.calls[n], model.types[n])
             is IntrinsicExpr -> if (n.intrinsicKey.name != "_static_assert") Effect.IMPURE else Effect.PURE
             is ThrowExpr -> Effect.IMPURE
             is AssignmentExpr -> write(model.places[n.target])
@@ -529,7 +528,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects) {
         model.opCalls[e]?.let { rc -> if (!call(rc, null, f)) return false }
         return when (e) {
             is FunctionCallExpr -> {
-                val rc = model.calls[e] ?: return model.halfOpens.containsKey(e)
+                val rc = model.calls[e] ?: return false
                 call(rc, e.name, f) && writesOwn(e, f)
             }
             is IntrinsicExpr -> e.intrinsicKey.name == "_static_assert"

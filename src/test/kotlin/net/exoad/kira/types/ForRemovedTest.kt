@@ -481,20 +481,23 @@ class ForRemovedTest {
     }
 
     @Test
-    fun anUntilValueIsTheStdlibsUntilAndLeavesItsEndOut() {
-        val body = """
-            pub f: (x: Int32, xs: List<Int32>) Int32 {
-                u: Until<Int32> { 2.until(5) }
-                w: Until<Size> { xs.indices() }
-                x in u && u.contains(x) && w.end == xs.size() ? u.begin : 0
-            }
-            """
-        expectNoErrors(typed(body))
-        val p = py(body)
-        assertTrue(p.contains("u = _k_Until(2, 5)"), p)
-        assertTrue(p.contains("w = _k_Until(0, len(xs))"), p)
-        val c = cpp(body)
-        assertTrue(c.contains("::kira::range::Until<std::int32_t>{.begin = 2, .end = 5}"), c)
+    fun untilAndIndicesAreRemovedWithTheRangeFormInTheMessage() {
+        val u = typed("pub f: (n: Int32) Bool {\n    u: Range<Int32> { 0.until(n) }\n    true\n}")
+        expectDiagnostic(u, "types.until.removed")
+        val um = u.diagnostics.first { it.code == "types.until.removed" }.message
+        assertTrue(um.contains("0..(n - 1)") && um.contains("`until` is removed"), um)
+        val i = typed("pub f: (xs: List<Int32>, s: Str) Bool {\n    a: Range<Size> { xs.indices() }\n    b: Range<Size> { s.indices() }\n    true\n}")
+        val ims = i.diagnostics.filter { it.code == "types.indices.removed" }.map { it.message }
+        assertEquals(2, ims.size, ims.toString())
+        assertTrue(ims[0].contains("0..(xs.size() - 1)") && ims[1].contains("0..(s.length() - 1)"), ims.toString())
+    }
+
+    @Test
+    fun theUntilTypeIsRemovedAndNamesRange() {
+        val p = typed("pub f: (u: Until<Int32>) Bool {\n    true\n}")
+        expectDiagnostic(p, "types.type.unknown")
+        val m = p.diagnostics.first { it.code == "types.type.unknown" }.message
+        assertTrue(m.contains("`Until` is removed") && m.contains("Range<T>") && m.contains("a..b"), m)
     }
 
     @Test
@@ -515,24 +518,17 @@ class ForRemovedTest {
             """
         )
         expectNoErrors(p)
-        assertTrue(p.model.halfOpens.isEmpty())
     }
 
     @Test
-    fun untilCountsIntegersOfOneType() {
-        only(typed("pub f: (n: Float64) Bool {\n    u: Until<Int32> { 0.until(n) }\n    true\n}"), "types.until.element")
-        expectDiagnostic(typed("pub f: (u: Until<Float64>) Bool {\n    true\n}"), "rules.generics.bound")
-    }
-
-    @Test
-    fun cAndJsCountWhileAndRefuseUntilAndIndicesValues() {
+    fun cAndJsCountWhileAndRefuseTheRemovedUntilAndIndices() {
         val loops = "f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    i: Mutable<Int32> { 0 }\n    while i <= 3 {\n        t += i\n        i += 1\n    }\n    t\n}\n"
         assertTrue(TestCompileSupport.transpileSnippetToC(loops, "test/main.kira").contains("i <= 3"))
         assertTrue(TestCompileSupport.transpileSnippetToJS(loops, "test/main.kira").contains("i <= 3"))
-        val held = "f: () Int32 {\n    u: Until<Int32> { 0.until(3) }\n    0\n}\n"
+        val held = "f: () Int32 {\n    u: Range<Int32> { 0.until(3) }\n    0\n}\n"
         listOf(
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(held, "test/main.kira") },
             assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToJS(held, "test/main.kira") },
-        ).forEach { assertTrue(it.message.orEmpty().contains("`until` or `indices`"), it.message) }
+        ).forEach { assertTrue(it.message.orEmpty().contains("`until` or `indices` (removed"), it.message) }
     }
 }

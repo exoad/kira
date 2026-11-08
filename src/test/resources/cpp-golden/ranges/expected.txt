@@ -12,13 +12,12 @@ ranges - Range<T> and x in r
   ok    a Range value
   ok    a counter from a Range's begin to its end includes its end
   ok    a counter up to a literal end holds it too
-  ok    until leaves its end out
-  ok    indices counts a List's indexes, and an empty one none
-  ok    an Until value leaves its end out
+  ok    a counter below its end leaves it out
+  ok    a counter below a List's size counts its indexes, and an empty one none
   ok    a loop up to UInt8's largest holds it and stops before the step
   ok    a Range up to Int8's largest stops there
   ok    a Range whose end is below its begin is empty
   ok    a user type answers in
 
-18 checks, 0 failed
+17 checks, 0 failed
 

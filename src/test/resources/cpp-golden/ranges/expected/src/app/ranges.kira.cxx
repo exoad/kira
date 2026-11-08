@@ -79,7 +79,7 @@ namespace ranges
           sum += j;
           j += 1;
       }
-      t->check(sum == 6, "until leaves its end out");
+      t->check(sum == 6, "a counter below its end leaves it out");
       const kira::List<std::int32_t> xs = {5, 6, 7};
       sum = 0;
       kira::Size i{0};
@@ -102,9 +102,7 @@ namespace ranges
           sum += 100;
           i += 1;
       }
-      t->check(sum == 18, "indices counts a List's indexes, and an empty one none");
-      const ::kira::range::Until<std::int32_t> u = ::kira::range::Until<std::int32_t>{.begin = 2, .end = 5};
-      t->check(u.begin == 2 && u.end == 5 && u._op_in_(4) && !u._op_in_(5) && u.contains(2), "an Until value leaves its end out");
+      t->check(sum == 18, "a counter below a List's size counts its indexes, and an empty one none");
       std::int32_t lasts{0};
       std::uint8_t q{250};
       bool more{true};

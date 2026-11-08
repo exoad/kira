@@ -2,7 +2,7 @@ kira.test as test
 
 // ranges: `a..b` is a Range<T> with both ends in it, and `x in r` is a Bool anywhere (lane RANGE,
 // owner 2026-11-01). `x in a..b` builds no Range: x runs once, then each end. A loop over a..b holds b,
-// written or held in a Range; `a.until(b)` and `xs.indices()` leave the end out.
+// written or held in a Range; a counter below its end (`while i < n`) leaves the end out.
 // py-golden/ranges holds this file without Box: py refuses a user type's operator.
 
 pub Box: Struct {
@@ -61,7 +61,7 @@ pub main: () Int32 {
         sum += j
         j += 1
     }
-    t.check(sum == 6, "until leaves its end out")
+    t.check(sum == 6, "a counter below its end leaves it out")
     xs: List<Int32> { @listOf(5, 6, 7) }
     sum = 0
     i: Mutable<Size> { 0 }
@@ -81,9 +81,7 @@ pub main: () Int32 {
         sum += 100
         i += 1
     }
-    t.check(sum == 18, "indices counts a List's indexes, and an empty one none")
-    u: Until<Int32> { 2.until(5) }
-    t.check(u.begin == 2 && u.end == 5 && 4 in u && !(5 in u) && u.contains(2), "an Until value leaves its end out")
+    t.check(sum == 18, "a counter below a List's size counts its indexes, and an empty one none")
     lasts: Mutable<Int32> { 0 }
     q: Mutable<UInt8> { 250 }
     more: Mutable<Bool> { true }

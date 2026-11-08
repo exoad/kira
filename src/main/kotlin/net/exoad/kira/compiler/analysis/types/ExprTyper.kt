@@ -225,7 +225,7 @@ internal class ExprTyper(private val c: PhaseC) {
         is Identifier -> identifier(e, ctx, scope)
         is ThisExpr -> thisExpr(e, ctx)
         is MemberAccessExpr -> c.members.access(e, hint, ctx, scope)
-        is FunctionCallExpr -> c.ranges.halfOpen(e, hint, ctx, scope) ?: c.calls.call(e, hint, ctx, scope)
+        is FunctionCallExpr -> c.ranges.removed(e, ctx, scope) ?: c.calls.call(e, hint, ctx, scope)
         is ObjectInitExpr -> c.calls.construct(e, ctx, scope)
         is ArrayIndexExpr -> index(e, ctx, scope, forWrite = false)
         is BinaryExpr -> binary(e, hint, ctx, scope)

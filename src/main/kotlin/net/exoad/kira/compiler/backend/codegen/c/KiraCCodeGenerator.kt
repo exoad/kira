@@ -2606,7 +2606,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
 
     override fun visitFunctionCallExpr(functionCallExpr: FunctionCallExpr) {
         if (HalfOpenSyntax.isEither(functionCallExpr)) {
-            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices`", TARGET_NAME)
+            throw UnsupportedConstruct(functionCallExpr, "`until` or `indices` (removed: a range is `a..b`)", TARGET_NAME)
         }
         guardNewCallForms(functionCallExpr)
         val nameExpr = functionCallExpr.name

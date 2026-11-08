@@ -34,12 +34,6 @@ sealed interface Capture {
 }
 
 /**
- * `a.until(b)` or `xs.indices()` (typer-made, lane RANGE): [begin] up to [end], [end] left out. For
- * `indices()` both are made by the typer, `0` and `xs.size()` (`xs.length()` on a Str), typed as written.
- */
-data class HalfOpen(val begin: Expr, val end: Expr)
-
-/**
  * A `with` (WithTyper): [temp] holds the receiver (a copy when [copy]), [self] is the bare
  * receiver its block's member calls go through, and [reinit] says the copy re-runs `initially`.
  */
@@ -211,9 +205,6 @@ class TypedModel {
     val consts: IdentityHashMap<Expr, ConstValue> = IdentityHashMap()
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
     val captures: IdentityHashMap<LambdaExpr, List<Capture>> = IdentityHashMap()
-
-    /** Every `a.until(b)` and `xs.indices()`, keyed by its member access: what the backends lower it to. */
-    val halfOpens: IdentityHashMap<Expr, HalfOpen> = IdentityHashMap()
 
     /** Whether an if-expression can become a C++ ternary (R18). */
     val ifShape: IdentityHashMap<IfExpr, Boolean> = IdentityHashMap()

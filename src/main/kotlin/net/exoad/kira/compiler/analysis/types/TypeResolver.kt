@@ -138,9 +138,13 @@ class TypeResolver(private val program: TypedProgram) {
             t.children.forEach { arg -> if (arg !is ConstTypeArg) resolve(arg, scope) }
             return KType.Error
         }
-        program.report("types.type.unknown", "Unknown type '$name'.", t)
+        program.report("types.type.unknown", "Unknown type '$name'." + removedHint(name), t)
         return KType.Error
     }
+
+    /** What a removed type's name is now. */
+    private fun removedHint(name: String): String =
+        if (name == "Until") " `Until` is removed with `until` and `indices()`: a range is `Range<T>`, written `a..b`." else ""
 
     /** The stdlib's TupleN<T> (kira:tuples). */
     private fun isTupleN(s: Symbol): Boolean = s is ClassSymbol && s.kind == ClassKind.MAGIC && s.name == "TupleN" && s.module.isStdlib

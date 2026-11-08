@@ -2404,7 +2404,7 @@ class PyEmitterTest {
         val structs = program.modules.filter { it.isStdlib }.flatMap { it.declarations }
             .filterIsInstance<net.exoad.kira.compiler.analysis.types.ClassSymbol>()
             .filter { it.kind == net.exoad.kira.compiler.analysis.types.ClassKind.STRUCT }
-        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Range", "Ready", "Until"), structs.map { it.name }.sorted())
+        assertEquals(listOf("Datagram", "HttpAnswer", "HttpReply", "HttpRequest", "Ran", "Range", "Ready"), structs.map { it.name }.sorted())
         structs.forEach { s ->
             val block = runtime.substringAfter("\nclass _k_${s.name}:\n", "").substringBefore("\n\n\n")
             // pyName: a field that is not pub is _name.

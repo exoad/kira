@@ -1151,7 +1151,7 @@ class PyModuleEmitter(
             is Identifier -> identifier(e, f)
             is ThisExpr -> if (f.cls != null) Py("self", PyPrec.ATOM) else refusePy(e, "this outside a method")
             is MemberAccessExpr -> member(e, f)
-            is FunctionCallExpr -> model.halfOpens[e]?.let { b -> call("_k_Until", wrap(expr(b.begin, f), PyPrec.TERNARY), wrap(expr(b.end, f), PyPrec.TERNARY)) } ?: callExpr(e, f)
+            is FunctionCallExpr -> callExpr(e, f)
             is PrimInitExpr -> expr(e.value, f)
             is ObjectInitExpr -> construction(e, f)
             is RangeExpr -> call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY))
