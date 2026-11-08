@@ -287,6 +287,16 @@ class DeclShortTest {
     }
 
     @Test
+    fun aFileWithAForLoopStillHasItsDeclarationsFixedAndTheLoopLeftAlone() {
+        fun text(vararg lines: String) = lines.joinToString("\n", postfix = "\n")
+        val src = text("main: () Void {", "    t: Mutable<Int32> = 0", "    for i: Int32 in 0..3 {", "        k: Int32 = i * 2", "        t += k", "    }", "    s: Str = \"x\"", "}")
+        val (out, n) = DeclEqualsFix.rewrite(src)
+        assertEquals(3, n)
+        assertEquals(text("main: () Void {", "    t: Mutable<Int32> { 0 }", "    for i: Int32 in 0..3 {", "        k: Int32 { i * 2 }", "        t += k", "    }", "    s: Str { \"x\" }", "}"), out)
+        assertEquals(out to 0, DeclEqualsFix.rewrite(out))
+    }
+
+    @Test
     fun aFileThatNestsTypesIsRewrittenOnce() {
         val src = "Shape: Mutable<Any> {\n    pub Corner: Any {\n        pub x: Int32 = 0\n    }\n    pub n: Int32 = 1\n}\n"
         val (out, n) = DeclEqualsFix.rewrite(src)

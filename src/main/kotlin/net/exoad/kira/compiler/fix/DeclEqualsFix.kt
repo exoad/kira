@@ -21,6 +21,8 @@ object DeclEqualsFix {
         val tokens = KiraLexer(SourceContext(processed, file, emptyList())).tokenize()
         val ctx = SourceContext(processed, file, tokens)
         ctx.lenientDeclEquals = true
+        // A file that still has a `for` is read all the same: its declarations are fixed and the loop is left for --fix-for.
+        ctx.lenientFor = true
         KiraParser.parse(ctx)
         if (ctx.astDeclEquals.isEmpty()) return source to 0
         val lines = source.split(Regex("(?<=\n)")).toMutableList()
