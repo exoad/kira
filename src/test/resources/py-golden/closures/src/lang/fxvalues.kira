@@ -137,15 +137,19 @@ pub main: () Void {
     bank: Bank { Bank { (v: Int32) Int32 {
         v + 1000
     } } }
-    bank.add(1)
-    bank.add(2)
+    bank with {
+        add(1)
+        add(2)
+    }
     println("an Fx field: ${bank.items[0]} ${bank.items[1]} ${bank.onAdd(5)}")
 
     hooks: Hooks { }
-    hooks.keep(double)
-    hooks.keep((v: Int32) Int32 {
-        v - 1
-    })
+    hooks with {
+        keep(double)
+        keep((v: Int32) Int32 {
+            v - 1
+        })
+    }
     println("a List of Fx: ${hooks.run(10)}")
 
     maybe: Mutable<Maybe<Fx<T1<Int32>, Int32>>> { null }

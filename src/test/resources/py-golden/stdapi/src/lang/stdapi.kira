@@ -142,9 +142,11 @@ strText: () Void {
             i += 1
         }
         words.text("${ws.size()}")
-        trims.text(s.trimStart())
-        trims.text(s.trimEnd())
-        trims.text(s.trim())
+        trims with {
+            text(s.trimStart())
+            text(s.trimEnd())
+            text(s.trim())
+        }
         pick: UInt64 { r.below((ps.size() as UInt64) + 2) }
         needle: Str { pick < (ps.size() as UInt64) ? ps[pick as Size] : "" }
         repl: Str { r.below(4) == 0 ? ""

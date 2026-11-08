@@ -169,10 +169,12 @@ pub parseLink: (text: Str) Maybe<Link> {
                 }
                 out.ssid = rstrip(r)
             }
-            out.freqMhz = intAfter(lines, "freq: ", false)
-            out.dbm = intAfter(lines, "signal: ", true)
-            out.txMbps = rateAfter(lines, "tx bitrate: ")
-            out.rxMbps = rateAfter(lines, "rx bitrate: ")
+            out with {
+                freqMhz = intAfter(lines, "freq: ", false)
+                dbm = intAfter(lines, "signal: ", true)
+                txMbps = rateAfter(lines, "tx bitrate: ")
+                rxMbps = rateAfter(lines, "rx bitrate: ")
+            }
             out
         }
     }

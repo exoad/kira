@@ -91,6 +91,20 @@ fun main(args: Array<String>) {
         }
         return
     }
+    // `kira --fix-with [--dry-run] <file.kira>...` folds each run of statements on one Mutable class value into `x with { ... }`.
+    if (args.firstOrNull() == "--fix-with") {
+        val dry = "--dry-run" in args
+        val files = args.drop(1).filter { it != "--dry-run" }.map { File(it) }
+        for ((f, o) in net.exoad.kira.compiler.fix.WithFix.foldFiles(files)) {
+            if (o.refused != null) {
+                println("$f: ${o.refused}")
+                continue
+            }
+            if (!dry && o.folded != 0) net.exoad.kira.compiler.fix.ForFix.writeFile(f, o.text!!)
+            println("$f: ${if (dry) "would fold" else "folded"} ${o.folded}")
+        }
+        return
+    }
     // Minimal CLI: `kira --target js|c|cpp|py|none` overrides project.kira's
     // target; `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated

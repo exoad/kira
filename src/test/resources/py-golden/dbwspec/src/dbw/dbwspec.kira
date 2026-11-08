@@ -485,22 +485,30 @@ joined: (names: List<Str>) Str {
 main: () Void {
     spec: Mutable<Spec> { }
     hb: Mutable<Message> { spec.addMessage("HEARTBEAT", 1, "host_to_vcu", 5) }
-    hb.addField("host_ms", "u32", 0)
-    hb.addField("mode", "u8", 0)
+    hb with {
+        addField("host_ms", "u32", 0)
+        addField("mode", "u8", 0)
+    }
     ds: Mutable<Message> { spec.addMessage("DRIVE_SETPOINT", 257, "host_to_vcu", 6) }
-    ds.addField("throttle_us", "u16", 0)
-    ds.addField("steer_us", "u16", 0)
-    ds.addField("duration_ms", "u16", 0)
+    ds with {
+        addField("throttle_us", "u16", 0)
+        addField("steer_us", "u16", 0)
+        addField("duration_ms", "u16", 0)
+    }
     tel: Mutable<Message> { spec.addMessage("TELEMETRY", 32769, "vcu_to_host", 13) }
-    tel.addField("t_us", "u32", 0)
-    tel.addField("ticks", "i32", 0)
-    tel.addField("tps", "i16", 0)
-    tel.addField("hall", "i8", 0)
-    tel.addField("hb_seq", "u16", 0)
+    tel with {
+        addField("t_us", "u32", 0)
+        addField("ticks", "i32", 0)
+        addField("tps", "i16", 0)
+        addField("hall", "i8", 0)
+        addField("hb_seq", "u16", 0)
+    }
     hello: Mutable<Message> { spec.addMessage("VCU_HELLO", 32768, "vcu_to_host", 6) }
-    hello.addField("proto_major", "u8", 0)
-    hello.addField("board", "u8", 0)
-    hello.addField("serial", "bytes", 4)
+    hello with {
+        addField("proto_major", "u8", 0)
+        addField("board", "u8", 0)
+        addField("serial", "bytes", 4)
+    }
     trace(spec.messages.size())
     trace(tel.packedSize())
     trace(typeName(spec, 257))

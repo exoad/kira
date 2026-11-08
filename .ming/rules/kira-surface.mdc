@@ -13,6 +13,13 @@ Facts that trip up new writers.
   (a lone value is the value itself); `=` only names a field or an argument, or changes a `Mutable`.
   The old `name: Type = expr` is refused; `kira --fix-decl-equals FILE...` rewrites it. A value of function type
   is written `f: Fx<T1<Int32>, Int32> { g }`.
+- Ranges: `a..b` holds a, b and every number between (a `Range<T>` value too); `until`, `indices()` and the `Until` type are
+  removed (the diagnostics show the `a..b` form). A loop is `while`; `kira --fix-for [--typed] FILE...` rewrites a `for`
+  (`--typed` asks the typer, in the project above the file, for an iterable the file does not write).
+- `with` scopes calls and assignments on one value: `x: Clazz { ... } with { f(...)  field = v }` or `x with { ... }`, never
+  `with x { }`. A bare `x with { }` statement on a value type is an error (assign it, `x = x with { }`, or make the type a Mutable
+  class, whose `with` edits in place). `rules.with.fold` hints a run of statements on one Mutable class value;
+  `kira --fix-with [--dry-run] FILE...` folds them (py-target projects only: other targets do not lower a `with`).
 - Class fields: `require pub name: Type` (constructor parameter + public field).
   Construction is positional: `Point { 0, 1 }`, nested `Rect { Point { 0, 1 }, Point { 1, 0 } }`.
 - Methods: `pub fx name: (args) ReturnType { ... }`. The C backend lowers

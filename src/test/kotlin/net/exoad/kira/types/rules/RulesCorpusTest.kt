@@ -44,7 +44,7 @@ class RulesCorpusTest {
     @Test
     fun everyRulePassIsRegistered() {
         assertEquals(
-            listOf("lent", "effects", "testblocks", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming"),
+            listOf("lent", "effects", "testblocks", "escape", "view", "mutability", "exclusivity", "return", "visibility", "profile", "const", "generics", "naming", "withfold"),
             KiraTyper.rulePasses.map { it.name },
         )
     }

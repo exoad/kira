@@ -18,6 +18,7 @@ enum class TyperMode { OFF, LENIENT, STRICT }
  *
  * @property freestanding `cpp.freestanding`: modules typed against the Pico subset.
  * @property headerOnly `cpp.headerOnly`: modules that emit an inline-only header.
+ * @property withFold the target lowers `with` (py): the `rules.with.fold` hint runs.
  * @property namespaces `cpp.namespaces`: URI (or glob) to C++ namespace, resolved as
  *   CppModuleLayout.namespaceOf resolves it: an exact URI first, then the glob with the most
  *   literal text, then the longer glob.
@@ -26,6 +27,7 @@ data class TyperOptions(
     val freestanding: List<String> = emptyList(),
     val headerOnly: List<String> = emptyList(),
     val namespaces: Map<String, String> = emptyMap(),
+    val withFold: Boolean = false,
 )
 
 /** Phase C: types every body. W2.1 sets [KiraTyper.bodyTyper]. */

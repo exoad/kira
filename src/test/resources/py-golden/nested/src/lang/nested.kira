@@ -82,9 +82,11 @@ main: () Void {
 
     // a Map of Lists, through a class, and its copies
     b: Mutable<Book> { }
-    b.note("a", 1)
-    b.note("a", 2)
-    b.note("b", 3)
+    b with {
+        note("a", 1)
+        note("a", 2)
+        note("b", 3)
+    }
     snap: Mutable<Map<Str, List<Int32>>> { b.pages }
     b.note("a", 4)
     trace("${show(snap.get("a").unwrap())} ${show(b.pages.get("a").unwrap())} ${show(b.last.unwrap())}")

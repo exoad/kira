@@ -240,8 +240,10 @@ pub Conn: Mutable<Any> {
                             }
                             i += 1
                         }
-                        st.q = kept
-                        st.key = true
+                        st with {
+                            q = kept
+                            key = true
+                        }
                         dropped = (n - kept.size()) as Int32
                     }
                 }
@@ -307,10 +309,12 @@ feeds: (c: Conn) Str {
 main: () Void {
     c: Mutable<Conn> { }
     trace(c.hasWork())
-    c.putText("status", "ok")
-    c.putText("P", "p 1")
-    c.putText("status", "armed")
-    c.putPong()
+    c with {
+        putText("status", "ok")
+        putText("P", "p 1")
+        putText("status", "armed")
+        putPong()
+    }
     trace(c.putFrame(0, frame(5, 1), 10.5))
     trace(c.putFrame(LIDAR, frame(3, 9), 11.0))
     trace(c.putFrame(0, frame(6, 2), 12.25))

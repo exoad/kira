@@ -574,6 +574,7 @@ internal class StmtChecker(private val c: PhaseC) {
             NoExpr -> {}
             else -> {
                 c.exprs.synth(e, ctx, scope)
+                discardedWith(e)
                 if (onlyComputes(e)) {
                     c.report(
                         "types.stmt.unused",
@@ -584,6 +585,19 @@ internal class StmtChecker(private val c: PhaseC) {
                 }
             }
         }
+    }
+
+    /** A `with` that is a statement of its own on a value type: the edited copy it builds is dropped. */
+    private fun discardedWith(e: Expr) {
+        val w = e as? net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr ?: return
+        val info = model.withs[w]?.takeIf { it.copy } ?: return
+        val x = KiraUnparser.text(w.receiver)
+        c.report(
+            "types.with.discarded",
+            "This `with` builds an edited copy of ${model.types[w]?.display() ?: "its receiver"}, a value type, and the statement drops it: " +
+                "assign it, `$x = $x with { ... }`, or make ${info.cls.name} a Mutable class, whose `with` edits in place.",
+            w,
+        )
     }
 
     /** A value, operators and reads only, with no call, assignment, construction or block anywhere in it: as a statement, nothing it does is kept. */

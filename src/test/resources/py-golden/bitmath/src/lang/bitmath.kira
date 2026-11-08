@@ -618,13 +618,17 @@ counts: () Void {
     trace(mixed(0xF00F, 0x0FF0, 4))
     trace(mixed(0xFFFF, 0xFFFF, 15))
     f: Mutable<Flags> { }
-    f.set(0)
-    f.set(7)
-    f.set(3)
+    f with {
+        set(0)
+        set(7)
+        set(3)
+    }
     trace(f.bits)
-    f.clear(0)
-    f.flip(7)
-    f.flip(1)
+    f with {
+        clear(0)
+        flip(7)
+        flip(1)
+    }
     trace(f.bits)
 }
 
