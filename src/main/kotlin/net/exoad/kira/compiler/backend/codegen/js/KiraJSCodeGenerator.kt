@@ -154,12 +154,33 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     private val strMethods = setOf(
         "length", "isEmpty", "substring", "charAt", "contains",
         "startsWith", "endsWith", "split", "trim", "toLower", "toUpper",
-        "equals", "hashCode",
+        "equals", "hashCode", "size", "at", "find", "toInt64", "toFloat64",
+        "padStart", "padEnd", "trimStart", "trimEnd", "splitWhitespace",
+        "replace", "toInt64Radix", "bytes",
     )
-    private val numMethods = setOf("toInt32", "toInt64", "toFloat32", "toFloat64", "abs")
+    private val numMethods = setOf("toInt32", "toInt64", "toFloat32", "toFloat64", "abs", "toHex", "fixed")
     private val numScalarTypes = setOf(
         "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
-        "Float32", "Float64", "Num",
+        "Float32", "Float64", "Num", "Size", "IntNum", "FloatNum",
+    )
+    /** Char is a one-character JS string; these lower to prelude predicates. */
+    private val charMethods = setOf("isDigit", "isWhitespace", "isLetter")
+    /** Return types of the stdlib methods this backend lowers, for chained calls. */
+    private val builtinMethodReturnTypes = mapOf(
+        "Str.trimStart" to "Str", "Str.trimEnd" to "Str", "Str.trim" to "Str",
+        "Str.toLower" to "Str", "Str.toUpper" to "Str", "Str.substring" to "Str",
+        "Str.padStart" to "Str", "Str.padEnd" to "Str", "Str.replace" to "Str",
+        "Str.at" to "Char", "Str.charAt" to "Char",
+        "Str.size" to "Size", "Str.length" to "Size", "Str.hashCode" to "Int32",
+        "Str.isEmpty" to "Bool", "Str.contains" to "Bool", "Str.startsWith" to "Bool",
+        "Str.endsWith" to "Bool", "Str.equals" to "Bool",
+        "Str.find" to "Maybe<Size>", "Str.toInt64" to "Maybe<Int64>",
+        "Str.toInt64Radix" to "Maybe<Int64>", "Str.toFloat64" to "Maybe<Float64>",
+        "Str.bytes" to "List<UInt8>",
+        "List.size" to "Size", "Map.size" to "Size", "Set.size" to "Size",
+        "Stack.size" to "Size", "Queue.size" to "Size", "Deque.size" to "Size",
+        "List.isEmpty" to "Bool", "Map.isEmpty" to "Bool", "Set.isEmpty" to "Bool",
+        "Char.isDigit" to "Bool", "Char.isWhitespace" to "Bool", "Char.isLetter" to "Bool",
     )
     private val collectionTypes = setOf(
         "Arr", "List", "Map", "Set", "Stack", "Queue", "Deque", "Maybe", "Result",
@@ -598,10 +619,13 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                     val m = (n.member as? Identifier)?.value ?: return null
                     val recv = receiverTypeOf(n.origin) ?: return null
                     methodReturnTypes["$recv.$m"]?.let { return it }
+                    builtinMethodReturnTypes["$recv.$m"]?.let { return it }
                 }
                 null
             }
             is StringLiteral -> "Str"
+            is CharLiteral -> "Char"
+            is InterpolatedStringLiteral -> "Str"
             is ObjectInitExpr -> typeNameOf(expr.typeName)
             // `xs[i]` has the container's declared element type.
             is ArrayIndexExpr -> elementTypeOf(expr.originExpr)
@@ -639,8 +663,9 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
      */
     private val primitiveTypeNames = setOf(
         "Int8", "Int16", "Int32", "Int64",
+        "UInt8", "UInt16", "UInt32", "UInt64",
         "Float32", "Float64", "Bool", "Char",
-        "Str", "Num", "Any"
+        "Str", "Num", "Size", "IntNum", "FloatNum", "Any"
     )
 
     private fun isKnownNonPrimitive(expr: Expr): Boolean {
@@ -1059,6 +1084,28 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             return
         }
 
+        // Char is a one-character JS string: its predicates are prelude helpers.
+        if (recvType == "Char" && methodName in charMethods) {
+            buffer.append("kira_char_")
+            buffer.append(methodName)
+            buffer.append("(")
+            nameExpr.origin.accept(this)
+            buffer.append(")")
+            return
+        }
+
+        // FloatNum.fixed takes its decimal-places argument.
+        if (recvType != null && isNumScalar(recvType) && methodName == "fixed") {
+            buffer.append("kira_num_fixed(")
+            nameExpr.origin.accept(this)
+            args.forEach { arg ->
+                buffer.append(", ")
+                arg.accept(this)
+            }
+            buffer.append(")")
+            return
+        }
+
         // Num scalars are JS numbers: conversions are identity, abs is Math.abs.
         if (recvType != null && isNumScalar(recvType) && methodName in numMethods) {
             val helper = when (methodName) {
@@ -1067,6 +1114,7 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 "toFloat32" -> "kira_num_toFloat32"
                 "toFloat64" -> "kira_num_toFloat64"
                 "abs" -> "Math.abs"
+                "toHex" -> "kira_num_toHex"
                 else -> null
             }
             if (helper != null) {
@@ -1526,6 +1574,33 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         buffer.append("\"")
         buffer.append(escapeJsString(stringLiteral.value))
         buffer.append("\"")
+    }
+
+    override fun visitCharLiteral(charLiteral: CharLiteral) {
+        // Char is a one-character JS string (the parser keeps 0..255).
+        buffer.append("\"")
+        buffer.append(escapeJsString(charLiteral.value.toChar().toString()))
+        buffer.append("\"")
+    }
+
+    override fun visitInterpolatedStringLiteral(
+        interpolatedStringLiteral: InterpolatedStringLiteral
+    ) {
+        // "a${x}b" -> kira_cat("a", x, "b"): every piece is formatted the
+        // way trace formats it, so a Bool hole prints 1/0 on both backends.
+        buffer.append("kira_cat(")
+        interpolatedStringLiteral.parts.forEachIndexed { index, part ->
+            if (index > 0) buffer.append(", ")
+            when (part) {
+                is InterpolationPart.Text -> {
+                    buffer.append("\"")
+                    buffer.append(escapeJsString(part.text))
+                    buffer.append("\"")
+                }
+                is InterpolationPart.Hole -> part.expr.accept(this)
+            }
+        }
+        buffer.append(")")
     }
 
     override fun visitFloatLiteral(floatLiteral: FloatLiteral) {

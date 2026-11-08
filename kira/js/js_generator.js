@@ -59,6 +59,14 @@ function kira_assert(condition, message) {
   }
 }
 
+/* Interpolation: `"a${x}b"` lowers to kira_cat("a", x, "b"). Every piece
+ * goes through kira_format, so a Bool prints 1/0 exactly as trace does. */
+function kira_cat() {
+  let s = "";
+  for (let i = 0; i < arguments.length; i++) s += kira_format(arguments[i]);
+  return s;
+}
+
 /* ---- Str (JS primitive strings) ----------------------------------------- */
 function kira_str_length(s) { return s == null ? 0 : s.length; }
 
@@ -149,11 +157,194 @@ function kira_str_hashCode(s) {
   return h;
 }
 
+/* The rest of kira:core's Str surface. C and JS trim the four whitespace
+ * characters (space, tab, LF, CR); D62's six are on C++ and py today. */
+const KIRA_STR_WS = " \t\n\r";
+
+function kira_str_size(s) { return kira_str_length(s); }
+
+function kira_str_at(s, index) {
+  if (s == null || index < 0 || index >= s.length) throw new Error("kira: Str.at out of range");
+  return s.charAt(index);
+}
+
+function kira_str_find(s, needle) {
+  const hit = s == null || needle == null ? -1 : s.indexOf(needle);
+  return hit < 0 ? kira_none() : kira_some(hit);
+}
+
+function kira_str_trimStart(s) {
+  if (s == null) return s;
+  let a = 0;
+  while (a < s.length && KIRA_STR_WS.indexOf(s.charAt(a)) >= 0) a++;
+  return s.substring(a);
+}
+
+function kira_str_trimEnd(s) {
+  if (s == null) return s;
+  let b = s.length;
+  while (b > 0 && KIRA_STR_WS.indexOf(s.charAt(b - 1)) >= 0) b--;
+  return s.substring(0, b);
+}
+
+function kira_str_splitWhitespace(s) {
+  const out = kira_list_new();
+  if (s == null) return out;
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && KIRA_STR_WS.indexOf(s.charAt(i)) >= 0) i++;
+    const start = i;
+    while (i < s.length && KIRA_STR_WS.indexOf(s.charAt(i)) < 0) i++;
+    if (i > start) out.add(s.substring(start, i));
+  }
+  return out;
+}
+
+function kira_str_padStart(s, width, fill) {
+  s = s == null ? "" : s;
+  if (s.length >= width) return s;
+  return fill.repeat(width - s.length) + s;
+}
+
+function kira_str_padEnd(s, width, fill) {
+  s = s == null ? "" : s;
+  if (s.length >= width) return s;
+  return s + fill.repeat(width - s.length);
+}
+
+function kira_str_replace(s, oldValue, newValue) {
+  if (s == null) return s;
+  if (oldValue === "") {
+    const chars = Array.from(s);
+    if (chars.length === 0) return newValue;
+    return newValue + chars.join(newValue) + newValue;
+  }
+  return s.split(oldValue).join(newValue);
+}
+
+function kira_str_toInt64(s) {
+  if (s == null) return kira_none();
+  const negative = s.charAt(0) === "-";
+  const body = negative || s.charAt(0) === "+" ? s.substring(1) : s;
+  if (body.length === 0) return kira_none();
+  for (let i = 0; i < body.length; i++) {
+    const c = body.charCodeAt(i);
+    if (c < 48 || c > 57) return kira_none();
+  }
+  const digits = body.replace(/^0+/, "");
+  if (digits.length > 19) return kira_none();
+  let value = BigInt(digits || "0");
+  if (negative) value = -value;
+  if (value < -9223372036854775808n || value > 9223372036854775807n) return kira_none();
+  return kira_some(Number(value));
+}
+
+const KIRA_DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+function kira_str_toInt64Radix(s, radix) {
+  if (radix < 2 || radix > 36) throw new Error("kira: radix out of range");
+  if (s == null) return kira_none();
+  const negative = s.charAt(0) === "-";
+  const body = negative || s.charAt(0) === "+" ? s.substring(1) : s;
+  if (body.length === 0) return kira_none();
+  const base = BigInt(radix);
+  let value = 0n;
+  for (let i = 0; i < body.length; i++) {
+    const digit = KIRA_DIGITS.indexOf(body.charAt(i).toLowerCase());
+    if (digit < 0 || digit >= radix) return kira_none();
+    value = value * base + BigInt(digit);
+  }
+  if (negative) value = -value;
+  if (value < -9223372036854775808n || value > 9223372036854775807n) return kira_none();
+  return kira_some(Number(value));
+}
+
+const KIRA_DECIMAL = /^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+const KIRA_SPECIAL = /^[+-]?(?:inf|infinity|nan(?:\([0-9A-Za-z_]*\))?)$/i;
+
+function kira_str_toFloat64(s) {
+  if (s == null) return kira_none();
+  if (KIRA_DECIMAL.test(s)) {
+    const v = Number(s);
+    if (!Number.isFinite(v)) return kira_none();
+    if (v === 0) {
+      const mantissa = s.toLowerCase().split("e")[0].replace(/[+\-.0]/g, "");
+      if (mantissa.length > 0) return kira_none();
+    }
+    return kira_some(v);
+  }
+  if (KIRA_SPECIAL.test(s)) {
+    const negative = s.charAt(0) === "-";
+    const body = s.replace(/^[+-]/, "").toLowerCase();
+    if (body.startsWith("nan")) return kira_some(NaN);
+    return kira_some(negative ? -Infinity : Infinity);
+  }
+  return kira_none();
+}
+
+/* Str.bytes (D54): the text's UTF-8, as a new List<UInt8>. */
+function kira_str_bytes(s) {
+  const encoded = new TextEncoder().encode(s == null ? "" : s);
+  return new KiraList(Array.from(encoded));
+}
+
 /* ---- Num (all scalars are JS numbers) ----------------------------------- */
 function kira_num_toInt32(v) { return Math.trunc(v); }
 function kira_num_toInt64(v) { return Math.trunc(v); }
 function kira_num_toFloat32(v) { return Math.fround(v); }
 function kira_num_toFloat64(v) { return v; }
+
+/* IntNum.toHex (D51): lowercase, no prefix; negatives are "-" plus the
+ * magnitude's digits ("-ff"), as Python's %x writes them. */
+function kira_num_toHex(v) {
+  const n = Math.trunc(v);
+  return n < 0 ? "-" + Math.abs(n).toString(16) : n.toString(16);
+}
+
+/* A finite double as sign * mantissa * 2^exponent, exactly. */
+function kira_double_parts(v) {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, v);
+  const hi = view.getUint32(0);
+  const lo = view.getUint32(4);
+  const sign = hi >>> 31 ? -1 : 1;
+  const exponentBits = (hi >>> 20) & 0x7ff;
+  const mantissa = BigInt(hi & 0xfffff) * 4294967296n + BigInt(lo);
+  if (exponentBits === 0) return { sign, mantissa, exponent: -1074 };
+  return { sign, mantissa: mantissa + 4503599627370496n, exponent: exponentBits - 1075 };
+}
+
+/* FloatNum.fixed (D50): `places` decimals clamped to 0..9, rounded as
+ * printf's %.*f -- on the exact binary value, ties to even. Intl would
+ * round the shortest decimal spelling instead (2.675 -> 2.68), so the
+ * scaled value is computed in BigInt and rounded here. NaN is "nan". */
+function kira_num_fixed(v, places) {
+  if (Number.isNaN(v)) return "nan";
+  if (!Number.isFinite(v)) return v < 0 ? "-inf" : "inf";
+  const p = places < 0 ? 0 : places > 9 ? 9 : places;
+  const parts = kira_double_parts(v);
+  let num = parts.mantissa;
+  let den = 1n;
+  if (parts.exponent >= 0) num <<= BigInt(parts.exponent);
+  else den <<= BigInt(-parts.exponent);
+  num *= 10n ** BigInt(p);
+  let q = num / den;
+  const rem = num % den;
+  if (rem * 2n > den || (rem * 2n === den && q % 2n === 1n)) q += 1n;
+  let digits = q.toString();
+  if (p > 0) {
+    while (digits.length <= p) digits = "0" + digits;
+    digits = digits.slice(0, digits.length - p) + "." + digits.slice(digits.length - p);
+  }
+  return (parts.sign < 0 ? "-" : "") + digits;
+}
+
+/* ---- Char (a one-character JS string) ----------------------------------- */
+function kira_char_isDigit(c) { return c != null && c >= "0" && c <= "9"; }
+function kira_char_isWhitespace(c) { return c != null && (c === " " || (c >= "\t" && c <= "\r")); }
+function kira_char_isLetter(c) {
+  return c != null && ((c >= "A" && c <= "Z") || (c >= "a" && c <= "z"));
+}
 
 /* ---- Maybe / Result / Exception ----------------------------------------- */
 class KiraMaybe {
@@ -200,6 +391,25 @@ class KiraException {
   }
 }
 
+/* List.sort / minOrNull / maxOrNull (D61): Kotlin's order, so -0.0 before
+ * 0.0 and NaN last. */
+function kira_compare_values(a, b) {
+  if (typeof a === "number" && typeof b === "number") {
+    if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : 1;
+    if (Number.isNaN(b)) return -1;
+    if (a === 0 && b === 0) {
+      const an = Object.is(a, -0);
+      const bn = Object.is(b, -0);
+      if (an !== bn) return an ? -1 : 1;
+      return 0;
+    }
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 /* ---- List --------------------------------------------------------------- */
 class KiraList {
   constructor(values) {
@@ -229,6 +439,36 @@ class KiraList {
 }
 
 function kira_list_new() { return new KiraList(); }
+
+KiraList.prototype.joinToString = function (separator) {
+  return this.values.join(separator);
+};
+KiraList.prototype.sort = function () {
+  this.values.sort(kira_compare_values);
+};
+KiraList.prototype.sum = function () {
+  let total = 0;
+  for (const v of this.values) total += v;
+  return total;
+};
+KiraList.prototype.minOrNull = function () {
+  if (this.values.length === 0) return kira_none();
+  let best = this.values[0];
+  for (const v of this.values) {
+    if (typeof v === "number" && Number.isNaN(v)) return kira_some(v);
+    if (kira_compare_values(v, best) < 0) best = v;
+  }
+  return kira_some(best);
+};
+KiraList.prototype.maxOrNull = function () {
+  if (this.values.length === 0) return kira_none();
+  let best = this.values[0];
+  for (const v of this.values) {
+    if (typeof v === "number" && Number.isNaN(v)) return kira_some(v);
+    if (kira_compare_values(best, v) < 0) best = v;
+  }
+  return kira_some(best);
+};
 
 /* ---- Set (linear membership, like the C backend) ------------------------ */
 class KiraSet {
