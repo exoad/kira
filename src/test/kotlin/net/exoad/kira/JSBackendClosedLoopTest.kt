@@ -96,6 +96,18 @@ class JSBackendClosedLoopTest {
     }
 
     @Test
+    fun defaultArgumentMutationIsCaught() {
+        assertMutantDies(
+            """
+            g: (a: Int32, b: Int32 = 2) Int32 { a + b }
+            main: () Void { trace(g(1)) }
+            """,
+            "default parameter value",
+            "function g(a, b = 2)" to "function g(a, b = 0)"
+        )
+    }
+
+    @Test
     fun whitespaceSplitMutationIsCaught() {
         assertMutantDies(
             """

@@ -1479,6 +1479,7 @@ class ParserSuiteTest {
         "'this' expression",
         "an 'initially' block",
         "named construction",
+        "omits a default-valued parameter ('b')",
     )
 
     @Test

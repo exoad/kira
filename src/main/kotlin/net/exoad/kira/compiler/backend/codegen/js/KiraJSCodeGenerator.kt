@@ -10,6 +10,7 @@ import net.exoad.kira.compiler.backend.codegen.ModuleFunctionScopes
 import net.exoad.kira.compiler.backend.codegen.OutputMinifier
 import net.exoad.kira.compiler.backend.codegen.StdlibLayout
 import net.exoad.kira.compiler.backend.targets.GeneratedProvider
+import net.exoad.kira.compiler.frontend.parser.ast.KiraASTVisitor
 import net.exoad.kira.compiler.frontend.parser.ast.RootASTNode
 import net.exoad.kira.compiler.analysis.types.Builtins
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
@@ -304,8 +305,8 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
     /**
      * Every function or method that declares a default parameter value, by
      * simple name (the resolution named arguments use), with its parameter
-     * list. This backend has no default lowering, so a call that leaves such
-     * a parameter out cannot be emitted.
+     * list. JS default parameters lower them; a skipped slot is passed as
+     * `undefined` so later arguments keep their place.
      */
     private val defaultedSignatures: Map<String, List<List<FunctionDeclParameterExpr>>> by lazy {
         val out = mutableMapOf<String, MutableList<List<FunctionDeclParameterExpr>>>()
@@ -328,46 +329,18 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         out
     }
 
-    /** The call-site forms of design 2.4 this backend refuses: `mut` arguments and omitted defaults. */
+    /** The call-site forms of design 2.4 this backend still refuses: `mut` arguments. */
     private fun guardNewCallForms(call: FunctionCallExpr) {
         if (call.positionalParameters.any { it.isMut } || call.namedParameters.any { it.isMut }) {
             throw UnsupportedConstruct(call, "a call-site 'mut' argument", TARGET_NAME)
         }
-        val callee = when (val name = call.name) {
-            is MemberAccessExpr -> (name.member as? Identifier)?.value ?: return
-            else -> functionLikeName(name)
-        }
-        val signatures = defaultedSignatures[callee] ?: return
-        val omitted = signatures.firstNotNullOfOrNull { params -> omittedDefault(call, params) } ?: return
-        throw UnsupportedConstruct(
-            call,
-            "a call to '$callee' that omits a default-valued parameter ('$omitted')",
-            TARGET_NAME
-        )
     }
 
-    /**
-     * The first default-valued parameter of [params] that [call] leaves
-     * without an argument, or null. Slots fill the way [NamedArguments.bind]
-     * fills them: positional arguments take the leading parameters and a
-     * named argument takes the one it names, so a skipped middle default
-     * (`g(1, c = 3)` against `(a, b = 2, c = 3)`) is found as well as a
-     * trailing one. Measured before: only the trailing positions were
-     * inspected. A slot the call cannot bind at all (an unknown name, a
-     * missing required parameter) is the analyzer's diagnostic, not this one.
-     */
-    private fun omittedDefault(call: FunctionCallExpr, params: List<FunctionDeclParameterExpr>): String? {
-        val filled = BooleanArray(params.size)
-        for (index in call.positionalParameters.indices) {
-            if (index < params.size) filled[index] = true
+    /** Stands in for an argument the callee defaults; only this backend emits it. */
+    private val omittedDefaultArgument: Expr = object : Expr() {
+        override fun accept(visitor: KiraASTVisitor) {
+            buffer.append("undefined")
         }
-        for (named in call.namedParameters) {
-            val index = params.indexOfFirst { it.name.value == named.name.value }
-            if (index >= 0) filled[index] = true
-        }
-        return params.withIndex()
-            .firstOrNull { (index, param) -> !filled[index] && param.defaultValue != null }
-            ?.value?.name?.value
     }
 
     /**
@@ -1102,10 +1075,28 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
                 functionParamNames[calleeName]
             }
         }
-        return when (val binding = NamedArguments.bind(functionCallExpr, calleeName, parameterNames)) {
-            is NamedArguments.Binding.Ordered -> binding.arguments
-            is NamedArguments.Binding.Unbound -> throw IllegalStateException(binding.message)
+        // Defaults are JS default parameters, so a skipped one is passed as
+        // `undefined`: that keeps a later named argument in its slot
+        // (`g(1, c = 5)` -> `g(1, undefined, 5)`).
+        val matching = parameterNames?.let { names ->
+            defaultedSignatures[calleeName]?.filter { params -> params.map { it.name.value } == names }
+        }.orEmpty()
+        val binding = NamedArguments.bind(functionCallExpr, calleeName, parameterNames) { name ->
+            matching.any { params -> params.any { it.name.value == name && it.defaultValue != null } }
         }
+        if (binding is NamedArguments.Binding.Unbound) throw IllegalStateException(binding.message)
+        if (parameterNames == null) {
+            return (binding as NamedArguments.Binding.Ordered).arguments
+        }
+        val slots = arrayOfNulls<Expr>(parameterNames.size)
+        functionCallExpr.positionalParameters.forEachIndexed { index, arg ->
+            if (index < slots.size) slots[index] = arg.value
+        }
+        functionCallExpr.namedParameters.forEach { named ->
+            val index = parameterNames.indexOf(named.name.value)
+            if (index >= 0) slots[index] = named.value
+        }
+        return slots.map { it ?: omittedDefaultArgument }
     }
 
     /** A method call `receiver.method(args)`: a builtin's rewrite, a helper for a magic type's body, or a plain method call. */
@@ -1850,6 +1841,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
         functionDecl.def.parameters.forEachIndexed { idx, param ->
             if (idx > 0) buffer.append(", ")
             buffer.append(param.name.value)
+            param.defaultValue?.let { value ->
+                buffer.append(" = ")
+                value.accept(this)
+            }
         }
         buffer.appendLine(") {")
         indentLevel++
@@ -1940,6 +1935,10 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             method.def.parameters.forEachIndexed { idx, param ->
                 if (idx > 0) buffer.append(", ")
                 buffer.append(param.name.value)
+                param.defaultValue?.let { value ->
+                    buffer.append(" = ")
+                    value.accept(this)
+                }
             }
             buffer.appendLine(") {")
             indentLevel++
