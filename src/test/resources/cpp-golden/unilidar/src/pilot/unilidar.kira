@@ -30,16 +30,11 @@ pub Arr<UInt8, USER_CMD_BYTES> as Frame
 // The SDK's crc32: reflected IEEE, init and final xor 0xFFFFFFFF.
 pub @_const crc32: (buf: View<UInt8>) UInt32 {
     crc: Mutable<UInt32> { 0xFFFFFFFF }
-    bIndex: Mutable<Size> { 0 }
-    while bIndex < buf.size() {
-        b: UInt8 { buf.get(bIndex) }
+    while b: UInt8 in buf {
         crc ^= b as UInt32
-        bit: Mutable<Int32> { 0 }
-        while bit < 8 {
+        while bit: Int32 in 0..7 {
             crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
-            bit += 1
         }
-        bIndex += 1
     }
     ~crc
 }

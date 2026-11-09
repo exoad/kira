@@ -125,12 +125,9 @@ namespace evalorder
     std::int32_t total(kira::View<std::int32_t> v)
     {
         std::int32_t s{0};
-        kira::Size xIndex{0};
-        while(xIndex < v.size())
+        for(const std::int32_t x : v)
         {
-            const std::int32_t x{v[xIndex]};
             s += x;
-            xIndex += 1;
         }
         return s;
     }
@@ -555,33 +552,21 @@ namespace evalorder
           return minus(t2_, t3_);
       }());
       std::int32_t rl{0};
-      const kira::List<std::int32_t> elItems = kira::at(freshLists(), 0);
-      kira::Size elIndex{0};
-      while(elIndex < elItems.size())
+      for(const std::int32_t el : kira::List<std::int32_t>(kira::at(freshLists(), 0)))
       {
-          const std::int32_t el{kira::at(elItems, elIndex)};
           rl += el;
-          elIndex += 1;
       }
       kira::trace(rl);
       std::int32_t rr{0};
-      const kira::List<std::int32_t> erItems = freshRef()->value;
-      kira::Size erIndex{0};
-      while(erIndex < erItems.size())
+      for(const std::int32_t er : kira::List<std::int32_t>(freshRef()->value))
       {
-          const std::int32_t er{kira::at(erItems, erIndex)};
           rr += er;
-          erIndex += 1;
       }
       kira::trace(rr);
       std::int32_t rm{0};
-      const kira::List<std::int32_t> emItems = kira::unwrap(freshMaybe());
-      kira::Size emIndex{0};
-      while(emIndex < emItems.size())
+      for(const std::int32_t em : kira::List<std::int32_t>(kira::unwrap(freshMaybe())))
       {
-          const std::int32_t em{kira::at(emItems, emIndex)};
           rm += em;
-          emIndex += 1;
       }
       kira::trace(rm);
   }

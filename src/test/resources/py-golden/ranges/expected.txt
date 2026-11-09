@@ -10,8 +10,8 @@ ranges - Range<T> and x in r
   ok    a Range from a call holds its end
   ok    x runs before the range
   ok    a Range value
-  ok    a counter from a Range's begin to its end includes its end
-  ok    a counter up to a literal end holds it too
+  ok    a loop over a Range includes its end
+  ok    a loop over a literal range holds its end too
   ok    a counter below its end leaves it out
   ok    a counter below a List's size counts its indexes, and an empty one none
   ok    a loop up to UInt8's largest holds it and stops before the step

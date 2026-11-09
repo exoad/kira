@@ -13,11 +13,8 @@ span: (from: Int32, to: Int32 = 10, list: List<Int32> = EMPTY) Int32 {
 
 total: (bytes: List<UInt8>) Int32 {
     sum: Mutable<Int32> { 0 }
-    intIndex: Mutable<Size> { 0 }
-    while intIndex < bytes.size() {
-        int: UInt8 { bytes.get(intIndex) }
+    while int: UInt8 in bytes {
         sum += int as Int32
-        intIndex += 1
     }
     sum
 }

@@ -7,11 +7,8 @@ pub Arr<UInt8, 8> as Frame
 
 pub sum: (buf: View<UInt8>) UInt32 {
     s: Mutable<UInt32> { 0 }
-    bIndex: Mutable<Size> { 0 }
-    while bIndex < buf.size() {
-        b: UInt8 { buf.get(bIndex) }
+    while b: UInt8 in buf {
         s += b as UInt32
-        bIndex += 1
     }
     s
 }

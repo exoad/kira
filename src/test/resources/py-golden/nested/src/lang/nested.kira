@@ -47,16 +47,10 @@ grid: (rows: Size, cols: Size) List<List<Int32>> {
 
 total: (g: List<List<Int32>>) Int32 {
     t: Mutable<Int32> { 0 }
-    rowIndex: Mutable<Size> { 0 }
-    while rowIndex < g.size() {
-        row: List<Int32> { g.get(rowIndex) }
-        vIndex: Mutable<Size> { 0 }
-        while vIndex < row.size() {
-            v: Int32 { row.get(vIndex) }
+    while row: List<Int32> in g {
+        while v: Int32 in row {
             t += v
-            vIndex += 1
         }
-        rowIndex += 1
     }
     t
 }

@@ -14,22 +14,16 @@ NAMES: List<Str> { @listOf(
 
 total: (xs: List<Int64>) Int64 {
     t: Mutable<Int64> { 0 }
-    xIndex: Mutable<Size> { 0 }
-    while xIndex < xs.size() {
-        x: Int64 { xs.get(xIndex) }
+    while x: Int64 in xs {
         t += x
-        xIndex += 1
     }
     t
 }
 
 join: (xs: Arr<Str>) Str {
     out: Mutable<Str> { "" }
-    sIndex: Mutable<Size> { 0 }
-    while sIndex < xs.size() {
-        s: Str { xs.get(sIndex) }
+    while s: Str in xs {
         out += s
-        sIndex += 1
     }
     out
 }
@@ -52,19 +46,11 @@ main: () Void {
     println("${seen.size()} ${seen.contains("a")} ${seen.contains("c")}")
     ages: Map<Str, Int32> { @mapOf("ada", 36, "bea", 41, "ada", 37) }
     println("${ages.size()} ${ages.get("ada").unwrap()} ${ages.get("bea").unwrap()}")
-    eItems: Arr<T2<Str, Int32>> { ages.entries() }
-    eIndex: Mutable<Size> { 0 }
-    while eIndex < eItems.size() {
-        e: T2<Str, Int32> { eItems.get(eIndex) }
+    while e: T2<Str, Int32> in ages {
         println("${e.first}=${e.second}")
-        eIndex += 1
     }
-    wItems: Arr<Int32> { @arrOf(7, 8) }
-    wIndex: Mutable<Size> { 0 }
-    while wIndex < wItems.size() {
-        w: Int32 { wItems.get(wIndex) }
+    while w: Int32 in @arrOf(7, 8) {
         println("${w}")
-        wIndex += 1
     }
     ids: Set<Int64> { @setOf<Int64>() }
     println("${ids.size()} ${@listOf(1, 2).size()}")

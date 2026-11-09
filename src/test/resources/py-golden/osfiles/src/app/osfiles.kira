@@ -6,11 +6,8 @@ kira.test as test
 
 slashed: (paths: List<Str>, root: Str) Str {
     out: Mutable<List<Str>> { @listOf() }
-    pIndex: Mutable<Size> { 0 }
-    while pIndex < paths.size() {
-        p: Str { paths.get(pIndex) }
+    while p: Str in paths {
         out.add(p.replace("\\", "/").replace(root.replace("\\", "/") + "/", ""))
-        pIndex += 1
     }
     out.joinToString(",")
 }

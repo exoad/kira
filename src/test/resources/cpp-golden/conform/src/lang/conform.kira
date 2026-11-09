@@ -96,15 +96,11 @@ pub tricks: (a: Maybe<Animal>) Int32 {
 // In a loop, after a `continue`.
 pub radii: (xs: List<Shape>) Int32 {
     total: Mutable<Int32> { 0 }
-    sIndex: Mutable<Size> { 0 }
-    while sIndex < xs.size() {
-        s: Shape { xs.get(sIndex) }
+    while s: Shape in xs {
         if s != Circle {
-            sIndex += 1
             continue
         }
         total += s.radius
-        sIndex += 1
     }
     total
 }

@@ -124,13 +124,10 @@ namespace hall
   {
       Decoder d = Decoder{};
       std::uint64_t t{t0};
-      kira::Size sIndex{0};
-      while(sIndex < steps.size())
+      for(const std::uint8_t s : steps)
       {
-          const std::uint8_t s{kira::at(steps, sIndex)};
           d = d.fed(s, t);
           t += 1000;
-          sIndex += 1;
       }
       return d;
   }

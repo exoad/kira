@@ -70,10 +70,7 @@ twice: (x: Int32) Int32 {
 
 main: () Void {
     xs: List<Int32> { @listOf(5, 6, 7) }
-    vItems: List<Int32> { @listOf(7, 6, 9) }
-    vIndex: Mutable<Size> { 0 }
-    while vIndex < vItems.size() {
-        v: Int32 { vItems.get(vIndex) }
+    while v: Int32 in @listOf(7, 6, 9) {
         m: Maybe<Int32> { find(xs, v) }
         trace(far(m))
         trace(describe(m))
@@ -82,7 +79,6 @@ main: () Void {
         trace(flipped(m))
         trace(orZero(m))
         trace(countdown(m))
-        vIndex += 1
     }
     // Decided by the types: the value is still evaluated.
     trace(counted() == Maybe<Int32>)

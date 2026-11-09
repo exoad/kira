@@ -44,8 +44,7 @@ guarded: (s: Str) Int64 {
 
 loop: () Int32 {
     n: Mutable<Int32> { 0 }
-    i: Mutable<Int32> { 0 }
-    while i < 5 {
+    while i: Int32 in 0..4 {
         try {
             if i % 2 == 1 {
                 throw "odd ${i}"
@@ -56,11 +55,9 @@ loop: () Int32 {
             if i == 3 {
                 break
             }
-            i += 1
             continue
         }
         n += 100
-        i += 1
     }
     n
 }

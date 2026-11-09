@@ -41,6 +41,9 @@ defaulted: (x: Int32 = compute()) Void { // @error types.default.not-constant
 
 pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     c: Char { s[i] }                         // @error types.index.size
+    while x: Int64 in xs {                   // @error types.loop.element
+        trace(x)
+    }
     two: Int32 { pair(1) }                   // @error types.call.missing-arg
     three: Int32 { pair(1, 2, 3) }           // @error types.call.arity
     again: Int32 { pair(1, a = 2, b = 3) }   // @error types.call.duplicate-arg
@@ -53,6 +56,12 @@ pub more: (s: Str, i: Int32, xs: List<Int32>, v: View<UInt8>, p: Pet) Int32 {
     shape: Shape { Square { } }              // @error types.assign.struct-to-trait
     trace(p)                               // @error types.print.not-showable
     text: Str { "pet=${p}" }                 // @error types.interp.not-showable
+    while ch: Char in s {                    // @error types.loop.not-iterable
+        trace(ch)
+    }
+    while n: Str in 0..3 {                   // @error types.loop.range-type ; @error types.assign.mismatch ; @error types.assign.mismatch
+        trace(n)
+    }
     arr: Arr<UInt8, 2> { @arrOf(1, 2, 3) }         // @error types.const.arr-size
     m: Map<Str, Int32> { }
     got: Int32 { m["k"] }                    // @error types.index.map-read

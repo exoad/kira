@@ -5,12 +5,8 @@ Node: Mutable<Any> {
 
 total: (n: Node) Int32 {
     t: Mutable<Int32> { n.v }
-    kidItems: List<Node> { n.kids }
-    kIndex: Mutable<Size> { 0 }
-    while kIndex < kidItems.size() {
-        k: Node { kidItems.get(kIndex) }
+    while k: Node in n.kids {
         t += total(k)
-        kIndex += 1
     }
     t
 }
@@ -28,12 +24,10 @@ main: () Void {
     trace(total(root))
     trace(total(copy))
     chain: Mutable<Node> { Node { 0 } }
-    i: Mutable<Int32> { 0 }
-    while i < 600 {
+    while i: Int32 in 0..599 {
         up: Mutable<Node> { Node { i } }
         up.kids.add(chain)
         chain = up
-        i += 1
     }
     trace(total(chain))
 }

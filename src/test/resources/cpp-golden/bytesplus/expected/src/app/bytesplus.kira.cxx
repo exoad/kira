@@ -18,13 +18,9 @@ namespace bytesplus
         else
         {
             kira::List<kira::Str> parts = {};
-            const kira::List<std::uint8_t> bItems = kira::unwrap(got);
-            kira::Size bIndex{0};
-            while(bIndex < bItems.size())
+            for(const std::uint8_t b : kira::unwrap(got))
             {
-                const std::uint8_t b{kira::at(bItems, bIndex)};
                 parts.push_back(kira::Str(kira::hex(b)));
-                bIndex += 1;
             }
             return kira::Str("[") + kira::Str(kira::list::joinToString(parts, " ")) + "]";
         }
@@ -33,12 +29,9 @@ namespace bytesplus
     kira::Str hexes(const kira::List<kira::Str>& texts)
     {
         kira::List<kira::Str> parts = {};
-        kira::Size textIndex{0};
-        while(textIndex < texts.size())
+        for(const kira::Str& text : texts)
         {
-            const kira::Str text = kira::at(texts, textIndex);
             parts.push_back(shown(kira::Maybe<kira::List<std::uint8_t>>(kira::fromHex(text))));
-            textIndex += 1;
         }
         return kira::list::joinToString(parts, " ");
     }

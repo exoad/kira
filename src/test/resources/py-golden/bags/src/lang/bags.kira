@@ -38,12 +38,8 @@ main: () Void {
     other: Mutable<Set<Int32>> { seen }
     other.add(7)
     trace("${seen.size()} ${other.size()}")
-    vItems: Arr<Int32> { seen.toArr() }
-    vIndex: Mutable<Size> { 0 }
-    while vIndex < vItems.size() {
-        v: Int32 { vItems.get(vIndex) }
+    while v: Int32 in seen {
         trace(v)
-        vIndex += 1
     }
     names: Mutable<Set<Str>> { }
     names.add("b")

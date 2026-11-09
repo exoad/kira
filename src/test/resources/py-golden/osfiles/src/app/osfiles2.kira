@@ -26,15 +26,11 @@ bytesOf: (m: Maybe<List<UInt8>>) Str {
 
 temporaryIn: (dir: Str) Bool {
     result: Mutable<Bool> { false }
-    nameItems: List<Str> { listDir(dir) }
-    nameIndex: Mutable<Size> { 0 }
-    while nameIndex < nameItems.size() {
-        name: Str { nameItems.get(nameIndex) }
+    while name: Str in listDir(dir) {
         if name.endsWith(".tmp") {
             result = true
             break
         }
-        nameIndex += 1
     }
     result
 }
@@ -59,12 +55,8 @@ pub atomic: (path: Str, text: Str) Bool {
 pub main: () Int32 {
     t: Suite { title = "osfiles2 - kira:os files on C++ and py" }
     dir: Str { dirOf(args()[0]) + "/osfiles2.d" }
-    nameItems: List<Str> { listDir(dir) }
-    nameIndex: Mutable<Size> { 0 }
-    while nameIndex < nameItems.size() {
-        name: Str { nameItems.get(nameIndex) }
+    while name: Str in listDir(dir) {
         removeFile(dir + "/" + name)
-        nameIndex += 1
     }
     t.check(makeDirs(dir), "makeDirs makes the case's directory")
     a: Str { dir + "/a.txt" }

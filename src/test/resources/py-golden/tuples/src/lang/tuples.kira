@@ -3,16 +3,13 @@ kira.tuples as tuples
 minmax: (xs: List<Int32>) Pair<Int32, Int32> {
     lo: Mutable<Int32> { xs[0] }
     hi: Mutable<Int32> { xs[0] }
-    xIndex: Mutable<Size> { 0 }
-    while xIndex < xs.size() {
-        x: Int32 { xs.get(xIndex) }
+    while x: Int32 in xs {
         if x < lo {
             lo = x
         }
         if x > hi {
             hi = x
         }
-        xIndex += 1
     }
     Pair<Int32, Int32> { lo, hi }
 }
@@ -64,12 +61,8 @@ main: () Void {
     head: T2<Str, Int32> { es[0] }
     built: Map<Str, Int32> { values = @arrOf(named, head, again) }
     trace("${built.size()} ${built.get("n").unwrapOr(0)} ${built.keys()[0]}")
-    eItems: Arr<T2<Str, Int32>> { m.entries() }
-    eIndex: Mutable<Size> { 0 }
-    while eIndex < eItems.size() {
-        e: T2<Str, Int32> { eItems.get(eIndex) }
+    while e: T2<Str, Int32> in m {
         trace("${e.first} ${e.second}")
-        eIndex += 1
     }
 
     // a Result of a List: a copy in, a copy out

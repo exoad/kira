@@ -87,14 +87,11 @@ pub Chain: Mutable<Any> {
 
     pub has: (wanted: Str) Bool {
         result: Mutable<Bool> { false }
-        bIndex: Mutable<Size> { 0 }
-        while bIndex < loaded.size() {
-            b: Behaviour { loaded.get(bIndex) }
+        while b: Behaviour in loaded {
             if b.id() == wanted {
                 result = true
                 break
             }
-            bIndex += 1
         }
         result
     }

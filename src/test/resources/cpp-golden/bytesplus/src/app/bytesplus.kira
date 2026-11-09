@@ -25,12 +25,8 @@ shown: (got: Maybe<List<UInt8>>) Str {
         "none"
     } else {
         parts: Mutable<List<Str>> { @listOf() }
-        bItems: List<UInt8> { got.value }
-        bIndex: Mutable<Size> { 0 }
-        while bIndex < bItems.size() {
-            b: UInt8 { bItems.get(bIndex) }
+        while b: UInt8 in got.value {
             parts.add(b.toHex())
-            bIndex += 1
         }
         "[" + parts.joinToString(" ") + "]"
     }
@@ -39,11 +35,8 @@ shown: (got: Maybe<List<UInt8>>) Str {
 // Each text's fromHex shown, one call at a time, joined by spaces.
 hexes: (texts: List<Str>) Str {
     parts: Mutable<List<Str>> { @listOf() }
-    textIndex: Mutable<Size> { 0 }
-    while textIndex < texts.size() {
-        text: Str { texts.get(textIndex) }
+    while text: Str in texts {
         parts.add(shown(fromHex(text)))
-        textIndex += 1
     }
     parts.joinToString(" ")
 }

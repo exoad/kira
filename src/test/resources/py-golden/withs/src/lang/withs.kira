@@ -94,15 +94,13 @@ main: () Void {
     }
     println(show(holder.box))
     acc: Mutable<Box> { 0, 1 }
-    i: Mutable<Int32> { 0 }
-    while i < 6 {
+    while i: Int32 in 0..5 {
         acc = acc with {
             w = w + i
             if i == 4 {
                 break
             }
         }
-        i += 1
     }
     println(show(acc))
     try {

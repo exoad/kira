@@ -99,16 +99,13 @@ namespace chain
   bool Chain::has(const kira::Str& wanted) const
   {
       bool result{false};
-      kira::Size bIndex{0};
-      while(bIndex < loaded.size())
+      for(const kira::Rc<Behaviour>& b : kira::List<kira::Rc<Behaviour>>(loaded))
       {
-          const kira::Rc<Behaviour> b = kira::at(loaded, bIndex);
           if(b->id() == wanted)
           {
               result = true;
               break;
           }
-          bIndex += 1;
       }
       return result;
   }

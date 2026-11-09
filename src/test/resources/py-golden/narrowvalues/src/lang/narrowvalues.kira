@@ -96,10 +96,7 @@ viaLambda: (m: Maybe<Int32>) Int32 {
 
 main: () Void {
     xs: List<Int32> { @listOf(5, 6, 7) }
-    vItems: List<Int32> { @listOf(5, 7, 9) }
-    vIndex: Mutable<Size> { 0 }
-    while vIndex < vItems.size() {
-        v: Int32 { vItems.get(vIndex) }
+    while v: Int32 in @listOf(5, 7, 9) {
         m: Maybe<Int32> { find(xs, v) }
         trace(plusOne(m))
         trace(orBig(m))
@@ -109,6 +106,5 @@ main: () Void {
         trace(label(m))
         trace(safe(m))
         trace(viaLambda(m))
-        vIndex += 1
     }
 }

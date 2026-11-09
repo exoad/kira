@@ -33,21 +33,17 @@ pub main: () Int32 {
     r: Range<Int32> { 1..4 }
     t.check(r.begin == 1 && r.end == 4 && r.contains(4) && 4 in r && !(5 in r), "a Range value")
     sum: Mutable<Int32> { 0 }
-    ri: Mutable<Int32> { r.begin }
-    while ri <= r.end {
-        sum += ri
-        ri += 1
+    while i: Int32 in r {
+        sum += i
     }
-    t.check(sum == 10, "a counter from a Range's begin to its end includes its end")
+    t.check(sum == 10, "a loop over a Range includes its end")
+    sum = 0
+    while j: Int32 in 1..4 {
+        sum += j
+    }
+    t.check(sum == 10, "a loop over a literal range holds its end too")
     sum = 0
     j: Mutable<Int32> { 1 }
-    while j <= 4 {
-        sum += j
-        j += 1
-    }
-    t.check(sum == 10, "a counter up to a literal end holds it too")
-    sum = 0
-    j = 1
     while j < 4 {
         sum += j
         j += 1
@@ -74,35 +70,19 @@ pub main: () Int32 {
     }
     t.check(sum == 18, "a counter below a List's size counts its indexes, and an empty one none")
     lasts: Mutable<Int32> { 0 }
-    q: Mutable<UInt8> { 250 }
-    more: Mutable<Bool> { true }
-    while more {
+    while q: UInt8 in 250..255 {
         lasts += 1
-        if q == 255 {
-            more = false
-        } else {
-            q += 1
-        }
     }
     t.check(lasts == 6, "a loop up to UInt8's largest holds it and stops before the step")
     steps: Mutable<Int32> { 0 }
     top: Range<Int8> { 120..127 }
-    k: Mutable<Int8> { top.begin }
-    more = true
-    while more {
+    while k: Int8 in top {
         steps += 1
-        if k == top.end {
-            more = false
-        } else {
-            k += 1
-        }
     }
     t.check(steps == 8, "a Range up to Int8's largest stops there")
     empty: Range<Int32> { 5..4 }
-    e: Mutable<Int32> { empty.begin }
-    while e <= empty.end {
+    while e: Int32 in empty {
         steps += 100
-        e += 1
     }
     t.check(steps == 8 && !(5 in empty), "a Range whose end is below its begin is empty")
     t.finish()

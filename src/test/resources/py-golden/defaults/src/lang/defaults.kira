@@ -28,11 +28,8 @@ words: (s: Str = LABEL, loud: Bool = false, mark: Char = '!', w: Float64 = 0.5, 
 
 total: (xs: List<Int32> = ROW, extra: Int32 = 0) Int32 {
     t: Mutable<Int32> { extra }
-    xIndex: Mutable<Size> { 0 }
-    while xIndex < xs.size() {
-        x: Int32 { xs.get(xIndex) }
+    while x: Int32 in xs {
         t += x
-        xIndex += 1
     }
     t
 }

@@ -57,23 +57,23 @@ namespace ranges
       const ::kira::range::Range<std::int32_t> r = ::kira::range::Range<std::int32_t>{.begin = 1, .end = 4};
       t->check(r.begin == 1 && r.end == 4 && r.contains(4) && r._op_in_(4) && !r._op_in_(5), "a Range value");
       std::int32_t sum{0};
-      std::int32_t ri{r.begin};
-      while(ri <= r.end)
       {
-          sum += ri;
-          ri += 1;
+          const ::kira::range::Range<std::int32_t> i_r = r;
+          bool i_more = i_r.begin <= i_r.end;
+          for(std::int32_t i = i_r.begin; i_more; i_more = i != i_r.end && (++i, true))
+          {
+              sum += i;
+          }
       }
-      t->check(sum == 10, "a counter from a Range's begin to its end includes its end");
+      t->check(sum == 10, "a loop over a Range includes its end");
       sum = 0;
-      std::int32_t j{1};
-      while(j <= 4)
+      for(std::int32_t j = 1; j <= 4; ++j)
       {
           sum += j;
-          j += 1;
       }
-      t->check(sum == 10, "a counter up to a literal end holds it too");
+      t->check(sum == 10, "a loop over a literal range holds its end too");
       sum = 0;
-      j = 1;
+      std::int32_t j{1};
       while(j < 4)
       {
           sum += j;
@@ -104,44 +104,33 @@ namespace ranges
       }
       t->check(sum == 18, "a counter below a List's size counts its indexes, and an empty one none");
       std::int32_t lasts{0};
-      std::uint8_t q{250};
-      bool more{true};
-      while(more)
       {
-          lasts += 1;
-          if(q == 255u)
+          bool q_more = true;
+          for(std::uint8_t q = 250, q_last = 255; q_more && q <= q_last; q_more = q != q_last && (++q, true))
           {
-              more = false;
-          }
-          else
-          {
-              q += 1;
+              lasts += 1;
           }
       }
       t->check(lasts == 6, "a loop up to UInt8's largest holds it and stops before the step");
       std::int32_t steps{0};
       const ::kira::range::Range<std::int8_t> top = ::kira::range::Range<std::int8_t>{.begin = 120, .end = 127};
-      std::int8_t k{top.begin};
-      more = true;
-      while(more)
       {
-          steps += 1;
-          if(k == top.end)
+          const ::kira::range::Range<std::int8_t> k_r = top;
+          bool k_more = k_r.begin <= k_r.end;
+          for(std::int8_t k = k_r.begin; k_more; k_more = k != k_r.end && (++k, true))
           {
-              more = false;
-          }
-          else
-          {
-              k += 1;
+              steps += 1;
           }
       }
       t->check(steps == 8, "a Range up to Int8's largest stops there");
       const ::kira::range::Range<std::int32_t> empty = ::kira::range::Range<std::int32_t>{.begin = 5, .end = 4};
-      std::int32_t e{empty.begin};
-      while(e <= empty.end)
       {
-          steps += 100;
-          e += 1;
+          const ::kira::range::Range<std::int32_t> e_r = empty;
+          bool e_more = e_r.begin <= e_r.end;
+          for(std::int32_t e = e_r.begin; e_more; e_more = e != e_r.end && (++e, true))
+          {
+              steps += 100;
+          }
       }
       t->check(steps == 8 && !empty._op_in_(5), "a Range whose end is below its begin is empty");
       const Box bx = Box{.lo = 2, .hi = 6};

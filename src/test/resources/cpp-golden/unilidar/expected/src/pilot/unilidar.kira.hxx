@@ -57,18 +57,13 @@ namespace unilidar
   constexpr std::uint32_t crc32(kira::View<std::uint8_t> buf)
   {
       std::uint32_t crc{0xFFFFFFFFu};
-      kira::Size bIndex{0};
-      while(bIndex < buf.size())
+      for(const std::uint8_t b : buf)
       {
-          const std::uint8_t b{buf[bIndex]};
           crc ^= static_cast<std::uint32_t>(b);
-          std::int32_t bit{0};
-          while(bit < 8)
+          for(std::int32_t bit = 0; bit <= 7; ++bit)
           {
               crc = (crc & 1u) != 0u ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
-              bit += 1;
           }
-          bIndex += 1;
       }
       return ~crc;
   }

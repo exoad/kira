@@ -56,10 +56,8 @@ main: () Void {
     while i < 3 {
         i = i + 1
     }
-    k: Mutable<Int32> { 0 }
-    while k < 3 {
+    while k: Int32 in 0..2 {
         // loop k
-        k += 1
     }
     idx: Mutable<Size> { 0 }
     while idx < arr.size() {
