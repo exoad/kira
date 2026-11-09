@@ -97,6 +97,7 @@ object OperatorIntrinsics {
             // Syntax, not overloadable operators.
             BinaryOp.CONJUNCTIVE_DOT,
             BinaryOp.RANGE,
+            BinaryOp.RANGE_OPEN,
             BinaryOp.IN,
             BinaryOp.TYPE_CHECK,
             BinaryOp.TYPE_CAST -> null
@@ -145,6 +146,7 @@ object OperatorIntrinsics {
             BinaryOp.HASH_MARK,
             BinaryOp.CONJUNCTIVE_DOT,
             BinaryOp.RANGE,
+            BinaryOp.RANGE_OPEN,
             BinaryOp.TYPE_CHECK,
             BinaryOp.TYPE_CAST -> null
         }

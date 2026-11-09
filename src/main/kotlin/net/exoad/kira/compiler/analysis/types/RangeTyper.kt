@@ -49,9 +49,8 @@ internal class RangeTyper(private val c: PhaseC) {
                         c.exprs.synth(call.positionalParameters[0].value, ctx, scope)
                         c.report(
                             "types.until.removed",
-                            "`until` is removed: a range is `a..b`, holding a, b and every number between. " +
-                                "${KiraUnparser.text(call)} is `${KiraUnparser.text(access.origin)}..(${KiraUnparser.text(call.positionalParameters[0].value)} - 1)`, " +
-                                "or a `while` loop that tests `<` when the end may be at the type's minimum.",
+                            "`until` is removed: `a..<b` is the range from a up to b with b left out, and `a..b` holds b too. " +
+                                "${KiraUnparser.text(call)} is `${KiraUnparser.text(access.origin)}..<${KiraUnparser.text(call.positionalParameters[0].value)}`.",
                             call,
                         )
                         KType.Error
@@ -66,9 +65,8 @@ internal class RangeTyper(private val c: PhaseC) {
                         val xs = KiraUnparser.text(access.origin)
                         c.report(
                             "types.indices.removed",
-                            "`indices()` is removed: a range is `a..b`, holding a, b and every number between. " +
-                                "$xs.indices() is `0..($xs.${if (xt == KType.Str) "length" else "size"}() - 1)`, " +
-                                "or a `while` loop that tests `<` when $xs may be empty.",
+                            "`indices()` is removed: `0..<n` is the range of the numbers below n, and it is empty when n is 0. " +
+                                "$xs.indices() is `0..<$xs.${if (xt == KType.Str) "length" else "size"}()`.",
                             call,
                         )
                         KType.Error

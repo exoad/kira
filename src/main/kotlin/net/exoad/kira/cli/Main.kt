@@ -62,7 +62,7 @@ fun main(args: Array<String>) {
         }
         return
     }
-    // `kira --fix-for <file.kira>...` rewrites each `for NAME: TYPE in EXPR {` to `while NAME: TYPE in EXPR {` in place, and names any it left alone.
+    // `kira --fix-for <file.kira>...` rewrites each `for NAME: TYPE in EXPR {` to `while NAME: TYPE in EXPR {`, and a head over `a.until(b)` or `xs.indices()` to `a..<b` or `0..<xs.size()`, in place, and names any it left alone.
     if (args.firstOrNull() == "--fix-for") {
         for (f in args.drop(1)) {
             try {

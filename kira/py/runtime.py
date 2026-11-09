@@ -983,33 +983,40 @@ def _k_onsignal(sig, flag):
     return True
 
 
-# kira:range's Range<T> (D84): begin..end with both ends in it. Its Kira bodies are C++'s; Python has no generics yet.
+# kira:range's Range<T> (D84): begin..end with both ends in it, or with exclusive (begin..<end) with end left out. Its Kira
+# bodies are C++'s; Python has no generics yet.
 class _k_Range:
-    __slots__ = ("begin", "end")
+    __slots__ = ("begin", "end", "exclusive")
 
-    def __init__(self, begin, end):
+    def __init__(self, begin, end, exclusive=False):
         self.begin = begin
         self.end = end
+        self.exclusive = exclusive
 
     def contains(self, value):
-        return self.begin <= value <= self.end
+        return self.begin <= value < self.end if self.exclusive else self.begin <= value <= self.end
 
     def _op_in_(self, value):
-        return self.begin <= value <= self.end
+        return self.contains(value)
 
     def _k_steps(self):
-        return range(self.begin, self.end + 1)
+        return range(self.begin, self.end if self.exclusive else self.end + 1)
 
     def _k_clone(self):
-        return _k_Range(self.begin, self.end)
+        return _k_Range(self.begin, self.end, self.exclusive)
 
     def __eq__(self, o):
-        return self.begin == o.begin and self.end == o.end
+        return self.begin == o.begin and self.end == o.end and self.exclusive == o.exclusive
 
 
 def _k_within(x, a, b):
     """x in a..b with an end that has effects: x, a and b each run once, in Kira's order."""
     return a <= x <= b
+
+
+def _k_within_open(x, a, b):
+    """x in a..<b with an end that has effects: x, a and b each run once, in Kira's order."""
+    return a <= x < b
 
 
 def _k_inop(x, r):

@@ -890,6 +890,32 @@ class ParserSuiteTest {
     }
 
     @Test
+    fun aRangeThatLeavesItsEndOutBindsAsTheInclusiveOneDoes() {
+        val fn = growthParse(
+            """
+            f: (n: Int32, k: Int32) Void {
+                0..<n as Int64
+                -5..<5
+                0..n
+                k in 1..<n
+                while i: Int32 in 0..<n { trace(i) }
+            }
+            """
+        ).single<FunctionDecl>()
+        val stmts = body(fn)
+        fun initOf(i: Int) = assertIs<RangeExpr>(stmts[i].expr)
+        val a = initOf(0)
+        assertTrue(a.exclusive && a.end is TypeCastExpr, "0..<n as Int64 is 0..<(n as Int64)")
+        val b = initOf(1)
+        assertTrue(b.exclusive && b.begin is UnaryExpr, "-5..<5 is (-5)..<5")
+        assertTrue(!initOf(2).exclusive, "a..b holds its end")
+        val member = assertIs<BinaryExpr>(stmts[3].expr)
+        assertEquals(BinaryOp.IN, member.operator)
+        assertTrue((member.rightExpr as RangeExpr).exclusive, "x in a..<b is a membership test of the ..< range")
+        assertTrue(assertIs<InIterationStatement>(stmts[4]).inIterationExpr.target.let { it is RangeExpr && it.exclusive })
+    }
+
+    @Test
     fun forInWithoutTheInKeywordIsRejected() {
         refusedAs("f: () Void { while i: Int32 0..8 { } }", "KiraParser::expect", "Expected an 'in' but got an Integer Literal")
     }

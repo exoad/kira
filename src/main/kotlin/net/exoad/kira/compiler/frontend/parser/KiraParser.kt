@@ -1504,7 +1504,7 @@ class KiraParser private constructor(
             val rightOrigin = here()
             var right = parseExpr(nextMinPrecedence)
             // `..` binds looser than `as`: 0..n as Int64 is 0..(n as Int64).
-            while (binaryOpType == BinaryOp.RANGE && at(Token.Type.K_AS)) {
+            while ((binaryOpType == BinaryOp.RANGE || binaryOpType == BinaryOp.RANGE_OPEN) && at(Token.Type.K_AS)) {
                 val asAt = here()
                 advancePointer()
                 right = castOf(right, rightOrigin, asAt)
@@ -1512,6 +1512,7 @@ class KiraParser private constructor(
             left = when (binaryOpType) {
                 BinaryOp.CONJUNCTIVE_DOT -> MemberAccessExpr(left, right)
                 BinaryOp.RANGE -> RangeExpr(left, right)
+                BinaryOp.RANGE_OPEN -> RangeExpr(left, right, exclusive = true)
                 else -> BinaryExpr(left, right, binaryOpType)
             }
         }
@@ -2124,7 +2125,7 @@ class KiraParser private constructor(
         }!!
         // `..` binds looser than a sign too: -5..5 is (-5)..5, never the negation of a range.
         if (operand is RangeExpr && !parenthesized) {
-            return putOrigin(RangeExpr(putOrigin(UnaryExpr(op, operand.begin), origin), operand.end), origin)
+            return putOrigin(RangeExpr(putOrigin(UnaryExpr(op, operand.begin), origin), operand.end, operand.exclusive), origin)
         }
         return putOrigin(UnaryExpr(op, operand), origin)
     }

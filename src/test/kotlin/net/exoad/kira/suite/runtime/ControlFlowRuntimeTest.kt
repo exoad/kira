@@ -50,6 +50,40 @@ class ControlFlowRuntimeTest {
     }
 
     @Test
+    fun aLeftOutRangeLoopStopsBelowItsEndAndTakesNoStepAtAnUnsignedZero() {
+        assertStdout("0\n1\n2\n0\n0\n3\n") {
+            """
+            main: () Void {
+                while i: Int32 in 0..<3 {
+                    trace(i)
+                }
+                n: Mutable<Int32> { 0 }
+                z8: UInt8 { 0 }
+                while a: UInt8 in 0..<z8 {
+                    n += 1
+                }
+                trace(n)
+                z32: UInt32 { 0 }
+                while b: UInt32 in 0..<z32 {
+                    n += 1
+                }
+                trace(n)
+                while c: Int32 in 0..<10 {
+                    if c == 1 {
+                        continue
+                    }
+                    if c == 3 {
+                        break
+                    }
+                    n += 1
+                }
+                trace(n + 1)
+            }
+            """
+        }
+    }
+
+    @Test
     fun breakAndContinue() {
         assertStdout("1\n2\n3\n") {
             """

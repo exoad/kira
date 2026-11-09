@@ -603,7 +603,17 @@ class KiraLexer(
 
                 Symbols.PERIOD.rep ->
                     when (localPeek(1)) {
-                        Symbols.PERIOD.rep -> {
+                        Symbols.PERIOD.rep -> if (localPeek(2) == Symbols.OPEN_ANGLE.rep) {
+                            // `a..<b`: a range that leaves b out.
+                            advancePointer()
+                            advancePointer()
+                            Token.LinkedSymbols(
+                                Token.Type.OP_RANGE_OPEN,
+                                arrayOf(Symbols.PERIOD, Symbols.PERIOD, Symbols.OPEN_ANGLE),
+                                start,
+                                startLoc
+                            )
+                        } else {
                             advancePointer()
                             Token.LinkedSymbols(
                                 Token.Type.OP_RANGE,

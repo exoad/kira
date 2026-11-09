@@ -1,13 +1,15 @@
 // Ranges of numbers. `a..b` is a Range: it holds a, b and every number between, in `x in a..b`, in
-// `contains` alike (owner 2026-11-01). `x in a..b` with a written range builds no
-// Range: the backends lower it to two comparisons.
+// `contains` alike (owner 2026-11-01). `a..<b` leaves b out and is empty when a is not below b
+// (owner 2026-11-09), so a loop up to a size never wraps, whatever the type. `x in a..b` with a written
+// range builds no Range: the backends lower it to two comparisons.
 
 pub Range<T: Num>: Struct {
     pub begin: T
     pub end: T
+    pub exclusive: Bool { false }
 
     pub contains: (value: T) Bool {
-        value >= begin && value <= end
+        value >= begin && (exclusive ? value < end : value <= end)
     }
 
     pub @_op_in_: (value: T) Bool {

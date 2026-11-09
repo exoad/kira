@@ -898,9 +898,16 @@ class KiraJSCodeGenerator(override val compilationUnit: CompilationUnit) : KiraC
             buffer.append(" = ")
             // `while i: T in a..b` holds b, read once.
             target.begin.accept(this)
-            buffer.append(", ${name}_last = ")
-            target.end.accept(this)
-            buffer.append("; $name <= ${name}_last; ++$name")
+            if (target.exclusive) {
+                // `a..<b` leaves b out.
+                buffer.append(", ${name}_end = ")
+                target.end.accept(this)
+                buffer.append("; $name < ${name}_end; ++$name")
+            } else {
+                buffer.append(", ${name}_last = ")
+                target.end.accept(this)
+                buffer.append("; $name <= ${name}_last; ++$name")
+            }
             buffer.appendLine(") {")
             iterExpr.declaredType?.let { knownValueTypes[name] = typeNameOf(it) }
             indentLevel++

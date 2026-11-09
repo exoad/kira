@@ -300,8 +300,8 @@ class RangeTest {
             """
         )
         assertTrue(out.contains("const ::kira::range::Range<std::int32_t> r = ::kira::range::Range<std::int32_t>{.begin = 1, .end = 4};"), out)
-        assertTrue(out.contains("bool i_more = i_r.begin <= i_r.end;"), out)
-        assertTrue(out.contains("for(std::int32_t i = i_r.begin; i_more; i_more = i != i_r.end && (++i, true))"), out)
+        assertTrue(out.contains("bool i_more = i_r.exclusive ? i_r.begin < i_r.end : i_r.begin <= i_r.end;"), out)
+        assertTrue(out.contains("for(std::int32_t i = i_r.begin; i_more; i_more = i_r.exclusive ? ++i < i_r.end : i != i_r.end && (++i, true))"), out)
         assertTrue(out.contains("r._op_in_(x)"), out)
     }
 

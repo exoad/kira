@@ -343,7 +343,14 @@ def ranges():
     add("misc", "_k_Range", lambda ctx: (lambda C: (lambda a, b, k: (a == C(1, 4), a == b, k is not a and k == a, a, b, C.__slots__))(
         C(1, 4), C(1, 5), C(1, 4)._k_clone()))(ctx.rt["_k_Range"]))
     add("misc", "_k_Range.eq-other", lambda ctx: ctx.rt["_k_Range"](1, 4) == object())
+    # a..<b: the end left out, empty when begin is not below it, and never a step at 0.
+    for lo, hi, v in ((1, 4, 1), (1, 4, 3), (1, 4, 4), (1, 4, 0), (4, 4, 4), (5, 4, 4), (0, 0, 0), (0.0, 1.0, 1.0), (0.0, 1.0, math.nan)):
+        add("misc", "_k_Range %r..<%r %r" % (lo, hi, v), lambda ctx, lo=lo, hi=hi, v=v: (lambda r: (
+            r.contains(v), r._op_in_(v), list(r._k_steps()) if isinstance(lo, int) else None, r.exclusive))(ctx.rt["_k_Range"](lo, hi, True)))
+    add("misc", "_k_Range.exclusive", lambda ctx: (lambda C: (C(1, 4, True) == C(1, 4, True), C(1, 4, True) == C(1, 4), C(1, 4, True)._k_clone() == C(1, 4, True),
+                                                           C(1, 4, True)._k_clone().exclusive, C(1, 4).exclusive))(ctx.rt["_k_Range"]))
     calls("misc", "_k_within", [(5, 1, 9), (0, 1, 9), (1, 1, 9), (9, 1, 9), (10, 1, 9), (1.5, 1.0, 1.5), (math.nan, 0.0, 1.0)])
+    calls("misc", "_k_within_open", [(5, 1, 9), (0, 1, 9), (1, 1, 9), (8, 1, 9), (9, 1, 9), (1.5, 1.0, 1.5), (1.4, 1.0, 1.5), (math.nan, 0.0, 1.0)])
     add("misc", "_k_inop", lambda ctx: [ctx.rt["_k_inop"](v, ctx.rt["_k_Range"](1, 3)) for v in (0, 1, 3, 4)])
 
 

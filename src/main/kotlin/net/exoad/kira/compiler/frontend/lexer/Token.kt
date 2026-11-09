@@ -29,6 +29,7 @@ sealed class Token(
         IDENTIFIER("Identifier"),
         INTRINSIC_IDENTIFIER("Intrinsic Identifier"),
         OP_RANGE("'..' (Range To)"),
+        OP_RANGE_OPEN("'..<' (Range To, End Left Out)"),
         OP_ADD("'+' (Plus)"),
         OP_SUB("'-' (Minus)"),
         OP_MUL("'*' (Multiply)"),

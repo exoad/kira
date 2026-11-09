@@ -27,6 +27,41 @@ class ContainerParityTest {
     }
 
     @Test
+    fun aLeftOutRangeLoopCountsTheSameOnBothBackends() {
+        assertBothPrint("1\n2\n3\n0\n0\n8\n") {
+            """
+            main: () Void {
+                while i: Int32 in 1..<4 {
+                    trace(i)
+                }
+                taken: Mutable<Int32> { 0 }
+                z8: UInt8 { 0 }
+                z16: UInt16 { 0 }
+                while a: UInt8 in 0..<z8 {
+                    taken += 1
+                }
+                trace(taken)
+                while b: UInt16 in 7..<z16 {
+                    taken += 1
+                }
+                trace(taken)
+                sum: Mutable<Int32> { 0 }
+                while c: Int32 in 0..<10 {
+                    if c == 2 {
+                        continue
+                    }
+                    if c == 5 {
+                        break
+                    }
+                    sum += c
+                }
+                trace(sum)
+            }
+            """
+        }
+    }
+
+    @Test
     fun indexReadsOfInt64Elements() {
         assertCPrints("4294967296\n") {
             """

@@ -2326,12 +2326,21 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
             // could pass the type's last value; `continue` takes the step too.
             appendIndentedLine("{")
             indentLevel++
-            appendIndentedLine("_Bool ${name}_more = 1;")
-            appendIndented("for($cType $name = ")
-            target.begin.accept(this)
-            buffer.append(", ${name}_last = ")
-            target.end.accept(this)
-            buffer.appendLine("; ${name}_more && $name <= ${name}_last; ${name}_more = $name != ${name}_last && (++$name, 1))")
+            if (target.exclusive) {
+                // `a..<b`: the end is read once and the loop stops below it, so the step never passes it.
+                appendIndented("for($cType $name = ")
+                target.begin.accept(this)
+                buffer.append(", ${name}_end = ")
+                target.end.accept(this)
+                buffer.appendLine("; $name < ${name}_end; ++$name)")
+            } else {
+                appendIndentedLine("_Bool ${name}_more = 1;")
+                appendIndented("for($cType $name = ")
+                target.begin.accept(this)
+                buffer.append(", ${name}_last = ")
+                target.end.accept(this)
+                buffer.appendLine("; ${name}_more && $name <= ${name}_last; ${name}_more = $name != ${name}_last && (++$name, 1))")
+            }
             appendIndentedLine("{")
             indentLevel++
             pushArcScope()

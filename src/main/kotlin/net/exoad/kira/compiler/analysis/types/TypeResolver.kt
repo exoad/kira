@@ -144,7 +144,7 @@ class TypeResolver(private val program: TypedProgram) {
 
     /** What a removed type's name is now. */
     private fun removedHint(name: String): String =
-        if (name == "Until") " `Until` is removed with `until` and `indices()`: a range is `Range<T>`, written `a..b`." else ""
+        if (name == "Until") " `Until` is removed with `until` and `indices()`: a range is `Range<T>`, written `a..b` or `a..<b`." else ""
 
     /** The stdlib's TupleN<T> (kira:tuples). */
     private fun isTupleN(s: Symbol): Boolean = s is ClassSymbol && s.kind == ClassKind.MAGIC && s.name == "TupleN" && s.module.isStdlib

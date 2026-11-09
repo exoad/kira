@@ -204,15 +204,16 @@ class CppStmtEmitter : CppStmtPart {
         return state.block {
             val name = state.declare(variable, ctx.names.escape(fe.initializer.value)) { taken(ctx, it) }
             if (plan.kind == LoopKind.RANGE_VALUE) {
-                // Both ends included: the Range is read once, and the step stops at its end before
-                // `++` could pass the type's last value. `continue` in the body takes the step too.
+                // The Range is read once. A range that holds its end steps to it and stops there before `++` could pass
+                // the type's last value; one that leaves its end out (`a..<b`) stops below it, so it never wraps.
+                // `continue` in the body takes the step too.
                 val r = state.fresh("${name.lowercase()}_r")
                 val more = state.fresh("${name.lowercase()}_more")
                 val rangeType = ctx.spell(model.require(fe.target), Pos.VALUE, fe.target)
-                val head = "$typeText $name = $r.begin; $more; $more = $name != $r.end && (++$name, true)"
+                val head = "$typeText $name = $r.begin; $more; $more = $r.exclusive ? ++$name < $r.end : $name != $r.end && (++$name, true)"
                 val inner = listOf(
                     "const $rangeType $r = ${lower.emit(fe.target, CppPrec.ASSIGN)};",
-                    "bool $more = $r.begin <= $r.end;",
+                    "bool $more = $r.exclusive ? $r.begin < $r.end : $r.begin <= $r.end;",
                     CppWriter.forHead(head),
                 ) + block(ctx, s.body)
                 return@block listOf("{") + inner.map { if (it.isEmpty()) it else "    $it" } + "}"
@@ -221,6 +222,17 @@ class CppStmtEmitter : CppStmtPart {
             if (plan.kind == LoopKind.RANGE && range != null) {
                 val start = lower.emit(range.begin, CppPrec.ASSIGN)
                 val last = model.const(range.end) as? ConstValue.IntConst
+                if (range.exclusive) {
+                    // `a..<b`: below b, so the step never passes it. A constant end needs no temporary, unless it is the type's
+                    // least value (`i < 0u` is a warning), when it is read into a local like any other end.
+                    val head = if (last != null && last.value != last.prim.minValue) {
+                        "$typeText $name = $start; $name < ${lower.emit(range.end, CppPrec.REL + 1, CppLitRole.OPERAND)}; ++$name"
+                    } else {
+                        val end = state.fresh("${name.lowercase()}_end")
+                        "$typeText $name = $start, $end = ${lower.emit(range.end, CppPrec.ASSIGN)}; $name < $end; ++$name"
+                    }
+                    return@block listOf(CppWriter.forHead(head)) + block(ctx, s.body)
+                }
                 if (last == null || last.value == last.prim.maxValue) {
                     // Both ends included: the end is read once, and the step stops there before `++`
                     // could pass the type's last value. `continue` in the body takes the step too.

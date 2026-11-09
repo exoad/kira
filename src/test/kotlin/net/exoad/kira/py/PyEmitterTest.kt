@@ -2429,7 +2429,9 @@ class PyEmitterTest {
             // pyName: a field that is not pub is _name.
             val slots = s.fields.joinToString(", ") { "\"${if (it.isPub) it.name else "_${it.name}"}\"" }
             assertTrue(block.contains("    __slots__ = ($slots)\n"), "_k_${s.name}'s slots are not $slots:\n$block")
-            assertTrue(block.contains("    def __init__(self, ${s.fields.joinToString(", ") { it.name }}):"), block)
+            // A field with a default (Range's exclusive) is a parameter with a default.
+            val params = s.fields.joinToString(", ") { Regex.escape(it.name) + "(=[A-Za-z0-9_]+)?" }
+            assertTrue(Regex("    def __init__\\(self, $params\\):").containsMatchIn(block), block)
             listOf("_k_clone(self)", "__eq__(self, o)").forEach { assertTrue(block.contains("    def $it:"), "_k_${s.name} lacks $it") }
         }
     }

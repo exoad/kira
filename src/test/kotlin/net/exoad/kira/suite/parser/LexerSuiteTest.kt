@@ -323,6 +323,9 @@ class LexerSuiteTest {
     @Test
     fun rangeScopeAndMiscSymbols() {
         assertLexes("a .. b", Token.Type.IDENTIFIER to "a", Token.Type.OP_RANGE to "..", Token.Type.IDENTIFIER to "b")
+        assertLexes("a..<b", Token.Type.IDENTIFIER to "a", Token.Type.OP_RANGE_OPEN to "..<", Token.Type.IDENTIFIER to "b")
+        assertLexes("0 ..< n", Token.Type.L_INTEGER to "0", Token.Type.OP_RANGE_OPEN to "..<", Token.Type.IDENTIFIER to "n")
+        assertLexes("a..b < c", Token.Type.IDENTIFIER to "a", Token.Type.OP_RANGE to "..", Token.Type.IDENTIFIER to "b", Token.Type.S_OPEN_ANGLE to "<", Token.Type.IDENTIFIER to "c")
         assertLexes("A :: B", Token.Type.IDENTIFIER to "A", Token.Type.OP_SCOPE to "::", Token.Type.IDENTIFIER to "B")
         assertLexes(
             "# ? ~ ! , ( ) [ ] { }",

@@ -779,10 +779,14 @@ class PyModuleEmitter(
         val target = fe.target
         val over = when (plan.kind) {
             LoopKind.RANGE -> {
-                // Both ends included: Python's range stops before its second argument.
+                // `a..b` holds b: Python's range stops before its second argument, so it is b + 1. `a..<b` is range(a, b).
                 val r = target as? RangeExpr ?: return refuse(fe, "a range loop without a range").let { emptyList() }
-                val last = (model.const(r.end) as? ConstValue.IntConst)?.let { (it.value + java.math.BigInteger.ONE).toString() }
-                    ?: "${wrap(expr(r.end, f), PyPrec.ADD)} + 1"
+                val last = if (r.exclusive) {
+                    wrap(expr(r.end, f), PyPrec.TERNARY)
+                } else {
+                    (model.const(r.end) as? ConstValue.IntConst)?.let { (it.value + java.math.BigInteger.ONE).toString() }
+                        ?: "${wrap(expr(r.end, f), PyPrec.ADD)} + 1"
+                }
                 call("range", wrap(expr(r.begin, f), PyPrec.TERNARY), last).text
             }
             LoopKind.LIST, LoopKind.ARR -> {
@@ -1199,7 +1203,11 @@ class PyModuleEmitter(
             is FunctionCallExpr -> callExpr(e, f)
             is PrimInitExpr -> expr(e.value, f)
             is ObjectInitExpr -> construction(e, f)
-            is RangeExpr -> call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY))
+            is RangeExpr -> if (e.exclusive) {
+                call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY), "True")
+            } else {
+                call("_k_Range", wrap(expr(e.begin, f), PyPrec.TERNARY), wrap(expr(e.end, f), PyPrec.TERNARY))
+            }
             is ArrayIndexExpr -> index(e, f)
             is BinaryExpr -> binary(e, f)
             is UnaryExpr -> unary(e, f)
@@ -1862,9 +1870,9 @@ class PyModuleEmitter(
             val a = expr(range.begin, f)
             val b = expr(range.end, f)
             if (model.effect(range.begin) == Effect.PURE && model.effect(range.end) == Effect.PURE) {
-                return Py("${wrap(a, PyPrec.CMP + 1)} <= ${wrap(xp, PyPrec.CMP + 1)} <= ${wrap(b, PyPrec.CMP + 1)}", PyPrec.CMP)
+                return Py("${wrap(a, PyPrec.CMP + 1)} <= ${wrap(xp, PyPrec.CMP + 1)} ${if (range.exclusive) "<" else "<="} ${wrap(b, PyPrec.CMP + 1)}", PyPrec.CMP)
             }
-            return call("_k_within", x, wrap(a, PyPrec.TERNARY), wrap(b, PyPrec.TERNARY))
+            return call(if (range.exclusive) "_k_within_open" else "_k_within", x, wrap(a, PyPrec.TERNARY), wrap(b, PyPrec.TERNARY))
         }
         val fn = model.opCall(e)?.fn ?: return refusePy(e, "an `in` the typer did not resolve")
         if (!isRuntimeStruct(fn.owner)) {

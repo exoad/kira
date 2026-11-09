@@ -543,7 +543,7 @@ object KiraUnparser {
             "${expr(e.value, 8)} ${if (e.negated) "!=" else "=="} ${type(e.type)}" + (e.checks?.joinToString(", ", " { ", " }") { expr(it, 0) } ?: ""),
             8, parent,
         )
-        is RangeExpr -> wrap("${expr(e.begin, 15)}..${expr(e.end, 15)}", 14, parent)
+        is RangeExpr -> wrap("${expr(e.begin, 15)}${if (e.exclusive) "..<" else ".."}${expr(e.end, 15)}", 14, parent)
         is FunctionCallExpr -> {
             val targs = if (e.typeArguments.isEmpty()) "" else e.typeArguments.joinToString(", ", "<", ">") { type(it) }
             "${expr(e.name, POSTFIX)}$targs(${args(e)})"

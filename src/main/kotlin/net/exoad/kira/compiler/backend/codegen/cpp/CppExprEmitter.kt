@@ -1154,7 +1154,7 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
     }
 
     /**
-     * `x in a..b` is `a <= x && x <= b` with no Range built; `x` runs once (spilled when it has an
+     * `x in a..b` is `a <= x && x <= b` (`x < b` for `a..<b`) with no Range built; `x` runs once (spilled when it has an
      * effect) and the three run in Kira's order x, a, b (D33). Any other `x in r` is `r._op_in_(x)`.
      */
     private fun membership(e: BinaryExpr): CppEx {
@@ -1165,9 +1165,12 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         val once = hoister.rank(x) == CppHoister.IMPURE
         // An end at the type's own limit always holds; gcc's -Wtype-limits refuses `0u <= x`.
         val low = !atLimit(range.begin, min = true)
-        val high = !atLimit(range.end, min = false)
+        // `a..<b` with b at the type's least value is empty, and `x < 0u` is a warning: it is false.
+        val never = range.exclusive && atLimit(range.end, min = true)
+        val high = range.exclusive || !atLimit(range.end, min = false)
         return hoister.lower(ops, KType.BOOL, force = once, consumer = consumer) { (xt, a, b) ->
-            val tests = listOfNotNull(infix(a, "<=", xt, CppPrec.REL).takeIf { low }, infix(xt, "<=", b, CppPrec.REL).takeIf { high })
+            if (never) return@lower CppEx("(static_cast<void>(${xt.text}), false)", CppPrec.PRIMARY)
+            val tests = listOfNotNull(infix(a, "<=", xt, CppPrec.REL).takeIf { low }, infix(xt, if (range.exclusive) "<" else "<=", b, CppPrec.REL).takeIf { high })
             when (tests.size) {
                 2 -> infix(tests[0], "&&", tests[1], CppPrec.AND)
                 1 -> tests[0]
@@ -1198,13 +1201,14 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
         }
     }
 
-    /** `a..b` as a value: kira:range's Range struct, its ends in Kira's order (D33). */
+    /** `a..b` or `a..<b` as a value: kira:range's Range struct, its ends in Kira's order (D33). */
     private fun rangeValue(e: RangeExpr): CppEx {
         val t = typeOf(e)
         val ops = listOf(operandOf(e.begin) { coerced(e.begin) }, operandOf(e.end) { coerced(e.end) })
         val typeText = ctx.spell(t, Pos.VALUE, e)
+        val open = if (e.exclusive) ", .exclusive = true" else ""
         return hoister.lower(ops, t) { (a, b) ->
-            CppEx("$typeText{.begin = ${wrap(a, CppPrec.ASSIGN)}, .end = ${wrap(b, CppPrec.ASSIGN)}}", CppPrec.POSTFIX)
+            CppEx("$typeText{.begin = ${wrap(a, CppPrec.ASSIGN)}, .end = ${wrap(b, CppPrec.ASSIGN)}$open}", CppPrec.POSTFIX)
         }
     }
 
