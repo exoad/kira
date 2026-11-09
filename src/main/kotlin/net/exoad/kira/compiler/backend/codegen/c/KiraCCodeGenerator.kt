@@ -994,6 +994,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
                 walkExprs(node.condition, visit)
                 node.statements.forEach { walkExprs(it, visit) }
             }
+            is InIterationStatement -> {
+                walkExprs(node.inIterationExpr, visit)
+                node.body.forEach { walkExprs(it, visit) }
+            }
             is ReturnStatement -> walkExprs(node.expr, visit)
             is TypeCheckExpr -> {
                 walkExprs(node.value, visit)
@@ -1553,9 +1557,10 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     private var inHostMain = false
 
     /**
-     * Serial number for container for-in loops: each loop's view and index
+     * Serial number for container while-in loops: each loop's view and index
      * locals get a fresh name, so sibling loops in one C scope never clash.
      */
+    private var forInSerial = 0
 
     private fun isStrType(kiraType: String?): Boolean {
         return kiraType == "Str"
@@ -2310,6 +2315,83 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.appendLine(";")
     }
 
+    override fun visitInIterationStatement(inIterationStatement: InIterationStatement) {
+        val iterExpr = inIterationStatement.inIterationExpr
+        val target = iterExpr.target
+        if (target is RangeExpr) {
+            val name = cName(iterExpr.initializer.value)
+            val declared = iterExpr.declaredType?.let { typeNameOf(it) }
+            val cType = declared?.let { mapTypeName(it) } ?: "Int32"
+            // `while i: T in a..b` holds b: the end is read once, and the step stops there before `++`
+            // could pass the type's last value; `continue` takes the step too.
+            appendIndentedLine("{")
+            indentLevel++
+            appendIndentedLine("_Bool ${name}_more = 1;")
+            appendIndented("for($cType $name = ")
+            target.begin.accept(this)
+            buffer.append(", ${name}_last = ")
+            target.end.accept(this)
+            buffer.appendLine("; ${name}_more && $name <= ${name}_last; ${name}_more = $name != ${name}_last && (++$name, 1))")
+            appendIndentedLine("{")
+            indentLevel++
+            pushArcScope()
+            if (declared != null) {
+                knownValueTypes[iterExpr.initializer.value] = declared
+            }
+            inIterationStatement.body.forEach { it.accept(this) }
+            popArcScope(terminated = endsWithReturn(inIterationStatement.body))
+            indentLevel--
+            appendIndentedLine("}")
+            indentLevel--
+            appendIndentedLine("}")
+            return
+        }
+        // Iteration over a container. The target is evaluated once into a
+        // view local (a shallow struct copy: the original keeps ownership),
+        // each element is unslotted into a loop variable of the declared
+        // element type, and that read is borrowed: it is never registered
+        // as an ARC local of the body. (This path used to be a stub that ran
+        // the body exactly once.)
+        val targetName = (target as? Identifier)?.value ?: target.toString()
+        val recvType = receiverTypeOf(target)
+        val (seqType, sizeOf, getAt) = when (recvType) {
+            "Arr" -> Triple("Arr", "Arr_size(&SEQ)", "Arr_get(SEQ, IDX)")
+            "List" -> Triple("List", "List_size(&SEQ)", "List_get(&SEQ, IDX)")
+            "Set" -> Triple("Set", "Set_size(&SEQ)", "KiraVec_get(&SEQ.items, IDX)")
+            else -> throw IllegalStateException(
+                "while-in over '$targetName': the C backend needs it to be an Arr, List or Set with a declared element type" +
+                    (recvType?.let { " (it is '$it')" } ?: " (its type is not known here)")
+            )
+        }
+        val elem = receiverTypeArgs(target).firstOrNull()
+            ?: throw IllegalStateException(
+                "while-in over '$targetName': its element type is unknown; declare it as $recvType<T>"
+            )
+        val serial = forInSerial++
+        val seq = "kira_seq$serial"
+        val idx = "kira_idx$serial"
+        val name = cName(iterExpr.initializer.value)
+        appendIndented("$seqType $seq = ")
+        target.accept(this)
+        buffer.appendLine(";")
+        appendIndentedLine("for(Int32 $idx = 0; $idx < ${sizeOf.replace("SEQ", seq)}; ++$idx)")
+        appendIndentedLine("{")
+        indentLevel++
+        appendIndented("")
+        buffer.append(mapTypeName(elem))
+        buffer.append(" ")
+        buffer.append(name)
+        buffer.append(" = ")
+        emitSlotOut(elem) { buffer.append(getAt.replace("SEQ", seq).replace("IDX", idx)) }
+        buffer.appendLine(";")
+        knownValueTypes[iterExpr.initializer.value] = elem
+        pushArcScope()
+        inIterationStatement.body.forEach { it.accept(this) }
+        popArcScope(terminated = endsWithReturn(inIterationStatement.body))
+        indentLevel--
+        appendIndentedLine("}")
+    }
+
     override fun visitUseStatement(useStatement: UseStatement) {
         appendIndentedLine("/* use ${useStatement.moduleUri} */")
     }
@@ -2325,7 +2407,7 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
     override fun visitBinaryExpr(binaryExpr: BinaryExpr) {
         // `x in r` and a range as a value need the typed model, which this backend does not read.
         if (binaryExpr.operator == BinaryOp.IN) {
-            throw UnsupportedConstruct(binaryExpr, "`in` (x in a..b, x in r)", TARGET_NAME)
+            throw UnsupportedConstruct(binaryExpr, "`in` outside a while-in loop (x in a..b, x in r)", TARGET_NAME)
         }
         val opName = OperatorIntrinsics.binaryName(binaryExpr.operator)
         // Non-primitive operands desugar to the op_* overload. When a side's
@@ -2822,8 +2904,17 @@ class KiraCCodeGenerator(override val compilationUnit: CompilationUnit) : KiraCo
         buffer.append(cName(name))
     }
 
+    override fun visitInIterationExpr(inIterationExpr: InIterationExpr) {
+        buffer.append("/* while ")
+        buffer.append(inIterationExpr.initializer.value)
+        buffer.append(" in ")
+        inIterationExpr.target.accept(this)
+        buffer.append(" */")
+    }
+
     override fun visitRangeExpr(rangeExpr: RangeExpr) {
-        throw UnsupportedConstruct(rangeExpr, "a range as a value", TARGET_NAME)
+        // A while-in loop's own range never reaches here; any other is a Range value.
+        throw UnsupportedConstruct(rangeExpr, "a range as a value (a..b outside a while-in loop's head)", TARGET_NAME)
     }
 
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {

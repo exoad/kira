@@ -136,6 +136,15 @@ object XMLASTVisitorKira :
         }
     }
 
+    override fun visitInIterationStatement(inIterationStatement: InIterationStatement) {
+        node("InIterationStatement") {
+            inIterationStatement.expr.accept(this)
+            node("Body") {
+                inIterationStatement.body.forEach { it.accept(this) }
+            }
+        }
+    }
+
     override fun visitUseStatement(useStatement: UseStatement) {
         node("UseStatement") {
             node("URI") {
@@ -414,6 +423,20 @@ object XMLASTVisitorKira :
             node("Member")
             {
                 memberAccessExpr.member.accept(this)
+            }
+        }
+    }
+
+    override fun visitInIterationExpr(inIterationExpr: InIterationExpr) {
+        node("InIterationExpr")
+        {
+            node("Initializer")
+            {
+                inIterationExpr.initializer.accept(this)
+            }
+            node("Target")
+            {
+                inIterationExpr.target.accept(this)
             }
         }
     }

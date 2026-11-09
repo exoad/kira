@@ -40,6 +40,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PrimInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import java.util.IdentityHashMap
 import java.util.WeakHashMap
 
@@ -508,6 +509,7 @@ internal class Confinement(private val r: Rules, private val effects: Effects) {
         val locals = HashSet<LocalSymbol>()
         AstScan.walk(l.def.body.orEmpty()) { n, _ ->
             (model.declSyms[n] as? LocalSymbol)?.let { locals.add(it) }
+            ((n as? InIterationStatement)?.let { model.loops[it]?.variable } as? LocalSymbol)?.let { locals.add(it) }
         }
         return Frame(b, params, locals, false, (b.owner as? ClassSymbol)?.selfType)
     }

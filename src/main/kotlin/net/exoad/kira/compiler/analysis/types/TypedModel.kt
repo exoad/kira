@@ -12,6 +12,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCheckExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import java.util.IdentityHashMap
 
 /**
@@ -32,6 +33,36 @@ sealed interface Capture {
     /** The receiver itself: a method call or `this` inside the lambda (`[*this]`, `[this]`, `[self = ...]`). */
     data class This(val owner: TypeSymbol) : Capture
 }
+
+enum class LoopKind {
+    /** `while i: T in a..b`: both ends included. */
+    RANGE,
+
+    /** `while i: T in r` over a `Range<T>` value: both ends included, as `i in r` says. */
+    RANGE_VALUE,
+
+    ARR,
+    LIST,
+    SET,
+
+    /** A `View<T>` or `MutView<T>`. */
+    VIEW,
+
+    /** A `Map<K, V>`, iterated as `T2<K, V>` in insertion order (D27). */
+    MAP,
+}
+
+/**
+ * How a `while NAME: TYPE in EXPR` loop iterates (TypedModel.loops, keyed by the InIterationStatement).
+ *
+ * @property element the loop variable's type (the range's integer type, or the element type).
+ * @property variable the loop variable.
+ */
+data class LoopPlan(
+    val kind: LoopKind,
+    val element: KType,
+    val variable: Symbol?,
+)
 
 /**
  * A `with` (WithTyper): [temp] holds the receiver (a copy when [copy]), [self] is the bare
@@ -205,6 +236,7 @@ class TypedModel {
     val consts: IdentityHashMap<Expr, ConstValue> = IdentityHashMap()
     val conversions: IdentityHashMap<TypeCastExpr, ConversionKind> = IdentityHashMap()
     val captures: IdentityHashMap<LambdaExpr, List<Capture>> = IdentityHashMap()
+    val loops: IdentityHashMap<InIterationStatement, LoopPlan> = IdentityHashMap()
 
     /** Whether an if-expression can become a C++ ternary (R18). */
     val ifShape: IdentityHashMap<IfExpr, Boolean> = IdentityHashMap()
@@ -312,6 +344,8 @@ class TypedModel {
     fun conversion(c: TypeCastExpr): ConversionKind? = conversions[c]
 
     fun captures(l: LambdaExpr): List<Capture>? = captures[l]
+
+    fun loop(f: InIterationStatement): LoopPlan? = loops[f]
 
     fun ifShape(e: IfExpr): Boolean? = ifShape[e]
 

@@ -32,6 +32,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.NullLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -188,6 +189,10 @@ internal class WithTyper(private val c: PhaseC) {
             is WhileIterationStatement -> {
                 header(s.condition, "a while condition")
                 placement(s.statements)
+            }
+            is InIterationStatement -> {
+                header(s.inIterationExpr, "a loop header")
+                placement(s.body)
             }
             else -> if (s.javaClass == Statement::class.java) expression(s.expr)
         }

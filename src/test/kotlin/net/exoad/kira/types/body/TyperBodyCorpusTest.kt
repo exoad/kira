@@ -13,6 +13,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.declarations.Decl
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Identifier
 import net.exoad.kira.compiler.frontend.parser.ast.elements.Type
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.InIterationExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.InIterationTargetExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallNamedParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallPositionalParameterExpr
@@ -72,7 +74,7 @@ class TyperBodyCorpusTest {
      * The expressions of [m] that denote values but have no type (or an Error type). Not values:
      * declarations and their names, Type nodes, argument wrappers, a call's callee name, a
      * member's name after '.', a name that is a type or a module (`Kind` in `Kind.KIND_OK`), a
-     * handler's `on e` name.
+     * handler's `on e` name, and a for loop's head.
      */
     private fun untypedValues(program: TypedProgram, m: ModuleSymbol): List<String> {
         val model = program.model
@@ -107,6 +109,10 @@ class TyperBodyCorpusTest {
                 is TryExpr -> n.exceptionName?.let { notValues[it] = true }
                 is FunctionDeclParameterExpr -> notValues[n.name] = true
                 is FunctionCallNamedParameterExpr -> notValues[n.name] = true
+                is InIterationExpr -> {
+                    notValues[n.initializer] = true
+                    (n.target as? InIterationTargetExpr)?.let { notValues[it] = true }
+                }
                 else -> {}
             }
         }
@@ -120,7 +126,7 @@ class TyperBodyCorpusTest {
                 return@walk
             }
             if (n is Decl || n is Type || n is FunctionDefExpr || n is FunctionDeclParameterExpr ||
-                n is FunctionCallPositionalParameterExpr || n is FunctionCallNamedParameterExpr || n === NoExpr
+                n is FunctionCallPositionalParameterExpr || n is FunctionCallNamedParameterExpr || n is InIterationExpr || n === NoExpr
             ) {
                 return@walk
             }

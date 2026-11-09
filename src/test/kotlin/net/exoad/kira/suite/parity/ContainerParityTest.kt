@@ -4,7 +4,7 @@ import net.exoad.kira.suite.parity.ParityRun.assertBothPrint
 import net.exoad.kira.suite.parity.ParityRun.assertCPrints
 import org.junit.jupiter.api.Test
 
-/** Element reads and for-in over containers print the same text on the C and JS backends. */
+/** Element reads and while-in over containers print the same text on the C and JS backends. */
 class ContainerParityTest {
     @Test
     fun indexReadsUseTheElementType() {
@@ -39,38 +39,39 @@ class ContainerParityTest {
     }
 
     @Test
-    fun indexWalksIterateArrListAndSet() {
+    fun whileInIteratesArrListAndSet() {
         // The body used to run exactly once whatever the container held.
-        assertBothPrint("6\nada\ngrace\n3\n") {
+        assertBothPrint("6\nada\ngrace\n7\n3\n") {
             """
             main: () Void {
                 xs: Arr<Int32> { @arrOf(1, 2, 3) }
                 sum: Mutable<Int32> { 0 }
-                xIndex: Mutable<Int32> { 0 }
-                while xIndex < xs.size() {
-                    x: Int32 { xs.get(xIndex) }
+                while x: Int32 in xs {
                     sum = sum + x
-                    xIndex += 1
                 }
                 trace(sum)
 
                 names: List<Str> { }
                 names.add("ada")
                 names.add("grace")
-                nIndex: Mutable<Int32> { 0 }
-                while nIndex < names.size() {
-                    n: Str { names.get(nIndex) }
+                while n: Str in names {
                     trace(n)
-                    nIndex += 1
                 }
+
+                seen: Set<Int32> { }
+                seen.add(3)
+                seen.add(3)
+                seen.add(4)
+                total: Mutable<Int32> { 0 }
+                while v: Int32 in seen {
+                    total = total + v
+                }
+                trace(total)
 
                 empty: List<Int32> { }
                 ran: Mutable<Int32> { 0 }
-                eIndex: Mutable<Int32> { 0 }
-                while eIndex < empty.size() {
-                    e: Int32 { empty.get(eIndex) }
+                while e: Int32 in empty {
                     ran = ran + 1
-                    eIndex += 1
                 }
                 trace(3 - ran)
             }

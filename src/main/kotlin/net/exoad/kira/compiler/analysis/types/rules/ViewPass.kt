@@ -42,6 +42,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.AssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BinaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.CompoundAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.Expr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.InIterationExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallNamedParameterExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.FunctionCallPositionalParameterExpr
@@ -56,6 +57,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.BuilderExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import java.util.IdentityHashMap
@@ -63,13 +65,13 @@ import java.util.IdentityHashMap
 /**
  * Views are second-class (decision 4b; the rule is design 30-second-class, whose section
  * numbers the comments here cite). A `View`, `MutView`, `CStr` or `Unsafe` value, and a
- * lambda that captures one, is only ever an argument, a receiver or a return,
+ * lambda that captures one, is only ever an argument, a receiver, a return or a loop range,
  * so no view outlives the call that consumes it. The rule is safe by construction: C++ keeps
  * every temporary of a full-expression to its end, so the one check left is local, that
  * nothing between forming a view and the return of its consumer moves the viewed place.
  *
  * - `rules.view.type` (1.2): a type that holds a second-class type, where it is written or
- *   inferred: a global, a field, a `mut` parameter, a type argument of any
+ *   inferred: a global, a field, a loop variable, a `mut` parameter, a type argument of any
  *   container, `Maybe`, tuple, `Ref` or user generic class, a construction, a builder.
  * - `rules.view.local` (2.1): a local whose type is second-class.
  * - `rules.view.generic` (1.3): a generic function instantiated with a second-class `T` that
@@ -77,7 +79,7 @@ import java.util.IdentityHashMap
  * - `rules.view.return` (2.2): a returned view that points into anything but the function's
  *   own view parameters, its receiver or a literal.
  * - `rules.view.position` (2.1): a view anywhere but an argument, a receiver, a return or a
- *   `for` over a view parameter or a literal.
+ *   `while NAME: T in` over a view parameter or a literal.
  * - `rules.view.capture` (4): a lambda that captures a view parameter and escapes.
  * - `rules.view.store` (2.1): a view passed, assigned or returned where a first-class value
  *   (an `Any`, a trait value) is kept.
@@ -394,6 +396,8 @@ internal class ViewPass : RulePass {
 
         class Return(val stmt: ReturnStatement) : Ctx
 
+        class Range(val loop: InIterationExpr) : Ctx
+
         /** Kept in a slot of type [slot]: a local's, global's or field's initializer, an assignment, a construction's field, a builder's element; [sym] the declaration when there is one. */
         class Kept(val slot: KType?, val sym: Symbol?, val what: String) : Ctx
 
@@ -530,6 +534,7 @@ internal class ViewPass : RulePass {
                 is CompoundAssignmentExpr -> p.left !== e
                 is MemberAccessExpr -> p.member !== e
                 is FunctionCallExpr -> p.name !== e || e is LambdaExpr
+                is InIterationExpr -> p.initializer !== e
                 is FunctionCallNamedParameterExpr -> p.name !== e
                 is FunctionDeclParameterExpr -> p.name !== e
                 is VariableDecl -> p.name !== e
@@ -592,6 +597,15 @@ internal class ViewPass : RulePass {
                 is VariableDecl -> {
                     val sym = model.declSyms[n] as? LocalSymbol ?: return
                     local(n, sym)
+                }
+                is InIterationStatement -> {
+                    val v = model.loops[n]?.variable as? LocalSymbol ?: return
+                    val held = if (isSc(v.type)) v.type else c.misplaced(v.type, false, sc)
+                    if (held != null) {
+                        report(n.inIterationExpr, TYPE, c.typeMessage("The loop variable '${v.name}'", v.type, held, "iterate the owner, or pass the view to a function that iterates it"),
+                            "keeps a ${held.display()} in the loop variable '${v.name}'")
+                        refuse(v)
+                    }
                 }
                 is LambdaExpr -> {
                     for (d in n.def.parameters) {
@@ -717,6 +731,7 @@ internal class ViewPass : RulePass {
                 is ArrayIndexExpr -> if (p.originExpr === e) Ctx.Recv else Ctx.Other("an index")
                 is BinaryExpr, is UnaryExpr, is InterpolatedStringLiteral -> Ctx.Recv
                 is ReturnStatement -> Ctx.Return(p)
+                is InIterationExpr -> if (p.target === e) Ctx.Range(p) else Ctx.Other("a loop")
                 is VariableDecl -> {
                     val sym = model.declSyms[p]
                     Ctx.Kept((sym as? LocalSymbol)?.type ?: (sym as? GlobalSymbol)?.type, sym, "'${p.name.value}'")
@@ -807,6 +822,11 @@ internal class ViewPass : RulePass {
                         report(e, STORE, "$text is a view, returned as a ${result.display()}: a view is never boxed or stored (decision 4b). Return a ${t.display()}.",
                             "returns a ${t.display()} as a ${result.display()}")
                     }
+                }
+                is Ctx.Range -> {
+                    val bad = origins(e).firstOrNull { it !is ViewOrigin.Param && it !is ViewOrigin.Static } ?: return
+                    report(e, POSITION, "$text is a view of ${describe(bad)} used as a loop range: a view is only an argument, a receiver or a return (decision 4b), " +
+                        "and only a view parameter or a literal is iterated. Iterate the owner, while x: T in ${ownerText(bad)}.", "iterates a view of ${describe(bad)}")
                 }
                 is Ctx.Kept -> {
                     if (ctx.sym != null && ctx.sym in c.refused) {

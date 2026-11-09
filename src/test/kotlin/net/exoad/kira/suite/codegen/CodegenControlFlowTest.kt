@@ -45,19 +45,17 @@ class CodegenControlFlowTest {
     }
 
     @Test
-    fun aCounterWhileLowersToCWhile() {
+    fun whileInRangeLowersToCFor() {
         val output = emit(
             """
             main: () Void {
-                i: Mutable<Int32> { 0 }
-                while i < 4 {
+                while i: Int32 in 0..3 {
                     trace(i)
-                    i += 1
                 }
             }
             """
         )
-        assertTrue(output.contains("while((i < 4))"), output)
+        assertTrue(output.contains("for(Int32 i = 0, i_last = 3; i_more && i <= i_last;"), output)
         assertTrue(output.contains("print(\"%d\\n\", i);"), output)
     }
 
@@ -75,5 +73,24 @@ class CodegenControlFlowTest {
         )
         assertTrue(output.contains("a += 2;"), output)
         assertFalse(output.contains("(a + 2);"), output)
+    }
+
+    @Test
+    fun whileInOverAnUnknownTargetIsADiagnosticNotAStubLoop() {
+        // The body used to run exactly once inside a `for(;;) { ... break; }`
+        // stub whatever the target was. Now a target the backend cannot
+        // type is refused outright.
+        val e = assertThrows<IllegalStateException> {
+            emit(
+                """
+                main: () Void {
+                    while x: Int32 in mystery {
+                        trace(x)
+                    }
+                }
+                """
+            )
+        }
+        assertTrue(e.message!!.contains("while-in over 'mystery'"), e.message)
     }
 }

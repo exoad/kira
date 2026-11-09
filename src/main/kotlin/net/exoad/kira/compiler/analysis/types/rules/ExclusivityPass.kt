@@ -6,6 +6,7 @@ import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.PathStep
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
+import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.Place
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.RulePass
@@ -24,6 +25,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolationPart
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 
 /**
  * Exclusivity (design 3.4, D37): a place written through one name must not be read or
@@ -70,6 +72,18 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolationPart
  *   refused: `h.item` is a handle step, and the lambda may free the Item.
  * - Round 4 deleted `rules.exclusivity.alias` and order clause 1: every shape they refused is
  *   an argument or a receiver handle the emitter copies at the call (50-round4 1.3, 1.6).
+ * - `rules.exclusivity.loop`: a `while NAME: T in` body assigns the place it iterates (or a place inside
+ *   or around it; a view iterated stands for what it was lent from, `half(xs)` for `xs`),
+ *   passes it or a place around it as `mut` or as a `MutView`, calls a `mut fx` without a
+ *   body on it or on a place around it (`xs.add(x)`, a magic mutator), or calls a function
+ *   that writes it out of sight ([HiddenWrites]: `note()` adding to the global `LOG` being
+ *   iterated, a `mut fx` with a body writing the iterated field, an override the object may
+ *   have, a lambda the callee may run): iterator invalidation. A write through another handle
+ *   of the same class counts (`g.items` while `h.items` is iterated: `g` and `h` may be one
+ *   object). A `mut fx` with a body writing only another field (`s.reset()` writing `s.a`
+ *   while `s.items` is iterated) is no invalidation. A write the rule does not see (a hook
+ *   reached through a global) is no memory error: the emitter
+ *   iterates a copy of a range whose body is IMPURE unless the range is PRIVATE (W6).
  */
 internal class ExclusivityPass : RulePass {
     override val name: String = "exclusivity"
@@ -141,6 +155,7 @@ internal class ExclusivityPass : RulePass {
                         }
                     }
                     is InterpolatedStringLiteral -> siblings(n, n.parts.filterIsInstance<InterpolationPart.Hole>().map { Operand(it.expr, Role.VALUE) }, "the string")
+                    is InIterationStatement -> loop(n)
                     else -> {}
                 }
             }
@@ -546,6 +561,75 @@ internal class ExclusivityPass : RulePass {
             return out
         }
 
+        private fun loop(s: InIterationStatement) {
+            val plan = model.loops[s] ?: return
+            // A range loop reads its ends once, before the first step.
+            if (plan.kind == LoopKind.RANGE || plan.kind == LoopKind.RANGE_VALUE) {
+                return
+            }
+            val target = s.inIterationExpr.target
+            // The place iterated, or the places ViewPass says a view iterated points into.
+            val iterated = r.placeOf(target)?.let { listOf(it) }
+                ?: model.viewOrigins(target).mapNotNull { (it as? ViewOrigin.Stored)?.place }
+            if (iterated.isEmpty()) {
+                return
+            }
+            val iteratedText = KiraUnparser.text(target)
+            fun writes(places: List<Place>, at: ASTNode, how: String): Boolean {
+                if (places.any { p -> iterated.any { mayBeSame(p, it) } }) {
+                    r.report(
+                        "rules.exclusivity.loop",
+                        "This loop iterates '$iteratedText', and its body $how (D37): changing a collection while iterating it " +
+                            "invalidates the iteration. Collect the changes and apply them after the loop.",
+                        at,
+                    )
+                    return true
+                }
+                return false
+            }
+            AstScan.walk(s.body) { n, lambdas ->
+                if (lambdas.isNotEmpty()) {
+                    return@walk
+                }
+                when (n) {
+                    is AssignmentExpr -> model.places[n.target]?.let { writes(listOf(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is CompoundAssignmentExpr -> model.places[n.left]?.let { writes(listOf(it), n.left, "assigns '${KiraUnparser.text(n.left)}'") }
+                    is PlaceAssignmentExpr -> model.places[n.target]?.let { writes(listOf(it), n.target, "assigns '${KiraUnparser.text(n.target)}'") }
+                    is FunctionCallExpr -> {
+                        val rc = model.calls[n]
+                        val fnName = rc?.fn?.name
+                        var seen = false
+                        for (op in r.callOperands(b, n)) {
+                            if (!op.writes) {
+                                continue
+                            }
+                            seen = if (op.isReceiver) {
+                                if (rc != null && r.hasAnalysedBody(rc)) {
+                                    // A `mut fx` with a body writes what its body writes (a field beside the
+                                    // iterated one is no invalidation): the hidden-write rule below has it.
+                                    false
+                                } else {
+                                    val around = if (iterated.any { op.place.path().size < it.path().size }) "'${op.text}', which holds it" else "it"
+                                    writes(listOf(op.place), op.at, "calls the `mut fx` '$fnName' on $around")
+                                }
+                            } else if (op.how == "mut") {
+                                writes(listOf(op.place), op.at, "passes '${op.text}' as mut")
+                            } else {
+                                writes(listOf(op.place), op.at, "passes a MutView of '${op.text}'")
+                            } || seen
+                        }
+                        if (!seen) {
+                            // A write the call site does not show: the callee's own, an override's, or a lambda's it may run.
+                            hidden.of(b, n).firstOrNull { w -> iterated.any { mayBeSame(w, it) } }?.let { w ->
+                                writes(listOf(w), n, "calls '${fnName ?: KiraUnparser.text(n.name)}', which writes '${r.describe(w)}'")
+                            }
+                        }
+                    }
+                    else -> {}
+                }
+            }
+        }
+
         /** A place rooted at a field of no place (`makeItem().labels`): part of a temporary, which nothing else names. */
         private fun temporary(p: Place): Boolean = (p.root() as? Place.Field)?.receiver == null && p.root() is Place.Field
 
@@ -553,7 +637,7 @@ internal class ExclusivityPass : RulePass {
          * Two places may be one storage: they overlap, or they are reached through the same
          * field of a reference type (`g.items` and `h.items` with `g` and `h` two handles of one
          * class, `this.items` and `other.items`), whose objects two handles may share (round 2's
-         * q6: `g.reset()` with `g` aliasing `h` while `h.items` is read).
+         * q6: `while xs: T in h.items { g.reset() }` with `g` aliasing `h`).
          */
         private fun mayBeSame(a: Place, b: Place): Boolean {
             if (a.overlaps(b)) {

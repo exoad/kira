@@ -18,6 +18,7 @@ abstract class KiraASTVisitorWithDefaults : KiraASTVisitor() {
     override fun visitElseBranchStatement(elseBranchNode: ElseBranchStatement) {}
     override fun visitWhileIterationStatement(whileIterationStatement: WhileIterationStatement) {}
     override fun visitReturnStatement(returnStatement: ReturnStatement) {}
+    override fun visitInIterationStatement(inIterationStatement: InIterationStatement) {}
     override fun visitUseStatement(useStatement: UseStatement) {}
     override fun visitBreakStatement(breakStatement: BreakStatement) {}
     override fun visitContinueStatement(continueStatement: ContinueStatement) {}
@@ -34,6 +35,7 @@ abstract class KiraASTVisitorWithDefaults : KiraASTVisitor() {
     override fun visitArrayIndexExpr(arrayIndexExpr: ArrayIndexExpr) {}
     override fun visitThrowExpr(throwExpr: ThrowExpr) {}
     override fun visitTryExpr(tryExpr: TryExpr) {}
+    override fun visitInIterationExpr(inIterationExpr: InIterationExpr) {}
     override fun visitRangeExpr(rangeExpr: RangeExpr) {}
     override fun visitObjectInitExpr(objectInitExpr: ObjectInitExpr) {}
     override fun visitTypeCheckExpr(typeCheckExpr: TypeCheckExpr) {}

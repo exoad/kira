@@ -3,6 +3,7 @@ package net.exoad.kira.types
 import net.exoad.kira.TestCompileSupport
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.KiraUnparser
+import net.exoad.kira.compiler.analysis.types.LoopKind
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.display
 import net.exoad.kira.compiler.frontend.parser.ast.UnsupportedConstruct
@@ -97,7 +98,7 @@ class RangeTest {
     }
 
     @Test
-    fun aRangeHeldInAVariableAnswersThroughItsInOperatorAndHoldsBothEnds() {
+    fun aRangeHeldInAVariableAnswersThroughItsInOperatorAndIteratesBothEnds() {
         val p = typed(
             """
             pub held: (x: Int32) Bool {
@@ -107,15 +108,11 @@ class RangeTest {
 
             pub walk: (r: Range<Int32>) Int32 {
                 t: Mutable<Int32> { 0 }
-                k: Mutable<Int32> { r.begin }
-                while k <= r.end {
-                    t += k
-                    k += 1
+                while i: Int32 in r {
+                    t += i
                 }
-                j: Mutable<Int32> { 0 }
-                while j <= 3 {
+                while j: Int32 in 0..3 {
                     t += j
-                    j += 1
                 }
                 t
             }
@@ -124,6 +121,7 @@ class RangeTest {
         expectNoErrors(p)
         val calls = p.model.opCalls.values.map { "${it.kind} ${it.fn?.owner?.name}.${it.fn?.name}" }
         assertEquals(listOf("OP_OVERLOAD Range._op_in_"), calls)
+        assertEquals(setOf(LoopKind.RANGE_VALUE, LoopKind.RANGE), p.model.loops.values.map { it.kind }.toSet())
     }
 
     @Test
@@ -170,16 +168,15 @@ class RangeTest {
             """
             pub f: (x: Int32) Int32 {
                 t: Mutable<Int32> { 0 }
-                i: Mutable<Int32> { -2 }
-                while i <= 2 {
+                while i: Int32 in -2..2 {
                     t += i
-                    i += 1
                 }
                 x in -5..5 ? t : 1
             }
             """
         )
         expectNoErrors(p)
+        assertEquals(LoopKind.RANGE, p.model.loops.values.single().kind)
         assertTrue("(-5)..5: Range<Int32>" in rangeTypes(p), rangeTypes(p).toString())
         expectDiagnostic(typed("pub f: (x: Int32) Bool {\n    x in -(1..3)\n}"), "types.op.mismatch")
     }
@@ -239,7 +236,8 @@ class RangeTest {
 
     @Test
     fun existingDiagnosticsCoverTheRestOfARangesRules() {
-        // A float literal is no integer end.
+        // A float range is a value and a test, never a loop; a float literal is no integer end.
+        only(typed("pub f: (r: Range<Float64>) Int32 {\n    t: Mutable<Int32> { 0 }\n    while i: Float64 in r {\n        t += 1\n    }\n    t\n}"), "types.loop.range-type")
         only(typed("pub f: (x: Int32) Bool {\n    x in 0..2.5\n}"), "types.literal.float-to-int")
         expectDiagnostic(typed("pub f: (r: Range<Str>) Bool {\n    true\n}"), "rules.generics.bound")
         // A range is a value now, so the old position error is gone and a wrong slot is a mismatch.
@@ -288,35 +286,40 @@ class RangeTest {
     }
 
     @Test
-    fun onCppARangeValueIsTheStruct() {
+    fun onCppARangeValueIsTheStructAndItsLoopStopsAtItsEnd() {
         val out = cpp(
             """
             pub f: (x: Int32) Int32 {
                 r: Range<Int32> { 1..4 }
                 t: Mutable<Int32> { 0 }
+                while i: Int32 in r {
+                    t += i
+                }
                 x in r ? t : 0
             }
             """
         )
         assertTrue(out.contains("const ::kira::range::Range<std::int32_t> r = ::kira::range::Range<std::int32_t>{.begin = 1, .end = 4};"), out)
+        assertTrue(out.contains("bool i_more = i_r.begin <= i_r.end;"), out)
+        assertTrue(out.contains("for(std::int32_t i = i_r.begin; i_more; i_more = i != i_r.end && (++i, true))"), out)
         assertTrue(out.contains("r._op_in_(x)"), out)
     }
 
     // ---- C and JS ----------------------------------------------------------------------------
 
     @Test
-    fun cAndJsRefuseInAndARangeValue() {
+    fun cAndJsRefuseInAndARangeValueButKeepTheRangeLoop() {
         val tested = "f: (k: Int32) Bool {\n    k in 9..13\n}\n"
         val held = "f: () Int32 {\n    r: Range<Int32> { 1..4 }\n    0\n}\n"
-        for ((source, what) in listOf(tested to "`in` (x in a..b, x in r)", held to "a range as a value")) {
+        for ((source, what) in listOf(tested to "`in` outside a while-in loop", held to "a range as a value")) {
             val refused = listOf(
                 assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToC(source, "test/main.kira") },
                 assertThrows<UnsupportedConstruct> { TestCompileSupport.transpileSnippetToJS(source, "test/main.kira") },
             )
             refused.forEach { assertTrue(it.message.orEmpty().contains(what), it.message) }
         }
-        val loop = "f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    i: Mutable<Int32> { 0 }\n    while i <= 3 {\n        t += i\n        i += 1\n    }\n    t\n}\n"
-        assertTrue(TestCompileSupport.transpileSnippetToC(loop, "test/main.kira").contains("i <= 3"))
+        val loop = "f: () Int32 {\n    t: Mutable<Int32> { 0 }\n    while i: Int32 in 0..3 {\n        t += i\n    }\n    t\n}\n"
+        assertTrue(TestCompileSupport.transpileSnippetToC(loop, "test/main.kira").contains("i_more && i <= i_last"))
         assertNull(runCatching { TestCompileSupport.transpileSnippetToJS(loop, "test/main.kira") }.exceptionOrNull())
     }
 }

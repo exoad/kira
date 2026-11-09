@@ -14,8 +14,8 @@ class BodyFixturesTest {
     @TempDir
     lateinit var dir: File
 
-    // Three comparisons of a Str with an Int32 on one line report types.op.mismatch three times.
-    private val body = "pub f: () Void {\n    n: Str { \"a\" }\n    trace(n < 1 && n > 2 && n < 3) // @error types.op.mismatch ; %s\n}\n"
+    // `while n: Str in 0..3` reports types.loop.range-type once and types.assign.mismatch twice (each bound).
+    private val body = "pub f: () Void {\n    while n: Str in 0..3 { // @error types.loop.range-type ; %s\n        trace(n)\n    }\n}\n"
 
     private fun failuresWith(clauses: String): List<String> {
         val file = File(dir, "count.kira").apply { writeText(body.format(clauses)) }
@@ -26,20 +26,20 @@ class BodyFixturesTest {
 
     @Test
     fun theExactCountPerLinePasses() {
-        assertEquals(emptyList(), failuresWith("@error types.op.mismatch ; @error types.op.mismatch"))
+        assertEquals(emptyList(), failuresWith("@error types.assign.mismatch ; @error types.assign.mismatch"))
     }
 
     @Test
     fun oneClauseShortIsAnUnexpectedDiagnostic() {
-        val failures = failuresWith("@error types.op.mismatch")
+        val failures = failuresWith("@error types.assign.mismatch")
         assertEquals(1, failures.size, failures.joinToString("\n"))
         assertTrue(failures.single().startsWith("unexpected: "), failures.single())
     }
 
     @Test
     fun oneClauseOverIsAMissingDiagnostic() {
-        val failures = failuresWith("@error types.op.mismatch ; @error types.op.mismatch ; @error types.op.mismatch")
+        val failures = failuresWith("@error types.assign.mismatch ; @error types.assign.mismatch ; @error types.assign.mismatch")
         assertEquals(1, failures.size, failures.joinToString("\n"))
-        assertTrue(failures.single().endsWith("expected error types.op.mismatch, which was not reported"), failures.single())
+        assertTrue(failures.single().endsWith("expected error types.assign.mismatch, which was not reported"), failures.single())
     }
 }

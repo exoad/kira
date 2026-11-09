@@ -8,6 +8,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement
@@ -82,6 +83,10 @@ internal class MaybeValueCheck(private val program: TypedProgram) {
             is WhileIterationStatement -> {
                 expression(s.condition, blocks)
                 statements(s.statements, blocks + Block())
+            }
+            is InIterationStatement -> {
+                expression(s.inIterationExpr, blocks)
+                statements(s.body, blocks + Block())
             }
             else -> AstTree.children(s).forEach { if (it is Expr) expression(it, blocks) }
         }

@@ -10,8 +10,8 @@ import net.exoad.kira.compiler.frontend.parser.ast.elements.*
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.*
 import net.exoad.kira.compiler.frontend.parser.ast.literals.*
 import net.exoad.kira.compiler.frontend.parser.ast.statements.*
-import net.exoad.kira.compiler.fix.ForFix
 import net.exoad.kira.core.IntrinsicRegistry
+import net.exoad.kira.compiler.fix.ForFix
 import net.exoad.kira.core.Keywords
 import net.exoad.kira.core.OperatorIntrinsics
 import net.exoad.kira.core.Symbols
@@ -144,7 +144,6 @@ class KiraParser private constructor(
         nestedOf = foundNested.mapValues { it.value.toMap() }
         nestedTypeNames += nestedOf.values.flatMap { it.values }
         foundNested.clear()
-        context.astFors.clear()
         buffer = TokenBuffer(tokens)
         context.astOrigins = IdentityHashMap()
         context.astIntrinsicMarked = IdentityHashMap()
@@ -465,7 +464,7 @@ class KiraParser private constructor(
             Token.Type.K_RETURN -> parseReturnStatement()
             Token.Type.K_IF -> parseIfSelectionStatement()
             Token.Type.K_WHILE -> parseWhileIterationStatement()
-            Token.Type.K_FOR -> parseForIterationStatement()
+            Token.Type.K_FOR -> parseForStatement()
             Token.Type.K_THROW -> parseThrowStatement()
             Token.Type.K_TRY -> parseTryStatement()
             Token.Type.K_BREAK -> parseBreakStatement()
@@ -1350,27 +1349,27 @@ class KiraParser private constructor(
     }
 
     /**
-     * The removed `for`: refused with the `while` it becomes (parse.for.removed), or, for the rewrite tool
-     * ([SourceContext.lenientFor]), noted in [SourceContext.astFors] while its body is parsed as a loop's.
+     * The removed `for`: refused with the `while` it becomes (parse.for.removed), or, for the rewrite tools
+     * ([SourceContext.lenientFor]), read as the loop `while NAME: TYPE in EXPR {` is.
      */
-    fun parseForIterationStatement(): Statement {
+    fun parseForStatement(): Statement {
         val origin = here()
         val forToken = peek()
-        // The head runs to the body's `{`: the first brace outside parentheses and brackets.
-        var depth = 0
-        var k = 1
-        while (peek(k).type != Token.Type.S_EOF) {
-            val t = peek(k).type
-            if (t == Token.Type.S_OPEN_PARENTHESIS || t == Token.Type.S_OPEN_BRACKET) depth++
-            else if (t == Token.Type.S_CLOSE_PARENTHESIS || t == Token.Type.S_CLOSE_BRACKET) depth--
-            else if (t == Token.Type.S_OPEN_BRACE && depth <= 0) break
-            k++
-        }
-        val open = peek(k)
-        val head = if (open.type == Token.Type.S_OPEN_BRACE) {
-            context.content.substring(forToken.pointerPosition + forToken.content.length, minOf(open.pointerPosition, context.content.length))
-        } else ""
-        if (!context.lenientFor || open.type != Token.Type.S_OPEN_BRACE) {
+        if (!context.lenientFor) {
+            // The head runs to the body's `{`: the first brace outside parentheses and brackets.
+            var depth = 0
+            var k = 1
+            while (peek(k).type != Token.Type.S_EOF) {
+                val t = peek(k).type
+                if (t == Token.Type.S_OPEN_PARENTHESIS || t == Token.Type.S_OPEN_BRACKET) depth++
+                else if (t == Token.Type.S_CLOSE_PARENTHESIS || t == Token.Type.S_CLOSE_BRACKET) depth--
+                else if (t == Token.Type.S_OPEN_BRACE && depth <= 0) break
+                k++
+            }
+            val open = peek(k)
+            val head = if (open.type == Token.Type.S_OPEN_BRACE) {
+                context.content.substring(forToken.pointerPosition + forToken.content.length, minOf(open.pointerPosition, context.content.length))
+            } else ""
             Diagnostics.panic(
                 "parse.for.removed",
                 ForFix.message(head),
@@ -1379,28 +1378,24 @@ class KiraParser private constructor(
                 context = context
             )
         }
-        advancePointer(k)
-        val close = matchingClose(open)
-        val stand = putOrigin(WhileIterationStatement(IntegerLiteral(1), parseStatementBlock()), origin)
-        context.astFors.add(net.exoad.kira.source.ForLoopRecord(stand, forToken.canonicalLocation, open.canonicalLocation, close?.canonicalLocation ?: open.canonicalLocation, head))
-        return stand
+        return parseInIteration(origin, Token.Type.K_FOR)
     }
 
-    /** The `}` that closes [open] (a `{` of the file's tokens), or null when it never closes. */
-    private fun matchingClose(open: Token): Token? {
-        val tokens = context.tokens
-        var i = tokens.indexOfFirst { it.pointerPosition == open.pointerPosition }
-        if (i < 0) return null
-        var depth = 0
-        while (i < tokens.size) {
-            when (tokens[i].type) {
-                Token.Type.S_OPEN_BRACE -> depth++
-                Token.Type.S_CLOSE_BRACE -> if (--depth == 0) return tokens[i]
-                else -> {}
-            }
-            i++
-        }
-        return null
+    /** `NAME: TYPE in EXPR { body }` after the keyword [leading] (`while`, or the removed `for` of the rewrite tools). */
+    private fun parseInIteration(origin: SourcePosition, leading: Token.Type): Statement {
+        expectThenAdvance(leading)
+        val hasParens = leading == Token.Type.K_FOR && at(Token.Type.S_OPEN_PARENTHESIS)
+        if (hasParens) expectThenAdvance(Token.Type.S_OPEN_PARENTHESIS)
+        val identifier = parseIdentifier()
+        expectThenAdvance(Token.Type.S_COLON)
+        val declaredType = parseType()
+        expectThenAdvance(Token.Type.K_IN)
+        // The iterable is a condition head (D36): a `{` after it opens the body.
+        val target = withNoObjectInit(!hasParens) { parseExpr() }
+        val head = InIterationExpr(identifier, target, emptyList(), declaredType)
+        if (hasParens) expectThenAdvance(Token.Type.S_CLOSE_PARENTHESIS)
+        val body = parseStatementBlock()
+        return putOrigin(InIterationStatement(putOrigin(head, origin), body), origin)
     }
 
     /**
@@ -1421,8 +1416,18 @@ class KiraParser private constructor(
         return parseConditionHead()
     }
 
+    /**
+     * `while NAME: TYPE in EXPR { }` iterates, any other `while` head is a condition. A condition never starts with
+     * `NAME :` (a declaration is a statement), so two tokens decide; `x in a..b` with no `:` is still a membership test.
+     */
     fun parseWhileIterationStatement(): Statement {
         val origin = here()
+        if (peek(1).type == Token.Type.IDENTIFIER && peek(2).type == Token.Type.S_COLON) {
+            return parseInIteration(origin, Token.Type.K_WHILE)
+        }
+        if (peek(1).type == Token.Type.K_MODIFIER_MUTABLE && peek(2).type == Token.Type.IDENTIFIER && peek(3).type == Token.Type.S_COLON) {
+            refuseMut(peek(1).canonicalLocation, "a loop variable is never Mutable: 'while i: Int32 in a..b { }' is this loop, and it holds b")
+        }
         val condition = parseParentheticalConditionExpr(Token.Type.K_WHILE)
         return putOrigin(WhileIterationStatement(condition, parseStatementBlock()), origin)
     }

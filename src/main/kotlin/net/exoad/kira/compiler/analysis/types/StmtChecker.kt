@@ -32,6 +32,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseBranchStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -60,6 +61,9 @@ internal object KiraBodyTyper : BodyTyper {
  *   literal in a float constant) gets its `constValue` here.
  * - **Defaults (D48)** are literals or constants; a `pub` function's default names only `pub`
  *   constants, since C++ callers see it in the header.
+ * - **Loops.** `while i: T in a..b` holds both ends and `T` types both bounds; `while x: T in xs`
+ *   iterates an Arr, List, Set, View or Map (as `T2<K, V>`), and `T` is the element type
+ *   exactly. Each gets a [LoopPlan].
  * - **Assignment** targets are places; writing a lambda's capture is an error.
  */
 internal class StmtChecker(private val c: PhaseC) {
@@ -529,6 +533,7 @@ internal class StmtChecker(private val c: PhaseC) {
                 c.exprs.check(s.condition, KType.BOOL, ctx, scope, "a while condition")
                 loopBody(s.statements, ctx, c.conforms.into(scope.child(), s.condition, true))
             }
+            is InIterationStatement -> inLoop(s, ctx, scope)
             is BreakStatement, is ContinueStatement -> {
                 if ((loopDepth.lastOrNull() ?: 0) == 0) {
                     c.report(
@@ -652,6 +657,81 @@ internal class StmtChecker(private val c: PhaseC) {
             return
         }
         c.exprs.check(e, ret, ctx, scope, if (s.implicit) "the result of ${ctx.what} (its body's last expression)" else "the return value of ${ctx.what}")
+    }
+
+    // ---- loops -------------------------------------------------------------------------------
+
+    private fun inLoop(s: InIterationStatement, ctx: BodyContext, scope: Scope) {
+        val fe = s.inIterationExpr
+        val target = fe.target
+        val name = fe.initializer.value
+        val kind: LoopKind
+        val element: KType
+        val declared = fe.declaredType?.let { c.typeOf(it) } ?: KType.Error
+        if (target is RangeExpr) {
+            c.exprs.check(target.begin, declared, ctx, scope, "the start of the range")
+            c.exprs.check(target.end, declared, ctx, scope, "the end of the range")
+            if (!declared.containsError() && !facts.isInteger(declared)) {
+                c.report("types.loop.range-type", "A range counts integers; ${declared.display()} is not an integer type.", fe)
+            }
+            kind = LoopKind.RANGE
+            element = declared
+        } else {
+            val t = c.exprs.type(target, null, ctx, scope)
+            val (k, el) = iteration(target, t)
+            kind = k
+            element = el
+            if (!el.containsError() && !declared.containsError() && el != declared) {
+                c.report(
+                    "types.loop.element",
+                    "The loop variable '$name' is ${declared.display()}, but the elements are ${el.display()}: they must be the same type.",
+                    fe,
+                )
+            }
+        }
+        val varType = fe.declaredType?.let { c.typeOf(it) } ?: element
+        val variable = LocalSymbol(name, ctx.module, fe, varType, isMut = false, fn = ctx.fn)
+        model.declSyms[fe] = variable
+        model.refs[fe.initializer] = variable
+        ctx.lambda?.let { c.declaredIn[variable] = it }
+        model.loops[s] = LoopPlan(kind, element, variable)
+        val bodyScope = scope.child()
+        bodyScope.declare(name, variable)
+        c.withs.declares(name, fe, bodyScope)
+        loopBody(s.body, ctx, bodyScope)
+    }
+
+    /** What iterating a value of type [t] yields. */
+    private fun iteration(target: Expr, t: KType): Pair<LoopKind, KType> {
+        if (t.containsError()) {
+            return LoopKind.ARR to KType.Error
+        }
+        val element = facts.elementOf(t)
+        c.ranges.elementOf(t)?.let { e ->
+            if (!facts.isInteger(e)) {
+                c.report("types.loop.range-type", "A range counts integers; ${e.display()} is not an integer type.", target)
+            }
+            return LoopKind.RANGE_VALUE to e
+        }
+        return when {
+            facts.isArr(t) && element != null -> LoopKind.ARR to element
+            facts.isList(t) && element != null -> LoopKind.LIST to element
+            facts.isMagic(t, "Set") && element != null -> LoopKind.SET to element
+            (facts.isView(t) || facts.isMutView(t)) && element != null -> LoopKind.VIEW to element
+            facts.isMap(t) -> {
+                val args = (t as KType.Nominal).typeArgs()
+                LoopKind.MAP to facts.tuple2Of(args.getOrElse(0) { KType.Error }, args.getOrElse(1) { KType.Error })
+            }
+            else -> {
+                c.report(
+                    "types.loop.not-iterable",
+                    "${t.display()} cannot be iterated; a `while NAME: T in` loop takes a range, a Range, an Arr, a List, a Set, a View or a Map" +
+                        if (t == KType.Str) " (for a Str, iterate s.view())." else ".",
+                    target,
+                )
+                LoopKind.ARR to KType.Error
+            }
+        }
     }
 
     // ---- assignment --------------------------------------------------------------------------

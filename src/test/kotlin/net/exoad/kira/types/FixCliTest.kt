@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** `kira --fix-for --typed` and `kira --fix-with` as the CLI runs them, in a project of their own. */
+/** `kira --fix-for` and `kira --fix-with` as the CLI runs them, in a project of their own. */
 class FixCliTest {
     private fun project(dir: File, target: String, vararg files: Pair<String, String>) {
         val stdlib = File(PyTestSupport.repoRoot, "kira").absolutePath.replace('\\', '/')
@@ -22,18 +22,21 @@ class FixCliTest {
     private val loops = "names: () List<Str> {\n    @listOf(\"a\")\n}\n\nf: () Int32 {\n    t: Mutable<Int32> { 0 }\n    for s: Str in names() {\n        t += s.length() as Int32\n    }\n    t\n}\n"
 
     @Test
-    fun theTypedForFixRewritesAFileOfAProjectAndASecondRunChangesNothing(@TempDir dir: File) {
+    fun theForFixSwapsTheKeywordOfAFileAndASecondRunChangesNothing(@TempDir dir: File) {
         project(dir, "py", "main.kira" to loops)
         val file = File(dir, "src/main.kira")
-        val ran = PyTestSupport.cli(dir, "--fix-for", "--typed", file.absolutePath)
+        val ran = PyTestSupport.cli(dir, "--fix-for", file.absolutePath)
         assertEquals(0, ran.exitCode, ran.all)
         assertTrue(ran.stdout.contains("fixed 1, left 0"), ran.all)
         val text = file.readText()
-        assertTrue(text.contains("sItems: List<Str> { names() }") && text.contains("while sIndex < sItems.size() {"), text)
-        assertFalse(Regex("(?m)^\\s*for ").containsMatchIn(text), text)
-        val again = PyTestSupport.cli(dir, "--fix-for", "--typed", file.absolutePath)
+        assertEquals(loops.replace("    for s: Str in", "    while s: Str in"), text)
+        assertFalse(Regex("(?m)^[ \t]*for ").containsMatchIn(text), text)
+        val again = PyTestSupport.cli(dir, "--fix-for", file.absolutePath)
         assertTrue(again.stdout.contains("fixed 0, left 0"), again.all)
         assertEquals(text, file.readText())
+        // The fixed file is a program: the project builds.
+        val built = PyTestSupport.cli(dir)
+        assertEquals(0, built.exitCode, built.all)
     }
 
     private val runs = "Counter: Mutable<Any> {\n    pub frames: Mutable<Int64> { 0 }\n\n    pub count: () Void {\n        frames += 1\n    }\n\n    pub reset: (to: Int64) Void {\n        frames = to\n    }\n}\n\n" +

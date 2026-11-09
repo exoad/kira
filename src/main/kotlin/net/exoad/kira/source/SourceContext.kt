@@ -45,10 +45,7 @@ class SourceContext(val content: String, val file: String, val tokens: List<Toke
     /** Set by the rewrite tool: the parser notes each removed `x: T = v` in [astDeclEquals] and goes on, where it refuses it. */
     var lenientDeclEquals: Boolean = false
 
-    /** Loops written with the removed `for` ([ForLoopRecord]), in the order their bodies close; filled only when [lenientFor]. */
-    val astFors: MutableList<ForLoopRecord> = mutableListOf()
-
-    /** Set by the rewrite tool: the parser notes each removed `for` in [astFors] and reads its body as a `while`'s, where it refuses it. */
+    /** Set by the rewrite tools: the parser reads a removed `for NAME: TYPE in EXPR {` as the loop `while` now writes, where it refuses it. */
     var lenientFor: Boolean = false
 
     /** The marker invocations on [node], with their arguments; empty when it has none. */
@@ -182,9 +179,3 @@ class DeclEquals(val decl: ASTNode, val local: String, val firstLine: Int, val l
         return out.subList(firstLine - 1, lastLine).joinToString("\n")
     }
 }
-
-/**
- * One loop written with the removed `for`: [loop] stands in for it in the tree (its body is the loop's), [forAt] is the
- * `for` token, [openAt] and [closeAt] the body's braces, and [head] the text between `for` and the `{`.
- */
-class ForLoopRecord(val loop: net.exoad.kira.compiler.frontend.parser.ast.statements.WhileIterationStatement, val forAt: SourcePosition, val openAt: SourcePosition, val closeAt: SourcePosition, val head: String)

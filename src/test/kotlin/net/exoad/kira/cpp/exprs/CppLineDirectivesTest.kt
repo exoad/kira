@@ -28,10 +28,8 @@ class CppLineDirectivesTest {
 
         pub count: (n: Int32) Int32 {
             t: Mutable<Int32> { 0 }
-            i: Mutable<Int32> { 0 }
-            while i < n {
+            while i: Int32 in 0..n {
                 t += i
-                i += 1
             }
             t
         }
@@ -49,9 +47,8 @@ class CppLineDirectivesTest {
             "      #line 3 \"$file\"\n      return [base](std::int32_t x) -> std::int32_t",
             "          #line 4 \"$file\"\n          const std::int32_t y{x + base};",
             "          #line 5 \"$file\"\n          return y;",
-            "      #line 11 \"$file\"\n      std::int32_t i{0};",
-            "      #line 12 \"$file\"\n      while(i < n)",
-            "          #line 13 \"$file\"\n          t += i;",
+            "      #line 11 \"$file\"\n      {\n          bool i_more = true;\n          for(std::int32_t i = 0, i_last = n; i_more && i <= i_last; i_more = i != i_last && (++i, true))",
+            "              #line 12 \"$file\"\n              t += i;",
         ).forEach { assertTrue(s.contains(it), "missing:\n$it\n--- emitted ---\n$s") }
     }
 
@@ -60,7 +57,7 @@ class CppLineDirectivesTest {
         DynamicTest.dynamicTest("#line [${tc.id}]") {
             val driver = "#include \"src/lines/app.kira.hxx\"\n#include <cstdio>\n\nint main()\n{\n    std::printf(\"%d %d\\n\", app::scale(3)(1), app::count(4));\n    return 0;\n}\n"
             val out = CppExprTestSupport.compileAndRun(tree, driver, tc)
-            assertTrue(out == "7 6\n", "${tc.id}: $out")
+            assertTrue(out == "7 10\n", "${tc.id}: $out")
         }
     }
 }

@@ -42,11 +42,8 @@ class ProfilePassTest {
                     v * 2
                 }
                 pub each: (buf: View<UInt8>, f: Fx<T1<UInt8>, Void>) Void {
-                    bIndex: Mutable<Size> { 0 }
-                    while bIndex < buf.size() {
-                        b: UInt8 { buf.get(bIndex) }
+                    while b: UInt8 in buf {
                         f(b)
-                        bIndex += 1
                     }
                 }
                 pub reply: (servo: Int32, out: StrBuf<32>) Maybe<T2<Int32, Int32>> {

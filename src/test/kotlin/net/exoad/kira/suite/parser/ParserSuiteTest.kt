@@ -40,6 +40,7 @@ import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolatedStringLi
 import net.exoad.kira.compiler.frontend.parser.ast.literals.InterpolationPart
 import net.exoad.kira.compiler.frontend.parser.ast.literals.StringLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ElseIfBranchStatement
+import net.exoad.kira.compiler.frontend.parser.ast.statements.InIterationStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.IfSelectionStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ReturnStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.Statement
@@ -326,10 +327,8 @@ class ParserSuiteTest {
         parseModule(
             """
             main: () Void {
-                i: Mutable<Int32> { 0 }
-                while i <= 6 {
+                while i: Int32 in 0..6 {
                     trace(i)
-                    i += 1
                 }
             }
             """
@@ -342,10 +341,8 @@ class ParserSuiteTest {
             """
             pick: (x: Int32) Int32 {
                 result: Mutable<Int32> { 0 }
-                i: Mutable<Int32> { 0 }
-                while i <= 11 {
+                while i: Int32 in 0..11 {
                     if i == 2 {
-                        i += 1
                         continue
                     }
                     if i == 8 {
@@ -355,7 +352,6 @@ class ParserSuiteTest {
                         result = i
                         break
                     }
-                    i += 1
                 }
                 result
             }
@@ -524,18 +520,23 @@ class ParserSuiteTest {
     fun aRangeEndTakesTheCast() {
         val ast = parseModule(
             """
-            f: (n: Int32) Bool {
-                a: Bool { 1 in 0..n as Int64 }
-                b: Bool { 1 in 0 as Int64..n as Int64 }
-                a && b
+            f: (n: Int32) Int64 {
+                s: Mutable<Int64> { 0 }
+                while i: Int64 in 0..n as Int64 {
+                    s += i
+                }
+                while j: Int64 in 0 as Int64..n as Int64 {
+                    s += j
+                }
+                s
             }
             """
         )
-        val decls = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!.mapNotNull { it.expr as? VariableDecl }
-        assertEquals(2, decls.size)
-        val first = assertIs<RangeExpr>(assertIs<BinaryExpr>(decls[0].value).rightExpr)
+        val loops = declsOf(ast).filterIsInstance<FunctionDecl>().single().def.body!!.filterIsInstance<InIterationStatement>()
+        assertEquals(2, loops.size)
+        val first = assertIs<RangeExpr>(loops[0].inIterationExpr.target)
         assertIs<TypeCastExpr>(first.end)
-        val second = assertIs<RangeExpr>(assertIs<BinaryExpr>(decls[1].value).rightExpr)
+        val second = assertIs<RangeExpr>(loops[1].inIterationExpr.target)
         assertIs<TypeCastExpr>(second.begin)
         assertIs<TypeCastExpr>(second.end)
     }
@@ -845,39 +846,53 @@ class ParserSuiteTest {
         refusedAs("S: Struct { initially { } initially { } }", "KiraParser::parseTypeBody", "only one 'initially' block")
     }
 
-    // --- for is removed -----------------------------------------------------
+    // --- for ... in ---------------------------------------------------------
 
     @Test
-    fun everyForIsRefusedWithTheWhileItBecomes() {
-        refusedAs(
-            "f: () Void { for i: Int32 in 0..8 { trace(i) } }",
-            "parse.for.removed",
-            "write 'i: Mutable<Int32> { 0 }', then 'while i <= 8 { ... i += 1 }'",
-        )
-        refusedAs(
-            "f: (n: Int32) Void { for (k: Size in 0.until(n)) { trace(k) } }",
-            "parse.for.removed",
-            "write 'k: Mutable<Size> { 0 }', then 'while k < n { ... k += 1 }'",
-        )
-        refusedAs(
-            "f: (xs: List<Int32>) Void { for i: Size in xs.indices() { trace(i) } }",
-            "parse.for.removed",
-            "'while i < xs.size() { ... i += 1 }'",
-        )
-        refusedAs(
-            "f: (names: Arr<Str>) Void { for b: Str in names { trace(b) } }",
-            "parse.for.removed",
-            "'while bIndex < names.size() { b: Str { names.get(bIndex) } ... bIndex += 1 }'",
-        )
-        refusedAs("f: () Void { for i: Int32 0..8 { } }", "parse.for.removed", "every loop is `while <condition> { }`")
-        refusedAs("f: () Void { for mut i: Int32 in 0..8 { } }", "parse.for.removed", "kira --fix-for FILE...")
+    fun forInParsesAsTheSpecForm() {
+        val fn = growthParse(
+            """
+            f: (names: Arr<Str>) Void {
+                while i: Int32 in 0..8 { trace(i) }
+                while b: Str in names { trace(b) }
+                while k: Size in 0..n { trace(k) }
+            }
+            """
+        ).single<FunctionDecl>()
+        val loops = body(fn).map { assertIs<InIterationStatement>(it).inIterationExpr }
+        assertEquals(3, loops.size)
+        assertEquals("Int32", typeName(loops[0].declaredType))
+        assertEquals("i", loops[0].initializer.value)
+        assertIs<RangeExpr>(loops[0].target)
+        assertEquals("Str", typeName(loops[1].declaredType))
+        assertEquals("names", (loops[1].target as Identifier).value)
+        assertEquals("Size", typeName(loops[2].declaredType))
     }
 
     @Test
-    fun aForAsAValueIsStillALoopAsAValueError() {
-        refusedAs("f: () Int32 { x: Int32 { 1 + for i: Int32 in 0..3 { } } x }", "parse.loop.value", "A loop is a statement")
+    fun whileTakesATypedHeadAsIterationAndAnyOtherHeadAsACondition() {
+        val fn = growthParse(
+            """
+            f: (r: Range<Int32>, j: Map<Str, Int32>, ok: Bool) Void {
+                while k: Str in j.keys() { trace(k) }
+                while ok && n < 5 { n += 1 }
+                while x in r { trace(x) }
+                while i: Size in 0..n { trace(i) }
+            }
+            """
+        ).single<FunctionDecl>()
+        val loops = body(fn)
+        assertIs<InIterationStatement>(loops[0])
+        assertIs<WhileIterationStatement>(loops[1])
+        // `x in r` is a membership test with no `NAME: TYPE`, so it stays a condition.
+        assertIs<BinaryExpr>(assertIs<WhileIterationStatement>(loops[2]).condition)
+        assertIs<InIterationStatement>(loops[3])
     }
 
+    @Test
+    fun forInWithoutTheInKeywordIsRejected() {
+        refusedAs("f: () Void { while i: Int32 0..8 { } }", "KiraParser::expect", "Expected an 'in' but got an Integer Literal")
+    }
 
     // --- if-expressions -----------------------------------------------------
 
@@ -1290,7 +1305,7 @@ class ParserSuiteTest {
             f: (x: Int32) Void {
                 if x < LIMIT { trace(1) } else if x > TOP { trace(2) }
                 while x < MAX { x += 1 }
-                while x < NAMES { trace(x) }
+                while b: Str in NAMES { trace(b) }
                 if (x < LIMIT) { trace(3) }
                 if x == LIMIT_M { trace(4) }
                 if isOk(Foo { 1 }) { trace(5) }
@@ -1306,7 +1321,7 @@ class ParserSuiteTest {
         assertEquals("LIMIT", rightName(first.expr))
         assertEquals("TOP", rightName(assertIs<ElseIfBranchStatement>(first.elseBranches.single()).condition))
         assertEquals("MAX", rightName(assertIs<WhileIterationStatement>(stmts[1]).condition))
-        assertEquals("NAMES", rightName(assertIs<WhileIterationStatement>(stmts[2]).condition))
+        assertEquals("NAMES", (assertIs<InIterationStatement>(stmts[2]).inIterationExpr.target as Identifier).value)
         assertEquals("LIMIT", rightName(assertIs<IfSelectionStatement>(stmts[3]).expr))
         assertEquals("LIMIT_M", rightName(assertIs<IfSelectionStatement>(stmts[4]).expr))
         // Parentheses reset the rule: inside a call's parentheses `Foo { 1 }` is a construction.
@@ -1413,7 +1428,7 @@ class ParserSuiteTest {
         val fn = growthParse(
             """
             f: () Void {
-                while i < 4 { trace(i) }
+                while i: Int32 in 0..4 { trace(i) }
                 p: Point { 1, 2 }
                 x = 1
                 x += 1
@@ -1423,7 +1438,7 @@ class ParserSuiteTest {
             """
         ).single<FunctionDecl>()
         val stmts = body(fn)
-        assertIs<WhileIterationStatement>(stmts[0])
+        assertIs<InIterationStatement>(stmts[0])
         val init = assertIs<ObjectInitExpr>(assertIs<VariableDecl>(stmts[1].expr).value)
         assertEquals(2, init.positionalArgs.size)
         assertTrue(init.namedArgs.isEmpty())
@@ -1488,20 +1503,20 @@ class ParserSuiteTest {
 
     @Test
     fun theOldFormsStillCompileOnTheCTarget() {
-        // A default parameter that every call supplies and an exclusive spec
-        // range lower; only the omitted default and the new nodes are refused.
+        // A default parameter that every call supplies and a typed
+        // range loop lower; only the omitted default and the new nodes are refused.
         val c = emitC(
             """
             g: (a: Int32, b: Int32 = 2) Int32 { a + b }
             f: () Int32 {
                 n: Mutable<Int32> { 0 }
-                while n < 3 { n += 1 }
+                while i: Int32 in 0..2 { n += i }
                 n = g(n, b = 5)
                 g(n, 1)
             }
             """.trimIndent()
         )
-        assertTrue(c.contains("n < 3"), c)
+        assertTrue(c.contains("i_last = 2; i_more && i <= i_last"), c)
         assertTrue(c.contains("g(n, 5)"), c)
         assertTrue(c.contains("g(n, 1)"), c)
     }
