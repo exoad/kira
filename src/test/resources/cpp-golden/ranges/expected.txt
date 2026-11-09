@@ -12,12 +12,18 @@ ranges - Range<T> and x in r
   ok    a Range value
   ok    a loop over a Range includes its end
   ok    a loop over a literal range holds its end too
-  ok    a counter below its end leaves it out
-  ok    a counter below a List's size counts its indexes, and an empty one none
+  ok    a loop over 1..<4 leaves its end out
+  ok    a loop below a List's size counts its indexes, and an empty one none
   ok    a loop up to UInt8's largest holds it and stops before the step
   ok    a Range up to Int8's largest stops there
   ok    a Range whose end is below its begin is empty
+  ok    a loop up to an unsigned 0 with ..< takes no step, on every width
+  ok    a loop up to UInt8's largest with ..< stops below it
+  ok    x in a..<b leaves b out
+  ok    a Range value of ..< leaves its end out and walks to just below it
+  ok    a ..< Range at an unsigned 0 holds nothing and walks no step
+  ok    break and continue work in a ..< loop
   ok    a user type answers in
 
-17 checks, 0 failed
+23 checks, 0 failed
 

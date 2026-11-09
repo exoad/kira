@@ -12,6 +12,7 @@ namespace kira::range
   {
       T begin{};
       T end{};
+      bool exclusive = false;
 
       [[nodiscard]] bool contains(const T& value) const;
       [[nodiscard]] bool _op_in_(const T& value) const;
@@ -20,7 +21,7 @@ namespace kira::range
   template<typename T>
   bool Range<T>::contains(const T& value) const
   {
-      return value >= begin && value <= end;
+      return value >= begin && (exclusive ? value < end : value <= end);
   }
 
   template<typename T>

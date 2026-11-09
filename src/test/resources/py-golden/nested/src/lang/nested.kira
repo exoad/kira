@@ -17,30 +17,24 @@ Book: Mutable<Any> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> { "[" }
-    i: Mutable<Size> { 0 }
-    while i < xs.size() {
+    while i: Size in 0..<xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
-        i += 1
     }
     s + "]"
 }
 
 grid: (rows: Size, cols: Size) List<List<Int32>> {
     out: Mutable<List<List<Int32>>> { }
-    r: Mutable<Size> { 0 }
-    while r < rows {
+    while r: Size in 0..<rows {
         row: Mutable<List<Int32>> { }
-        c: Mutable<Size> { 0 }
-        while c < cols {
+        while c: Size in 0..<cols {
             row.add((r * 10 + c) as Int32)
-            c += 1
         }
         out.add(row)
         row.add(-1)
-        r += 1
     }
     out
 }

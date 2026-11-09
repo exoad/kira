@@ -24,13 +24,11 @@ checked: (xs: List<Int32>) Result<List<Int32>, Str> {
 
 show: (xs: List<Int32>) Str {
     s: Mutable<Str> { "[" }
-    i: Mutable<Size> { 0 }
-    while i < xs.size() {
+    while i: Size in 0..<xs.size() {
         if i > 0 {
             s = s + " "
         }
         s = s + "${xs[i]}"
-        i += 1
     }
     s + "]"
 }

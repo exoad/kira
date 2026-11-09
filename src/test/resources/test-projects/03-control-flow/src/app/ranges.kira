@@ -1,9 +1,7 @@
 sumTo: (limit: Int32) Int32 {
     total: Mutable<Int32> { 0 }
-    i: Mutable<Int32> { 0 }
-    while i < limit + 1 {
+    while i: Int32 in 0..<(limit + 1) {
         total = total + i
-        i += 1
     }
     total
 }

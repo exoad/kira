@@ -94,7 +94,7 @@ main: () Void {
     }
     println(show(holder.box))
     acc: Mutable<Box> { 0, 1 }
-    while i: Int32 in 0..5 {
+    while i: Int32 in 0..<6 {
         acc = acc with {
             w = w + i
             if i == 4 {

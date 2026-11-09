@@ -2,7 +2,7 @@ kira.test as test
 
 // ranges: `a..b` is a Range<T> with both ends in it, and `x in r` is a Bool anywhere (lane RANGE,
 // owner 2026-11-01). `x in a..b` builds no Range: x runs once, then each end. A loop over a..b holds b,
-// written or held in a Range; a counter below its end (`while i < n`) leaves the end out.
+// written or held in a Range; `a..<b` leaves b out (owner 2026-11-09), and a counter below its end (`while i < n`) does too.
 // cpp-golden/ranges holds this file with a Box, a user type answering in, which py refuses.
 
 trail: Mutable<Str> { "" }
@@ -43,32 +43,24 @@ pub main: () Int32 {
     }
     t.check(sum == 10, "a loop over a literal range holds its end too")
     sum = 0
-    j: Mutable<Int32> { 1 }
-    while j < 4 {
+    while j: Int32 in 1..<4 {
         sum += j
-        j += 1
     }
-    t.check(sum == 6, "a counter below its end leaves it out")
+    t.check(sum == 6, "a loop over 1..<4 leaves its end out")
     xs: List<Int32> { @listOf(5, 6, 7) }
     sum = 0
-    i: Mutable<Size> { 0 }
-    while i < xs.size() {
+    while i: Size in 0..<xs.size() {
         sum += xs[i]
-        i += 1
     }
     word: Str { "" }
     none: Size { 0 }
-    i = 0
-    while i < word.length() {
+    while i: Size in 0..<word.length() {
         sum += 100
-        i += 1
     }
-    i = none
-    while i < none {
+    while i: Size in none..<none {
         sum += 100
-        i += 1
     }
-    t.check(sum == 18, "a counter below a List's size counts its indexes, and an empty one none")
+    t.check(sum == 18, "a loop below a List's size counts its indexes, and an empty one none")
     lasts: Mutable<Int32> { 0 }
     while q: UInt8 in 250..255 {
         lasts += 1
@@ -85,5 +77,61 @@ pub main: () Int32 {
         steps += 100
     }
     t.check(steps == 8 && !(5 in empty), "a Range whose end is below its begin is empty")
+    // a..<b leaves b out: empty when a is not below b, and never wrapping at an unsigned 0
+    taken: Mutable<Int32> { 0 }
+    z8: UInt8 { 0 }
+    z16: UInt16 { 0 }
+    z32: UInt32 { 0 }
+    z64: UInt64 { 0 }
+    zs: Size { 0 }
+    while a8: UInt8 in 0..<z8 {
+        taken += 1
+    }
+    while a16: UInt16 in 0..<z16 {
+        taken += 1
+    }
+    while a32: UInt32 in 0..<z32 {
+        taken += 1
+    }
+    while a64: UInt64 in 0..<z64 {
+        taken += 1
+    }
+    while asz: Size in 0..<zs {
+        taken += 1
+    }
+    while ab: UInt8 in 7..<z8 {
+        taken += 1
+    }
+    t.check(taken == 0, "a loop up to an unsigned 0 with ..< takes no step, on every width")
+    lasts = 0
+    while mq: UInt8 in 250..<255 {
+        lasts += 1
+    }
+    t.check(lasts == 5, "a loop up to UInt8's largest with ..< stops below it")
+    four: Int32 { 4 }
+    t.check(3 in 1..<4 && 1 in 1..<4 && !(4 in 1..<4) && !(four in 1..<3) && !(0 in 1..<4), "x in a..<b leaves b out")
+    ro: Range<Int32> { 1..<4 }
+    sum = 0
+    while mr: Int32 in ro {
+        sum += mr
+    }
+    t.check(!(4 in ro) && 3 in ro && ro.contains(1) && !ro.contains(4) && sum == 6, "a Range value of ..< leaves its end out and walks to just below it")
+    nothing: Range<Size> { 0..<zs }
+    taken = 0
+    while mn: Size in nothing {
+        taken += 1
+    }
+    t.check(taken == 0 && !(0 in nothing), "a ..< Range at an unsigned 0 holds nothing and walks no step")
+    sum = 0
+    while mb: Int32 in 0..<10 {
+        if mb == 2 {
+            continue
+        }
+        if mb == 5 {
+            break
+        }
+        sum += mb
+    }
+    t.check(sum == 8, "break and continue work in a ..< loop")
     t.finish()
 }

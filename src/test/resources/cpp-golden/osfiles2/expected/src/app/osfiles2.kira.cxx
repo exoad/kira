@@ -17,11 +17,9 @@ namespace osfiles2
         const kira::List<kira::Str> parts = kira::str::split(kira::Str(kira::str::replace(path, "\\", "/")), "/");
         const kira::Size last{parts.size() - 1};
         kira::List<kira::Str> kept = {};
-        kira::Size i{0};
-        while(i < last)
+        for(kira::Size i = 0, i_end = last; i < i_end; ++i)
         {
             kept.push_back(kira::at(parts, i));
-            i += 1;
         }
         return kept.empty() ? kira::Str(".") : kira::list::joinToString(kept, "/");
     }

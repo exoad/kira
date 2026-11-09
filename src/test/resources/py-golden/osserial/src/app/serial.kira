@@ -25,10 +25,8 @@ pub readOnSignal: () Str {
 // Critique 14's read (K7): the first byte waited for, then what is waiting, at most size of them.
 pub readSome: (port: Serial, size: Size, ms: Int64) Str {
     buf: Mutable<List<UInt8>> { @listOf() }
-    i: Mutable<Size> { 0 }
-    while i < size {
+    while i: Size in 0..<size {
         buf.add(0)
-        i += 1
     }
     n: Int64 { port.read(buf.from(0), ms) }
     "${n} '${text(buf, n)}'"
