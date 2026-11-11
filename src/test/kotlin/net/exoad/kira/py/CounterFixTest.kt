@@ -60,6 +60,9 @@ class CounterFixTest {
 
     private val freshList = "    xs: Mutable<List<Int32>> { @listOf(1, 2) }\n"
 
+    /** `log` reaches past what it is given (a global list), so nothing is known of what a call of it changes. */
+    private val logTop = "LOG: Mutable<List<Str>> { }\n\nlog: (v: Int32) Void {\n    LOG.add(\"x\")\n    trace(v)\n}\n\n"
+
     // ---- the shapes it rewrites -------------------------------------------------------------------
 
     @Test
@@ -204,9 +207,8 @@ class CounterFixTest {
     @Test
     fun aListThisFunctionAloneHoldsIsAnEndWhateverTheBodyCalls() {
         // Made here and never handed on: no other name reaches it, so a call of the body cannot change its size.
-        val top = "note: (v: Int32) Void {\n    trace(v)\n}\n\n"
-        assertEquals(1, fix(over(freshList, "note(xs[i])", top)).fixed)
-        assertEquals(1, fix(over(freshList + "    xs.add(3)\n    xs = @listOf(7)\n", "note(xs[i])", top)).fixed)
+        assertEquals(1, fix(over(freshList, "log(xs[i])", logTop)).fixed)
+        assertEquals(1, fix(over(freshList + "    xs.add(3)\n    xs = @listOf(7)\n", "log(xs[i])", logTop)).fixed)
     }
 
     @Test
@@ -386,25 +388,6 @@ class CounterFixTest {
             Reason.NOT_DECLARED_BEFORE,
         )
         assertEquals(4, between.line)
-        // A counter set again for a second loop: the first is used after its loop, the second has no declaration of its own.
-        val o = fix(
-            """
-            pub main: () Void {
-                i: Mutable<Int32> { 0 }
-                while i < 4 {
-                    trace(i)
-                    i += 1
-                }
-                i = 0
-                while i < 2 {
-                    trace(i)
-                    i += 1
-                }
-            }
-            """,
-        )
-        assertEquals(0, o.fixed)
-        assertEquals(listOf(Reason.COUNTER_AFTER, Reason.NOT_DECLARED_BEFORE), o.left.map { it.reason })
     }
 
     @Test
@@ -453,8 +436,7 @@ class CounterFixTest {
     }
 
     @Test
-    fun aBreakOrAContinueOfTheLoopIsLeftAndOneOfAnInnerLoopIsNot() {
-        left("pub main: () Void {\n    i: Mutable<Int32> { 0 }\n    while i < 4 {\n        if i == 2 {\n            break\n        }\n        i += 1\n    }\n}\n", Reason.BREAK)
+    fun aContinueOfTheLoopIsLeftAndOneOfAnInnerLoopIsNot() {
         left("pub main: () Void {\n    i: Mutable<Int32> { 0 }\n    while i < 4 {\n        if i == 5 {\n            continue\n        }\n        i += 1\n    }\n}\n", Reason.CONTINUE)
         val text = rewritten(
             """
@@ -507,23 +489,28 @@ class CounterFixTest {
 
     @Test
     fun aSizeTheBodyMayChangeByItsOwnNameIsLeft() {
-        val top = "grow: (xs: List<Int32>) Void {\n    xs.add(1)\n}\n\ncount: (xs: List<Int32>) Size {\n    xs.size()\n}\n\n"
+        val top = "grow: (xs: List<Int32>) Void {\n    xs.add(1)\n}\n\ncount: (xs: List<Int32>) Size {\n    xs.size()\n}\n\n" +
+            "sneak: (xs: List<Int32>) Size {\n    mine: List<Int32> { xs }\n    if mine.size() > 9 {\n        mine.add(1)\n    }\n    mine.size()\n}\n\n" +
+            "HOLD: Mutable<List<Int32>> { }\n\nstash: (xs: List<Int32>) Size {\n    HOLD = xs\n    0\n}\n\n"
         val more = freshList + "    ys: Mutable<List<Int32>> { }\n    n: Mutable<Size> { 0 }\n"
-        // A call on the list that changes it, the list assigned, the list given to a function of the program's own (one with
-        // an effect and one without), and the list held by another name.
+        // A call on the list that changes it, the list assigned, the list given to a function of the program's own that
+        // resizes it (by its name, and through a local of its own) or that reaches past what it is given (it may keep the
+        // list), and the list held by another name.
         val writes = listOf(
             "if i > 5 {\n            xs.add(0)\n        }",
             "if i > 5 {\n            xs.clear()\n        }",
             "if i > 5 {\n            xs = ys\n        }",
             "if i > 5 {\n            grow(xs)\n        }",
-            "n = count(xs)",
+            "n = sneak(xs)",
+            "n = stash(xs)",
             "ys = xs",
         )
         for (write in writes) {
             left(over(more, write, top), Reason.BOUND_WRITTEN)
         }
-        // Another list changed and this one only read: its size is an end.
+        // Another list changed and this one only read, or given to a function that only reads it: its size is an end.
         assertEquals(1, fix(over(more, "ys.add(xs[i])", top)).fixed)
+        assertEquals(1, fix(over(more, "n = count(xs)", top)).fixed)
     }
 
     @Test
@@ -546,14 +533,12 @@ class CounterFixTest {
 
     @Test
     fun aSizeAnotherNameMayChangeIsLeft() {
-        val top = "note: (v: Int32) Void {\n    trace(v)\n}\n\ntwice: (v: Int32) Int32 {\n    v * 2\n}\n\nmade: () List<Int32> {\n    @listOf(1, 2)\n}\n\n"
-        val t = "    t: Mutable<Int32> { 0 }\n"
-        // A parameter's list is the caller's too: a call into the program's own code may reach it, with an effect or without.
-        left(over("", "note(xs[i])", top, "xs: List<Int32>"), Reason.BOUND_SHARED)
-        left(over(t, "t += twice(xs[i])", top, "xs: List<Int32>"), Reason.BOUND_SHARED)
-        // So is a list a call answered, and a list another name was given.
-        left(over("    xs: List<Int32> { made() }\n", "note(xs[i])", top), Reason.BOUND_SHARED)
-        left(over(freshList + "    ys: List<Int32> { xs }\n", "note(xs[i])", top), Reason.BOUND_SHARED)
+        val top = logTop + "made: () List<Int32> {\n    @listOf(1, 2)\n}\n\n"
+        // A parameter's list is the caller's too: a function that reaches past what it is given may reach it.
+        left(over("", "log(xs[i])", top, "xs: List<Int32>"), Reason.BOUND_SHARED)
+        // So is a list a call of the program's own answered, and a list another name was given.
+        left(over("    xs: List<Int32> { made() }\n", "log(xs[i])", top), Reason.BOUND_SHARED)
+        left(over(freshList + "    ys: List<Int32> { xs }\n", "log(xs[i])", top), Reason.BOUND_SHARED)
         // A stdlib call that changes a list of the same type may change this one: another parameter, and the other name of this one.
         left(over("", "if i > 5 {\n            ys.add(1)\n        }", top, "xs: List<Int32>, ys: List<Int32>"), Reason.BOUND_SHARED)
         val shared = left(over(freshList + "    ys: List<Int32> { xs }\n", "if ys.size() < 6 {\n            ys.add(1)\n        }", top), Reason.BOUND_SHARED)
@@ -561,8 +546,14 @@ class CounterFixTest {
         // One of another type, and one this function alone holds, cannot be it.
         assertEquals(1, fix(over("", "names.add(\"a\")", top, "xs: List<Int32>, names: List<Str>")).fixed)
         assertEquals(1, fix(over("    out: Mutable<List<Int32>> { }\n", "out.add(xs[i])", top, "xs: List<Int32>")).fixed)
+        // A function the typer finds free of effects (it writes an element of a local of its own), which grows a global Map
+        // through that local: five turns, where a range would run two.
+        val quiet = "SHARED: Mutable<Map<Int32, Int32>> { }\n\nquiet: (k: Int32) Int32 {\n    mine: Map<Int32, Int32> { SHARED }\n    if mine.size() < 5 {\n        mine[k + 10] = 1\n    }\n    0\n}\n\n" +
+            "pub main: () Void {\n    SHARED[0] = 0\n    SHARED[1] = 1\n    t: Mutable<Int32> { 0 }\n    i: Mutable<Size> { 0 }\n    while i < SHARED.size() {\n        trace(i)\n        t += quiet(i as Int32)\n        i += 1\n    }\n}\n"
+        assertEquals("0\n1\n2\n3\n4\n", runPy(quiet))
+        left(quiet, Reason.BOUND_SHARED)
         // A list assigned what a call answered is no longer this function's alone.
-        left(over(freshList + "    xs = made()\n", "note(xs[i])", top), Reason.BOUND_SHARED)
+        left(over(freshList + "    xs = made()\n", "log(xs[i])", top), Reason.BOUND_SHARED)
         // An element written on a Map of the same type may add one to this Map.
         left(
             "pub run: (m: Map<Int32, Int32>, o: Map<Int32, Int32>) Void {\n    i: Mutable<Size> { 0 }\n    while i < m.size() {\n        if i > 5 {\n            o[1] = 1\n        }\n        i += 1\n    }\n}\n",
@@ -580,6 +571,157 @@ class CounterFixTest {
             over(freshList + "    f: Fx<T0, Void> { () Void {\n        xs.add(9)\n    } }\n", "if i > 5 {\n            f()\n        }", top),
             Reason.BOUND_SHARED,
         )
+    }
+
+    // ---- a break ----------------------------------------------------------------------------------
+
+    @Test
+    fun aBreakStaysWhereTheCounterIsNotUsedAfter() {
+        val src = "pub main: () Void {\n    i: Mutable<Int32> { 0 }\n    while i < 9 {\n        if i * i > 10 {\n            break\n        }\n        trace(i)\n        i += 1\n    }\n    trace(\"done\")\n}\n"
+        val o = CounterFix.fixSnippet(src)
+        assertEquals(1, o.fixed, o.left.joinToString("\n"))
+        assertEquals(src.replace("    i: Mutable<Int32> { 0 }\n    while i < 9 {", "    while i: Int32 in 0..<9 {").replace("        trace(i)\n        i += 1\n", "        trace(i)\n"), o.text)
+        assertEquals("0\n1\n2\n3\ndone\n", runPy(src))
+        assertEquals(runPy(src), runPy(o.text!!))
+        // Where the counter is read after, the break left it short of the end: the loop stays.
+        val after = src.replace("trace(\"done\")", "trace(i)")
+        assertEquals("0\n1\n2\n3\n4\n", runPy(after))
+        val l = left(after, Reason.COUNTER_AFTER)
+        assertEquals(listOf(Reason.COUNTER_AFTER, Reason.BREAK), l.all)
+    }
+
+    // ---- a counter set again: a chain -------------------------------------------------------------
+
+    private fun chain(second: String, between: String = ""): String =
+        "pub main: () Void {\n    n: Int32 { 4 }\n    i: Mutable<Int32> { 0 }\n    while i < n {\n        if i == 2 {\n            break\n        }\n        trace(i)\n        i += 1\n    }\n$between" +
+            "    if n > 3 {\n        $second\n        while i < 5 {\n            trace(i * 10)\n            i += 1\n        }\n    }\n    i = n - 1\n    while i <= n {\n        trace(i * 100)\n        i = i + 1\n    }\n}\n"
+
+    @Test
+    fun aCounterSetAgainForLaterLoopsBecomesARangeEach() {
+        val src = chain("i = 3")
+        val o = CounterFix.fixSnippet(src)
+        assertEquals(3, o.fixed, o.left.joinToString("\n"))
+        assertEquals(
+            "pub main: () Void {\n    n: Int32 { 4 }\n    while i: Int32 in 0..<n {\n        if i == 2 {\n            break\n        }\n        trace(i)\n    }\n" +
+                "    if n > 3 {\n        while i: Int32 in 3..<5 {\n            trace(i * 10)\n        }\n    }\n    while i: Int32 in (n - 1)..n {\n        trace(i * 100)\n    }\n}\n",
+            o.text,
+        )
+        assertEquals("0\n1\n30\n40\n300\n400\n", runPy(src))
+        assertEquals(runPy(src), runPy(o.text!!))
+        val again = CounterFix.fixSnippet(o.text)
+        assertEquals(0, again.fixed)
+        assertEquals(o.text, again.text)
+    }
+
+    @Test
+    fun aChainIsLeftWholeWhereTheCounterIsReadBetweenItsLoopsOrOneLoopStays() {
+        // Set again from itself: the second loop starts where the first stopped (after its break, at 2), which no range of its own says.
+        val carried = chain("i = i + 1")
+        assertEquals("0\n1\n30\n40\n300\n400\n", runPy(carried))
+        assertEquals(listOf(Reason.COUNTER_AFTER, Reason.NOT_DECLARED_BEFORE, Reason.COUNTER_AFTER), fix(carried).left.map { it.reason })
+        assertEquals(0, fix(carried).fixed)
+        // Read between two loops.
+        val read = fix(chain("i = 3", "    trace(i)\n"))
+        assertEquals(0, read.fixed)
+        assertEquals(listOf(Reason.COUNTER_AFTER, Reason.COUNTER_AFTER, Reason.COUNTER_AFTER), read.left.map { it.reason })
+        // One loop that stays (its step is two) keeps the declaration, so the others stay too.
+        val one = fix(chain("i = 3").replace("            trace(i * 10)\n            i += 1\n", "            trace(i * 10)\n            i += 2\n"))
+        assertEquals(0, one.fixed)
+        assertEquals(listOf(Reason.CHAIN, Reason.STEP_NOT_ONE, Reason.CHAIN), one.left.map { it.reason })
+        // No loop directly after the declaration.
+        val late = fix("pub main: () Void {\n    i: Mutable<Int32> { 0 }\n    trace(\"go\")\n    i = 1\n    while i < 3 {\n        trace(i)\n        i += 1\n    }\n}\n")
+        assertEquals(listOf(Reason.CHAIN), late.left.map { it.reason })
+        // A comment on the line that sets it again.
+        val noted = fix(chain("i = 3 // from three"))
+        assertEquals(0, noted.fixed)
+        assertEquals(listOf(Reason.CHAIN, Reason.LAYOUT, Reason.CHAIN), noted.left.map { it.reason })
+    }
+
+    // ---- a stdlib result that is a new value ------------------------------------------------------
+
+    @Test
+    fun aStdlibResultThatIsANewValueIsThisFunctionsAlone() {
+        // A split and a Map's keys are made by the call: whatever the body calls cannot reach them.
+        val split = "${logTop}pub run: (line: Str) Void {\n    xs: List<Str> { line.split(\" \") }\n    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        log(xs[i].length() as Int32)\n        i += 1\n    }\n}\n"
+        assertEquals(1, CounterFix.fixSnippet(split).fixed, CounterFix.fixSnippet(split).left.joinToString("\n"))
+        val keys = "${logTop}pub run: (m: Map<Int32, Int32>) Void {\n    xs: Arr<Int32> { m.keys() }\n    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        log(xs[i])\n        i += 1\n    }\n}\n"
+        assertEquals(1, CounterFix.fixSnippet(keys).fixed, CounterFix.fixSnippet(keys).left.joinToString("\n"))
+        // So is an empty Json made here and filled by its own name.
+        val json = "${logTop}pub run: () Void {\n    xs: Json { Json.arr() }\n    xs.add(Json.of(\"a\"))\n    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        log(i as Int32)\n        i += 1\n    }\n}\n"
+        assertEquals(1, CounterFix.fixSnippet(json).fixed, CounterFix.fixSnippet(json).left.joinToString("\n"))
+        val src = "${logTop}pub main: () Void {\n    xs: List<Str> { \"a b c\".split(\" \") }\n    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        log(i as Int32)\n        trace(xs[i])\n        i += 1\n    }\n}\n"
+        val o = CounterFix.fixSnippet(src)
+        assertEquals(1, o.fixed, o.left.joinToString("\n"))
+        assertEquals("0\na\n1\nb\n2\nc\n", runPy(src))
+        assertEquals(runPy(src), runPy(o.text!!))
+    }
+
+    @Test
+    fun aStdlibResultThatIsAPartOfItsReceiverIsShared() {
+        // Json.get answers the child itself: the document's other names grow it, and the counter sees five turns where a range would see two.
+        val src = "pub main: () Void {\n    doc: Json { Json.obj() }\n    doc.put(\"c\", Json.arr())\n    doc.get(\"c\").add(Json.of(\"a\"))\n    doc.get(\"c\").add(Json.of(\"b\"))\n" +
+            "    cs: Json { doc.get(\"c\") }\n    i: Mutable<Size> { 0 }\n    while i < cs.size() {\n        trace(i)\n        if doc.get(\"c\").size() < 5 {\n            doc.get(\"c\").add(Json.of(\"z\"))\n        }\n        i += 1\n    }\n}\n"
+        assertEquals("0\n1\n2\n3\n4\n", runPy(src))
+        val o = CounterFix.fixSnippet(src)
+        assertEquals(0, o.fixed)
+        assertEquals(listOf(Reason.BOUND_SHARED), o.left.map { it.reason })
+    }
+
+    // ---- a function of the program's own that stays within what it is given -------------------------
+
+    private val ownTop = "twice: (v: Int32) Int32 {\n    v * 2\n}\n\nnote: (v: Int32) Void {\n    trace(v)\n}\n\ntotal: (xs: List<Int32>) Int32 {\n    t: Mutable<Int32> { 0 }\n    while x: Int32 in xs {\n        t += x\n    }\n    t\n}\n\n" +
+        "push: (names: List<Str>, s: Str) Void {\n    names.add(s)\n}\n\n" +
+        "grow: (ys: List<Int32>) Void {\n    mine: List<Int32> { ys }\n    if mine.size() < 5 {\n        mine.add(1)\n    }\n}\n\nouter: (zs: List<Int32>) Void {\n    grow(zs)\n}\n\n" +
+        "Box: Mutable<Any> {\n    pub items: Mutable<List<Int32>> { }\n}\n\nfill: (b: Box) Void {\n    if b.items.size() < 5 {\n        b.items.add(1)\n    }\n}\n\n" +
+        "viaBox: (ys: List<Int32>) Void {\n    box: Box { }\n    box.items = ys\n    if box.items.size() < 5 {\n        box.items.add(1)\n    }\n}\n\n"
+
+    @Test
+    fun aCallThatCannotReachTheEndsCollectionDoesNotBlock() {
+        // A parameter's list (the caller's too): the calls take numbers, read the list, print, or resize a list of another type.
+        val src = "${ownTop}walk: (xs: List<Int32>, names: List<Str>) Int32 {\n    t: Mutable<Int32> { 0 }\n    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        t += twice(xs[i]) + total(xs)\n        note(t)\n        push(names, \"n\")\n        i += 1\n    }\n    t\n}\n\n" +
+            "pub main: () Void {\n    names: List<Str> { @listOf(\"z\") }\n    trace(walk(@listOf(1, 2, 3), names))\n    trace(names.size())\n}\n"
+        val o = CounterFix.fixSnippet(src)
+        assertEquals(1, o.fixed, o.left.joinToString("\n"))
+        assertTrue(o.text!!.contains("    while i: Size in 0..<xs.size() {\n        t += twice(xs[i]) + total(xs)\n        note(t)\n        push(names, \"n\")\n    }\n"), o.text)
+        assertEquals("8\n18\n30\n30\n4\n", runPy(src))
+        assertEquals(runPy(src), runPy(o.text))
+    }
+
+    private fun shared(call: String, before: String = "    ys: List<Int32> { xs }\n"): String =
+        "${ownTop}pub main: () Void {\n    xs: Mutable<List<Int32>> { @listOf(1, 2) }\n$before    i: Mutable<Size> { 0 }\n    while i < xs.size() {\n        trace(i)\n        $call\n        i += 1\n    }\n}\n"
+
+    @Test
+    fun aCallThatMayResizeWhatItIsGivenIsLeftWhereThatMayBeTheEndsCollection() {
+        // The list's other name given to a function that grows it through a local of its own: five turns, where a range would run two.
+        val direct = shared("grow(ys)")
+        assertEquals("0\n1\n2\n3\n4\n", runPy(direct))
+        val l = left(direct, Reason.BOUND_SHARED)
+        assertTrue(l.message.contains("calls `grow`, which may resize what it is given"), l.message)
+        // Through a second function, through a value that holds the list, and through a value the function makes to hold it.
+        for (src in listOf(shared("outer(ys)"), shared("fill(box)", "    box: Box { }\n    box.items = xs\n"), shared("viaBox(ys)"))) {
+            assertEquals("0\n1\n2\n3\n4\n", runPy(src))
+            left(src, Reason.BOUND_SHARED)
+        }
+    }
+
+    @Test
+    fun aValueHeldAloneMayStillHoldTheEndsCollectionInsideIt() {
+        // `wrap` is this function's alone, but it holds the child whose size the end reads: a function given it grows the child.
+        val src = "poke: (j: Json) Void {\n    if j.at(0).size() < 5 {\n        j.at(0).add(Json.of(\"z\"))\n    }\n}\n\n" +
+            "pub main: () Void {\n    doc: Json { Json.obj() }\n    doc.put(\"c\", Json.arr())\n    doc.get(\"c\").add(Json.of(\"a\"))\n    doc.get(\"c\").add(Json.of(\"b\"))\n" +
+            "    cs: Json { doc.get(\"c\") }\n    wrap: Json { Json.arr() }\n    wrap.add(cs)\n    i: Mutable<Size> { 0 }\n    while i < cs.size() {\n        trace(i)\n        poke(wrap)\n        i += 1\n    }\n}\n"
+        assertEquals("0\n1\n2\n3\n4\n", runPy(src))
+        val l = left(src, Reason.BOUND_SHARED)
+        assertTrue(l.message.contains("calls `poke`, which may resize what it is given"), l.message)
+    }
+
+    @Test
+    fun aCallThatMayWriteThroughWhatItIsGivenIsLeftWhereTheEndReadsAField() {
+        fun bag(body: String): String =
+            "zero: (b: Bag) Void {\n    b.n = 0\n}\n\nshow: (b: Bag) Void {\n    trace(b.n)\n}\n\nBag: Mutable<Any> {\n    pub n: Mutable<Int32> { 3 }\n\n" +
+                "    pub run: (other: Bag) Void {\n        i: Mutable<Int32> { 0 }\n        while i < n {\n            $body\n            i += 1\n        }\n    }\n}\n"
+        assertTrue(left(bag("zero(other)"), Reason.BOUND_SHARED).message.contains("calls `zero`, which may write through what it is given"))
+        assertEquals(1, fix(bag("show(other)")).fixed)
     }
 
     @Test

@@ -1,22 +1,28 @@
 package net.exoad.kira.compiler.fix
 
+import net.exoad.kira.compiler.analysis.types.ArgBinding
 import net.exoad.kira.compiler.analysis.types.AstTree
 import net.exoad.kira.compiler.analysis.types.CallKind
 import net.exoad.kira.compiler.analysis.types.ClassSymbol
 import net.exoad.kira.compiler.analysis.types.Effect
 import net.exoad.kira.compiler.analysis.types.FieldSymbol
+import net.exoad.kira.compiler.analysis.types.FnSymbol
+import net.exoad.kira.compiler.analysis.types.Foreign
 import net.exoad.kira.compiler.analysis.types.GlobalSymbol
 import net.exoad.kira.compiler.analysis.types.KType
 import net.exoad.kira.compiler.analysis.types.LocalSymbol
+import net.exoad.kira.compiler.analysis.types.MemberRef
 import net.exoad.kira.compiler.analysis.types.ModuleSymbol
 import net.exoad.kira.compiler.analysis.types.ParamSymbol
 import net.exoad.kira.compiler.analysis.types.ResolvedCall
 import net.exoad.kira.compiler.analysis.types.Symbol
+import net.exoad.kira.compiler.analysis.types.TypedModel
 import net.exoad.kira.compiler.analysis.types.TypedProgram
 import net.exoad.kira.compiler.analysis.types.TyperMode
 import net.exoad.kira.compiler.analysis.types.TyperOptions
 import net.exoad.kira.compiler.analysis.types.typeArgs
 import net.exoad.kira.compiler.analysis.types.rules.Bodies
+import net.exoad.kira.compiler.analysis.types.rules.BodyKind
 import net.exoad.kira.compiler.analysis.types.rules.Effects
 import net.exoad.kira.compiler.analysis.types.rules.EffectsPass
 import net.exoad.kira.compiler.analysis.types.rules.Rules
@@ -42,9 +48,11 @@ import net.exoad.kira.compiler.frontend.parser.ast.expressions.LambdaExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.MemberAccessExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ObjectInitExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.PlaceAssignmentExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThisExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.ThrowExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.TypeCastExpr
 import net.exoad.kira.compiler.frontend.parser.ast.expressions.UnaryExpr
+import net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
 import net.exoad.kira.compiler.frontend.parser.ast.literals.IntegerLiteral
 import net.exoad.kira.compiler.frontend.parser.ast.statements.BreakStatement
 import net.exoad.kira.compiler.frontend.parser.ast.statements.ContinueStatement
@@ -64,10 +72,13 @@ import java.util.IdentityHashMap
  *     }
  *
  * (`<=` gives `a..n`; the step may be `i = i + 1`), and only where the two mean the same: the body writes `i` in its last
- * statement alone, nothing uses `i` after the loop, the body has no `break` or `continue` of this loop, and the end `n` is the
- * same at every turn. An end is made of numbers, names of numbers, `xs.size()` and `s.length()`, and arithmetic; the body
- * assigns none of its names and changes the size of none of its collections, by that name or by another that may hold the
- * same value (a Mutable value is shared, so only a local made fresh and never handed on is known to have one name). Every
+ * statement alone, nothing uses `i` after the loop, the body has no `continue` of this loop, and the end `n` is the same at
+ * every turn. A counter set again for a later loop (`i = b` directly before `while i < m`) is a chain: each loop becomes the
+ * loop over its own range where every loop of the counter can and nothing else uses it. An end is made of numbers, names of
+ * numbers, `xs.size()` and `s.length()`, and arithmetic; the body assigns none of its names and changes the size of none of
+ * its collections, by that name or by another that may hold the same value. A Mutable value is shared, so only a local made
+ * fresh (a construction, a literal, or one of the stdlib results of [FRESH_RESULTS]) and never handed on is known to have
+ * one name; a function of the program's own is followed by what it may do to each of its parameters ([Summaries]). Every
  * other counter loop is left and listed with why. The project is typed strictly to ask this, and typed again with the
  * rewritten text, which must have no error. Lines keep their comments, tabs and line ends; a second run finds nothing.
  */
@@ -81,6 +92,7 @@ object CounterFix {
         COUNTER_WRITTEN("counter-written"),
         COUNTER_CAPTURED("counter-captured"),
         COUNTER_AFTER("counter-after"),
+        CHAIN("chain"),
         BREAK("break"),
         CONTINUE("continue"),
         BOUND_SHAPE("bound-shape"),
@@ -111,42 +123,269 @@ object CounterFix {
 
     private val ARITHMETIC = setOf(BinaryOp.ADD, BinaryOp.SUB, BinaryOp.MUL, BinaryOp.DIV, BinaryOp.MOD)
 
+    /**
+     * The stdlib bindings, by key, whose result is a collection made by the call: no argument and no other name holds it.
+     * Each is read off its manifest's Python: a split, a findall or a sorted listing builds a list; `_k_copy`, `list(..)` and
+     * `bytearray(..)` copy. `Json.obj()` and `Json.arr()` (`{}` and `[]`) are new values too; the typer makes those calls, so
+     * they are known by how they are written. A result that is its receiver or a part of it is not here: `view`,
+     * `from` and `slice` (the receiver itself on py), `List.get`, `Map.get`, `Json.get` and `Json.at` (an element, shared).
+     */
+    private val FRESH_RESULTS = setOf(
+        "Str.split", "Str.splitWhitespace", "Str.bytes", "splitSpace", "splitLines", "wrapWords",
+        "Regex.findIter", "Regex.findAll", "Regex.split",
+        "View.toList", "MutView.toList", "Arr.clone", "List.toArr", "Set.toArr",
+        "Map.keys", "Map.valuesArr", "Map.entries", "Json.keys",
+        "listDir", "glob", "walkFiles", "args",
+    )
+
+    /** A number, Bool, Char or Str: a value nothing changes in place, so a read of one is a copy. */
+    private fun scalar(t: KType?): Boolean = t is KType.Scalar || t == KType.Str
+
+    /** The stdlib collection [t] is, by name, when an end may read its size. */
+    private fun sizedKind(t: KType?): String? = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.takeIf { it.module.isStdlib && it.name in SIZED }?.name
+
+    /** Whether [rc] calls the stdlib: a binding does what its manifest says, and none of it runs code of the program's own unless given some. */
+    private fun binding(rc: ResolvedCall): Boolean = rc.fn?.module?.isStdlib == true
+
+    /**
+     * Whether making a [cls] runs code of the program's own: an `initially` block, or a field's default that calls, makes a
+     * closure, or builds a value whose making does.
+     */
+    private fun runsCode(model: TypedModel, cls: ClassSymbol?, seen: MutableSet<ClassSymbol> = HashSet()): Boolean {
+        var at = cls ?: return true
+        while (true) {
+            if (!at.module.isStdlib) {
+                if (at.initially != null || !seen.add(at)) return true
+                for (f in at.fields) {
+                    var runs = false
+                    f.default?.let { d ->
+                        AstTree.walk(d) { n ->
+                            if (n is FunctionCallExpr || n is LambdaExpr || (n is ObjectInitExpr && runsCode(model, model.inits[n]?.cls, seen))) runs = true
+                        }
+                    }
+                    if (runs) return true
+                }
+            }
+            at = at.superclass?.sym as? ClassSymbol ?: return false
+        }
+    }
+
+    /** Whether a value of [t] may be or hold a collection of type [root]: a stdlib value holds what its type arguments may (a Json, a Json), anything else what the typer says. */
+    private fun mayHold(rules: Rules, t: KType?, root: KType?): Boolean {
+        if (t == root) return true
+        if (scalar(t)) return false
+        val cls = (t as? KType.Nominal)?.sym as? ClassSymbol
+        if (cls == null || !cls.module.isStdlib) return rules.mayHold(t, root)
+        return t.typeArgs().any { mayHold(rules, it, root) }
+    }
+
+    /** What a function of the program's own may do to what it is given: [open] when it reaches past its parameters, else the parameters whose value it may resize or write into. */
+    internal class Summary(var open: Boolean = false, val resizes: MutableSet<Int> = HashSet(), val writes: MutableSet<Int> = HashSet())
+
+    /**
+     * Each function's [Summary], to a fixpoint over the calls between them. A function is open when it reads a field, a
+     * global collection or `this`, writes a field or a global by name, makes a closure, or calls what is not followed (a
+     * function value, a dispatched method, a construction that runs code). Else every value in it comes from its parameters
+     * or is made in it: a local holds what any value given it held, a call's result what its receiver and arguments held,
+     * and a local given to a changing call with other values may hold them after. A parameter is resized when a stdlib call with
+     * an effect, an element written on a Map, a Set or a Json, or a resizing call of the program's own is given a value
+     * that came from it; written when a field or an element of such a value is.
+     */
+    internal class Summaries(program: TypedProgram, private val effects: Effects) {
+        private val model = program.model
+        private val of = IdentityHashMap<FnSymbol, Summary>()
+        private val bodies = Bodies.of(program).filter { it.kind == BodyKind.FUNCTION && it.fn != null }
+
+        init {
+            bodies.forEach { of[it.fn!!] = Summary() }
+            var grew = true
+            while (grew) {
+                grew = false
+                for (b in bodies) if (pass(b.fn!!, b.roots)) grew = true
+            }
+        }
+
+        /** The summary of [fn] when it is a function of the program's own with a body. */
+        fun get(fn: FnSymbol?): Summary? = fn?.let { of[it] }
+
+        private fun pass(fn: FnSymbol, roots: List<ASTNode>): Boolean {
+            val s = of.getValue(fn)
+            if (s.open) return false
+            val was = s.resizes.size + s.writes.size
+            val index = IdentityHashMap<Symbol, Int>()
+            fn.params.forEachIndexed { k, p -> index[p] = k }
+            val local = IdentityHashMap<Symbol, MutableSet<Int>>()
+            var moved = true
+
+            // The parameters the value of [e] may have come from.
+            fun from(e: ASTNode?): Set<Int> {
+                if (e == null || e is Type || (e is Expr && scalar(model.types[e]))) return emptySet()
+                if (e is Identifier && e !is IntrinsicExpr) {
+                    val sym = model.refs[e] ?: return emptySet()
+                    return (index[sym]?.let { setOf(it) } ?: emptySet()) + (local[sym] ?: emptySet())
+                }
+                val out = HashSet<Int>()
+                AstTree.children(e).forEach { out += from(it) }
+                return out
+            }
+            // Every local named under [holder] may hold what [held] names after.
+            fun holds(holder: ASTNode, held: Set<Int>) {
+                if (held.isEmpty()) return
+                AstTree.walk(holder) { n ->
+                    val sym = (n as? Identifier)?.let { model.refs[it] }
+                    if (sym != null && (sym is LocalSymbol || sym is ParamSymbol) && local.getOrPut(sym) { HashSet() }.addAll(held)) moved = true
+                }
+            }
+            // A name given [value] may hold what it held.
+            fun flows(sym: Symbol?, value: ASTNode?) {
+                if (sym != null && (sym is LocalSymbol || sym is ParamSymbol) && local.getOrPut(sym) { HashSet() }.addAll(from(value))) moved = true
+            }
+            fun changed(given: List<Expr>, resize: Boolean) {
+                val all = HashSet<Int>()
+                given.forEach { all += from(it) }
+                if (resize) s.resizes += all
+                s.writes += all
+                given.forEach { holds(it, all) }
+            }
+            fun visit(n: ASTNode) {
+                when {
+                    n is LambdaExpr || n is WithExpr || n is ThisExpr -> s.open = true
+                    n is Identifier && n !is IntrinsicExpr -> when (val sym = model.refs[n]) {
+                        is FieldSymbol, is GlobalSymbol -> if (!scalar(model.types[n])) s.open = true
+                        else -> {}
+                    }
+                    n is IntrinsicExpr -> if (effects.node(n) == Effect.IMPURE) s.open = true
+                    n is VariableDecl -> flows(model.refs[n.name], n.value)
+                    n is InIterationStatement -> flows(model.refs[n.inIterationExpr.initializer], n.inIterationExpr.target)
+                    n is AssignmentExpr -> when (val sym = model.refs[n.target]) {
+                        is LocalSymbol, is ParamSymbol -> flows(sym, n.value)
+                        else -> s.open = true
+                    }
+                    n is CompoundAssignmentExpr -> when {
+                        (n.left as? Identifier)?.let { model.refs[it] }.let { it is FieldSymbol || it is GlobalSymbol } -> s.open = true
+                        !scalar(model.types[n.left]) -> changed(listOf(n.left, n.right), true)
+                    }
+                    n is PlaceAssignmentExpr -> {
+                        val target = n.target
+                        when {
+                            target is ArrayIndexExpr -> changed(listOf(target.originExpr, n.value), sizedKind(model.types[target.originExpr]) !in KEEPS_SIZE)
+                            target is MemberAccessExpr -> changed(listOf(target.origin, n.value), false)
+                            else -> s.open = true
+                        }
+                    }
+                    n is ObjectInitExpr -> if (runsCode(model, model.inits[n]?.cls)) s.open = true
+                    n is FunctionCallExpr -> {
+                        val rc = model.calls[n]
+                        val given = listOfNotNull(rc?.receiver) + n.positionalParameters.map { it.value } + n.namedParameters.map { it.value }
+                        val callee = if (rc != null && (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD)) rc.fn?.let { of[it] } else null
+                        when {
+                            rc == null -> s.open = true
+                            rc.kind == CallKind.PRINT -> {}
+                            binding(rc) -> if (effects.node(n) == Effect.IMPURE) {
+                                // A binding given a function value may run it.
+                                if (given.any { model.types[it] is KType.Fn }) s.open = true else changed(given, true)
+                            }
+                            callee == null || callee.open -> s.open = true
+                            else -> {
+                                rc.args.forEachIndexed { k, a ->
+                                    if (a is ArgBinding.Given) {
+                                        if (k in callee.resizes) s.resizes += from(a.expr)
+                                        if (k in callee.writes) s.writes += from(a.expr)
+                                    }
+                                }
+                                // What it is given may hold each other after, where it changes any of it.
+                                if (callee.resizes.isNotEmpty() || callee.writes.isNotEmpty()) {
+                                    val all = HashSet<Int>()
+                                    given.forEach { all += from(it) }
+                                    given.forEach { holds(it, all) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (n is Expr && n !is Type && model.opCalls[n]?.let { !binding(it) } == true) s.open = true
+                // The name after a dot is a member's, read through the value before it, not a name of this function's.
+                if (n is MemberAccessExpr) {
+                    // `module.NAME`: a global collection of another module.
+                    if ((model.members[n] as? MemberRef.ModuleMember)?.symbol is GlobalSymbol && !scalar(model.types[n])) s.open = true
+                    visit(n.origin)
+                    if (n.member !is Identifier || n.member is IntrinsicExpr) visit(n.member)
+                } else {
+                    AstTree.children(n).forEach { visit(it) }
+                }
+            }
+            while (moved && !s.open) {
+                moved = false
+                roots.forEach { visit(it) }
+            }
+            return s.open || s.resizes.size + s.writes.size != was
+        }
+    }
+
     /** The counter loops of [module]: those that can be rewritten, and those left with why. */
-    internal fun find(program: TypedProgram, module: ModuleSymbol, raw: String): Pair<List<Rewrite>, List<Left>> {
+    internal fun find(program: TypedProgram, module: ModuleSymbol, raw: String, known: Known = Known(program)): Pair<List<Rewrite>, List<Left>> {
         val rewrites = ArrayList<Rewrite>()
         val left = ArrayList<Left>()
-        val effects = EffectsPass.of(Rules(program))
         val lines = raw.split(Regex("(?<=\n)")).map { it.trimEnd('\n', '\r') }
         val tokens = module.source.tokens
         val index = HashMap<Long, Int>()
         tokens.forEachIndexed { i, t -> index[key(t.canonicalLocation.lineNumber, t.canonicalLocation.column)] = i }
         for (body in Bodies.of(program)) {
             if (body.module !== module) continue
-            val scan = Scan(program, effects, body.roots)
-            for (loop in scan.loops) {
+            val scan = Scan(program, known, body.roots)
+            val laid = ArrayList<Triple<Int, Found, Any>>()
+            for ((loop, found) in scan.judged()) {
                 val line = module.source.astOrigins[loop]?.lineNumber ?: -1
-                val found = scan.judge(loop) ?: continue
                 if (found.reasons.isNotEmpty()) {
                     val (reason, message) = found.reasons.first()
                     left += Left(line, reason, message, found.reasons.map { it.first }.distinct())
                     continue
                 }
-                val edit = layout(module, tokens, index, lines, loop, found)
-                if (edit is Rewrite) rewrites += edit else left += Left(line, Reason.LAYOUT, edit as String, listOf(Reason.LAYOUT))
+                laid += Triple(line, found, layout(module, tokens, index, lines, loop, found))
+            }
+            // A chain is rewritten whole: one loop of a counter whose lines cannot be edited keeps the declaration for the others.
+            val unlaid = laid.filter { it.third !is Rewrite }.map { it.second.counter }
+            for ((line, found, edit) in laid) {
+                when {
+                    edit is Rewrite && unlaid.none { it === found.counter } -> rewrites += edit
+                    edit is Rewrite -> left += Left(line, Reason.CHAIN, "`${found.counter.name}` counts another loop that is left, so its declaration stays", listOf(Reason.CHAIN))
+                    else -> left += Left(line, Reason.LAYOUT, edit as String, listOf(Reason.LAYOUT))
+                }
             }
         }
         return rewrites.sortedBy { it.whileLine } to left.sortedBy { it.line }
     }
 
-    /** What [Scan.judge] found of a counter loop: its counter, its declaration, its comparison, and every reason it is left. */
-    internal class Found(val counter: LocalSymbol, val decl: VariableDecl?, val inclusive: Boolean, val reasons: List<Pair<Reason, String>>)
+    /** What a program's loops are all asked against: the typer's rules, its effects, and each function's [Summary]. */
+    internal class Known(program: TypedProgram) {
+        val rules = Rules(program)
+        val effects: Effects = EffectsPass.of(rules)
+        val summaries = Summaries(program, effects)
+    }
+
+    /**
+     * What [Scan.judged] found of a counter loop: its counter, where it starts (its declaration [decl], or the assignment
+     * [reset] that sets it again, the statement before the loop), its comparison, whether it has a `break`, and every
+     * reason it is left.
+     */
+    internal class Found(
+        val counter: LocalSymbol,
+        val decl: VariableDecl?,
+        val reset: AssignmentExpr?,
+        val inclusive: Boolean,
+        val breaks: Boolean,
+        val reasons: MutableList<Pair<Reason, String>>,
+    )
 
     /** A name the end reads: a number's ([sized] false), or a collection's whose size it reads, [type] its type. */
     private class Root(val sym: Symbol, val sized: Boolean, val type: KType?)
 
     /** One body's loops, with each node's parent, so a use of a name can be followed to what consumes it. */
-    private class Scan(val program: TypedProgram, val effects: Effects, val roots: List<ASTNode>) {
+    private class Scan(val program: TypedProgram, known: Known, val roots: List<ASTNode>) {
         val model = program.model
+        val effects = known.effects
+        val rules = known.rules
+        val summaries = known.summaries
         val parents = IdentityHashMap<ASTNode, ASTNode>()
         val loops = ArrayList<WhileIterationStatement>()
         private val alone = IdentityHashMap<Symbol, Boolean>()
@@ -166,12 +405,6 @@ object CounterFix {
         private fun integer(t: KType?): Boolean = (t as? KType.Scalar)?.prim?.isInteger == true
 
         private fun isCounter(s: Symbol?): Boolean = s is LocalSymbol && s.isMut && integer(s.type)
-
-        /** A number, Bool, Char or Str: a value nothing changes in place, so a read of one is a copy. */
-        private fun scalar(t: KType?): Boolean = t is KType.Scalar || t == KType.Str
-
-        /** The stdlib collection [t] is, by name, when an end may read its size. */
-        private fun sizedKind(t: KType?): String? = ((t as? KType.Nominal)?.sym as? ClassSymbol)?.takeIf { it.module.isStdlib && it.name in SIZED }?.name
 
         /** Whether [n] is [of] or under it. */
         private fun within(n: ASTNode, of: ASTNode): Boolean {
@@ -193,12 +426,11 @@ object CounterFix {
             }
         }
 
-        /** Whether [decl] is the statement directly before [loop] in one block. */
-        private fun directlyBefore(decl: ASTNode, loop: ASTNode): Boolean {
+        /** The statement directly before [loop] in its block, or null. */
+        private fun before(loop: ASTNode): ASTNode? {
             val at = statement(loop)
             val block = parents[at]?.let { AstTree.children(it) } ?: roots
-            val k = block.indexOfFirst { it === at }
-            return k > 0 && block[k - 1] === statement(decl)
+            return block.getOrNull(block.indexOfFirst { it === at } - 1)
         }
 
         /** Every name under [under] that is [sym]. */
@@ -239,15 +471,45 @@ object CounterFix {
         private fun below(e: Expr): BinaryExpr? =
             (e as? BinaryExpr)?.takeIf { (it.operator == BinaryOp.LESS_THAN || it.operator == BinaryOp.LESS_THAN_OR_EQUAL) && isCounter(ref(it.leftExpr)) }
 
-        /** [loop] judged: null when it is no counter loop (no `i < n` on a Mutable integer local in its condition). */
-        fun judge(loop: WhileIterationStatement): Found? {
+        /**
+         * Every counter loop of the body with what was found of it. A loop is first judged by itself; then each counter's loops
+         * are judged together, since its declaration goes only when every one of them is rewritten: a use of the counter
+         * outside its loops (its declaration and the resets that start them aside) leaves them all, and so does one loop left.
+         */
+        fun judged(): List<Pair<WhileIterationStatement, Found>> {
+            val all = loops.mapNotNull { l -> judge(l)?.let { l to it } }
+            for ((counter, group) in all.groupBy { it.second.counter }) {
+                val i = counter.name
+                val found = group.map { it.second }
+                val resets = found.mapNotNull { it.reset }
+                val stray = uses(roots, counter).filter { id ->
+                    group.none { within(id, it.first) } && counter.decl?.let { within(id, it) } != true && resets.none { it.target === id }
+                }
+                val clean = found.map { it.reasons.isEmpty() }
+                found.forEachIndexed { k, f ->
+                    if (f.decl == null && f.reset == null) return@forEachIndexed
+                    when {
+                        stray.isNotEmpty() -> {
+                            f.reasons += Reason.COUNTER_AFTER to "`$i` is used after the loop"
+                            if (f.breaks) f.reasons += Reason.BREAK to "the body has a `break`, and `$i` is used after it"
+                        }
+                        found.none { it.decl != null } -> f.reasons += Reason.CHAIN to "no loop stands directly after the declaration of `$i`, which this loop sets again"
+                        clean.withIndex().any { (j, ok) -> j != k && !ok } -> f.reasons += Reason.CHAIN to "`$i` counts another loop that is left, so its declaration stays"
+                    }
+                }
+            }
+            return all
+        }
+
+        /** [loop] judged by itself: null when it is no counter loop (no `i < n` on a Mutable integer local in its condition). */
+        private fun judge(loop: WhileIterationStatement): Found? {
             val cond = conjuncts(loop.condition).firstNotNullOfOrNull { below(it) } ?: return null
             val counter = ref(cond.leftExpr) as LocalSymbol
             val i = counter.name
             val reasons = ArrayList<Pair<Reason, String>>()
             if (cond !== loop.condition) {
                 reasons += Reason.CONDITION to "the condition is more than `$i < n`"
-                return Found(counter, null, false, reasons)
+                return Found(counter, null, null, false, false, reasons)
             }
             // The step: the body's last statement, and one.
             val last = loop.statements.lastOrNull()?.takeIf { it.javaClass == Statement::class.java }
@@ -256,10 +518,13 @@ object CounterFix {
                 amount == null -> reasons += Reason.NO_STEP to "the body does not end with `$i += 1`"
                 amount != 1L -> reasons += Reason.STEP_NOT_ONE to "the step is not `$i += 1`"
             }
-            // The declaration: `i: Mutable<T> { a }`, the statement before the loop.
-            val decl = (counter.decl as? VariableDecl)?.takeIf { it.value != null && directlyBefore(it, loop) }
-            if (decl == null) {
-                reasons += Reason.NOT_DECLARED_BEFORE to "`$i` is not declared directly before the loop"
+            // The start: `i: Mutable<T> { a }`, or `i = b` whose value does not read `i`, the statement before the loop.
+            val prior = before(loop)
+            val decl = (counter.decl as? VariableDecl)?.takeIf { it.value != null && prior === statement(it) }
+            val reset = ((prior as? Statement)?.takeIf { decl == null && it.javaClass == Statement::class.java }?.expr as? AssignmentExpr)
+                ?.takeIf { ref(it.target) === counter && uses(listOf(it.value), counter).isEmpty() }
+            if (decl == null && reset == null) {
+                reasons += Reason.NOT_DECLARED_BEFORE to "`$i` is neither declared nor set directly before the loop"
             }
             // The counter in the body: read only, the step aside, and never by a closure.
             val inBody = uses(loop.statements, counter).filter { amount == null || !within(it, last) }
@@ -267,12 +532,7 @@ object CounterFix {
             if (inBody.any { id -> inLambda(id, loop) }) {
                 reasons += Reason.COUNTER_CAPTURED to "a closure in the body captures `$i`"
             }
-            // The counter after the loop: the range's variable ends with it.
-            val outside = uses(roots, counter).filter { !within(it, loop) && (decl == null || !within(it, decl)) }
-            if (decl != null && outside.isNotEmpty()) {
-                reasons += Reason.COUNTER_AFTER to "`$i` is used after the loop"
-            }
-            // A `continue` would skip the step, and a `break` leaves the counter where it stopped.
+            // A `continue` would skip the step. A `break` leaves the counter where it stopped, which matters only where it is used after.
             var breaks = false
             var continues = false
             fun exits(n: ASTNode) {
@@ -283,9 +543,8 @@ object CounterFix {
             }
             loop.statements.forEach { exits(it) }
             if (continues) reasons += Reason.CONTINUE to "the body has a `continue`, which skips the step"
-            if (breaks) reasons += Reason.BREAK to "the body has a `break`"
             bound(loop, cond.rightExpr, counter)?.let { reasons += it }
-            return Found(counter, decl, cond.operator == BinaryOp.LESS_THAN_OR_EQUAL, reasons)
+            return Found(counter, decl, reset, cond.operator == BinaryOp.LESS_THAN_OR_EQUAL, breaks, reasons)
         }
 
         /** Whether the use [id] of a number's name assigns it: every other use of a number reads a copy. */
@@ -389,9 +648,10 @@ object CounterFix {
 
         /**
          * Whether the use [id] of a collection's name hands the collection itself on, so that another name may hold it after:
-         * anything but an element of it, a call on it, a loop over it, or a stdlib call given it that has no effect and
-         * answers a number, Bool, Char or Str. A function of the program's own is never trusted with it: where a
-         * Mutable value is shared, one that the typer finds free of effects may still change it through a local of its own.
+         * anything but an element of it, a call on it, a loop over it, or a call given it that cannot change or keep it and
+         * answers a number, Bool, Char or Str: a stdlib call with no effect, or a function of the program's own whose
+         * [Summary] neither is open nor resizes that parameter. The typer's effects are not asked of the program's own: where
+         * a Mutable value is shared, a function it finds free of effects may still change one through a local of its own.
          */
         private fun handedOn(id: Identifier): Boolean {
             val parent = parents[id] ?: return true
@@ -403,17 +663,40 @@ object CounterFix {
                 parent is FunctionCallPositionalParameterExpr || parent is FunctionCallNamedParameterExpr -> {
                     val call = parents[parent] as? FunctionCallExpr ?: return true
                     val rc = model.calls[call] ?: return true
-                    !(binding(rc) && effects.node(call) != Effect.IMPURE && scalar(model.types[call]))
+                    val quiet = if (binding(rc)) effects.node(call) != Effect.IMPURE else keeps(rc, id)
+                    !(quiet && scalar(model.types[call]))
                 }
                 else -> true
             }
         }
 
-        /** Whether [rc] calls the stdlib: a binding does what its manifest says, and none of it runs code of the program's own unless given some. */
-        private fun binding(rc: ResolvedCall): Boolean = rc.fn?.module?.isStdlib == true
+        /** The summary of the function [rc] calls, when it is one of the program's own called directly. */
+        private fun summary(rc: ResolvedCall): Summary? = if (rc.kind == CallKind.FREE || rc.kind == CallKind.METHOD) summaries.get(rc.fn) else null
 
-        /** Whether [e] makes a value no name holds yet: a construction (`{ }`), or a literal collection (`@listOf(..)`). */
-        private fun fresh(e: Expr?): Boolean = e is ObjectInitExpr || e is BuilderExpr
+        /** Whether the function [rc] calls leaves the size of its argument [arg] as it is: its summary is not open and does not resize that parameter. */
+        private fun keeps(rc: ResolvedCall, arg: Expr): Boolean {
+            val s = summary(rc) ?: return false
+            val k = rc.args.indexOfFirst { it is ArgBinding.Given && it.expr === arg }
+            return !s.open && k >= 0 && k !in s.resizes
+        }
+
+        /** Whether [e] makes a value no name holds yet: a construction (`{ }`), a literal collection (`@listOf(..)`), `Json.obj()`, `Json.arr()`, or a stdlib result of [FRESH_RESULTS]. */
+        private fun fresh(e: Expr?): Boolean = e is ObjectInitExpr || e is BuilderExpr || (e is FunctionCallExpr && (emptyJson(e) ||
+            model.calls[e]?.let { rc -> binding(rc) && (rc.fn?.foreign as? Foreign.Magic)?.key in FRESH_RESULTS } == true))
+
+        /** `Json.obj()` or `Json.arr()`, called on the stdlib's type itself: an empty Json of its own. */
+        private fun emptyJson(e: FunctionCallExpr): Boolean {
+            val member = e.name as? MemberAccessExpr ?: return false
+            // The type's name, as the parser reads a name that starts a type (or a plain name that no value has).
+            val on = member.origin
+            val named = when {
+                on is Type -> (on.identifier as? Identifier)?.value
+                on is Identifier && model.refs[on].let { it !is LocalSymbol && it !is ParamSymbol && it !is FieldSymbol && it !is GlobalSymbol } -> on.value
+                else -> null
+            }
+            return named == "Json" && (member.member as? Identifier)?.value in setOf("obj", "arr") &&
+                e.positionalParameters.isEmpty() && e.namedParameters.isEmpty() && sizedKind(model.types[e]) == "Json"
+        }
 
         /**
          * Whether [s] is a local that alone holds its value: declared with a fresh value, assigned only fresh values, never
@@ -449,19 +732,15 @@ object CounterFix {
         /** Whether [t] has a type parameter among its arguments: two such types of one collection may be one. */
         private fun open(t: KType.Nominal): Boolean = t.typeArgs().any { it !is KType.Scalar && it != KType.Str && (it !is KType.Nominal || open(it)) }
 
-        /** Whether making a [cls] runs code of the program's own: an `initially` block, or a field's default that calls or builds. */
-        private fun runsCode(cls: ClassSymbol?): Boolean {
-            var at = cls ?: return true
-            while (true) {
-                if (!at.module.isStdlib) {
-                    if (at.initially != null) return true
-                    for (f in at.fields) {
-                        var runs = false
-                        f.default?.let { d -> AstTree.walk(d) { n -> if (n is FunctionCallExpr || n is ObjectInitExpr || n is LambdaExpr) runs = true } }
-                        if (runs) return true
-                    }
-                }
-                at = at.superclass?.sym as? ClassSymbol ?: return false
+        /**
+         * Whether the value of [e], given to a function that may resize what it is given, may be or hold one of the collections
+         * [types] names: by its type it is one (and is not made in place), or may hold one.
+         */
+        private fun mayReach(e: Expr, types: List<KType?>): Boolean {
+            val t = model.types[e]
+            if (scalar(t)) return false
+            return types.any { root ->
+                if (t == root) mayBe(e, listOf(root)) else mayHold(rules, t, root)
             }
         }
 
@@ -493,7 +772,17 @@ object CounterFix {
             fun call(k: FunctionCallExpr): String? {
                 val rc = model.calls[k] ?: return "calls what cannot be followed"
                 val impure = effects.node(k) == Effect.IMPURE
-                if (!binding(rc) && rc.kind != CallKind.PRINT) return own(impure, "calls `${nameOf(k)}`")
+                if (!binding(rc) && rc.kind != CallKind.PRINT) {
+                    // A function that stays within what it is given changes only what its summary says, of the arguments that may reach the end's.
+                    val s = summary(rc)?.takeIf { !it.open } ?: return own(impure, "calls `${nameOf(k)}`")
+                    rc.args.forEachIndexed { at, a ->
+                        if (a is ArgBinding.Given) {
+                            if (at in s.resizes && mayReach(a.expr, types)) return "calls `${nameOf(k)}`, which may resize what it is given"
+                            if (members && (at in s.writes || at in s.resizes) && !scalar(model.types[a.expr])) return "calls `${nameOf(k)}`, which may write through what it is given"
+                        }
+                    }
+                    return null
+                }
                 if (!impure || rc.kind == CallKind.PRINT) return null
                 val given = listOfNotNull(rc.receiver) + k.positionalParameters.map { it.value } + k.namedParameters.map { it.value }
                 return if (given.any { mayBe(it, types) }) "calls `${nameOf(k)}` on a value that may be the same" else null
@@ -509,7 +798,7 @@ object CounterFix {
                         k is AssignmentExpr -> null
                         k is CompoundAssignmentExpr -> if (scalar(model.types[k.left])) null else "changes a value in place"
                         k is FunctionCallExpr -> call(k)
-                        k is ObjectInitExpr && runsCode(model.inits[k]?.cls) -> own(impure, "makes a `${model.inits[k]?.cls?.name}`, whose making runs code")
+                        k is ObjectInitExpr && runsCode(model, model.inits[k]?.cls) -> own(impure, "makes a `${model.inits[k]?.cls?.name}`, whose making runs code")
                         !impure || k is ThrowExpr -> null
                         else -> "has an effect that cannot be followed"
                     }
@@ -546,8 +835,8 @@ object CounterFix {
             val end = col(b) + text(b).length
             return end <= raw.length && raw.substring(0, col(a)).isBlank() && raw.substring(end).isBlank()
         }
-        // `i: Mutable<T> { a }`, alone on its line.
-        val d = at(found.decl!!) ?: return "the declaration of `$i` is not where the parser put it"
+        // `i: Mutable<T> { a }`, alone on its line: the start of its own loop, and the type of every loop of the counter.
+        val d = at(found.counter.decl!!) ?: return "the declaration of `$i` is not where the parser put it"
         if (text(d) != i || tokens.getOrNull(d + 1)?.type != Token.Type.S_COLON || tokens.getOrNull(d + 2)?.content != "Mutable" || tokens.getOrNull(d + 3)?.type != Token.Type.S_OPEN_ANGLE) {
             return "`$i` is not declared as `$i: Mutable<T> { a }`"
         }
@@ -558,10 +847,24 @@ object CounterFix {
         if (!alone(d, dEnd)) return "the declaration of `$i` shares its line, spans lines or carries a comment"
         val declRaw = lines[line(d) - 1]
         val type = declRaw.substring(col(d + 4), col(open - 1)).trim()
-        val start = declRaw.substring(col(open) + 1, col(dEnd)).trim()
-        // `while i < n {`, on one line, directly after it.
+        // `while i < n {`, on one line, directly after its start: the declaration, or `i = b` alone on its line.
         val w = at(loop) ?: return "the loop is not where the parser put it"
-        if (w != dEnd + 1) return "`$i` is not declared directly before the loop"
+        var from = open + 1
+        var until = dEnd
+        var startLine = line(d)
+        var start = declRaw.substring(col(open) + 1, col(dEnd)).trim()
+        if (found.reset != null) {
+            var r = w - 1
+            while (r > 0 && line(r - 1) == line(w - 1)) r--
+            if (w < 3 || text(r) != i || tokens[r + 1].type != Token.Type.S_EQUAL || r + 2 > w - 1) return "`$i` is not set as `$i = b` on one line before the loop"
+            if (!alone(r, w - 1)) return "the line that sets `$i` shares its line or carries a comment"
+            from = r + 2
+            until = w
+            startLine = line(r)
+            start = lines[startLine - 1].substring(col(r + 2)).trim()
+        } else if (w != dEnd + 1) {
+            return "`$i` is not declared directly before the loop"
+        }
         if (tokens[w].type != Token.Type.K_WHILE || tokens.getOrNull(w + 1)?.content != i) return "the condition is parenthesised"
         val op = tokens.getOrNull(w + 2)?.type
         if (op != Token.Type.S_OPEN_ANGLE && op != Token.Type.OP_CMP_LEQ) return "the condition is not written `$i < n`"
@@ -588,8 +891,8 @@ object CounterFix {
         if (!alone(s, bodyClose - 1) || line(bodyClose) == line(s) || line(s) == line(bodyOpen)) return "the step shares its line or carries a comment"
         if (lines.getOrNull(line(s) - 2)?.trimStart()?.startsWith("//") == true) return "a comment stands above the step"
         fun operand(text: String, from: Int, until: Int): String = if (ForFix.simpleOperand(tokens.subList(from, until))) text else "($text)"
-        val head = "$i: $type in ${operand(start, open + 1, dEnd)}${if (found.inclusive) ".." else "..<"}${operand(bound, w + 3, bodyOpen)}"
-        return Rewrite(line(d), line(w), col(w + 1), col(w + 3) + bound.length, head, line(s))
+        val head = "$i: $type in ${operand(start, from, until)}${if (found.inclusive) ".." else "..<"}${operand(bound, w + 3, bodyOpen)}"
+        return Rewrite(startLine, line(w), col(w + 1), col(w + 3) + bound.length, head, line(s))
     }
 
     /** [source] with each of [rewrites] made: the declaration's line and the step's line go (with the blank lines left above the step), and the head is rewritten. */
@@ -614,6 +917,7 @@ object CounterFix {
     private fun fix(srcs: List<TypedFix.Src>, keys: Map<String, String>, bootstrap: Boolean, options: TyperOptions = TyperOptions()): Map<String, Outcome> {
         val (_, program) = TypedFix.typeSources(srcs, bootstrap = bootstrap, options = options, mode = TyperMode.STRICT)
         val out = LinkedHashMap<String, Outcome>()
+        val known = Known(program)
         for ((key, raw) in keys) {
             val module = program.workspaceModules.firstOrNull { it.source.file == key }
             val errors = errorsIn(program, key)
@@ -622,7 +926,7 @@ object CounterFix {
             } else if (errors.isNotEmpty()) {
                 out[key] = Outcome(null, 0, emptyList(), "it does not type, so nothing is proved of its loops: ${errors.first()}")
             } else {
-                val (rewrites, left) = find(program, module, raw)
+                val (rewrites, left) = find(program, module, raw, known)
                 out[key] = Outcome(apply(raw, rewrites), rewrites.size, left, null)
             }
         }
