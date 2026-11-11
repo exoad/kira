@@ -102,6 +102,34 @@ fun main(args: Array<String>) {
         }
         return
     }
+    // `kira --fix-counters [--dry-run] <file.kira or directory>...` rewrites each hand-written counter whose loop means the same over a range
+    // (`i: Mutable<T> { a }` then `while i < n { ... i += 1 }` to `while i: T in a..<n { ... }`), and lists every counter loop it leaves with why.
+    if (args.firstOrNull() == "--fix-counters") {
+        val dry = "--dry-run" in args
+        val files = args.drop(1).filter { it != "--dry-run" }.map { File(it) }
+            .flatMap { if (it.isDirectory) it.walkTopDown().filter { f -> f.isFile && f.extension == "kira" }.sorted().toList() else listOf(it) }
+            .filter { it.name != "project.kira" } // a project's own file is no module
+        var fixed = 0
+        var refused = 0
+        val reasons = java.util.TreeMap<String, Int>()
+        for ((f, o) in net.exoad.kira.compiler.fix.CounterFix.fixFiles(files)) {
+            if (o.refused != null) {
+                refused++
+                println("$f: refused: ${o.refused}")
+            } else {
+                if (!dry && o.fixed != 0) net.exoad.kira.compiler.fix.ForFix.writeFile(f, o.text!!)
+                fixed += o.fixed
+                if (o.fixed != 0 || o.left.isNotEmpty()) println("$f: ${if (dry) "would fix" else "fixed"} ${o.fixed}, left ${o.left.size}")
+            }
+            o.left.forEach {
+                println("  left: $it")
+                reasons.merge(it.reason.code, 1, Int::plus)
+            }
+        }
+        println("counters: ${if (dry) "would fix" else "fixed"} $fixed, left ${reasons.values.sum()}, in ${files.size} files ($refused refused)")
+        reasons.forEach { (code, n) -> println("  left [$code]: $n") }
+        return
+    }
     // Minimal CLI: `kira --target js|c|cpp|py|none` overrides project.kira's
     // target; `--readable` emits pretty (non-minified) C/JS output;
     // `--out <dir>` says where the output goes (for cpp and py: every generated

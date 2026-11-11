@@ -188,7 +188,7 @@ object ForFix {
     }
 
     /** Whether [t] reads as one operand where `..<` binds tighter than any operator: names, member chains, literals, and any parenthesised or called group. */
-    private fun simpleOperand(t: List<Token>): Boolean {
+    internal fun simpleOperand(t: List<Token>): Boolean {
         if (t.isEmpty()) return false
         var depth = 0
         for (k in t) {

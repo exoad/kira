@@ -17,8 +17,8 @@ import java.io.File
 import java.nio.file.Path
 
 /**
- * The fixer that asks the typer: `kira --fix-with` ([WithFix]) asks which receivers a `with` can hold. The project above
- * each file is typed (leniently) with the stdlib it names.
+ * The fixers that ask the typer: `kira --fix-with` ([WithFix]) asks which receivers a `with` can hold, and `kira --fix-counters`
+ * ([CounterFix]) what a loop's bound reads and its body writes. The project above each file is typed with the stdlib it names.
  */
 object TypedFix {
     /** A source the typer sees: [file] (its key), its [text], its [module] name, and whether it is the project's own. */
@@ -26,9 +26,9 @@ object TypedFix {
 
     /**
      * [srcs] parsed (a workspace file leniently: `for` and the old declaration form read), a file in [texts] by that text, and
-     * typed. A file that does not parse is left out; a module that imports it types without it.
+     * typed in [mode]. A file that does not parse is left out; a module that imports it types without it.
      */
-    fun typeSources(srcs: List<Src>, texts: Map<String, String> = emptyMap(), bootstrap: Boolean = false, options: TyperOptions = TyperOptions()): Pair<CompilationUnit, TypedProgram> {
+    fun typeSources(srcs: List<Src>, texts: Map<String, String> = emptyMap(), bootstrap: Boolean = false, options: TyperOptions = TyperOptions(), mode: TyperMode = TyperMode.LENIENT): Pair<CompilationUnit, TypedProgram> {
         val unit = CompilationUnit(bootstrap)
         for (s in srcs) {
             try {
@@ -45,7 +45,7 @@ object TypedFix {
                 unit.removeSource(s.file)
             }
         }
-        return unit to KiraTyper.run(unit, TyperMode.LENIENT, options)
+        return unit to KiraTyper.run(unit, mode, options)
     }
 
     /** The directory of the nearest project.kira above [file], or null. */
