@@ -1,0 +1,131 @@
+// `with` on a stdlib value: a List, a Map, a Set or a Json is edited in place by the block's bare calls.
+
+Bag: Mutable<Any> {
+    pub items: List<Int32> { List<Int32> { } }
+    pub log: Mutable<List<Str>> { List<Str> { } }
+    pub count: Mutable<Int32> { 0 }
+
+    // A field that is no Mutable binding is used by its own name; `count` here is the class's field.
+    pub fill: (from: Int32) Void {
+        items with {
+            add(from)
+            add(from + count)
+        }
+        count = items.size() as Int32
+    }
+
+    // A Mutable field's block holds the List it had when the block began.
+    pub note: (s: Str) Void {
+        log with {
+            add(s)
+            add(renew(s))
+            add("after")
+        }
+    }
+
+    renew: (s: Str) Str {
+        log = List<Str> { }
+        "${s}!"
+    }
+
+    // A bare call is the receiver's method when it has one: the class's own of that name is named through `this`.
+    pub size: () Size {
+        items.size()
+    }
+
+    pub sizes: () List<Size> {
+        out: List<Size> { List<Size> { } } with {
+            add(this.size())
+            add(size())
+        }
+        out
+    }
+}
+
+// A parameter named like a method of the receiver is the parameter; the method is called through the receiver.
+grow: (xs: List<Int32>, size: Int32) Void {
+    xs with {
+        add(size)
+        add(xs.size() as Int32)
+    }
+}
+
+// The value of a `with` is the receiver itself.
+doc: (name: Str, n: Int64) Json {
+    tags: Json { Json.arr() } with {
+        add(Json.of("a"))
+        add(Json.of("b"))
+    }
+    Json.obj() with {
+        put("name", Json.of(name))
+        put("n", Json.of(n))
+        put("tags", tags)
+    }
+}
+
+keys: (j: Json) Str {
+    j.keys().joinToString(",")
+}
+
+main: () Void {
+    xs: List<Int32> { List<Int32> { } } with {
+        add(1)
+        add(2)
+    }
+    grow(xs, 9)
+    println("${xs.size()} ${xs.get(2)} ${xs.get(3)}")
+    ys: List<Int32> { xs }
+    ys with {
+        add(7)
+        set(0, 100)
+    }
+    println("${xs.size()} ${xs.get(0)} ${xs.sum()}")
+    m: Map<Str, Int32> { Map<Str, Int32> { } }
+    m with {
+        put("a", 1)
+        put("b", xs.size() as Int32)
+        put("a", 3)
+    }
+    println("${m.size()} ${m.get("a").unwrapOr(0)} ${m.get("b").unwrapOr(0)}")
+    seen: Set<Int32> { Set<Int32> { } } with {
+        while i: Int32 in 0..<9 {
+            if i == 7 {
+                break
+            }
+            if i % 2 == 0 {
+                add(i)
+            }
+        }
+        remove(0)
+    }
+    println("${seen.size()} ${seen.contains(6)} ${seen.contains(8)}")
+    d: Json { doc("bibo", 3) }
+    d with {
+        put("more", Json.of(true))
+        put("n", Json.of(4 as Int64))
+    }
+    println(d.dump())
+    println(keys(d))
+    b: Bag { }
+    b with {
+        fill(3)
+        fill(1)
+    }
+    println("${b.items.sum()} ${b.count}")
+    b.note("x")
+    println("${b.log.size()}")
+    kept: List<Str> { b.log }
+    b.note("y")
+    println("${kept.size()} ${b.log.size()}")
+    ss: List<Size> { b.sizes() }
+    println("${ss.get(0)} ${ss.get(1)}")
+    f: Fx<T0, Size> { () Size {
+        zs: List<Int32> { List<Int32> { } }
+        zs with {
+            add(1)
+            addAll(xs.toArr())
+        }
+        zs.size()
+    } }
+    println(f())
+}

@@ -145,6 +145,8 @@ internal class EffectsPass : RulePass {
         for (b in bodies) {
             b.roots.forEach { root -> AstTree.walk(root) { n -> if (n is Expr && n !is Type) exprs.of(n) } }
         }
+        // A `with`'s receiver as its block's calls read it: a name, which no tree holds.
+        r.model.withs.values.forEach { exprs.of(it.self) }
     }
 
     companion object {

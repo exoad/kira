@@ -1,0 +1,82 @@
+// `with` on a stdlib value: the block's bare calls are the receiver's methods, the List, Map or StrBuf is
+// edited in place, and a name that is only a method of the receiver stays what it is outside the block.
+
+// A declaration with a block builds in the local itself.
+pub filled: () List<Int32> {
+    xs: Mutable<List<Int32>> { List<Int32> { } } with {
+        add(1)
+        add(2)
+        add(3)
+    }
+    xs
+}
+
+// A parameter edited in place: the caller's List grows. `size` is the parameter, not the List's method.
+pub grow: (xs: List<Int32>, size: Int32) Void {
+    xs with {
+        add(size)
+        add(xs.size() as Int32)
+    }
+}
+
+// A local edited in place, declared apart from its block.
+pub table: (n: Int32) Map<Str, Int32> {
+    m: Mutable<Map<Str, Int32>> { }
+    m with {
+        put("n", n)
+        put("twice", n * 2)
+        put("n", n + 1)
+    }
+    m
+}
+
+// A field as the receiver, and a method of the class called like the List's own.
+pub Bag: Mutable<Any> {
+    pub count: Mutable<Int32> { 0 }
+    items: Mutable<List<Int32>> { }
+
+    pub fill: (from: Int32) Void {
+        items with {
+            add(from)
+            add(from + count)
+            set(0, from * 10)
+        }
+        count = items.size() as Int32
+    }
+
+    pub sum: () Int32 {
+        items.sum()
+    }
+}
+
+// A caller's buffer: an interpolation is appended piece by piece, and break acts on the loop around the block.
+pub reply: (words: List<Str>, n: Int32, out: StrBuf<32>) Void {
+    out with {
+        set("n=${n}")
+        addChar(' ')
+        addInt(words.size() as Int64)
+    }
+    while w: Str in words {
+        out with {
+            if w == "stop" {
+                break
+            }
+            add(";")
+            add(w.view())
+        }
+    }
+}
+
+// Sets and a nested loop inside the block.
+pub evens: (upTo: Int32) Size {
+    seen: Mutable<Set<Int32>> { }
+    seen with {
+        while i: Int32 in 0..<upTo {
+            if i % 2 == 0 {
+                add(i)
+            }
+        }
+        remove(0)
+    }
+    seen.size()
+}

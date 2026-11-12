@@ -143,9 +143,88 @@ class WithBuilderTest {
     }
 
     @Test
-    fun aMagicReceiverIsRefused() {
-        val p = snippet("main: () Void {\n    xs: List<Int32> { }\n    ys: List<Int32> { xs with {\n        add(1)\n    } }\n}")
-        expectDiagnostic(p, "types.with.receiver")
+    fun aMutableStdlibValueIsEditedInPlaceByItsMethodsAndAStdlibValueTypeIsRefused() {
+        val p = snippet(
+            """
+            main: () Void {
+                xs: List<Int32> { }
+                ys: List<Int32> { xs with {
+                    add(1)
+                    addAll(@arrOf(2, 3))
+                    set(0, 4)
+                } }
+                m: Map<Str, Int32> { } with {
+                    put("a", 1)
+                    put("b", 2)
+                }
+                j: Json { Json.obj() }
+                j with {
+                    put("n", Json.of(m.size() as Int64))
+                }
+                seen: Set<Int32> { }
+                seen with {
+                    add(1)
+                }
+            }
+            """,
+        )
+        expectNoErrors(p)
+        // Each is edited in place, and a local receiver or a declaration's own needs no temporary.
+        assertTrue(p.model.withs.values.none { it.copy })
+        assertEquals(listOf("j", "seen", "xs"), p.model.withs.values.mapNotNull { it.direct?.name }.sorted())
+        assertEquals(listOf("m"), p.model.withs.values.filter { it.declares }.map { it.temp.name })
+        val refused = snippet("main: () Void {\n    s: Str { \"a\" }\n    t: Str { s with {\n        trim()\n    } }\n}")
+        assertTrue(expectDiagnostic(refused, "types.with.receiver").message.contains("a stdlib value type"))
+        val arr = snippet("main: () Void {\n    a: Arr<Int32, 2> { @arrOf(1, 2) }\n    a with {\n        set(0, 3)\n    }\n}")
+        expectDiagnostic(arr, "types.with.receiver")
+    }
+
+    @Test
+    fun aStdlibReceiversFieldsAreNotReachableAndAMethodNameIsNeverAValue() {
+        // List's own storage is named `values`: the block's `values` is the parameter.
+        expectNoErrors(snippet("f: (xs: List<Int32>, values: Arr<Int32>, size: Int32) Void {\n    xs with {\n        addAll(values)\n        add(size)\n    }\n}"))
+        // A name that is only a method of the receiver means what it means outside the block: a field of the class, a module value.
+        expectNoErrors(
+            snippet(
+                """
+                LIMIT: Int32 { 3 }
+
+                Bag: Mutable<Any> {
+                    items: List<Int32> { }
+                    pub size: Mutable<Int32> { 0 }
+
+                    pub fill: () Void {
+                        items with {
+                            add(size)
+                            add(LIMIT)
+                        }
+                    }
+                }
+                """,
+            ),
+        )
+        // With nothing else of the name, a method read as a value says so.
+        val p = snippet("f: (xs: List<Int32>) Void {\n    xs with {\n        add(size)\n    }\n}")
+        assertTrue(expectDiagnostic(p, "types.member.method-value").message.contains("size(...)"))
+    }
+
+    @Test
+    fun aBareNameThatIsBothALocalAndAMemberIsRefusedWithTheWayToNameEach() {
+        // A call: the parameter and the List's method.
+        val call = snippet("f: (xs: List<Int32>, size: Fx<T0, Int32>) Void {\n    xs with {\n        add(size())\n    }\n}")
+        val m = expectDiagnostic(call, "types.with.clash").message
+        assertTrue(m.contains("both a parameter and a method") && m.contains("write the method through the receiver, `xs.size(...)`") && m.contains("rename the parameter"), m)
+        // A call of a method while a plain local has its name: still refused, never the local's value called.
+        val plain = snippet("f: (xs: List<Int32>) Void {\n    size: Int32 { 3 }\n    xs with {\n        add(size() as Int32)\n        add(size)\n    }\n}")
+        assertEquals(1, plain.diagnostics.count { it.code == "types.with.clash" }, plain.diagnostics.joinToString("\n") { it.message })
+        // A value: the local and the class's field.
+        val field = snippet("main: () Void {\n    c: Counter { }\n    frames: Int64 { 3 }\n    c with {\n        frames = frames\n    }\n}")
+        val fm = expectDiagnostic(field, "types.with.clash").message
+        assertTrue(fm.contains("both a local and a field") && fm.contains("write the field through the receiver, `c.frames`"), fm)
+        // Named through the receiver, neither is ambiguous.
+        expectNoErrors(snippet("f: (xs: List<Int32>, size: Int32) Void {\n    xs with {\n        add(size)\n        add(xs.size() as Int32)\n    }\n}"))
+        // A local named like a method only, of a class too, is the local.
+        expectNoErrors(snippet("main: () Void {\n    c: Counter { }\n    count: Int64 { 3 }\n    c with {\n        frames = count\n    }\n}"))
     }
 
     // ---- where it runs -----------------------------------------------------------------------
@@ -233,7 +312,26 @@ class WithBuilderTest {
                 "main: () Void {\n    p: P { 1, 2 }\n    q: P { p with {\n        x = 10\n    } }\n    c: Counter { }\n    c with {\n        count()\n    }\n}",
         ).python()
         assertTrue(py.contains("    _k_w0 = p._k_clone()\n    _k_w0.x = 10\n    q = _k_w0\n"), py)
-        assertTrue(py.contains("    _k_w1 = c\n    _k_w1.count()\n"), py)
+        // A local edited in place is used by its own name.
+        assertTrue(py.contains("    c = _Counter()\n    c.count()\n") && !py.contains("_k_w1"), py)
+    }
+
+    @Test
+    fun onPyAStdlibWithNeedsNoTemporaryForANameOrADeclarationAndHoldsAnyOtherReceiverOnce() {
+        val py = PyTestSupport.emit(
+            "Bag: Mutable<Any> {\n    pub items: List<Int32> { }\n    pub log: Mutable<List<Int32>> { }\n\n" +
+                "    pub fill: () Void {\n        items with {\n            add(1)\n        }\n        log with {\n            add(2)\n        }\n    }\n}\n\n" +
+                "make: () List<Int32> {\n    List<Int32> { }\n}\n\n" +
+                "run: (xs: List<Int32>) Void {\n    xs with {\n        add(1)\n    }\n    ys: List<Int32> { } with {\n        add(2)\n        add(3)\n    }\n" +
+                "    zs: List<Int32> { make() with {\n        add(4)\n    } }\n    make() with {\n        add(5)\n    }\n}",
+        ).python()
+        assertTrue(py.contains("    xs.append(1)\n    ys = []\n    ys.append(2)\n    ys.append(3)\n"), py)
+        // The whole value of a declaration builds in the local; a call as a statement's receiver is held once.
+        assertTrue(py.contains("    zs = _make()\n    zs.append(4)\n"), py)
+        assertTrue(py.contains("    _k_w1 = _make()\n    _k_w1.append(5)\n"), py)
+        // A field that is no Mutable binding by its name; a Mutable one through a temporary, read once.
+        assertTrue(py.contains("        self.items.append(1)\n"), py)
+        assertTrue(py.contains("        _k_w0 = self.log\n        _k_w0.append(2)\n"), py)
     }
 
     // ---- copy() ------------------------------------------------------------------------------

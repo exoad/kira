@@ -1,0 +1,11 @@
+4 9 3
+5 100 121
+2 3 5
+3 true false
+{"name": "bibo", "n": 4, "tags": ["a", "b"], "more": true}
+name,n,tags,more
+10 4
+0
+3 0
+4 1
+6

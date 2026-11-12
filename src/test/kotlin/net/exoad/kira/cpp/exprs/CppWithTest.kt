@@ -37,11 +37,58 @@ class CppWithTest {
                 }
                 t.count + u.count
             }
+
+            pub made: () Tally {
+                Tally { }
+            }
+
+            pub held: () Int32 {
+                made() with {
+                    bump(6)
+                }
+                0
+            }
             """,
         )
         val text = CppExprTestSupport.emit("with-class", listOf(m)).text(m)
-        assertTrue(text.contains("const kira::Rc<Tally> w0_ = t;\n      {\n          w0_->bump(2);\n          w0_->count += 3;\n      }"), text)
-        assertTrue(text.contains("const kira::Rc<Tally> w1_ = std::make_shared<Tally>();") && text.contains("const kira::Rc<Tally> u = w1_;"), text)
+        // A parameter by its own name, a declaration's block in the local itself, any other receiver held once.
+        assertTrue(text.contains("      {\n          t->bump(2);\n          t->count += 3;\n      }"), text)
+        assertTrue(text.contains("const kira::Rc<Tally> u = std::make_shared<Tally>();\n      {\n          u->bump(4);\n      }"), text)
+        assertTrue(text.contains("const kira::Rc<Tally> w0_ = made();\n      {\n          w0_->bump(6);\n      }"), text)
+    }
+
+    @Test
+    fun aBlockOnAStdlibValueEditsItsOwnPlaceAndNeverACopy() {
+        val m = module(
+            """
+            pub Bag: Mutable<Any> {
+                pub items: Mutable<List<Int32>> { }
+
+                pub fill: () Void {
+                    items with {
+                        add(1)
+                        add(2)
+                    }
+                }
+            }
+
+            pub grow: (xs: List<Int32>, size: Int32) Size {
+                xs with {
+                    add(size)
+                }
+                ys: Mutable<List<Int32>> { } with {
+                    add(3)
+                }
+                ys.size()
+            }
+            """,
+        )
+        val text = CppExprTestSupport.emit("with-stdlib", listOf(m)).text(m)
+        // The parameter is taken by reference, as its explicit calls would make it.
+        assertTrue(text.contains("grow(kira::List<std::int32_t>& xs, std::int32_t size)") && text.contains("          xs.push_back(size);"), text)
+        assertTrue(text.contains("kira::List<std::int32_t> ys = kira::List<std::int32_t>{};\n      {\n          ys.push_back(3);\n      }"), text)
+        // A Mutable field is held by reference for the block: its own List grows.
+        assertTrue(text.contains("auto& w0_ = items;\n      {\n          w0_.push_back(1);\n          w0_.push_back(2);\n      }"), text)
     }
 
     @Test
@@ -62,7 +109,7 @@ class CppWithTest {
             """,
         )
         val text = CppExprTestSupport.emit("with-arm", listOf(m)).text(m)
-        assertTrue(Regex("""const kira::Rc<Tally> w0_ = t;\s+\{\s+w0_->bump\(5\);\s+\}\s+return w0_;""").containsMatchIn(text), text)
+        assertTrue(Regex("""t->bump\(1\);\s+\{\s+t->bump\(5\);\s+\}\s+return t;""").containsMatchIn(text), text)
     }
 
     @Test

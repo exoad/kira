@@ -36,23 +36,21 @@ namespace withblocks
 
   kira::Rc<Tally> built()
   {
-      const kira::Rc<Tally> w0_ = std::make_shared<Tally>();
+      const kira::Rc<Tally> t = std::make_shared<Tally>();
       {
-          w0_->bump(2);
-          w0_->bump(3);
-          w0_->tag("built");
+          t->bump(2);
+          t->bump(3);
+          t->tag("built");
       }
-      const kira::Rc<Tally> t = w0_;
       return t;
   }
 
   void touch(const kira::Rc<Tally>& t)
   {
-      const kira::Rc<Tally> w0_ = t;
       {
-          w0_->bump(10);
-          w0_->count += 1;
-          w0_->tag("touched");
+          t->bump(10);
+          t->count += 1;
+          t->tag("touched");
       }
   }
 
@@ -73,12 +71,11 @@ namespace withblocks
 
   kira::Rc<Tally> edited(const kira::Rc<Tally>& t, std::int32_t by)
   {
-      const kira::Rc<Tally> w0_ = t;
       {
-          w0_->bump(by);
-          w0_->tag("edited");
+          t->bump(by);
+          t->tag("edited");
       }
-      return w0_;
+      return t;
   }
 
   std::int32_t loops()
@@ -92,9 +89,8 @@ namespace withblocks
           {
               continue;
           }
-          const kira::Rc<Tally> w0_ = t;
           {
-              w0_->bump(i);
+              t->bump(i);
               if(i == 6)
               {
                   break;
@@ -121,15 +117,13 @@ namespace withblocks
 
   std::int32_t nested(const kira::Rc<Tally>& a, const kira::Rc<Dial>& d)
   {
-      const kira::Rc<Tally> w0_ = a;
       {
-          w0_->bump(1);
+          a->bump(1);
           const std::int32_t n{7};
-          const kira::Rc<Dial> w1_ = d;
           {
-              w1_->turn(n);
+              d->turn(n);
           }
-          w0_->bump(n);
+          a->bump(n);
       }
       return a->total() * 100 + d->at();
   }

@@ -74,6 +74,10 @@ data class WithInfo(
     val cls: ClassSymbol,
     val copy: Boolean,
     val reinit: Boolean,
+    /** The receiver's own symbol, a local, a parameter or a field the block never rebinds: the block uses it by name, with no temporary. */
+    val direct: Symbol? = null,
+    /** The `with` is a local declaration's whole value, edited in place: [temp] carries the local's name and is the local. */
+    val declares: Boolean = false,
 )
 
 /**

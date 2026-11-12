@@ -901,6 +901,11 @@ class PyModuleEmitter(
             refuse(decl, "a local '${sym.name}' that shadows another of its name (Python has one scope per function; rename it)")
         }
         f.scopes.last().add(sym.name)
+        // A `with` that builds in the local itself is the declaration: its lines assign the name and edit it.
+        (decl.value as? WithExpr)?.takeIf { model.withs[it]?.declares == true }?.let {
+            expr(it, f)
+            return emptyList()
+        }
         val init = decl.value?.let { asValue(it, f, Use.STORE).text } ?: zeroValue(sym.type, decl)
         return listOf("${local(sym.name)} = $init")
     }
@@ -931,7 +936,7 @@ class PyModuleEmitter(
         return when (target) {
             is Identifier -> when (val sym = model.symbolOf(target)) {
                 is LocalSymbol, is ParamSymbol -> local(sym.name)
-                is FieldSymbol -> withField(target, sym) ?: fieldOfThis(sym, target, f)
+                is FieldSymbol -> withField(target, sym, f) ?: fieldOfThis(sym, target, f)
                 is GlobalSymbol -> ref(sym, target)
                 else -> refuseText(target, "an assignment to '${target.value}'")
             }
@@ -1244,13 +1249,21 @@ class PyModuleEmitter(
     /**
      * `receiver with { ... }`: the receiver (a copy when the typer says so) into a temporary, the
      * block, the copy's `initially` again, each a line before the statement; the value is the temporary.
+     * A local or parameter edited in place is used by its own name, with no temporary.
      */
     private fun withExpr(e: WithExpr, f: Frame): Py {
         val info = model.withs[e] ?: return refusePy(e, "a `with` the typer did not resolve")
         val pre = f.pre ?: return refusePy(e, "a `with` outside a statement")
         val t = typeOf(e) ?: return Py("None", PyPrec.ATOM)
+        if (info.direct != null) {
+            val receiver = expr(e.receiver, f)
+            f.scopes.addLast(HashSet())
+            e.body.forEach { pre += stmt(it, f) }
+            f.scopes.removeLast()
+            return receiver
+        }
         val temp = local(info.temp.name)
-        val receiver = expr(e.receiver, f)
+        val receiver = if (info.declares) asValue(e.receiver, f, Use.STORE) else expr(e.receiver, f)
         pre += when {
             !info.copy || e.receiver is ObjectInitExpr || e.receiver is WithExpr -> "$temp = ${receiver.text}"
             isStruct(t) -> "$temp = ${copyOf(receiver, t).text}"
@@ -1266,8 +1279,10 @@ class PyModuleEmitter(
     }
 
     /** A field of a `with`'s receiver named bare in its block: through the receiver's temporary. */
-    private fun withField(id: Identifier, field: FieldSymbol): String? =
-        model.withMembers[id]?.let { model.withs[it] }?.let { "${local(it.temp.name)}.${pyName(field)}" }
+    private fun withField(id: Identifier, field: FieldSymbol, f: Frame): String? =
+        model.withMembers[id]?.let { model.withs[it] }?.let {
+            if (it.direct != null) "${wrap(expr(it.self, f), PyPrec.POSTFIX)}.${pyName(field)}" else "${local(it.temp.name)}.${pyName(field)}"
+        }
 
     /** A field of a test block's identity named bare in it: through the block's subject. */
     private fun testField(id: Identifier, field: FieldSymbol, f: Frame): String? =
@@ -1371,7 +1386,7 @@ class PyModuleEmitter(
     private fun identifier(id: Identifier, f: Frame): Py = when (val sym = model.symbolOf(id)) {
         is LocalSymbol -> testSubjects[sym] ?: Py(local(sym.name), PyPrec.ATOM)
         is ParamSymbol -> Py(local(sym.name), PyPrec.ATOM)
-        is FieldSymbol -> (withField(id, sym) ?: testField(id, sym, f) ?: fieldOfThis(sym, id, f))?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
+        is FieldSymbol -> (withField(id, sym, f) ?: testField(id, sym, f) ?: fieldOfThis(sym, id, f))?.let { Py(it, PyPrec.POSTFIX) } ?: Py("None", PyPrec.ATOM)
         is GlobalSymbol -> globalRead(sym, id)
         is FnSymbol -> fnValue(sym, id)
         else -> refusePy(id, "the name '${id.value}'")
@@ -1445,7 +1460,7 @@ class PyModuleEmitter(
     private fun listPlace(e: Expr, f: Frame): String? = when (e) {
         is Identifier -> when (val sym = model.symbolOf(e)) {
             is LocalSymbol, is ParamSymbol -> local(sym.name)
-            is FieldSymbol -> withField(e, sym) ?: testField(e, sym, f) ?: fieldOfThis(sym, e, f)
+            is FieldSymbol -> withField(e, sym, f) ?: testField(e, sym, f) ?: fieldOfThis(sym, e, f)
             is GlobalSymbol -> ref(sym, e)
             else -> refuseText(e, "this List")
         }

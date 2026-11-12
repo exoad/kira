@@ -629,7 +629,15 @@ internal class StmtChecker(private val c: PhaseC) {
     private fun local(decl: VariableDecl, ctx: BodyContext, scope: Scope) {
         val type = c.typeOf(decl.type)
         val name = decl.name.value
-        decl.value?.let { c.exprs.check(it, type, ctx, scope, "the initializer of '$name'") }
+        decl.value?.let { v ->
+            val w = v as? net.exoad.kira.compiler.frontend.parser.ast.expressions.WithExpr
+            // A name already in reach stays what the block's bare names mean: only a new name builds in the local itself.
+            if (w != null && scope.find(name) == null) {
+                c.withs.declaring(w, name, type, Modifier.MUTABLE in decl.modifiers) { c.exprs.check(v, type, ctx, scope, "the initializer of '$name'") }
+            } else {
+                c.exprs.check(v, type, ctx, scope, "the initializer of '$name'")
+            }
+        }
         val local = LocalSymbol(name, ctx.module, decl, type, isMut = Modifier.MUTABLE in decl.modifiers, fn = ctx.fn)
         model.declSyms[decl] = local
         model.refs[decl.name] = local

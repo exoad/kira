@@ -108,7 +108,7 @@ internal class CallResolver(private val c: PhaseC) {
     private fun named(e: FunctionCallExpr, id: Identifier, hint: KType?, ctx: BodyContext, scope: Scope): KType {
         val name = id.value
         // 1. A local Fx value.
-        scope.find(name)?.takeIf { !c.withs.clash(id, it.symbol, scope) }?.let { found ->
+        scope.find(name)?.takeIf { !c.withs.clash(id, it.symbol, scope, call = true) }?.let { found ->
             val type = (found.symbol as? LocalSymbol)?.type ?: (found.symbol as? ParamSymbol)?.type
             if (type is KType.Fn) {
                 val ct = c.exprs.synth(id, ctx, scope)

@@ -269,7 +269,7 @@ internal class ExprTyper(private val c: PhaseC) {
         if (scope.find(id.value) != null) {
             return true
         }
-        scope.withMember(id.value)?.let { frame -> if (c.members.field(frame.type, id.value) != null) return true }
+        scope.withMember(id.value)?.let { frame -> if (id.value in frame.fields) return true }
         ctx.owner?.let { owner -> if (c.members.field(c.selfType(owner), id.value) != null) return true }
         return c.program.graph.lookup(ctx.module, id.value) { it is GlobalSymbol || it is FnSymbol } !is ModuleGraph.Lookup.Missing
     }
@@ -297,7 +297,9 @@ internal class ExprTyper(private val c: PhaseC) {
                 else -> KType.Error
             }
         }
-        scope.withMember(name)?.let { frame -> return withMember(id, frame, ctx) }
+        // A field of a `with`'s receiver; a name that is only a method of it means what it means outside the block.
+        val frame = scope.withMember(name)
+        if (frame != null && name in frame.fields) return withMember(id, frame, ctx)
         ctx.owner?.let { owner ->
             val self = c.selfType(owner)
             c.members.field(self, name)?.let { (f, type) ->
@@ -321,7 +323,9 @@ internal class ExprTyper(private val c: PhaseC) {
             ModuleGraph.Lookup.Missing -> {
                 val asType = c.program.graph.lookup(ctx.module, name) { it is ClassSymbol || it is TraitSymbol || it is AliasSymbol }
                 val bare = c.program.graph.outOfScope(ctx.module, name)
-                if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
+                if (frame != null) {
+                    withMember(id, frame, ctx)
+                } else if (asType !is ModuleGraph.Lookup.Missing || Builtins.isBuiltinName(name)) {
                     c.report("types.name.type-as-value", "'$name' is a type, not a value.", id)
                 } else if (bare != null) {
                     c.report("types.use.bare", bare, id)
@@ -335,7 +339,7 @@ internal class ExprTyper(private val c: PhaseC) {
 
     /** [id], a member of [frame]'s receiver read bare in its block: a field through the receiver's temporary (a test block's subject). */
     private fun withMember(id: Identifier, frame: WithFrame, ctx: BodyContext): KType {
-        val (f, type) = c.members.field(frame.type, id.value) ?: run {
+        val (f, type) = c.members.field(frame.type, id.value)?.takeIf { id.value in frame.fields } ?: run {
             val of = if (frame.expr is TypeCheckExpr) "this test block's ${frame.type.display()}" else "the `with`'s receiver"
             c.report("types.member.method-value", "'${id.value}' is a method of $of; call it (${id.value}(...)).", id)
             return KType.Error

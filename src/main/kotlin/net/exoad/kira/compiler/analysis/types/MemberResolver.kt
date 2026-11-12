@@ -153,6 +153,19 @@ internal class MemberResolver(private val c: PhaseC) {
         return out
     }
 
+    /** Every method name a value of [t] has, inherited ones included: what a stdlib receiver's `with` reaches. */
+    fun methodNames(t: KType.Nominal): Set<String> {
+        val out = LinkedHashSet<String>()
+        for (a in ancestry(t)) {
+            when (val s = a.sym) {
+                is ClassSymbol -> s.methods.filter { !it.isOperator }.forEach { out.add(it.name) }
+                is TraitSymbol -> s.methods.filter { !it.isOperator }.forEach { out.add(it.name) }
+                else -> {}
+            }
+        }
+        return out
+    }
+
     /**
      * Why [receiver] has no member [name], for a diagnostic: a type parameter reaches only the
      * members of its bounds, so it says which bounds there are (or that there is none).

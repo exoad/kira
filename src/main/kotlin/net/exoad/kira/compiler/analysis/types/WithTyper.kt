@@ -51,6 +51,8 @@ internal class WithFrame(
     /** Where a member read bare is read from, and what a lambda reading one captures. */
     val place: Place = Place.Local(temp!!),
     val captured: Symbol = temp!!,
+    /** The members that are fields: a bare name in value position reaches only these (a method is never a value). */
+    val fields: Set<String> = members,
 ) {
     /** The members a test block's check has read bare so far (a check names one). */
     var reads = 0
@@ -71,13 +73,17 @@ internal class WithFrame(
 /**
  * `receiver with { ... }`, the builder operator (the owner's rules of 2026-10-15).
  *
- * - The receiver is a user class (or a plain stdlib one); its members are used bare in the
- *   block, after the block's and the function's locals and parameters, before the outer
- *   scope. A local or parameter named like a member is an error where it is declared or read
- *   ([clash], [declares]), and so are nested receivers that share a member name.
- * - A Mutable value is edited in place (its Mutable fields assigned). Any other value is copied
+ * - The receiver is a user class, or a Mutable stdlib type (List, Map, Set, Stack, Queue, Deque, Json, StrBuf), whose
+ *   methods alone are reachable. A bare call `f(...)` in the block is the receiver's `f` when it has one; a bare name is
+ *   the receiver's field when it has one (a method is never a value, so a local named like a method stays the local).
+ *   A local or parameter named like the member a bare name could also mean is an error where it is read or declared
+ *   ([clash], [declares]): the member is written through the receiver, or the local renamed. Nested receivers that
+ *   share a member name are an error too.
+ * - A Mutable value is edited in place (its Mutable fields assigned, its mutators called). Any other value is copied
  *   into a temporary whose every field the block may assign; the copy re-runs `initially` at the
  *   block's end. The value is the receiver (the copy), never the block's.
+ * - A receiver that is a local or a parameter the block never rebinds is used by its own name ([WithInfo.direct]), and a
+ *   declaration's own `x: T { v } with { ... }` builds in `x` itself ([WithInfo.declares]): no temporary either way.
  * - It lowers inline before the statement it is in, so `break` and `continue` act on the
  *   enclosing loop. [placement] refuses a position where running it first would reorder
  *   evaluation (D33); a module constant's `with` folds into the construction it amounts to ([fold]).
@@ -89,6 +95,23 @@ internal class WithTyper(private val c: PhaseC) {
     /** Every `with` the placement walk found a place for (or folded). */
     private val placed: MutableSet<WithExpr> = java.util.Collections.newSetFromMap(IdentityHashMap())
 
+    /** A local declaration whose whole value is the `with` [e]: the local's [name], [type] and whether it is a Mutable binding. */
+    private class Declared(val e: WithExpr, val name: String, val type: KType, val isMut: Boolean)
+
+    /** The declaration whose `with` is typed next ([declaring]). */
+    private var declared: Declared? = null
+
+    /** [body] with [e] known as the whole value of the local [name] of [type], so an in-place `with` builds in the local itself. */
+    fun <T> declaring(e: WithExpr, name: String, type: KType, isMut: Boolean, body: () -> T): T {
+        val saved = declared
+        declared = Declared(e, name, type, isMut)
+        try {
+            return body()
+        } finally {
+            declared = saved
+        }
+    }
+
     fun with(e: WithExpr, hint: KType?, ctx: BodyContext, scope: Scope): KType {
         val t = c.exprs.type(e.receiver, hint, ctx, scope)
         if (t.containsError()) {
@@ -96,17 +119,23 @@ internal class WithTyper(private val c: PhaseC) {
         }
         val n = t as? KType.Nominal
         val cls = n?.sym as? ClassSymbol
+        val magic = cls?.kind == ClassKind.MAGIC
+        val value = "${t.display()} is a stdlib value type, which no method changes in place (a stdlib receiver is a Mutable one: " +
+            "a List, a Map, a Set, a Stack, a Queue, a Deque, a Json or a StrBuf)"
         val why = when {
+            t is KType.Scalar || t == KType.Str -> value
             n == null || cls == null -> "${t.display()} is not a class"
-            cls.kind == ClassKind.MAGIC -> "${t.display()} is a stdlib magic type, whose state is its methods'"
-            cls.kind == ClassKind.OPAQUE || cls.foreign != null -> "${t.display()} is made by the host, which owns its fields"
+            magic && !cls.isMutableType -> value
+            cls.kind == ClassKind.OPAQUE || (!magic && cls.foreign != null) -> "${t.display()} is made by the host, which owns its fields"
             else -> null
         }
         if (n == null || cls == null || why != null) {
-            c.report("types.with.receiver", "`with` builds the value of a class: $why.", e.receiver)
+            c.report("types.with.receiver", "`with` builds the value of a class or edits a Mutable stdlib value: $why.", e.receiver)
             return KType.Error
         }
-        val members = c.members.memberNames(n)
+        // A stdlib type's state is its methods': only they are reachable bare.
+        val members = if (magic) c.members.methodNames(n) else c.members.memberNames(n)
+        val fields = if (magic) emptySet() else members.filterTo(LinkedHashSet()) { c.members.field(n, it) != null }
         for (outer in scope.withFrames()) {
             val shared = members.intersect(outer.members)
             if (shared.isNotEmpty()) {
@@ -121,41 +150,109 @@ internal class WithTyper(private val c: PhaseC) {
         val chain = generateSequence(cls) { it.superclass?.sym as? ClassSymbol }.take(64).toList()
         // A Mutable value is edited in place, any other value copied.
         val copy = !cls.isMutableType
-        val temp = LocalSymbol("_k_w${temps++}", ctx.module, e, t, isMut = copy, fn = ctx.fn, builds = copy)
-        ctx.lambda?.let { c.declaredIn[temp] = it }
-        val self = Identifier(temp.name)
-        model.refs[self] = temp
-        model.places[self] = Place.Local(temp)
+        val direct = if (copy) null else directReceiver(e, ctx, scope)
+        val declares = !copy && direct == null && declared?.let { it.e === e && it.type == t } == true
+        // The declared local's own binding; a new stdlib value, held by nothing else, is the block's to change.
+        val mutable = copy || (if (declares) declared!!.isMut else magic && model.places[e.receiver] == null)
+        // Only a temporary that is used takes a number.
+        val temp = LocalSymbol(if (declares) declared!!.name else if (direct != null) "_k_w" else "_k_w${temps++}", ctx.module, e, t, isMut = mutable, fn = ctx.fn, builds = copy)
+        val self = Identifier(direct?.symbol?.name ?: temp.name)
         model.types[self] = t
-        val frame = WithFrame(e, n, temp, self, members, ctx.lambda)
+        val frame = if (direct != null) {
+            val place = model.places[e.receiver]!!
+            model.refs[self] = direct.symbol
+            model.places[self] = place
+            WithFrame(e, n, null, self, members, direct.declaredIn, place, direct.symbol, fields)
+        } else {
+            ctx.lambda?.let { c.declaredIn[temp] = it }
+            model.refs[self] = temp
+            // A stdlib value's temporary stands for the receiver's own place, which its mutators write.
+            val place = model.places[e.receiver]?.takeIf { magic } ?: Place.Local(temp)
+            model.places[self] = place
+            WithFrame(e, n, temp, self, members, ctx.lambda, place, temp, fields)
+        }
         c.stmts.block(e.body, ctx, scope.withBody(frame))
-        model.withs[e] = WithInfo(temp, self, cls, copy, reinit = copy && chain.any { it.initially != null })
+        model.withs[e] = WithInfo(temp, self, cls, copy, reinit = copy && chain.any { it.initially != null }, direct = direct?.symbol, declares = declares)
         if (copy) {
             model.withCopied.add(cls)
         }
         return t
     }
 
-    /** [id] reads the local or parameter [sym]: an error when a `with` around it has a member of that name (true: the member is read). */
-    fun clash(id: Identifier, sym: Symbol, scope: Scope): Boolean {
+    /**
+     * The receiver of [e] when it is a name that means one value through the whole block: a local or a parameter the block
+     * never assigns or declares again, or a field of `this` that is no Mutable binding (in a block without a lambda, which
+     * would capture it). The block then uses it by its own name. Null for any other receiver, which a temporary holds.
+     */
+    private fun directReceiver(e: WithExpr, ctx: BodyContext, scope: Scope): Scope.Found? {
+        val id = e.receiver as? Identifier ?: return null
+        if (id.javaClass != Identifier::class.java || model.narrowings[id] != null || model.places[id] == null) return null
+        val found = when (val sym = model.refs[id]) {
+            is LocalSymbol, is ParamSymbol -> scope.find(id.value)?.takeIf { it.symbol === sym }
+            is FieldSymbol -> {
+                val ofThis = (model.places[id] as? Place.Field)?.receiver is Place.This
+                var lambda = false
+                e.body.forEach { s -> AstTree.walk(s) { if (it is LambdaExpr) lambda = true } }
+                if (sym.isMut || !ofThis || lambda || model.withMembers[id] != null || model.testMembers[id] != null) null else Scope.Found(sym, ctx.lambda)
+            }
+            else -> null
+        } ?: return null
+        var rebound = false
+        fun names(x: Expr?) {
+            if (x is Identifier && x.value == id.value) rebound = true
+        }
+        e.body.forEach { s ->
+            AstTree.walk(s) { n ->
+                when (n) {
+                    is AssignmentExpr -> names(n.target)
+                    is CompoundAssignmentExpr -> names(n.left)
+                    is PlaceAssignmentExpr -> names(n.target)
+                    is VariableDecl -> names(n.name)
+                    is InIterationStatement -> names(n.inIterationExpr.initializer)
+                    is TryExpr -> names(n.exceptionName)
+                    else -> {}
+                }
+            }
+        }
+        return found.takeIf { !rebound }
+    }
+
+    /**
+     * [id] names the local or parameter [sym], as a call when [call]: an error when a `with` around it has a member the name
+     * could also mean, a method or an Fx field for a call, a field for a value (true: the member is meant). A method is
+     * never a value, so a local named like one stays the local.
+     */
+    fun clash(id: Identifier, sym: Symbol, scope: Scope, call: Boolean = false): Boolean {
         val frame = scope.withMember(id.value) ?: return false
+        if (!call && id.value !in frame.fields) return false
+        val what = if (sym is ParamSymbol) "parameter" else "local"
+        val member = if (id.value in frame.fields) "field" else "method"
         c.report(
             if (frame.expr is TypeCheckExpr) "types.test.clash" else "types.with.clash",
-            "'${id.value}' is both a ${if (sym is ParamSymbol) "parameter" else "local"} and a member of ${frame.what}; " +
-                "rename the ${if (sym is ParamSymbol) "parameter" else "local"}.",
+            "'${id.value}' is both a $what and a $member of ${frame.what}, so the bare name is ambiguous here; " +
+                "${through(frame, id.value, member, call)}rename the $what.",
             id,
         )
         return true
     }
 
-    /** A local or parameter [name] declared inside a `with` block: an error when the receiver has a member of that name. */
+    /** A local or parameter [name] declared inside a `with` block: an error when the receiver has a field of that name. */
     fun declares(name: String, at: ASTNode, scope: Scope) {
-        val frame = scope.withMember(name) ?: return
+        val frame = scope.withMember(name)?.takeIf { name in it.fields } ?: return
         c.report(
             if (frame.expr is TypeCheckExpr) "types.test.clash" else "types.with.clash",
-            "'$name' names a member of ${frame.what}, so it cannot name a local here; rename it.",
+            "'$name' names a field of ${frame.what}, so it cannot name a local here; rename it.",
             at,
         )
+    }
+
+    /** The fix that names the [member] [name] through [frame]'s receiver, when the receiver is a name or a path of names. */
+    private fun through(frame: WithFrame, name: String, member: String, call: Boolean): String {
+        val receiver = (frame.expr as? WithExpr)?.receiver ?: return ""
+        fun path(x: Expr): Boolean = x is ThisExpr || (x is Identifier && x.javaClass == Identifier::class.java) ||
+            (x is MemberAccessExpr && x.member is Identifier && path(x.origin))
+        if (!path(receiver)) return ""
+        return "write the $member through the receiver, `${KiraUnparser.text(receiver)}.$name${if (call) "(...)" else ""}`, or "
     }
 
     // ---- where a `with` can run ---------------------------------------------------------------

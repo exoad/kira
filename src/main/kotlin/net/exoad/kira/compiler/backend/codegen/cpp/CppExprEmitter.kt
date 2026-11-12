@@ -526,10 +526,25 @@ class CppLowering private constructor(val ctx: CppEmitContextImpl) {
             return unsupported(e, "a `with` on ${typeOf(e).display()}, a value type (C++ lowers the `with` of a Mutable class, which edits it in place; the py target builds the copy)")
         }
         val stmts = ctx.parts.stmts as? CppStmtEmitter ?: return internal(e, "a `with` without W2.3's statement part")
+        if (info.direct != null) {
+            // A local or a parameter the block never rebinds: the block's lines use it by its own name.
+            val own = emit(e.receiver, CppPrec.POSTFIX)
+            sink.names[e] = own
+            if (e.body.isNotEmpty()) {
+                sink.lines += stmts.block(ctx, e.body)
+            }
+            return CppEx(own, CppPrec.PRIMARY)
+        }
         val receiver = emit(e.receiver, CppPrec.ASSIGN)
         val name = state.fresh("w")
         val unused = if (e.body.isEmpty()) "[[maybe_unused]] " else ""
-        sink.lines += "$unused" + "const ${ctx.spell(typeOf(e), Pos.VALUE, e)} $name = $receiver;"
+        val magic = info.cls.kind == net.exoad.kira.compiler.analysis.types.ClassKind.MAGIC
+        sink.lines += when {
+            // A stdlib value is held by value: its own place by reference, so the block edits it and no copy; a new value is the temporary.
+            magic && model.places[e.receiver] != null -> "$unused" + "auto& $name = $receiver;"
+            magic -> "$unused" + "auto $name = $receiver;"
+            else -> "$unused" + "const ${ctx.spell(typeOf(e), Pos.VALUE, e)} $name = $receiver;"
+        }
         state.bind(info.temp, name)
         sink.names[e] = name
         if (e.body.isNotEmpty()) {

@@ -1,0 +1,14 @@
+withstdlib - with on a stdlib value edits it in place
+
+  ok    a declaration with a block: three adds into the local
+  ok    a block on a parameter grows the caller's List
+  ok    a parameter named like a method is the parameter
+  ok    and the method is called through the receiver
+  ok    three puts on two keys
+  ok    a key put again keeps the later value
+  ok    a field as the receiver is edited, not a copy of it
+  ok    and again, with the class's own field read in the block
+  ok    a caller's buffer, an interpolation set piece by piece, and break out of the loop
+  ok    a loop inside the block adds through the receiver
+
+10 checks, 0 failed

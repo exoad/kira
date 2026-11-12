@@ -284,7 +284,7 @@ class CppStmtEmitter : CppStmtPart {
     private fun expressionStatement(ctx: CppEmitContextImpl, s: Statement, e: Expr): List<String> {
         val lower = CppLowering.of(ctx)
         return when (e) {
-            is VariableDecl -> listOf(local(ctx, e))
+            is VariableDecl -> local(ctx, e)
             is Decl -> {
                 ctx.unsupported(s, "a declaration inside a body")
                 emptyList()
@@ -336,10 +336,10 @@ class CppStmtEmitter : CppStmtPart {
      * A local (5.4): brace-init for a scalar, copy-init otherwise, `const` without
      * `mut`, `[[maybe_unused]]` when nothing reads it.
      */
-    private fun local(ctx: CppEmitContextImpl, decl: VariableDecl): String {
+    private fun local(ctx: CppEmitContextImpl, decl: VariableDecl): List<String> {
         val lower = CppLowering.of(ctx)
         val state = lower.state
-        val sym = ctx.model.declSymbol(decl) as? LocalSymbol ?: return lower.internal(decl, "no local was recorded for '${decl.name.value}'").text + ";"
+        val sym = ctx.model.declSymbol(decl) as? LocalSymbol ?: return listOf(lower.internal(decl, "no local was recorded for '${decl.name.value}'").text + ";")
         val t = sym.type
         val pos = if (sym.isMut) Pos.MUT_VALUE else Pos.VALUE
         val spelled = if (ctx.model.typeOf(decl.type) != null) ctx.spell(decl.type, pos) else ctx.spell(t, pos, decl)
@@ -354,13 +354,19 @@ class CppStmtEmitter : CppStmtPart {
             // Design 30, 2.1: a view is never kept in a local, nor is anything that holds one (1.2).
             lower.hoister.internalView(decl, "the local '${decl.name.value}' holds a view, a ${t.display()}", if (CppHoister.isSecondClass(t)) "local" else "type")
         }
-        val init = decl.value ?: return "$unused$declarator{};"
+        val init = decl.value ?: return listOf("$unused$declarator{};")
         val scalar = t is KType.Scalar
-        return when {
+        // A `with` that builds in the local itself: the local from the receiver, then the block's lines on it.
+        (init as? WithExpr)?.let { w -> ctx.model.withs[w]?.takeIf { it.declares }?.let { info ->
+            val first = "$unused$declarator = ${lower.emit(w.receiver, CppPrec.ASSIGN)};"
+            state.bind(info.temp, name)
+            return listOf(first) + if (w.body.isEmpty()) emptyList() else block(ctx, w.body)
+        } }
+        return listOf(when {
             scalar -> "$unused$declarator{${lower.emit(init, CppPrec.ASSIGN)}};"
             init is BuilderExpr && lower.isSequence(init) && ctx.model.coercion(init) == null -> "$unused$declarator = ${lower.bracedElements(init)};"
             else -> "$unused$declarator = ${lower.emit(init, CppPrec.ASSIGN)};"
-        }
+        })
     }
 
     private fun tryStatement(ctx: CppEmitContextImpl, e: TryExpr): List<String> {

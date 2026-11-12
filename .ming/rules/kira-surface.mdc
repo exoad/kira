@@ -18,8 +18,31 @@ Facts that trip up new writers.
   (`--typed` asks the typer, in the project above the file, for an iterable the file does not write).
 - `with` scopes calls and assignments on one value: `x: Clazz { ... } with { f(...)  field = v }` or `x with { ... }`, never
   `with x { }`. A bare `x with { }` statement on a value type is an error (assign it, `x = x with { }`, or make the type a Mutable
-  class, whose `with` edits in place). `rules.with.fold` hints a run of statements on one Mutable class value;
-  `kira --fix-with [--dry-run] FILE...` folds them (py and cpp projects: C and JS do not lower a `with`; C++ lowers a Mutable class's, edited in place, and refuses a value type's).
+  class, whose `with` edits in place).
+  - The receiver: a class of the project, or a Mutable stdlib type (`List`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `Json`,
+    `StrBuf` and the other `Mutable<..>` ones), edited in place: `j with { put("a", 1)  put("b", 2) }` is `j.put("a", 1)` then
+    `j.put("b", 2)`, on the same Json. A stdlib value type (`Str`, a number, `Arr`, `View`, `Maybe`) is refused: nothing
+    changes one in place. A Struct's `with` builds an edited copy, so it has a value to use and is never a statement.
+  - The receiver is evaluated once, before the block; the value of the `with` is the receiver. A local, a parameter or a
+    field that is no Mutable binding is used by its own name; a declaration's own `x: T { v } with { ... }` builds in `x`;
+    any other receiver (a call, a Mutable field) is held in a temporary for the block.
+  - Bare names in the block: a bare call `f(...)` is the receiver's method `f` when it has one, before the enclosing
+    class's and the module's. A bare name that is not called is the receiver's field when it has one; a stdlib receiver
+    has no reachable field, and a method is never a value, so a name that is only a method of the receiver (`size`, `keys`)
+    means what it means outside the block: `xs with { add(size) }` adds the local `size`.
+  - A local or parameter that shares the name is never guessed: a call `f(...)` with a local or parameter `f` in reach,
+    or a name `n` that is both a local or parameter and a field of the receiver, is `types.with.clash`. The fix is in the
+    message: name the member through the receiver (`xs.size()`, `c.frames`), or rename the local. A local declared in the
+    block cannot be named like a field of the receiver. A block inside another whose receivers share a member name is
+    `types.with.nested`: build the inner value in a local first.
+  - `rules.with.fold` hints a run of statements in a row on one Mutable class value or one stdlib container or builder
+    (`List`, `Map`, `Set`, `Stack`, `Queue`, `Deque`, `Json`, `StrBuf`, `ArgSpec`); `kira --fix-with [--dry-run]
+    [--at-declaration] FILE-OR-DIR...` folds them, and with `--at-declaration` puts a run right under the declaration of
+    `x` onto it (`x: T { v } with { ... }`) and joins a `x with { }` block already there. It folds only what keeps its
+    meaning and lists what it leaves with why: a value type, a local or parameter named like the member used, a bare
+    name the block would read as the receiver's member, a Mutable field or global a call in the statement could rebind.
+    Py and cpp projects only: C and JS do not lower a `with`; C++ lowers one that edits in place (a stdlib value by
+    reference, never a copy) and refuses a value type's.
 - A statement ends at its newline: `;` is refused; `kira --fix-semicolons FILE...` drops them (never one in a string or a comment).
 - Class fields: `require pub name: Type` (constructor parameter + public field).
   Construction is positional: `Point { 0, 1 }`, nested `Rect { Point { 0, 1 }, Point { 1, 0 } }`.

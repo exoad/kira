@@ -431,13 +431,12 @@ namespace jsondoc
       {
           const kira::Rc<kira::json::Json> v = value(r, 0);
           const kira::Str d = v->dump();
-          const kira::Rc<Digest> w0_ = forms;
           {
-              w0_->add(d);
-              w0_->add(kira::Str(v->pretty(0, true)));
-              w0_->add(kira::Str(v->pretty(1, false)));
-              w0_->add(kira::Str(v->pretty(2, true)));
-              w0_->add(kira::Str(v->pretty(4, false)));
+              forms->add(d);
+              forms->add(kira::Str(v->pretty(0, true)));
+              forms->add(kira::Str(v->pretty(1, false)));
+              forms->add(kira::Str(v->pretty(2, true)));
+              forms->add(kira::Str(v->pretty(4, false)));
           }
           if(kira::Str(kira::json::parse(d)->dump()) == d && kira::Str(kira::json::error()) == "")
           {

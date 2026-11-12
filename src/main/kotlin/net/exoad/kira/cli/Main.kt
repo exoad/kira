@@ -88,18 +88,48 @@ fun main(args: Array<String>) {
         }
         return
     }
-    // `kira --fix-with [--dry-run] <file.kira>...` folds each run of statements on one Mutable class value into `x with { ... }`.
+    // `kira --fix-with [--dry-run] [--at-declaration] <file.kira or directory>...` folds each run of statements on one Mutable value
+    // (a class of the project, or a stdlib List, Map, Set, Json...) into `x with { ... }`; `--at-declaration` puts a run right under the
+    // declaration of `x` onto it, `x: T { v } with { ... }`. It lists every run it leaves with why.
     if (args.firstOrNull() == "--fix-with") {
+        val flags = setOf("--dry-run", "--at-declaration")
         val dry = "--dry-run" in args
-        val files = args.drop(1).filter { it != "--dry-run" }.map { File(it) }
-        for ((f, o) in net.exoad.kira.compiler.fix.WithFix.foldFiles(files)) {
+        val files = args.drop(1).filter { it !in flags }.map { File(it) }
+            .flatMap { if (it.isDirectory) it.walkTopDown().filter { f -> f.isFile && f.extension == "kira" }.sorted().toList() else listOf(it) }
+            .filter { it.name != "project.kira" } // a project's own file is no module
+        var folded = 0
+        var stdlib = 0
+        var declared = 0
+        var joined = 0
+        var statements = 0
+        var changed = 0
+        val reasons = java.util.TreeMap<String, IntArray>()
+        val types = java.util.TreeMap<String, Int>()
+        for ((f, o) in net.exoad.kira.compiler.fix.WithFix.foldFiles(files, "--at-declaration" in args)) {
             if (o.refused != null) {
                 println("$f: ${o.refused}")
                 continue
             }
-            if (!dry && o.folded != 0) net.exoad.kira.compiler.fix.ForFix.writeFile(f, o.text!!)
-            println("$f: ${if (dry) "would fold" else "folded"} ${o.folded}")
+            if (!dry && (o.folded != 0 || o.joined != 0)) net.exoad.kira.compiler.fix.ForFix.writeFile(f, o.text!!)
+            if (o.folded != 0 || o.joined != 0) changed++
+            folded += o.folded
+            stdlib += o.stdlib
+            declared += o.declared
+            joined += o.joined
+            statements += o.statements
+            o.types.forEach { (t, n) -> types.merge(t, n, Int::plus) }
+            println("$f: ${if (dry) "would fold" else "folded"} ${o.folded}${if (o.joined != 0) ", joined ${o.joined}" else ""}${if (o.left.isNotEmpty()) ", left ${o.left.size}" else ""}")
+            for (l in o.left) {
+                println("  ${f.name}:${l.line}: left ${l.statements} on `${l.receiver}`: ${l.why}")
+                reasons.getOrPut(l.why) { IntArray(2) }.let { it[0]++; it[1] += l.statements }
+            }
         }
+        println(
+            "${if (dry) "would fold" else "folded"} $folded runs ($statements statements) in $changed files: $stdlib on a stdlib value, " +
+                "${folded - stdlib} on a class; $declared onto a declaration, $joined blocks joined to theirs",
+        )
+        if (types.isNotEmpty()) println("by receiver type: " + types.entries.joinToString(", ") { "${it.key} ${it.value}" })
+        for ((why, n) in reasons) println("left ${n[0]} runs (${n[1]} statements): $why")
         return
     }
     // `kira --fix-counters [--dry-run] <file.kira or directory>...` rewrites each hand-written counter whose loop means the same over a range
